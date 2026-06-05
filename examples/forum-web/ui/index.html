@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hyper BBS Forum</title>
+    <style>
+      body { font-family: monospace; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+      header { padding: 12px 16px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
+      main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; height: calc(100vh - 49px); overflow: hidden; box-sizing: border-box; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; overflow: auto; min-height: 0; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      input, textarea, select, button { font: inherit; }
+      textarea { width: 100%; min-height: 72px; }
+      .list { display: flex; flex-direction: column; gap: 8px; }
+      .post { padding: 8px; border: 1px solid #eee; border-radius: 6px; cursor: pointer; }
+      .post.hidden { opacity: 0.5; }
+      .meta { color: #666; font-size: 12px; }
+      .thread-body { white-space: pre-wrap; }
+      .reply { border-top: 1px solid #eee; padding-top: 8px; margin-top: 8px; }
+      .actions { display: flex; gap: 6px; align-items: center; }
+      .btnlink { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 2px 6px; cursor: pointer; font-size: 12px; }
+      .item { position: relative; }
+      .mine { background: rgba(0, 0, 0, 0.03); }
+      .menu { position: absolute; top: 6px; right: 6px; z-index: 1000; }
+      .menu.open { z-index: 2000; }
+      .menu > button { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+      .menu-panel { position: absolute; right: 0; top: 26px; z-index: 1001; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 6px; min-width: 120px; box-shadow: 0 10px 24px rgba(0,0,0,0.08); }
+      .menu.open .menu-panel { z-index: 2001; }
+      .menu-panel button { width: 100%; text-align: left; background: #fff; border: 1px solid transparent; border-radius: 6px; padding: 12px; cursor: pointer; }
+      .menu-panel button:hover { border-color: #ddd; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Hyper BBS Forum</strong>
+      <span class="meta" id="me"></span>
+      <div class="row" style="margin-left:auto">
+        <input id="username" placeholder="username" />
+        <button id="setUsername">Set name</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <div style="justify-content: space-between;">
+          <div class="row">
+            <h3>Posts</h3>
+            <span class="meta" id="status"></span>
+          </div>
+          <div class="row">
+            <button id="openNewPost">New post</button>
+            <button id="refresh">Refresh</button>
+          </div>
+        </div>
+
+        <br />
+        <div class="list" id="posts"></div>
+      </section>
+
+      <section class="card" id="rightPanel">
+        <div class="row" style="justify-content:right">
+          <button id="closeRight" class="btnlink" style="display:none">Close</button>
+        </div>
+        <div id="right"></div>
+      </section>
+    </main>
+
+    <script>
+      let currentThread = null
+      let lastState = null
+      let rightMode = 'none'
+      let openMenuId = null
+      let threadLoadInFlight = false
+      let loadInFlight = false
+      let editTarget = null
+
+      function el (id) { return document.getElementById(id) }
+
+      async function api (path, method, body) {
+        const res = await fetch(path, {
+          method,
+          headers: body ? { 'content-type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined
+        })
+        if (!res.ok) throw new Error(await res.text())
+        return res.json()
+      }
+
+      document.addEventListener('click', (e) => {
+        if (!openMenuId) return
+        const m = e.target && e.target.closest ? e.target.closest('[data-menu-id]') : null
+        if (!m) closeMenus()
+      })
+
+      function setRightMode (mode) {
+        rightMode = mode
+        el('closeRight').style.display = mode === 'none' ? 'none' : ''
+        const rp = el('rightPanel')
+        const main = document.querySelector('main')
+        if (rp && main) {
+          if (mode === 'none') {
+            rp.style.display = 'none'
+            main.style.gridTemplateColumns = '1fr'
+          } else {
+            rp.style.display = ''
+            main.style.gridTemplateColumns = '1fr 1fr'
+          }
+        }
+        render(lastState)
+      }
+
+      async function moderate (targetId, action) {
+        const reason = ''
+        await api('/api/moderation', 'POST', { targetId, action, reason })
+        await loadState()
+      }
+
+      async function editEntity (id, currentBody) {
+        editTarget = { id, body: currentBody || '', thread: currentThread }
+        setRightMode('edit')
+      }
+
+      async function deleteEntity (id) {
+        const ok = window.confirm('Delete?')
+        if (!ok) return
+        await api('/api/delete', 'POST', { id })
+        await loadState()
+      }
+
+      function menuId (prefix, id) {
+        return prefix + ':' + id
+      }
+
+      function closeMenus () {
+        openMenuId = null
+        render(lastState)
+      }
+
+      function menuButton (state, prefix, id, moderation, opts = {}) {
+        const mid = menuId(prefix, id)
+
+        const meKey = state.me && state.me.pubkey ? state.me.pubkey : null
+        const isMine = Boolean(meKey && opts.author && opts.author === meKey)
+        const isMod = Boolean(state.me && state.me.isModerator)
+        const canDelete = Boolean(isMine || isMod)
+        const canEdit = Boolean(isMine)
+        const showMenu = Boolean(isMod || canEdit || canDelete)
+
+        const root = document.createElement('div')
+        root.className = 'menu'
+        root.dataset.menuId = mid
+
+        if (openMenuId === mid) root.classList.add('open')
+
+        const toggle = document.createElement('button')
+        toggle.textContent = showMenu ? '...' : 'Flag'
+        toggle.onclick = async (e) => {
+          e.stopPropagation()
+
+          if (!showMenu) {
+            await moderate(id, 'flag')
+            return
+          }
+
+          openMenuId = openMenuId === mid ? null : mid
+          render(lastState)
+        }
+        root.appendChild(toggle)
+
+        if (openMenuId === mid) {
+          const panel = document.createElement('div')
+          panel.className = 'menu-panel'
+
+          const act = moderation && moderation.action ? moderation.action : null
+
+          if (canEdit && typeof opts.body === 'string') {
+            const editBtn = document.createElement('button')
+            editBtn.textContent = 'Edit'
+            editBtn.onclick = async (e) => {
+              e.stopPropagation()
+              await editEntity(id, opts.body)
+              closeMenus()
+            }
+            panel.appendChild(editBtn)
+          }
+
+          if (canDelete) {
+            const delBtn = document.createElement('button')
+            delBtn.textContent = 'Delete'
+            delBtn.onclick = async (e) => {
+              e.stopPropagation()
+              await deleteEntity(id)
+              closeMenus()
+            }
+            panel.appendChild(delBtn)
+          }
+
+          if (isMod && act !== 'remove') {
+            const hideLabel = act === 'hide' ? 'Reveal' : 'Hide'
+            const hideAction = act === 'hide' ? 'reveal' : 'hide'
+
+            const hideBtn = document.createElement('button')
+            hideBtn.textContent = hideLabel
+            hideBtn.onclick = async (e) => {
+              e.stopPropagation()
+              await moderate(id, hideAction)
+              closeMenus()
+            }
+            panel.appendChild(hideBtn)
+          }
+
+          if (isMod) {
+            // 'Delete' already maps to /api/delete which performs moderation-remove for non-authors.
+          }
+
+          root.appendChild(panel)
+        }
+
+        return root
+      }
+
+      function fmtTime (ms) {
+        if (!ms) return ''
+        try {
+          return new Date(ms).toLocaleString()
+        } catch {
+          return ''
+        }
+      }
+
+      function render (state) {
+        lastState = state
+        const meKey = state.me && state.me.pubkey ? state.me.pubkey : null
+        if (state.me && state.me.pubkey) {
+          const u = state.me.username ? state.me.username : '(no name)'
+          el('me').textContent = `you: ${u} (${state.me.pubkey.slice(0, 8)})`
+        } else {
+          el('me').textContent = ''
+        }
+
+        const posts = el('posts')
+        posts.innerHTML = ''
+
+        for (const p of state.posts || []) {
+          const div = document.createElement('div')
+          div.className = 'post item' + (p.visible ? '' : ' hidden') + (meKey && p.author === meKey ? ' mine' : '')
+
+          let modLine = ''
+          if (p.moderation) {
+            if (p.moderation.action === 'remove') modLine = '[removed]'
+            else if (p.moderation.action === 'hide') modLine = '[hidden]'
+            else if (p.moderation.flags) modLine = `[flags ${p.moderation.flags}]`
+          } else if (!p.visible) {
+            modLine = '[hidden by policy]'
+          }
+
+          const full = p.body || ''
+          const cut = full.length > 160
+          const preview = cut ? full.slice(0, 160) : full
+          const readMore = cut ? '<div class="meta">[...]</div>' : ''
+
+          div.innerHTML = `
+            <div><strong>${p.username}</strong> <span class="meta">${p.id}</span></div>
+            <div class="meta">${fmtTime(p.createdAt)} · replies ${p.replyCount || 0} ${modLine}</div>
+            <br />
+            <div class="thread-body">${preview}</div>
+            ${readMore}
+          `
+
+          div.appendChild(menuButton(state, 'post', p.id, p.moderation, { author: p.author, body: p.body || '' }))
+
+          div.onclick = async () => {
+            currentThread = p.id
+            setRightMode('thread')
+            await loadState()
+          }
+          posts.appendChild(div)
+        }
+
+        const right = el('right')
+        right.innerHTML = ''
+
+        if (rightMode === 'none') {
+          right.innerHTML = '<div class="meta">Select a post or create a new one.</div>'
+          return
+        }
+
+        if (rightMode === 'edit') {
+          const t = editTarget
+          if (!t || !t.id) {
+            right.innerHTML = '<div class="meta">Nothing to edit.</div>'
+            return
+          }
+
+          const wrap = document.createElement('div')
+          wrap.innerHTML = `
+            <h3>Edit</h3>
+            <textarea id="editBodyRight" placeholder="Edit..."></textarea>
+            <div class="row">
+              <button id="saveEditRight">Save</button>
+              <button id="cancelEditRight" class="btnlink">Cancel</button>
+            </div>
+          `
+          right.appendChild(wrap)
+
+          setTimeout(() => {
+            const ta = document.getElementById('editBodyRight')
+            if (ta) ta.value = t.body || ''
+
+            const save = document.getElementById('saveEditRight')
+            if (save) {
+              save.onclick = async () => {
+                const body = (document.getElementById('editBodyRight').value || '')
+                if (!body.trim()) return
+                await api('/api/edit', 'POST', { id: t.id, body })
+                editTarget = null
+                if (t.thread) {
+                  currentThread = t.thread
+                  setRightMode('thread')
+                } else {
+                  setRightMode('none')
+                }
+                await loadState()
+              }
+            }
+
+            const cancel = document.getElementById('cancelEditRight')
+            if (cancel) {
+              cancel.onclick = async () => {
+                const thread = t.thread
+                editTarget = null
+                if (thread) {
+                  currentThread = thread
+                  setRightMode('thread')
+                } else {
+                  setRightMode('none')
+                }
+                await loadState()
+              }
+            }
+          }, 0)
+
+          return
+        }
+
+        if (rightMode === 'newpost') {
+          const wrap = document.createElement('div')
+          wrap.innerHTML = `
+            <h3>New post</h3>
+            <textarea id="newPostBodyRight" placeholder="Write a post..."></textarea>
+            <button id="createPostRight">Create post</button>
+          `
+          right.appendChild(wrap)
+          setTimeout(() => {
+            const b = document.getElementById('createPostRight')
+            if (b) {
+              b.onclick = async () => {
+                const body = document.getElementById('newPostBodyRight').value
+                if (!body.trim()) return
+                const res = await api('/api/posts', 'POST', { body })
+                if (res && res.post && res.post.id) currentThread = res.post.id
+                setRightMode('thread')
+                await loadState()
+              }
+            }
+          }, 0)
+          return
+        }
+
+        if (!state.thread) {
+          right.innerHTML = '<div class="meta">Thread not loaded yet.</div>'
+          return
+        }
+
+        const t = state.thread
+        const top = document.createElement('div')
+        top.className = 'item' + (meKey && t.author === meKey ? ' mine' : '')
+
+        let threadMod = ''
+        if (t.moderation) {
+          if (t.moderation.action === 'remove') threadMod = '[removed]'
+          else if (t.moderation.action === 'hide') threadMod = '[hidden]'
+          else if (t.moderation.flags) threadMod = `[flags ${t.moderation.flags}]`
+        } else if (!t.visible) {
+          threadMod = '[hidden by policy]'
+        }
+
+        top.innerHTML = `
+          <div><strong>${t.username}</strong> <span class="meta">${t.id}</span></div>
+          <div class="meta">${fmtTime(t.createdAt)} ${threadMod}</div>
+          <br />
+          <div class="thread-body">${t.visible ? (t.body || '') : (threadMod || '[hidden]')}</div>
+        `
+        top.appendChild(menuButton(state, 'post', t.id, t.moderation, { author: t.author, body: t.body || '' }))
+        right.appendChild(top)
+
+        const replyBox = document.createElement('div')
+        replyBox.innerHTML = `
+          <br />
+          <br />
+          <textarea id="replyBody" placeholder="Reply..."></textarea>
+          <button id="reply">Reply</button>
+        `
+        right.appendChild(replyBox)
+
+        setTimeout(() => {
+          const rb = document.getElementById('reply')
+          if (rb) {
+            rb.onclick = async () => {
+              if (!currentThread) return
+              const body = document.getElementById('replyBody').value
+              if (!body.trim()) return
+              await api('/api/replies', 'POST', { postId: currentThread, body })
+              document.getElementById('replyBody').value = ''
+              await loadState()
+            }
+          }
+        }, 0)
+
+        const replies = document.createElement('div')
+        replies.innerHTML = `<h4>Replies (${(t.replies || []).length})</h4>`
+        for (const r of (t.replies || [])) {
+          const div = document.createElement('div')
+          div.className = 'reply item' + (meKey && r.author === meKey ? ' mine' : '')
+
+          const body = document.createElement('div')
+
+          let rMod = ''
+          if (r.moderation) {
+            if (r.moderation.action === 'remove') rMod = '[removed]'
+            else if (r.moderation.action === 'hide') rMod = '[hidden]'
+            else if (r.moderation.flags) rMod = `[flags ${r.moderation.flags}]`
+          } else if (r.visible === false) {
+            rMod = '[hidden by policy]'
+          }
+
+          body.innerHTML = `
+            <div><strong>${r.username}</strong> <span class="meta">${r.id}</span></div>
+            <div class="meta">${fmtTime(r.createdAt)} ${rMod}</div>
+            <br />
+            <div class="thread-body">${r.body || ''}</div>
+            <br />
+          `
+          div.appendChild(body)
+
+          div.appendChild(menuButton(state, 'reply', r.id, r.moderation, { author: r.author, body: r.body || '' }))
+          replies.appendChild(div)
+        }
+        right.appendChild(replies)
+      }
+
+      async function loadState () {
+        if (loadInFlight) return
+        loadInFlight = true
+        el('status').textContent = 'loading...'
+        try {
+          const qs = currentThread ? `?thread=${encodeURIComponent(currentThread)}` : ''
+          const state = await api('/api/state' + qs, 'GET')
+          render(state)
+          el('status').textContent = ''
+        } catch (e) {
+          el('status').textContent = e.message
+        } finally {
+          loadInFlight = false
+        }
+      }
+
+      function connectEvents () {
+        const ev = new EventSource('/events')
+        ev.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg && msg.type === 'state:update') {
+              if (rightMode === 'thread' && currentThread) {
+                if (threadLoadInFlight) return
+                threadLoadInFlight = true
+                loadState().finally(() => { threadLoadInFlight = false })
+                return
+              }
+              render(msg.state)
+            }
+          } catch {}
+        }
+        ev.onerror = () => {
+          try { ev.close() } catch {}
+          setTimeout(connectEvents, 1000)
+        }
+      }
+
+      el('refresh').onclick = loadState
+
+      el('openNewPost').onclick = () => {
+        setRightMode('newpost')
+      }
+
+      el('closeRight').onclick = () => {
+        setRightMode('none')
+      }
+
+      el('setUsername').onclick = async () => {
+        const username = el('username').value.trim()
+        if (!username) return
+        await api('/api/identity', 'POST', { username })
+        await loadState()
+      }
+
+      connectEvents()
+      setRightMode('none')
+      loadState()
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) loadState().catch(() => {})
+      })
+    </script>
+  </body>
+</html>

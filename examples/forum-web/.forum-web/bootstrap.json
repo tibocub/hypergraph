@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "topic": "hyper-bbs-forum-demo",
+  "ownerCore": "b0c0ad2c34d0ef97cdeab911d50a4e6fff800b7cfec86b6f5dcee2c5891bdb8e",
+  "contexts": {
+    "comments": "b4fb82f562ec08b71a6bfb51fcdee6956e16de36e29facde300a6fb7b183220c",
+    "moderation": "bdbc4722c9f51d295e81359ee827764833f2faf1437d057886124bb68e319876"
+  },
+  "moderation": {
+    "trustedModeratorKeys": [
+      "ac672f25b2e002dabc35e3a972d0d9183ed3622e253b3b736906914060792df8"
+    ],
+    "maxFlags": 3
+  }
+}

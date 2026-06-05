@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hypergraph Inspector</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; height: 100vh; display: grid; grid-template-rows: auto 1fr minmax(120px, 30vh); }
+    header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #ddd; }
+    header input, header select, header button { padding: 6px 8px; }
+    #main { display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
+    #sidebar { border-right: 1px solid #ddd; padding: 10px; overflow: auto; min-height: 0; }
+    #cy { height: 100%; width: 100%; }
+    footer { border-top: 1px solid #ddd; padding: 8px 10px; font-family: ui-monospace, monospace; white-space: pre; overflow: auto; min-height: 0; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .col { display: flex; flex-direction: column; gap: 8px; }
+    label { font-size: 12px; color: #444; }
+    textarea { width: 100%; min-height: 120px; font-family: ui-monospace, monospace; }
+    small { color: #666; }
+  </style>
+  <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+</head>
+<body>
+  <header>
+    <strong>Hypergraph Inspector</strong>
+    <span id="db"></span>
+    <button id="newdb">New DB</button>
+    <button id="reset">Reset View</button>
+    <button id="update">Update</button>
+    <span id="runtime"></span>
+  </header>
+
+  <div id="main">
+    <div id="sidebar" class="col">
+      <div class="col">
+        <label>Context scope (hex keys, comma separated)</label>
+        <input id="contexts" placeholder="<ctxKeyHex>,<ctxKeyHex>" />
+        <small>v0 note: scope is explicit, but internally Hypergraph scans opened contexts.</small>
+      </div>
+
+      <div class="col">
+        <label>Contexts</label>
+        <div class="row">
+          <button id="ctxCreate">Create Context</button>
+          <button id="ctxOpen">Open Context</button>
+        </div>
+        <input id="ctxKey" placeholder="<ctxKeyHex>" />
+        <div class="row">
+          <button id="ctxWriters">Show Writers</button>
+        </div>
+        <div class="row">
+          <button id="openBootstrap">Open bootstrap.json</button>
+          <button id="openSite">Open site.json</button>
+        </div>
+        <small id="ctxStatus"></small>
+      </div>
+
+      <div class="col">
+        <label>Query (HGQ v0 JSON)</label>
+        <textarea id="query">{
+  "scope": { "contexts": [] },
+  "query": { "type": "nodeByType", "nodeType": "post", "limit": 50 }
+}</textarea>
+        <button id="run">Run Query</button>
+      </div>
+
+      <div class="col">
+        <label>Write: create entity</label>
+        <div class="row">
+          <input id="entityType" placeholder="post" />
+          <button id="put">Put</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="cy"></div>
+  </div>
+
+  <footer id="out"></footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

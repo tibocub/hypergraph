@@ -1,0 +1,38 @@
+{
+  "name": "hypergraph",
+  "version": "0.0.1",
+  "description": "P2P graph store built on Hypercore/Autobase with a focus on ease of use.",
+  "main": "lib/hypergraph/index.js",
+  "bin": {
+    "hypergraph-inspect": "bin/hypergraph-inspect.js"
+  },
+  "scripts": {
+    "test": "npm run test:all",
+    "test:all": "npm run test:brittle && npm run test:forum:brittle && npm run test:forum",
+    "test:brittle": "npx brittle test/brittle/*.js test/brittle/tools/*.js",
+    "test:forum": "node examples/forum/test-runner.js",
+    "test:forum:brittle": "npx brittle test/brittle/forum/index.js",
+    "populate:inspector": "node scripts/populate-inspector-fixture.js",
+    "validate:roles": "node scripts/validate-roles.js",
+    "forum:web:owner": "node examples/forum-web/peer.js --name=owner --role=owner --topic=hyper-bbs-forum-demo",
+    "forum:web:peer": "node examples/forum-web/peer.js --name=peer --role=peer --topic=hyper-bbs-forum-demo",
+    "test:legacy": "node test/hypergraph.js",
+    "test:legacy:integration": "node test/hypergraph-integration.js",
+    "test:legacy:hyperswarm": "node test/hypergraph-hyperswarm.js"
+  },
+  "dependencies": {
+    "autobase": "^7.28.1",
+    "b4a": "^1.8.1",
+    "codecs": "^3.1.0",
+    "compact-encoding": "^3.0.1",
+    "corestore": "^7.9.2",
+    "hyperbee": "^2.27.3",
+    "hypercore-crypto": "^3.7.0"
+  },
+  "devDependencies": {
+    "brittle": "^3.0.0",
+    "random-access-memory": "^3.0.0",
+    "hyperswarm": "^4.17.0"
+  },
+  "license": "MIT"
+}

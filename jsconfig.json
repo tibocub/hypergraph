@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+		"allowJs": true,
+    "checkJs": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true
+  },
+  "include": [
+    "src/**/*.js",
+    "test/**/*.js",
+		"examples/**/*.js"
+  ]
+}
