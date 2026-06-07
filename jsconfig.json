@@ -3,13 +3,14 @@
 		"allowJs": true,
     "checkJs": true,
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "commonjs",
+    "moduleResolution": "node",
     "strict": true
   },
   "include": [
     "src/**/*.js",
     "test/**/*.js",
 		"examples/**/*.js"
-  ]
+  ],
+	"exclude": ["node_modules"]
 }

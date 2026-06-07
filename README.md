@@ -1,40 +1,51 @@
 # Hypergraph
 
 A minimal graph database optimized for P2P social apps.
+Built with a focus on ease of use and compatibility with hyperswarm and the holepunch ecosystem in general.
 
 Curently provides:
-- Basic graph database features (nodes, relations, tags, queries, CRUD operations)
-- Cryptographic ID system (ID keypairs, prove data ownership, encrypt private data, etc)
+- The basic graph store operations (nodes, relations, tags, queries, CRUD operations)
+- A Cryptographic User ID system (ID keypairs, prove data ownership, encrypt private data, etc)
 - Roles and Moderation (role-based permissions)
 
 
-# /!\ Limitations /!\
+1. [Limitations](##limitations)
+2. [Design](##design)
+3. [Features](##features)
+4. [Indexes (materialized view)](##indexes-\(materialized-view\))
+5. [Quickstart](##quickstart)
 
-Because it's built on hypercores (append-only logs), it's not possible to make queries as efficient as native graph databases. For example
-The point of hypergraph isn't to offer the O(1) performance of native graph databases for fast resolution of complex queries (i.e. resolve shortest path between two node separated by many relations hop), but simply to provide devs with the intuitivity of the mental model of a graph to build P2P social apps on top of the Holepunch ecosystem.
 
-**This means hypergraph queries complexity is O(n) and will be slow to resolve multiple hops**
+## Limitations
+
+Since it's built on hypercores (append-only logs), it's not possible to make operations as efficient as in native graph databases.
+The point of hypergraph isn't to offer the O(1) performance of native graph databases for fast resolution of complex queries
+(i.e. resolve shortest path between two node separated by many hops), but simply to provide devs with the intuitivity of the
+mental model of a graph to build P2P social apps on top of the Holepunch ecosystem.
+
+**This means hypergraph queries complexity is O(n) and will be slow to resolve a lot of hops between two nodes.**
 
 Hopefully, in the context of a P2P social app, this shouldn't be a problem because:
 - Hypercore (built on RocksDB) is very fast for sequential reads
 - We keep multiple indexes (hypercores) to optimize common queries
-- most queries are expected to be 1 edge deep fan-out reads (e.g. get all posts from this user, get all posts with this tag, get all answers to this post, etc)
+- most queries are expected to be 1 edge deep fan-out reads (e.g. "get all posts from this user",
+  "get all posts with this tag", "get all answers to this post", etc.)
 
 
 ## Design
 
-Under the hood, hypergraph allow content
+Under the hood, hypergraph create multiple indexes to optimize some common queries
 
 Hypergraph is a thin composition over:
-- Hypercore (append-only logs)
-- Corestore (core management)
-- Autobase (multi-writer logs for collaborative contexts)
-- Hyperbee (materialized view + indexes)
+- [Hypercore](https://github.com/holepunchto/hypercore) (append-only logs)
+- [Corestore](https://github.com/holepunchto/corestore) (core management)
+- [Autobase](https://github.com/holepunchto/autobase) (multi-writer logs for collaborative contexts)
+- [Hyperbee](https://github.com/holepunchto/hyperbee) (materialized view + indexes)
 
-The database provides a local API. Hypergraph is not responsible for networking, it should be handled by the app (e.g. using Hyperswarm)
+The database provides a local API. Hypergraph is not responsible for networking, it should be handled by the app (e.g. using [Hyperswarm](https://github.com/holepunchto/hyperswarm))
 
 
-## Current features
+## Features
 
 - Entities
   - Create: `graph.put({ id, type, author })`
@@ -213,10 +224,3 @@ See:
 - `test/brittle/hyperswarm.js`
 - `examples/hyperswarm-integration.js`
 - `examples/moderation.js`
-
-
-## Tests
-
-```bash
-npm test
-```

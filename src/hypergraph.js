@@ -12,12 +12,24 @@ const GraphView = require('./view')
 const GraphQuery = require('./query')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
+const Hypercore = require('hypercore')
 
 /**
-* @param ts {string}
+* @param   {string} ts
+* @returns {string}
 */
 const toSortableTs = ts => String(ts).padStart(16, '0')
 
+
+/**
+ * Minimal graph database optimised for P2P social apps on the Holepunch stack.
+ *
+ * Hypergraph is a thin composition over Hypercore, Corestore, Autobase and
+ * Hyperbee. It exposes a local graph API; networking is the responsibility of
+ * the application (typically via Hyperswarm).
+ *
+ * @extends ReadyResource
+ */
 module.exports = class Hypergraph extends ReadyResource {
   #store
   #userCore
@@ -29,6 +41,10 @@ module.exports = class Hypergraph extends ReadyResource {
   #userCoreKey
   #roleBase
 
+  /**
+   * @param {import('corestore')} store
+   * @param {HypergraphOpts}      [opts]
+   */
   constructor (store, opts = {}) {
     super()
 
@@ -83,39 +99,61 @@ module.exports = class Hypergraph extends ReadyResource {
     }
   }
 
-  // Core access for replication (app handles this)
+
+// ── Getters ──────────────────────────────────────────────────────────────
+
+  /** @returns {import('hypercore')|undefined} The raw user Hypercore (used for replication). */
   get core () {
     return this.#userCore?.core
   }
 
+  /** @returns {GraphView|null} */
   get view () {
     return this.#view
   }
 
+	/** @returns {import('hypercore')|undefined} The raw view Hypercore. */
   get viewCore () {
     return this.#view?.bee?.core
   }
 
+	/** @returns {Buffer|undefined} The local user's public key. */
   get key () {
     return this.#userCore?.core?.key
   }
 
+	/** @returns {Buffer|undefined} */
   get discoveryKey () {
     return this.#userCore?.core?.discoveryKey
   }
 
+	/** @returns {RoleBase|null} */
   get roleBase () {
     return this.#roleBase
   }
 
+	/** @returns {Array<PubKeyHex>} UserCore's keys as an array */
   userCoreKeys () {
     return Array.from(this.#userCores.keys()).sort()
   }
 
-  // ========================================
-  // Entity Operations
-  // ========================================
 
+// ── Entity operations ─────────────────────────────────────────────────────
+
+  /**
+   * Create a new entity.
+   *
+   * The entity's `id` is derived deterministically as `<type>/<authorHex>/<seq>`
+   * after the event is appended to the user core — do **not** pass an `id`.
+   *
+   * @param   {EntityInput} entity
+   * @returns {Promise<Entity>}
+   * @throws  {Error} If the user core is read-only or an `id` is provided.
+   *
+   * @example
+   * const { id } = await graph.put({ type: 'post' })
+   * // id → 'post/a1b2c3.../0'
+   */
   async put (entity) {
     if (!this.opened) await this.ready()
     if (!this.#userCore.writable) throw new Error('User core is read-only')
@@ -125,7 +163,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
     // Deterministic IDs are assigned after append.
     // Callers must not provide IDs.
-    if (entity.id) throw new Error('Entity id must not be provided')
+    if (entity.id) throw new Error('Entity id must NOT be provided')
 
     const event = {
       type: 'entity/create',
@@ -144,11 +182,25 @@ module.exports = class Hypergraph extends ReadyResource {
     return { id, type: entity.type, author }
   }
 
+  /**
+   * Fetch an entity by its derived ID.
+   *
+   * @param   {string} id
+   * @returns {Promise<Entity|null>}
+   */
   async get (id) {
     if (!this.opened) await this.ready()
     return this.#view.getNode(id)
   }
 
+  /**
+   * Soft-delete (tombstone) an entity. Only the original author can do this.
+   *
+   * @param   {string} id
+   * @param   {Object} [opts]
+   * @returns {Promise<void>}
+   * @throws  {Error} If the entity is not found or the caller is not the author.
+   */
   async del (id, opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -171,10 +223,18 @@ module.exports = class Hypergraph extends ReadyResource {
     await this.#view.update()
   }
 
-  // ========================================
-  // Content Operations
-  // ========================================
 
+// ── Content operations ────────────────────────────────────────────────────
+
+  /**
+   * Append a new content version to an entity.
+   * Content is append-only; use {@link Hypergraph#getContent} to read the latest.
+   *
+   * @param   {string} entityId
+   * @param   {string} content
+   * @param   {'text'|string} [contentType='text']
+   * @returns {Promise<{ entityId: string, contentType: string, body: string }>}
+   */
   async putContent (entityId, content, contentType = 'text') {
     if (!this.opened) await this.ready()
 
@@ -193,9 +253,19 @@ module.exports = class Hypergraph extends ReadyResource {
     return { entityId, contentType, body: content }
   }
 
-  // ========================================
-  // Identity (canonical, user-core)
-  // ========================================
+  /**
+   * Read the latest content version from an entity.
+   *
+   * @param   {string} entityId
+   * @returns {Promise<{ contentType: string, body: string }|null>}
+   */
+  async getContent (entityId) {
+    if (!this.opened) await this.ready()
+    return this.#view.getContent(entityId)
+  }
+
+
+// ── Identity operations ───────────────────────────────────────────────────
 
   async setIdentity (profile = {}) {
     if (!this.opened) await this.ready()
@@ -221,15 +291,20 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.#view.getIdentity(pubkey)
   }
 
-  async getContent (entityId) {
-    if (!this.opened) await this.ready()
-    return this.#view.getContent(entityId)
-  }
 
-  // ========================================
-  // Relation Operations
-  // ========================================
+// ── Relation operations ───────────────────────────────────────────────────
 
+  /**
+   * Create a directed relation between two entities inside a context.
+   *
+   * @param   {Object}               opts
+   * @param   {string}               opts.from
+   * @param   {string}               opts.to
+   * @param   {string}               opts.type        - Relation type label (e.g. `'reply'`)
+   * @param   {PubKeyHex}            opts.author
+   * @param   {ContextKeyHex|Buffer} opts.context
+   * @returns {Promise<Edge>}
+   */
   async relate (opts) {
     if (!this.opened) await this.ready()
 
@@ -249,6 +324,18 @@ module.exports = class Hypergraph extends ReadyResource {
     return event
   }
 
+	/**
+   * Remove a directed relation. Both nodes and the relation type must match.
+   *
+   * @param   {Object}               opts
+   * @param   {string}               opts.from
+   * @param   {string}               opts.to
+   * @param   {string}               opts.type
+   * @param   {PubKeyHex}            opts.author
+   * @param   {ContextKeyHex|Buffer} opts.context
+   * @returns {Promise<void>}
+   * @throws  {Error} If the relation does not exist.
+   */
   async unrelate (opts) {
     if (!this.opened) await this.ready()
 
@@ -275,6 +362,21 @@ module.exports = class Hypergraph extends ReadyResource {
     await this.#view.update()
   }
 
+  /**
+   * Iterate over the edges of an entity.
+   *
+   * Because indexes are append-only logs the complexity is O(n).
+   * For most P2P social patterns (1-hop fan-out reads) this is fine.
+   *
+   * @param   {string}        entityId
+   * @param   {EdgeQueryOpts} [opts]
+   * @returns {AsyncGenerator<Edge>}
+   *
+   * @example
+   * for await (const edge of graph.edges('post/abc/0', { direction: 'in', type: 'reply' })) {
+   *   console.log(edge.from)
+   * }
+   */
   edges (entityId, opts = {}) {
     if (!this.opened) {
       return (async function * () {
@@ -285,6 +387,13 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.#view.getEdges(entityId, opts)
   }
 
+  /**
+   * Count incoming edges of a given type across all open contexts.
+   *
+   * @param   {string} entityId
+   * @param   {string} type      - Relation type label
+   * @returns {Promise<number>}
+   */
   async countEdgesIn (entityId, type) {
     if (!this.opened) await this.ready()
     const key = `cnt:in:${entityId}:${type}`
@@ -331,10 +440,20 @@ module.exports = class Hypergraph extends ReadyResource {
     return total
   }
 
-  // ========================================
-  // Tag Operations
-  // ========================================
 
+// ── Tag operations ────────────────────────────────────────────────────────
+
+  /**
+   * Add a tag to an entity inside a context. Only the entity author can tag.
+   *
+   * @param   {string}               entityId
+   * @param   {string}               tag
+   * @param   {Object}               opts
+   * @param   {PubKeyHex}            opts.author
+   * @param   {ContextKeyHex|Buffer} opts.context
+   * @returns {Promise<Object>} The appended tag event
+   * @throws  {Error} If the entity is not found or the caller is not the author.
+   */
   async tag (entityId, tag, opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -357,6 +476,17 @@ module.exports = class Hypergraph extends ReadyResource {
     return event
   }
 
+  /**
+   * Remove a tag from an entity inside a context. Only the entity author can untag.
+   *
+   * @param   {string}               entityId
+   * @param   {string}               tag
+   * @param   {Object}               opts
+   * @param   {PubKeyHex}            opts.author
+   * @param   {ContextKeyHex|Buffer} opts.context
+   * @returns {Promise<Object>} The appended tag event
+   * @throws  {Error} If the entity is not found or the caller is not the author.
+   */
   async untag (entityId, tag, opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -378,6 +508,23 @@ module.exports = class Hypergraph extends ReadyResource {
     await this.#view.update()
   }
 
+  /**
+   * Iterate over entities that carry a given tag.
+   *
+   * Supports trust filtering: pass `author` or `authors` to only yield
+   * entities tagged by a trusted set.
+   *
+   * @param   {string}        tag
+   * @param   {Object}        [opts]
+   * @param   {PubKeyHex}     [opts.author]   - Single-author filter
+   * @param   {PubKeyHex[]}   [opts.authors]  - Multi-author filter (OR)
+   * @returns {AsyncGenerator<Entity>}
+   *
+   * @example
+   * for await (const node of graph.getByTag('pinned', { authors: trustedKeys })) {
+   *   console.log(node.id)
+   * }
+   */
   getByTag (tag, opts = {}) {
     if (!this.opened) {
       return (async function * () {
@@ -404,10 +551,15 @@ module.exports = class Hypergraph extends ReadyResource {
     await this.#view.update()
   }
 
-  // ========================================
-  // RoleBase / Roles
-  // ========================================
 
+// ── RoleBase ──────────────────────────────────────────────────────────────
+
+  /**
+   * Create a fresh RoleBase and attach it to this graph instance.
+   * Closes any previously attached RoleBase.
+   *
+   * @returns {Promise<string>} The new RoleBase key as a hex string.
+   */
   async createRoleBase () {
     if (!this.opened) await this.ready()
 
@@ -419,6 +571,12 @@ module.exports = class Hypergraph extends ReadyResource {
     return roles.key.toString('hex')
   }
 
+  /**
+   * Open an existing RoleBase by key and attach it to this graph instance.
+   *
+   * @param   {Buffer|string} keyOrHex
+   * @returns {Promise<RoleBase>}
+   */
   async openRoleBase (keyOrHex) {
     if (!this.opened) await this.ready()
     if (!keyOrHex) throw new Error('RoleBase key is required')
@@ -434,6 +592,12 @@ module.exports = class Hypergraph extends ReadyResource {
     return roles
   }
 
+  /**
+   * Get the role string currently assigned to a member.
+   *
+   * @param   {PubKeyHex} pubkeyHex
+   * @returns {Promise<string|null>}
+   */
   async getRole (pubkeyHex) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
@@ -443,6 +607,13 @@ module.exports = class Hypergraph extends ReadyResource {
     return entry && entry.value ? entry.value.role : null
   }
 
+  /**
+   * Check whether a member has a given permission.
+   *
+   * @param   {PubKeyHex} pubkeyHex
+   * @param   {string}    action
+   * @returns {Promise<boolean>}
+   */
   async can (pubkeyHex, action) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
@@ -452,6 +623,14 @@ module.exports = class Hypergraph extends ReadyResource {
     return canRole(registry, pubkeyHex, action)
   }
 
+  /**
+   * Set the role of a member.
+   *
+   * @param {PubKeyHex} memberPubkeyHex
+   * @param {string}    role
+   * @param {Object}    opts
+   * @param {PubKeyHex} opts.author
+   */
   async setRole (memberPubkeyHex, role, opts = {}) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
@@ -465,6 +644,13 @@ module.exports = class Hypergraph extends ReadyResource {
     })
   }
 
+  /**
+   * Remove the role of a member.
+   *
+   * @param {PubKeyHex} memberPubkeyHex
+   * @param {Object}    opts
+   * @param {PubKeyHex} opts.author
+   */
   async removeRole (memberPubkeyHex, opts = {}) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
@@ -477,60 +663,22 @@ module.exports = class Hypergraph extends ReadyResource {
     })
   }
 
+  /**
+   * Remove the role of a member.
+   *
+   * @param {PubKeyHex} memberPubkeyHex
+   * @param {Hypercore}
+   * @param {Object}    opts
+   * @param {PubKeyHex} opts.author
+   */
   async addOwner (memberPubkeyHex, writerCore, opts = {}) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
     return this.#roleBase.addOwner(memberPubkeyHex, writerCore, opts)
   }
 
-  // ========================================
-  // Query Interface
-  // ========================================
 
-  query (opts = {}) {
-    if (!this.opened) this.ready().then(() => {})
-    return new GraphQuery(this.#view, opts)
-  }
-
-  queryContext (opts = {}) {
-    if (!this.opened) {
-      return (async function * () {
-        await this.ready()
-        yield * this.queryContext(opts)
-      }).call(this)
-    }
-
-    if (!opts || opts.type !== 'moderation') throw new Error('Unsupported context query type')
-    if (!opts.context) throw new Error('Context key is required')
-    if (!opts.target) throw new Error('Moderation target is required')
-
-    const authors = opts.authors || (opts.author ? [opts.author] : null)
-    const allow = authors ? new Set(authors) : null
-    const since = typeof opts.since === 'number' ? opts.since : null
-
-    return (async function * () {
-      const ctx = await this.#getContext(opts.context)
-
-      // by-target index: m:t:<targetId>:<createdAt>:<coreKeyHex>:<seq>
-      const prefix = `m:t:${opts.target}:`
-      const gte = since != null ? `${prefix}${toSortableTs(since)}:` : prefix
-
-      const stream = ctx.view.createReadStream({
-        gte,
-        lt: prefix + '\uffff'
-      })
-
-      for await (const entry of stream) {
-        const v = entry.value
-        if (allow && !allow.has(v.author)) continue
-        yield v
-      }
-    }).call(this)
-  }
-
-  // ========================================
-  // Moderation (facts only, policy in app)
-  // ========================================
+// ── Moderation ────────────────────────────────────────────────────────────
 
   #stableModerationHash (event) {
     const payload = {
@@ -551,6 +699,21 @@ module.exports = class Hypergraph extends ReadyResource {
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
+
+  /**
+   * Publish a signed moderation action into a context.
+   *
+   * This method only records facts (action + signature). Policy enforcement
+   * is the responsibility of the application.
+   *
+   * Allowed actions: `'content.flag'`, `'content.hide'`, `'content.remove'`,
+   * `'content.reveal'`.
+   *
+   * @param   {ModerateActionOpts} opts
+   * @returns {Promise<ModerationEvent>}
+   * @throws  {Error} If `keyPair`, `context`, `action`, or `target` are missing,
+   *                  or if `action` is not one of the four allowed values.
+   */
   async moderateAction (opts = {}) {
     if (!this.opened) await this.ready()
     if (!opts.context) throw new Error('Context key is required')
@@ -592,9 +755,75 @@ module.exports = class Hypergraph extends ReadyResource {
     return event
   }
 
-  // ========================================
-  // Context Management
-  // ========================================
+
+// ── Query builder ─────────────────────────────────────────────────────────
+
+  /**
+   * Return a fluent query builder scoped to the current view.
+   *
+   * @param   {Object} [opts]
+   * @returns {GraphQuery}
+   *
+   * @example
+   * const posts = await graph.query().type('post').toArray()
+   */
+  query (opts = {}) {
+    if (!this.opened) this.ready().then(() => {})
+    return new GraphQuery(this.#view, opts)
+  }
+
+
+  /**
+   * @param {Object}     opts
+   * @param {} opts.
+   * @param {} opts.
+   * @param {} opts.
+   */
+  queryContext (opts = {}) {
+    if (!this.opened) {
+      return (async function * () {
+        await this.ready()
+        yield * this.queryContext(opts)
+      }).call(this)
+    }
+
+    if (!opts || opts.type !== 'moderation') throw new Error('Unsupported context query type')
+    if (!opts.context) throw new Error('Context key is required')
+    if (!opts.target) throw new Error('Moderation target is required')
+
+    const authors = opts.authors || (opts.author ? [opts.author] : null)
+    const allow = authors ? new Set(authors) : null
+    const since = typeof opts.since === 'number' ? opts.since : null
+
+    return (async function * () {
+      const ctx = await this.#getContext(opts.context)
+
+      // by-target index: m:t:<targetId>:<createdAt>:<coreKeyHex>:<seq>
+      const prefix = `m:t:${opts.target}:`
+      const gte = since != null ? `${prefix}${toSortableTs(since)}:` : prefix
+
+      const stream = ctx.view.createReadStream({
+        gte,
+        lt: prefix + '\uffff'
+      })
+
+      for await (const entry of stream) {
+        const v = entry.value
+        if (allow && !allow.has(v.author)) continue
+        yield v
+      }
+    }).call(this)
+  }
+
+
+  // ── Context management ────────────────────────────────────────────────────
+
+  /**
+   * @typedef {Object} CreateContextOpts
+   * @property {'open'|'closed'} [writeMode='open']
+   *   `'open'`   — any core can be added as a writer freely.
+   *   `'closed'` — writers must be explicitly authorised; requires an attached RoleBase.
+   */
 
   async #getContext (keyOrHex, opts = {}) {
     if (!keyOrHex) throw new Error('Context key is required')
@@ -623,6 +852,12 @@ module.exports = class Hypergraph extends ReadyResource {
     return context
   }
 
+  /**
+   * Create a new Autobase context and return its key as a hex string.
+   *
+   * @param   {CreateContextOpts} [opts]
+   * @returns {Promise<ContextKeyHex>}
+   */
   async createContext (opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -644,6 +879,13 @@ module.exports = class Hypergraph extends ReadyResource {
     return keyHex
   }
 
+  /**
+   * Open (or return the cached) context for a given key.
+   *
+   * @param   {ContextKeyHex|Buffer} keyOrHex
+   * @param   {CreateContextOpts}    [opts]
+   * @returns {Promise<ContextBase>}
+   */
   async openContext (keyOrHex, opts = {}) {
     if (!this.opened) await this.ready()
     const ctx = await this.#getContext(keyOrHex, opts)
