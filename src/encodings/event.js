@@ -1,6 +1,13 @@
 const c = require('compact-encoding')
 const b4a = require('b4a')
 
+/**
+ * Compact encoding/decoding for hypergraph events.
+ *
+ * Provides binary encoding for graph events to minimize storage and transmission overhead.
+ * Supports entity creation, content append, relations, tags, identity updates, and more.
+ */
+
 // Event type constants - map from string to code
 const EVENT_TYPES = {
   'entity/create': 1,
@@ -168,6 +175,12 @@ const eventEncoding = {
   }
 }
 
+/**
+ * Encode an event to a binary buffer.
+ *
+ * @param {Object} event - The event to encode
+ * @returns {Buffer} The encoded event as a Buffer
+ */
 function encodeEvent (event) {
   const state = { start: 0, end: 0, buffer: null }
   eventEncoding.preencode(state, event)
@@ -176,12 +189,28 @@ function encodeEvent (event) {
   return state.buffer
 }
 
+/**
+ * Decode an event from a binary buffer.
+ *
+ * @param {Buffer} buffer - The binary buffer to decode
+ * @returns {Object|null} The decoded event, or null if buffer is falsy
+ */
 function decodeEvent (buffer) {
   if (!buffer) return null
   const state = { start: 0, end: buffer.length, buffer }
   return eventEncoding.decode(state)
 }
 
+/**
+ * Event encoding exports.
+ *
+ * @module event-encoding
+ * @property {Object} eventEncoding - The compact-encoding state machine for events
+ * @property {Function} encodeEvent - Function to encode events to binary
+ * @property {Function} decodeEvent - Function to decode events from binary
+ * @property {Object} EVENT_TYPES - Mapping from event type strings to numeric codes
+ * @property {Object} EVENT_TYPE_NAMES - Mapping from numeric codes to event type strings
+ */
 module.exports = {
   eventEncoding,
   encodeEvent,

@@ -4,6 +4,15 @@ const b4a = require('b4a')
 
 const toSortableTs = ts => String(ts).padStart(16, '0')
 
+/**
+ * GraphView manages the materialized view for graph operations.
+ *
+ * Maintains indexes over user cores and contexts to provide efficient queries
+ * for entities, edges, tags, and content. Updates incrementally as new events
+ * are processed.
+ *
+ * @extends ReadyResource
+ */
 module.exports = class GraphView extends ReadyResource {
   #bee
   #userCores
@@ -12,6 +21,13 @@ module.exports = class GraphView extends ReadyResource {
   #contextCheckpoints
   #userMetaKey
 
+  /**
+   * Create a new GraphView instance.
+   *
+   * @param {import('hyperbee')} bee - The Hyperbee instance for the view
+   * @param {Map<string, import('./user-core')>} userCores - Map of user core keys to UserCore instances
+   * @param {Map<string, import('./context-base')>} contexts - Map of context names to ContextBase instances
+   */
   constructor (bee, userCores, contexts) {
     super()
 
@@ -25,6 +41,12 @@ module.exports = class GraphView extends ReadyResource {
     this.ready().catch(safetyCatch)
   }
 
+  /**
+   * Get the identity profile for a public key.
+   *
+   * @param {string} pubkey - Hex-encoded public key
+   * @returns {Promise<Object|null>} The identity profile, or null if not found
+   */
   async getIdentity (pubkey) {
     if (!this.opened) await this.ready()
     const entry = await this.#bee.get(`id:profile:${pubkey}`)
@@ -44,6 +66,7 @@ module.exports = class GraphView extends ReadyResource {
     // Nothing to close, bee is managed by Hypergraph
   }
 
+  /** @returns {import('hyperbee')} The underlying Hyperbee instance */
   get bee () {
     return this.#bee
   }
@@ -52,6 +75,11 @@ module.exports = class GraphView extends ReadyResource {
   // Update View
   // ========================================
 
+  /**
+   * Update the view by processing new events from user cores and contexts.
+   *
+   * @returns {Promise<void>}
+   */
   async update () {
     if (!this.opened) await this.ready()
 
@@ -193,6 +221,13 @@ module.exports = class GraphView extends ReadyResource {
     })
   }
 
+  /**
+   * Add a user core to the view.
+   *
+   * @param {string} keyHex - Hex-encoded public key of the user core
+   * @param {import('./user-core')} userCore - The UserCore instance
+   * @returns {void}
+   */
   addUserCore (keyHex, userCore) {
     this.#userCores.set(keyHex, userCore)
     // Initialize checkpoint lazily
@@ -209,6 +244,13 @@ module.exports = class GraphView extends ReadyResource {
   // Context Management
   // ========================================
 
+  /**
+   * Add a context to the view.
+   *
+   * @param {string} name - The context name/identifier
+   * @param {import('./context-base')} context - The ContextBase instance
+   * @returns {void}
+   */
   addContext (name, context) {
     this.#contexts.set(name, context)
 
@@ -232,6 +274,12 @@ module.exports = class GraphView extends ReadyResource {
   // Read Operations
   // ========================================
 
+  /**
+   * Get a node (entity) by its ID.
+   *
+   * @param {string} id - The entity ID
+   * @returns {Promise<Entity|null>} The entity, or null if not found or deleted
+   */
   async getNode (id) {
     if (!this.opened) await this.ready()
 
@@ -242,6 +290,12 @@ module.exports = class GraphView extends ReadyResource {
     return entry.value
   }
 
+  /**
+   * Get the latest content version for an entity.
+   *
+   * @param {string} entityId - The entity ID
+   * @returns {Promise<{ contentType: string, body: string }|null>} The content, or null if not found
+   */
   async getContent (entityId) {
     if (!this.opened) await this.ready()
 
@@ -260,6 +314,13 @@ module.exports = class GraphView extends ReadyResource {
     return null
   }
 
+  /**
+   * Get edges for an entity.
+   *
+   * @param {string} entityId - The entity ID
+   * @param {EdgeQueryOpts} [opts] - Query options
+   * @returns {AsyncIterable<Edge>} Async iterator of edges
+   */
   async * getEdges (entityId, opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -318,6 +379,15 @@ module.exports = class GraphView extends ReadyResource {
     }
   }
 
+  /**
+   * Get entities by tag from context views.
+   *
+   * @param {string} tag - The tag to search for
+   * @param {Object} [opts] - Query options
+   * @param {string} [opts.author] - Filter by a single author (hex public key)
+   * @param {string[]} [opts.authors] - Filter by multiple authors (hex public keys)
+   * @returns {AsyncIterable<Entity>} Async iterator of entities with the tag
+   */
   async * getByTag (tag, opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -345,6 +415,12 @@ module.exports = class GraphView extends ReadyResource {
     }
   }
 
+  /**
+   * Get entities by type from the view.
+   *
+   * @param {string} type - The entity type to filter by (use '*' or null for all types)
+   * @returns {AsyncIterable<Entity>} Async iterator of entities with the type
+   */
   async * getByType (type) {
     if (!this.opened) await this.ready()
 
@@ -377,6 +453,14 @@ module.exports = class GraphView extends ReadyResource {
     }
   }
 
+  /**
+   * Get entities by author (hex public key).
+   *
+   * Note: This is O(n) as it scans all nodes. Could be optimized with an author index.
+   *
+   * @param {string} author - The author's hex public key
+   * @returns {AsyncIterable<Entity>} Async iterator of entities by the author
+   */
   async * getByAuthor (author) {
     if (!this.opened) await this.ready()
 
@@ -394,6 +478,12 @@ module.exports = class GraphView extends ReadyResource {
     }
   }
 
+  /**
+   * Create a readable stream from the underlying Hyperbee.
+   *
+   * @param {Object} [opts] - Stream options (passed to Hyperbee.createReadStream)
+   * @returns {AsyncIterable<Object>} Async iterator of view entries
+   */
   async * createReadStream (opts = {}) {
     if (!this.opened) await this.ready()
     yield * this.#bee.createReadStream(opts)
@@ -403,11 +493,24 @@ module.exports = class GraphView extends ReadyResource {
   // Raw Access
   // ========================================
 
+  /**
+   * Get a raw value from the Hyperbee by key.
+   *
+   * @param {string} key - The key to look up
+   * @returns {Promise<Object|null>} The value, or null if not found
+   */
   async get (key) {
     if (!this.opened) await this.ready()
     return this.#bee.get(key)
   }
 
+  /**
+   * Put a raw value into the Hyperbee.
+   *
+   * @param {string} key - The key to set
+   * @param {Object} value - The value to store
+   * @returns {Promise<void>}
+   */
   async put (key, value) {
     if (!this.opened) await this.ready()
     return this.#bee.put(key, value)

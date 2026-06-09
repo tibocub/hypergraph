@@ -1,5 +1,11 @@
 const { Readable } = require('streamx')
 
+/**
+ * GraphQuery provides a fluent query builder for graph operations.
+ *
+ * Allows chaining filter, traversal, and result methods to build complex queries
+ * over the graph view. Supports async iteration for lazy evaluation.
+ */
 module.exports = class GraphQuery {
   #view
   #filters
@@ -7,6 +13,16 @@ module.exports = class GraphQuery {
   #reverse
   #traverse
 
+  /**
+   * Create a new GraphQuery instance.
+   *
+   * @param {import('./view')} view - The GraphView instance to query
+   * @param {Object} [opts] - Query options
+   * @param {Function} [opts.filter] - Initial filter function
+   * @param {number} [opts.limit] - Maximum number of results
+   * @param {boolean} [opts.reverse] - Whether to reverse results
+   * @param {import('./types').TraverseOptions} [opts.traverse] - Traversal configuration
+   */
   constructor (view, opts = {}) {
     this.#view = view
     this.#filters = opts.filter ? [opts.filter] : []
@@ -19,21 +35,45 @@ module.exports = class GraphQuery {
   // Filter Methods
   // ========================================
 
+  /**
+   * Add a custom filter function.
+   *
+   * @param {Function} fn - Filter function that receives a node and returns boolean
+   * @returns {GraphQuery} This query instance for chaining
+   */
   filter (fn) {
     this.#filters.push(fn)
     return this
   }
 
+  /**
+   * Filter by entity type.
+   *
+   * @param {string} type - The entity type to filter by
+   * @returns {GraphQuery} This query instance for chaining
+   */
   type (type) {
     this.#filters.push(node => node.type === type)
     return this
   }
 
+  /**
+   * Filter by author (hex public key).
+   *
+   * @param {string} author - The author's hex public key
+   * @returns {GraphQuery} This query instance for chaining
+   */
   author (author) {
     this.#filters.push(node => node.author === author)
     return this
   }
 
+  /**
+   * Filter by tag.
+   *
+   * @param {string} tag - The tag to filter by
+   * @returns {GraphQuery} This query instance for chaining
+   */
   tag (tag) {
     this.#filters.push(async (node) => {
       // Check if node has this tag
@@ -45,7 +85,7 @@ module.exports = class GraphQuery {
       })
 
       for await (const entry of stream) {
-        if (entry && entry.key && entry.key.startsWith(prefix)) return true
+        if (entry && (/** @type {any} */ (entry)).key && (/** @type {any} */ (entry)).key.startsWith(prefix)) return true
       }
 
       return false
@@ -57,11 +97,23 @@ module.exports = class GraphQuery {
   // Traversal Methods
   // ========================================
 
+  /**
+   * Traverse outgoing edges of a specific relation type.
+   *
+   * @param {string} relationType - The relation type to traverse
+   * @returns {GraphQuery} This query instance for chaining
+   */
   out (relationType) {
     this.#traverse = { direction: 'out', type: relationType }
     return this
   }
 
+  /**
+   * Traverse incoming edges of a specific relation type.
+   *
+   * @param {string} relationType - The relation type to traverse
+   * @returns {GraphQuery} This query instance for chaining
+   */
   in (relationType) {
     this.#traverse = { direction: 'in', type: relationType }
     return this
@@ -71,11 +123,22 @@ module.exports = class GraphQuery {
   // Result Methods
   // ========================================
 
+  /**
+   * Limit the number of results.
+   *
+   * @param {number} n - Maximum number of results to return
+   * @returns {GraphQuery} This query instance for chaining
+   */
   limit (n) {
     this.#limit = n
     return this
   }
 
+  /**
+   * Reverse the order of results.
+   *
+   * @returns {GraphQuery} This query instance for chaining
+   */
   reverse () {
     this.#reverse = !this.#reverse
     return this
@@ -125,8 +188,9 @@ module.exports = class GraphQuery {
     })
 
     for await (const entry of stream) {
-      if (!entry.value.deleted) {
-        yield entry.value
+      const value = /** @type {any} */ (entry).value
+      if (!value.deleted) {
+        yield value
       }
     }
   }
@@ -155,6 +219,11 @@ module.exports = class GraphQuery {
   // Convenience Methods
   // ========================================
 
+  /**
+   * Execute the query and return all results as an array.
+   *
+   * @returns {Promise<Array<any>>} Array of query results
+   */
   async toArray () {
     const results = []
     for await (const item of this) {
@@ -163,6 +232,11 @@ module.exports = class GraphQuery {
     return results
   }
 
+  /**
+   * Execute the query and return only the first result.
+   *
+   * @returns {Promise<Object|null>} The first result, or null if no results
+   */
   async first () {
     for await (const item of this) {
       return item
@@ -170,6 +244,11 @@ module.exports = class GraphQuery {
     return null
   }
 
+  /**
+   * Execute the query and count the results.
+   *
+   * @returns {Promise<number>} The number of results
+   */
   async count () {
     let count = 0
     for await (const _ of this) {
@@ -182,6 +261,11 @@ module.exports = class GraphQuery {
   // Stream Interface
   // ========================================
 
+  /**
+   * Create a readable stream of query results.
+   *
+   * @returns {import('streamx').Readable} A readable stream that emits query results
+   */
   createReadStream () {
     const self = this
     return new Readable({

@@ -150,3 +150,36 @@
  *   secretKey: Buffer
  * }} keyPair
  */
+
+/**
+ * @typedef {Object} RoleEvent
+ * @property {string} type - The event type (e.g., 'roles/init', 'roles/setRole')
+ * @property {string} [author] - The author's public key hex
+ * @property {number} [timestamp] - Unix timestamp
+ * @property {Object} [registry] - Registry state (for init events)
+ * @property {string} [member] - Member public key hex (for setRole/removeMember)
+ * @property {string} [role] - Role name (for setRole)
+ * @property {string[]} [permissions] - Permission array (for setRolePermissions)
+ */
+
+/**
+ * @typedef {Object} TraverseOptions
+ * @property {'in'|'out'} direction - Traversal direction
+ * @property {string} type - Relation type to traverse
+ */
+
+/**
+ * @typedef {Object} HyperbeeEntry
+ * @property {string} key - The entry key
+ * @property {*} value - The entry value
+ */
+
+/**
+ * @typedef {Object} RoleRegistry
+ * @property {number} version - Registry version
+ * @property {Object.<string, string[]>} roles - Map of role names to permission arrays
+ * @property {Object.<string, string>} members - Map of public key hex strings to role names
+ */
+
+// Export empty object to make this a module for TypeScript imports
+module.exports = {}

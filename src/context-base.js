@@ -11,6 +11,14 @@ const { can: canRole } = require('./roles-registry')
 
 const toSortableTs = ts => String(ts).padStart(16, '0')
 
+/**
+ * ContextBase manages collaborative contexts using Autobase.
+ *
+ * A context is an Autobase instance used to store collaborative events (relations, tags, moderation, etc).
+ * Supports two write modes: 'open' (no privilege checks) and 'closed' (role-based permissions).
+ *
+ * @extends ReadyResource
+ */
 module.exports = class ContextBase extends ReadyResource {
   #store
   #bootstrap
@@ -22,6 +30,17 @@ module.exports = class ContextBase extends ReadyResource {
   #roleBase
   #writeMode
 
+  /**
+   * Create a new ContextBase instance.
+   *
+   * @param {import('corestore')} store - Corestore instance for core management
+   * @param {Buffer|string|null} bootstrapKey - Autobase key to join existing context, or null to create new
+   * @param {Object} [opts] - Configuration options
+   * @param {string} [opts.keyEncoding] - Codec name for keys
+   * @param {string} [opts.valueEncoding] - Codec name for values
+   * @param {RoleBase} [opts.roleBase] - Attached RoleBase for permission checks
+   * @param {'open'|'closed'} [opts.writeMode='open'] - Write mode for the context
+   */
   constructor (store, bootstrapKey, opts = {}) {
     super()
 
@@ -326,34 +345,46 @@ module.exports = class ContextBase extends ReadyResource {
   // Properties
   // ========================================
 
+  /** @returns {import('hypercore')|undefined} The underlying Autobase core */
   get core () {
     return this.#base?.core
   }
 
+  /** @returns {Buffer|undefined} The Autobase public key */
   get key () {
     return this.#base?.key
   }
 
+  /** @returns {Buffer|undefined} The local writer's public key */
   get localKey () {
     return this.#base?.local?.key
   }
 
+  /** @returns {Buffer|undefined} The Autobase discovery key */
   get discoveryKey () {
     return this.#base?.discoveryKey
   }
 
+  /** @returns {number} The Autobase version */
   get version () {
     return this.#base?.version ?? -1
   }
 
+  /** @returns {import('hyperbee')|undefined} The materialized view Hyperbee */
   get view () {
     return this.#base?.view
   }
 
+  /** @returns {boolean} Whether the context is writable */
   get writable () {
     return this.#base?.writable
   }
 
+  /**
+   * Get all writer keys for this context.
+   *
+   * @returns {Array<string>} Array of hex-encoded public keys
+   */
   writerKeys () {
     const base = this.#base
     if (!base) return []
@@ -380,12 +411,30 @@ module.exports = class ContextBase extends ReadyResource {
   // Operations
   // ========================================
 
+  /**
+   * Append an event to the context.
+   *
+   * @param {Object} event - The event to append
+   * @returns {Promise<void>}
+   */
   async append (event) {
     if (!this.opened) await this.ready()
     await this.#base.append(event)
     await this.#base.update()
   }
 
+  /**
+   * Add a writer to the context.
+   *
+   * In 'open' mode, any writer can be added. In 'closed' mode, requires the
+   * 'context.write' privilege from the attached RoleBase.
+   *
+   * @param {Buffer|string} coreKey - The writer's core key (hex string or Buffer)
+   * @param {Object} [opts] - Options object
+   * @param {string} [opts.author] - Required in 'closed' mode: the author's public key hex
+   * @returns {Promise<void>}
+   * @throws {Error} If RoleBase is required but not attached, or authorization fails
+   */
   async addWriter (coreKey, opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -425,11 +474,23 @@ module.exports = class ContextBase extends ReadyResource {
   // Read Operations
   // ========================================
 
+  /**
+   * Get a value from the context view.
+   *
+   * @param {string} key - The key to look up
+   * @returns {Promise<Object|null>} The value, or null if not found
+   */
   async get (key) {
     if (!this.opened) await this.ready()
     return this.#base.view.get(key)
   }
 
+  /**
+   * Create a readable stream of entries from the context view.
+   *
+   * @param {Object} [opts] - Stream options (passed to Hyperbee.createReadStream)
+   * @returns {AsyncIterable<Object>} Async iterator of view entries
+   */
   async * createReadStream (opts = {}) {
     if (!this.opened) await this.ready()
 
@@ -443,10 +504,22 @@ module.exports = class ContextBase extends ReadyResource {
   // Replication
   // ========================================
 
+  /**
+   * Create a replication stream for the context.
+   *
+   * @param {boolean} isInitiator - Whether this side initiated the connection
+   * @param {Object} [opts] - Replication options (passed to Autobase.replicate)
+   * @returns {import('streamx').Duplex} The replication stream
+   */
   replicate (isInitiator, opts) {
     return this.#base.replicate(isInitiator, opts)
   }
 
+  /**
+   * Update the context from remote peers and drain pending moderation events.
+   *
+   * @returns {Promise<void>}
+   */
   async update () {
     await this.#base.update()
 

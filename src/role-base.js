@@ -6,6 +6,14 @@ const Hyperbee = require('hyperbee')
 
 const { initRegistry, applyRoleEvent, can } = require('./roles-registry')
 
+/**
+ * RoleBase manages role-based access control using Autobase.
+ *
+ * Provides a collaborative registry for roles and permissions, supporting
+ * role assignment, permission configuration, and authorization checks.
+ *
+ * @extends ReadyResource
+ */
 module.exports = class RoleBase extends ReadyResource {
   #store
   #bootstrap
@@ -13,6 +21,13 @@ module.exports = class RoleBase extends ReadyResource {
   #base
   #viewBee
 
+  /**
+   * Create a new RoleBase instance.
+   *
+   * @param {import('corestore')} store - Corestore instance for core management
+   * @param {Buffer|string|null} bootstrapKey - Autobase key to join existing RoleBase, or null to create new
+   * @param {Object} [opts] - Configuration options
+   */
   constructor (store, bootstrapKey, opts = {}) {
     super()
 
@@ -130,25 +145,46 @@ module.exports = class RoleBase extends ReadyResource {
     })
   }
 
+  /** @returns {Buffer|undefined} The Autobase public key */
   get key () {
     return this.#base?.key
   }
 
+  /** @returns {Buffer|undefined} The Autobase discovery key */
   get discoveryKey () {
     return this.#base?.discoveryKey
   }
 
+  /**
+   * Update the RoleBase from remote peers.
+   *
+   * @returns {Promise<boolean>} True if the base was updated, false otherwise
+   */
   async update () {
     if (!this.opened) await this.ready()
     return this.#base.update()
   }
 
+  /**
+   * Get the current role registry state.
+   *
+   * @returns {Promise<import('./types').RoleRegistry|null>} The role registry, or null if not initialized
+   */
   async getRegistry () {
     if (!this.opened) await this.ready()
     const entry = await this.#base.view.get('roles:registry')
     return entry ? entry.value : null
   }
 
+  /**
+   * Append a role management event to the RoleBase.
+   *
+   * Performs authorization checks for role modification events.
+   *
+   * @param {import('./types').RoleEvent} event - The role event to append
+   * @returns {Promise<void>}
+   * @throws {Error} If the event type is invalid, registry is missing, or authorization fails
+   */
   async append (event) {
     if (!this.opened) await this.ready()
 
@@ -181,6 +217,13 @@ module.exports = class RoleBase extends ReadyResource {
     await this.#base.update()
   }
 
+  /**
+   * Initialize a new role registry with an owner.
+   *
+   * @param {string} ownerPubkeyHex - The owner's hex public key
+   * @param {string} [authorPubkeyHex] - The author's hex public key (defaults to owner)
+   * @returns {Promise<void>}
+   */
   async init (ownerPubkeyHex, authorPubkeyHex) {
     if (!this.opened) await this.ready()
 
@@ -197,6 +240,18 @@ module.exports = class RoleBase extends ReadyResource {
     await this.#base.update()
   }
 
+  /**
+   * Add a new owner to the role registry.
+   *
+   * Requires '*' privilege. Adds the writer core and assigns the owner role.
+   *
+   * @param {string} memberPubkeyHex - The new owner's hex public key
+   * @param {import('hypercore')} writerCore - The writer core to add
+   * @param {Object} [opts] - Options object
+   * @param {string} [opts.author] - The author's hex public key (must have '*' privilege)
+   * @returns {Promise<void>}
+   * @throws {Error} If parameters are missing or authorization fails
+   */
   async addOwner (memberPubkeyHex, writerCore, opts = {}) {
     if (!this.opened) await this.ready()
 
