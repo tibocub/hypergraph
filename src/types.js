@@ -97,6 +97,12 @@
  * @property {Buffer|string}  [userCoreKey]   - Open an existing user core instead of creating one
  */
 
+/**
+ * Identity profile for a user.
+ * @typedef {Object} IdentityProfile
+ * @property {string} username - The username
+ * @property {string} [bio] - Optional bio/description
+ */
 
 
 
@@ -107,78 +113,34 @@
 
 
 
-// Warning! under this comment, typedefs might be wrong, obsolete, incomplete or redundant with above typedefs.
+
+// Legacy typedefs kept for backward compatibility
+// Note: Some of these may be redundant with the typedefs above
 
 /**
  * @typedef {Object} HypergraphOptions
  * @property {string|Object} [keyEncoding]
  * @property {string|Object} [valueEncoding]
  * @property {Buffer|string|null} [userCoreKey]
+ * @deprecated Use HypergraphOpts instead
  */
 
 /**
- * @typedef {Object} IdentityProfile
- * @property {string} username
- * @property {string} [bio]
- */
-
-/**
+ * Options for creating a relation.
  * @typedef {Object} RelationOptions
- * @property {string} from
- * @property {string} to
- * @property {string} context
- * @property {string} [type]
- * @property {string} [relationType]
- * @property {string} author
+ * @property {string} from - Source entity ID
+ * @property {string} to - Target entity ID
+ * @property {string} context - Context key
+ * @property {string} [type] - Relation type (alias for relationType)
+ * @property {string} [relationType] - Relation type
+ * @property {string} author - Author's hex public key
  */
 
 /**
+ * Options for tagging an entity.
  * @typedef {Object} TagOptions
- * @property {string} author
- * @property {string} context
- */
-
-/**
- * @typedef {Object} ModerationOptions
- * @property {string|Buffer} context
- * @property {'content.flag'|'content.hide'|'content.remove'|'content.reveal'} action
- * @property {string} target
- * @property {string} [reason]
- * @property {boolean} [includeContext]
- * @property {{
- *   publicKey: Buffer,
- *   secretKey: Buffer
- * }} keyPair
- */
-
-/**
- * @typedef {Object} RoleEvent
- * @property {string} type - The event type (e.g., 'roles/init', 'roles/setRole')
- * @property {string} [author] - The author's public key hex
- * @property {number} [timestamp] - Unix timestamp
- * @property {Object} [registry] - Registry state (for init events)
- * @property {string} [member] - Member public key hex (for setRole/removeMember)
- * @property {string} [role] - Role name (for setRole)
- * @property {string[]} [permissions] - Permission array (for setRolePermissions)
- */
-
-/**
- * @typedef {Object} TraverseOptions
- * @property {'in'|'out'} direction - Traversal direction
- * @property {string} type - Relation type to traverse
- */
-
-/**
- * @typedef {Object} HyperbeeEntry
- * @property {string} key - The entry key
- * @property {*} value - The entry value
- */
-
-/**
- * @typedef {Object} RoleRegistry
- * @property {number} version - Registry version
- * @property {Object.<string, string[]>} roles - Map of role names to permission arrays
- * @property {Object.<string, string>} members - Map of public key hex strings to role names
+ * @property {string} author - Author's hex public key
+ * @property {string} context - Context key
  */
 
 // Export empty object to make this a module for TypeScript imports

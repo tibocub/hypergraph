@@ -2,6 +2,12 @@ const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const b4a = require('b4a')
 
+/**
+ * Convert a timestamp to a sortable string by padding with zeros.
+ *
+ * @param   {number} ts - Unix timestamp in milliseconds
+ * @returns {string} Zero-padded 16-character string for sorting
+ */
 const toSortableTs = ts => String(ts).padStart(16, '0')
 
 /**

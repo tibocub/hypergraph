@@ -15,9 +15,11 @@ const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
 
 /**
-* @param   {string} ts
-* @returns {string}
-*/
+ * Convert a timestamp to a sortable string by padding with zeros.
+ *
+ * @param   {number} ts - Unix timestamp in milliseconds
+ * @returns {string} Zero-padded 16-character string for sorting
+ */
 const toSortableTs = ts => String(ts).padStart(16, '0')
 
 
@@ -267,6 +269,15 @@ module.exports = class Hypergraph extends ReadyResource {
 
 // ── Identity operations ───────────────────────────────────────────────────
 
+  /**
+   * Set the identity profile for the local user.
+   *
+   * @param   {Object} profile
+   * @param   {string} [profile.username] - The username to set
+   * @param   {string} [profile.bio] - Optional bio/description
+   * @returns {Promise<Object|null>} The identity profile, or null if not found
+   * @throws  {Error} If username is missing or user core is read-only
+   */
   async setIdentity (profile = {}) {
     if (!this.opened) await this.ready()
     if (!this.#userCore.writable) throw new Error('User core is read-only')
@@ -286,6 +297,12 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.getIdentity(author)
   }
 
+  /**
+   * Get the identity profile for a public key.
+   *
+   * @param   {string} pubkey - Hex-encoded public key
+   * @returns {Promise<Object|null>} The identity profile, or null if not found
+   */
   async getIdentity (pubkey) {
     if (!this.opened) await this.ready()
     return this.#view.getIdentity(pubkey)
@@ -417,6 +434,13 @@ module.exports = class Hypergraph extends ReadyResource {
     return total
   }
 
+  /**
+   * Count outgoing edges of a given type across all open contexts.
+   *
+   * @param   {string} entityId
+   * @param   {string} type      - Relation type label
+   * @returns {Promise<number>}
+   */
   async countEdgesOut (entityId, type) {
     if (!this.opened) await this.ready()
     const key = `cnt:out:${entityId}:${type}`
@@ -664,12 +688,16 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Remove the role of a member.
+   * Add a new owner to the role registry.
    *
-   * @param {PubKeyHex} memberPubkeyHex
-   * @param {Hypercore}
-   * @param {Object}    opts
-   * @param {PubKeyHex} opts.author
+   * Requires '*' privilege. Adds the writer core and assigns the owner role.
+   *
+   * @param {PubKeyHex} memberPubkeyHex - The new owner's hex public key
+   * @param {import('hypercore')} writerCore - The writer core to add
+   * @param {Object} opts - Options object
+   * @param {PubKeyHex} opts.author - The author's hex public key (must have '*' privilege)
+   * @returns {Promise<void>}
+   * @throws {Error} If parameters are missing or authorization fails
    */
   async addOwner (memberPubkeyHex, writerCore, opts = {}) {
     if (!this.opened) await this.ready()
@@ -774,10 +802,19 @@ module.exports = class Hypergraph extends ReadyResource {
 
 
   /**
-   * @param {Object}     opts
-   * @param {} opts.
-   * @param {} opts.
-   * @param {} opts.
+   * Query events from a context.
+   *
+   * Currently supports moderation event queries.
+   *
+   * @param   {Object} opts
+   * @param   {'moderation'} opts.type - Query type (only 'moderation' supported)
+   * @param   {ContextKeyHex|Buffer} opts.context - Context key
+   * @param   {string} opts.target - Target entity ID
+   * @param   {PubKeyHex[]} [opts.authors] - Allowlist of authors
+   * @param   {PubKeyHex} [opts.author] - Single-author shorthand
+   * @param   {number} [opts.since] - Unix ms lower bound (inclusive)
+   * @returns {AsyncGenerator<Object>} Async iterator of moderation events
+   * @throws  {Error} If query type is not supported or required parameters are missing
    */
   queryContext (opts = {}) {
     if (!this.opened) {
