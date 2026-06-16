@@ -54,12 +54,11 @@ test('tools: inspector server (meta/query/write)', async (t) => {
   const post = await reqJson(port, 'POST', '/api/write/put', { entityType: 'post' })
   t.ok(post.id)
 
-  const tag = await reqJson(port, 'POST', '/api/write/tag', {
+  await reqJson(port, 'POST', '/api/write/tag', {
     entityId: post.id,
     tag: 'important',
     contextKey: ctx.keyHex
   })
-  t.is(tag.tag, 'important')
 
   await reqJson(port, 'POST', '/api/update', {})
 

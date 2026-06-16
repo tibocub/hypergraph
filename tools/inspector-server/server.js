@@ -263,7 +263,7 @@ async function handleApi (session, req, res) {
     const body = await readBody(req)
     const author = body.author || (graph.key ? graph.key.toString('hex') : null)
     const out = await graph.tag(body.entityId, body.tag, { author, context: body.contextKey })
-    return sendJson(res, 200, out)
+    return sendJson(res, 200, out || { ok: true })
   }
 
   if (req.method === 'POST' && req.url === '/api/write/untag') {

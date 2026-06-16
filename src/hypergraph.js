@@ -13,14 +13,7 @@ const GraphQuery = require('./query')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
-
-/**
- * Convert a timestamp to a sortable string by padding with zeros.
- *
- * @param   {number} ts - Unix timestamp in milliseconds
- * @returns {string} Zero-padded 16-character string for sorting
- */
-const toSortableTs = ts => String(ts).padStart(16, '0')
+const { toSortableTs } = require('./utils')
 
 
 /**
@@ -273,7 +266,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * Set the identity profile for the local user.
    *
    * @param   {Object} profile
-   * @param   {string} [profile.username] - The username to set
+   * @param   {string} profile.username - The username to set (required)
    * @param   {string} [profile.bio] - Optional bio/description
    * @returns {Promise<Object|null>} The identity profile, or null if not found
    * @throws  {Error} If username is missing or user core is read-only
@@ -321,9 +314,16 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {PubKeyHex}            opts.author
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<Edge>}
+   * @throws  {Error} If required parameters are missing
    */
   async relate (opts) {
     if (!this.opened) await this.ready()
+    if (!opts) throw new Error('Options object is required')
+    if (!opts.from) throw new Error('opts.from is required')
+    if (!opts.to) throw new Error('opts.to is required')
+    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.context) throw new Error('opts.context is required')
+    if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
 
     const context = await this.#getContext(opts.context)
 
@@ -351,10 +351,16 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {PubKeyHex}            opts.author
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
-   * @throws  {Error} If the relation does not exist.
+   * @throws  {Error} If required parameters are missing or the relation does not exist.
    */
   async unrelate (opts) {
     if (!this.opened) await this.ready()
+    if (!opts) throw new Error('Options object is required')
+    if (!opts.from) throw new Error('opts.from is required')
+    if (!opts.to) throw new Error('opts.to is required')
+    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.context) throw new Error('opts.context is required')
+    if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
 
     const context = await this.#getContext(opts.context)
 
@@ -405,15 +411,16 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Count incoming edges of a given type across all open contexts.
+   * Count edges of a given type and direction across all open contexts.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
+   * @param   {'in'|'out'} direction - Edge direction
    * @returns {Promise<number>}
    */
-  async countEdgesIn (entityId, type) {
+  async #countEdges (entityId, type, direction) {
     if (!this.opened) await this.ready()
-    const key = `cnt:in:${entityId}:${type}`
+    const key = `cnt:${direction}:${entityId}:${type}`
     let total = 0
 
     const seen = new Set()
@@ -435,6 +442,17 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
+   * Count incoming edges of a given type across all open contexts.
+   *
+   * @param   {string} entityId
+   * @param   {string} type      - Relation type label
+   * @returns {Promise<number>}
+   */
+  async countEdgesIn (entityId, type) {
+    return this.#countEdges(entityId, type, 'in')
+  }
+
+  /**
    * Count outgoing edges of a given type across all open contexts.
    *
    * @param   {string} entityId
@@ -442,26 +460,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Promise<number>}
    */
   async countEdgesOut (entityId, type) {
-    if (!this.opened) await this.ready()
-    const key = `cnt:out:${entityId}:${type}`
-    let total = 0
-
-    const seen = new Set()
-
-    for (const [, context] of this.#contexts) {
-      if (!context.opened) continue
-      const viewKey = context.view && context.view.core && context.view.core.key
-        ? context.view.core.key.toString('hex')
-        : null
-      if (viewKey) {
-        if (seen.has(viewKey)) continue
-        seen.add(viewKey)
-      }
-      const result = await context.get(key)
-      if (result && result.value && typeof result.value.count === 'number') total += result.value.count
-    }
-
-    return total
+    return this.#countEdges(entityId, type, 'out')
   }
 
 
@@ -475,11 +474,16 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {Object}               opts
    * @param   {PubKeyHex}            opts.author
    * @param   {ContextKeyHex|Buffer} opts.context
-   * @returns {Promise<Object>} The appended tag event
-   * @throws  {Error} If the entity is not found or the caller is not the author.
+   * @returns {Promise<void>}
+   * @throws  {Error} If required parameters are missing, entity is not found, or the caller is not the author.
    */
   async tag (entityId, tag, opts = {}) {
     if (!this.opened) await this.ready()
+    if (!entityId) throw new Error('entityId is required')
+    if (!tag) throw new Error('tag is required')
+    if (!opts) throw new Error('opts is required')
+    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.context) throw new Error('opts.context is required')
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
@@ -497,7 +501,6 @@ module.exports = class Hypergraph extends ReadyResource {
 
     await context.append(event)
     await this.#view.update()
-    return event
   }
 
   /**
@@ -508,11 +511,16 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {Object}               opts
    * @param   {PubKeyHex}            opts.author
    * @param   {ContextKeyHex|Buffer} opts.context
-   * @returns {Promise<Object>} The appended tag event
-   * @throws  {Error} If the entity is not found or the caller is not the author.
+   * @returns {Promise<void>}
+   * @throws  {Error} If required parameters are missing, entity is not found, or the caller is not the author.
    */
   async untag (entityId, tag, opts = {}) {
     if (!this.opened) await this.ready()
+    if (!entityId) throw new Error('entityId is required')
+    if (!tag) throw new Error('tag is required')
+    if (!opts) throw new Error('opts is required')
+    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.context) throw new Error('opts.context is required')
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
@@ -563,6 +571,14 @@ module.exports = class Hypergraph extends ReadyResource {
   // Sync
   // ========================================
 
+  /**
+   * Update all indexes (view, contexts, roleBase).
+   *
+   * Call this after appending events to ensure indexes are up-to-date.
+   * Most operations call this automatically.
+   *
+   * @returns {Promise<void>}
+   */
   async update () {
     if (!this.opened) await this.ready()
     if (this.#roleBase) await this.#roleBase.update()
@@ -748,7 +764,8 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!opts.action) throw new Error('Moderation action is required')
     if (!opts.target) throw new Error('Moderation target is required')
 
-    if (opts.action !== 'content.flag' && opts.action !== 'content.hide' && opts.action !== 'content.remove' && opts.action !== 'content.reveal') {
+    const VALID_ACTIONS = new Set(['content.flag', 'content.hide', 'content.remove', 'content.reveal'])
+    if (!VALID_ACTIONS.has(opts.action)) {
       throw new Error('Unknown moderation action')
     }
 
@@ -933,6 +950,15 @@ module.exports = class Hypergraph extends ReadyResource {
   // Remote cores (indexing)
   // ========================================
 
+  /**
+   * Open a remote user core for indexing.
+   *
+   * If the core is already open, returns the cached instance.
+   *
+   * @param   {Buffer|string} keyOrHex - The core key or hex string
+   * @returns {Promise<UserCore>}
+   * @throws  {Error} If keyOrHex is invalid
+   */
   async openUserCore (keyOrHex) {
     if (!this.opened) await this.ready()
 
@@ -955,11 +981,24 @@ module.exports = class Hypergraph extends ReadyResource {
   // Replication Helpers (app uses these)
   // ========================================
 
+  /**
+   * Create a replication stream for the underlying corestore.
+   *
+   * @param   {boolean} isInitiator - Whether this side initiated the connection
+   * @param   {Object}  opts       - Replication options passed to corestore.replicate
+   * @returns {Object} The replication stream
+   */
   replicate (isInitiator, opts) {
     return this.#store.replicate(isInitiator, opts)
   }
 
-  // Get all cores for replication
+  /**
+   * Get all cores for replication.
+   *
+   * Returns the user core, view core, and all context cores.
+   *
+   * @returns {Array<import('hypercore')>} Array of Hypercore instances
+   */
   getCores () {
     const cores = [this.core, this.viewCore]
     for (const context of this.#contexts.values()) {
