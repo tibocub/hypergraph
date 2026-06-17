@@ -1,3 +1,4 @@
 module.exports = {
-  inspector: require('./inspector-server')
+  inspector: require('./inspector-server'),
+  repl: require('./repl')
 }
