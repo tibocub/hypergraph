@@ -795,9 +795,15 @@ module.exports = class Hypergraph extends ReadyResource {
     event.signature = sig.toString('hex')
 
     const ctx = await this.#getContext(opts.context)
-    await ctx.append(event)
+    const result = await ctx.append(event)
     await this.#view.update()
-    return event
+
+    // Generate eventId based on core key and sequence
+    const coreKeyHex = ctx.core ? ctx.core.key.toString('hex') : ''
+    const seq = typeof result.length === 'number' ? result.length - 1 : -1
+    const eventId = crypto.createHash('sha256').update(`${coreKeyHex}:${seq}`).digest('hex')
+
+    return { ...event, eventId }
   }
 
 

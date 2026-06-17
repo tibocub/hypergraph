@@ -54,6 +54,7 @@
 /**
  * A moderation event as stored in a context.
  * @typedef {Object} ModerationEvent
+ * @property {string}    eventId    - Unique event ID (SHA256 of coreKey:seq)
  * @property {string}    action     - One of the four allowed action strings
  * @property {string}    target     - Entity ID that the action targets
  * @property {PubKeyHex} author

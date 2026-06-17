@@ -414,12 +414,13 @@ module.exports = class ContextBase extends ReadyResource {
    * Append an event to the context.
    *
    * @param {Object} event - The event to append
-   * @returns {Promise<void>}
+   * @returns {Promise<{length: number}>} The length of the base after append
    */
   async append (event) {
     if (!this.opened) await this.ready()
     await this.#base.append(event)
     await this.#base.update()
+    return { length: this.#base.length }
   }
 
   /**
