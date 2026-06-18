@@ -65,7 +65,7 @@ module.exports = class ContextBase extends ReadyResource {
     this.#base = new Autobase(ns, this.#bootstrap, {
       open: this.#openView.bind(this),
       apply: this.#applyView.bind(this),
-      valueEncoding: 'json',
+      valueEncoding: { encode: encodeEvent, decode: decodeEvent },
       ackInterval: 0,
       ackThreshold: 0,
       fastForward: false

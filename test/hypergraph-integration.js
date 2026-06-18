@@ -173,8 +173,11 @@ async function test () {
 
   // But we can still query history from the core
   const history = []
+  const { decodeEvent } = require('../src/encodings/event')
   for await (const event of peer1.graph.core.createReadStream()) {
-    history.push(event)
+    // Decode the binary event using the compact encoder
+    const decoded = decodeEvent(event.value)
+    history.push(decoded)
   }
   console.log('Total events in core:', history.length)
 

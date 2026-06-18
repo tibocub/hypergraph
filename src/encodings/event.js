@@ -17,7 +17,10 @@ const EVENT_TYPES = {
   'relation/delete': 5,
   'tag/add': 6,
   'tag/remove': 7,
-  'identity/update': 8
+  'identity/update': 8,
+  'addWriter': 9,
+  'roles/addWriter': 10,
+  'moderation/action': 11
 }
 
 // Map from code to string
@@ -29,7 +32,10 @@ const EVENT_TYPE_NAMES = {
   5: 'relation/delete',
   6: 'tag/add',
   7: 'tag/remove',
-  8: 'identity/update'
+  8: 'identity/update',
+  9: 'addWriter',
+  10: 'roles/addWriter',
+  11: 'moderation/action'
 }
 
 // Compact encoding for events
@@ -57,11 +63,20 @@ const eventEncoding = {
         break
 
       case 'relation/create':
+        c.string.preencode(state, event.from)
+        c.string.preencode(state, event.to)
+        c.string.preencode(state, event.relationType)
+        c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
       case 'relation/delete':
         c.string.preencode(state, event.from)
         c.string.preencode(state, event.to)
         c.string.preencode(state, event.relationType)
         c.string.preencode(state, event.author)
+        c.uint.preencode(state, event.createdAt || 0)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
 
       case 'tag/add':
@@ -69,12 +84,31 @@ const eventEncoding = {
         c.string.preencode(state, event.entityId)
         c.string.preencode(state, event.tag)
         c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
 
       case 'identity/update':
         c.string.preencode(state, event.author)
         c.string.preencode(state, event.username)
         c.string.preencode(state, event.bio || '')
+        break
+
+      case 'addWriter':
+      case 'roles/addWriter':
+        c.string.preencode(state, event.key)
+        if (event.author) c.string.preencode(state, event.author)
+        if (event.timestamp) c.uint.preencode(state, event.timestamp)
+        break
+
+      case 'moderation/action':
+        c.uint.preencode(state, event.version || 1)
+        c.string.preencode(state, event.action)
+        c.string.preencode(state, event.target)
+        c.string.preencode(state, event.reason || '')
+        c.string.preencode(state, event.context || '')
+        c.string.preencode(state, event.author)
+        c.uint.preencode(state, event.timestamp)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
     }
   },
@@ -102,11 +136,20 @@ const eventEncoding = {
         break
 
       case 'relation/create':
+        c.string.encode(state, event.from)
+        c.string.encode(state, event.to)
+        c.string.encode(state, event.relationType)
+        c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
       case 'relation/delete':
         c.string.encode(state, event.from)
         c.string.encode(state, event.to)
         c.string.encode(state, event.relationType)
         c.string.encode(state, event.author)
+        c.uint.encode(state, event.createdAt || 0)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
 
       case 'tag/add':
@@ -114,12 +157,31 @@ const eventEncoding = {
         c.string.encode(state, event.entityId)
         c.string.encode(state, event.tag)
         c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
 
       case 'identity/update':
         c.string.encode(state, event.author)
         c.string.encode(state, event.username)
         c.string.encode(state, event.bio || '')
+        break
+
+      case 'addWriter':
+      case 'roles/addWriter':
+        c.string.encode(state, event.key)
+        if (event.author) c.string.encode(state, event.author)
+        if (event.timestamp) c.uint.encode(state, event.timestamp)
+        break
+
+      case 'moderation/action':
+        c.uint.encode(state, event.version || 1)
+        c.string.encode(state, event.action)
+        c.string.encode(state, event.target)
+        c.string.encode(state, event.reason || '')
+        c.string.encode(state, event.context || '')
+        c.string.encode(state, event.author)
+        c.uint.encode(state, event.timestamp)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
     }
   },
@@ -150,11 +212,22 @@ const eventEncoding = {
         break
 
       case 'relation/create':
+        event.from = c.string.decode(state)
+        event.to = c.string.decode(state)
+        event.relationType = c.string.decode(state)
+        event.author = c.string.decode(state)
+        const sig1 = c.buffer.decode(state)
+        event.signature = sig1.length > 0 ? sig1.toString('hex') : null
+        break
+
       case 'relation/delete':
         event.from = c.string.decode(state)
         event.to = c.string.decode(state)
         event.relationType = c.string.decode(state)
         event.author = c.string.decode(state)
+        event.createdAt = c.uint.decode(state)
+        const sig2 = c.buffer.decode(state)
+        event.signature = sig2.length > 0 ? sig2.toString('hex') : null
         break
 
       case 'tag/add':
@@ -162,12 +235,43 @@ const eventEncoding = {
         event.entityId = c.string.decode(state)
         event.tag = c.string.decode(state)
         event.author = c.string.decode(state)
+        const sig3 = c.buffer.decode(state)
+        event.signature = sig3.length > 0 ? sig3.toString('hex') : null
         break
 
       case 'identity/update':
         event.author = c.string.decode(state)
         event.username = c.string.decode(state)
         event.bio = c.string.decode(state) || null
+        break
+
+      case 'addWriter':
+      case 'roles/addWriter':
+        event.key = c.string.decode(state)
+        if (state.end > state.start) {
+          // Check if there are more fields (author, timestamp)
+          // This is a bit hacky but works for our use case
+          try {
+            event.author = c.string.decode(state)
+            if (state.end > state.start) {
+              event.timestamp = c.uint.decode(state)
+            }
+          } catch {
+            // No more fields
+          }
+        }
+        break
+
+      case 'moderation/action':
+        event.version = c.uint.decode(state)
+        event.action = c.string.decode(state)
+        event.target = c.string.decode(state)
+        event.reason = c.string.decode(state) || null
+        event.context = c.string.decode(state) || null
+        event.author = c.string.decode(state)
+        event.timestamp = c.uint.decode(state)
+        const sig4 = c.buffer.decode(state)
+        event.signature = sig4.length > 0 ? sig4.toString('hex') : null
         break
     }
 

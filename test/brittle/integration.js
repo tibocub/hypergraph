@@ -149,7 +149,8 @@ test('hypergraph: context writeMode T-open (auto writers)', async (t) => {
     entityId: 'post/a',
     tag: 'a',
     author: a.graph.key.toString('hex'),
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    signature: null
   })
 
   await bCtx.append({
@@ -157,7 +158,8 @@ test('hypergraph: context writeMode T-open (auto writers)', async (t) => {
     entityId: 'post/b',
     tag: 'b',
     author: b.graph.key.toString('hex'),
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    signature: null
   })
 
   const aAuthor = a.graph.key.toString('hex')
