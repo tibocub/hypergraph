@@ -1,6 +1,7 @@
 const test = require('brittle')
 const http = require('http')
-const { tools } = require('../../../index.js')
+const { inspector } = require('../../../tools/index.js')
+const crypto = require('hypercore-crypto')
 
 function reqJson (port, method, path, body = null) {
   return new Promise((resolve, reject) => {
@@ -39,7 +40,7 @@ function reqJson (port, method, path, body = null) {
 }
 
 test('tools: inspector server (meta/query/write)', async (t) => {
-  const srv = await tools.inspector.start({ newDb: true, port: 0 })
+  const srv = await inspector.start({ newDb: true, port: 0 })
   t.teardown(async () => srv.close())
 
   const port = srv.address.port
@@ -51,13 +52,19 @@ test('tools: inspector server (meta/query/write)', async (t) => {
   const ctx = await reqJson(port, 'POST', '/api/context/create', { writeMode: 'open' })
   t.ok(ctx.keyHex)
 
-  const post = await reqJson(port, 'POST', '/api/write/put', { entityType: 'post' })
+  const keyPair = crypto.keyPair()
+  const keyPairHex = {
+    publicKey: keyPair.publicKey.toString('hex'),
+    secretKey: keyPair.secretKey.toString('hex')
+  }
+  const post = await reqJson(port, 'POST', '/api/write/put', { entityType: 'post', keyPair: keyPairHex })
   t.ok(post.id)
 
   await reqJson(port, 'POST', '/api/write/tag', {
     entityId: post.id,
     tag: 'important',
-    contextKey: ctx.keyHex
+    contextKey: ctx.keyHex,
+    keyPair: keyPairHex
   })
 
   await reqJson(port, 'POST', '/api/update', {})

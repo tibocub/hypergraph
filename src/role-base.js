@@ -1,6 +1,8 @@
 const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const crypto = require('crypto')
+const hypercoreCrypto = require('hypercore-crypto')
+const b4a = require('b4a')
 const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 
@@ -211,10 +213,33 @@ module.exports = class RoleBase extends ReadyResource {
 
       if (!event.author || typeof event.author !== 'string') throw new Error('event.author is required')
       if (!can(registry, event.author, required)) throw new Error('Not authorized')
+
+      // Sign the event if keyPair is provided
+      if (event.keyPair) {
+        const digest = this.#stableRoleHash(event)
+        const sig = hypercoreCrypto.sign(digest, event.keyPair.secretKey)
+        event.signature = sig.toString('hex')
+      }
     }
 
     await this.#base.append(event)
     await this.#base.update()
+  }
+
+  #stableRoleHash (event) {
+    const payload = {
+      pubkey: event.pubkey,
+      role: event.role || null
+    }
+
+    const msg = {
+      op: event.type,
+      payload,
+      author: event.author,
+      timestamp: Date.now()
+    }
+
+    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
   /**

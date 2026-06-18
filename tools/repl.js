@@ -155,7 +155,10 @@ async function main () {
   })
 }
 
-main().catch(err => {
-  console.error('Fatal error:', err)
-  process.exit(1)
-})
+// Only run main if this file is executed directly
+if (require.main === module) {
+  main().catch(err => {
+    console.error('Fatal error:', err)
+    process.exit(1)
+  })
+}

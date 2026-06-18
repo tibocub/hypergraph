@@ -1,5 +1,6 @@
 const path = require('path')
 const fs = require('fs')
+const crypto = require('hypercore-crypto')
 const Corestore = require('corestore')
 const { Hypergraph } = require('../../index.js')
 
@@ -305,11 +306,12 @@ async function cmdRelate (args, graph) {
     throw new Error('Context is required. Use "create-context" first or specify context key.')
   }
   
+  const keyPair = graph.keyPair || crypto.keyPair()
   const edge = await graph.relate({
     from,
     to,
     type,
-    author: graph.key.toString('hex'),
+    keyPair,
     context
   })
   
@@ -330,11 +332,12 @@ async function cmdUnrelate (args, graph) {
     throw new Error('Context is required')
   }
   
+  const keyPair = graph.keyPair || crypto.keyPair()
   await graph.unrelate({
     from,
     to,
     type,
-    author: graph.key.toString('hex'),
+    keyPair,
     context
   })
   
@@ -372,8 +375,9 @@ async function cmdTag (args, graph) {
   const tag = args[1]
   const context = args[2]
   
+  const keyPair = graph.keyPair || crypto.keyPair()
   await graph.tag(id, tag, {
-    author: graph.key.toString('hex'),
+    keyPair,
     context
   })
   
@@ -389,8 +393,9 @@ async function cmdUntag (args, graph) {
   const tag = args[1]
   const context = args[2]
   
+  const keyPair = graph.keyPair || crypto.keyPair()
   await graph.untag(id, tag, {
-    author: graph.key.toString('hex'),
+    keyPair,
     context
   })
   
@@ -498,7 +503,10 @@ async function cmdSetRole (args, graph) {
   const pubkey = args[0]
   const role = args[1]
   
-  await graph.setRole(pubkey, role)
+  const keyPair = graph.keyPair || crypto.keyPair()
+  await graph.setRole(pubkey, role, {
+    keyPair
+  })
   return `Role "${role}" set for ${pubkey}`
 }
 

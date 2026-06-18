@@ -3,6 +3,7 @@ const { Hypergraph } = require('../index.js')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('hypercore-crypto')
 
 async function test () {
   console.log('Testing Hypergraph...\n')
@@ -24,7 +25,8 @@ async function test () {
   // Test 1: Create entities
   console.log('\n--- Test 1: Create entities ---')
 
-  const author = 'user-alice'
+  const keyPair = crypto.keyPair()
+  const author = keyPair.publicKey.toString('hex')
 
   await graph.put({
     id: 'post/1',
@@ -68,12 +70,13 @@ async function test () {
   // Test 4: Create relations
   console.log('\n--- Test 4: Create relations ---')
 
+  const context = await graph.createContext()
   await graph.relate({
     from: 'post/2',
     to: 'post/1',
     type: 'reply',
-    author,
-    context: 'default'
+    keyPair,
+    context
   })
   console.log('Created reply relation: post/2 -> post/1')
 
@@ -81,7 +84,8 @@ async function test () {
     from: 'user/alice',
     to: 'post/1',
     type: 'author',
-    author
+    keyPair,
+    context
   })
   console.log('Created author relation: user/alice -> post/1')
 
@@ -101,10 +105,10 @@ async function test () {
   // Test 6: Tags
   console.log('\n--- Test 6: Tags ---')
 
-  await graph.tag('post/1', 'important', { author })
+  await graph.tag('post/1', 'important', { keyPair, context })
   console.log('Tagged post/1 as important')
 
-  await graph.tag('post/1', 'pinned', { author })
+  await graph.tag('post/1', 'pinned', { keyPair, context })
   console.log('Tagged post/1 as pinned')
 
   console.log('Entities with "important" tag:')
@@ -121,7 +125,7 @@ async function test () {
   // Test 8: Delete
   console.log('\n--- Test 8: Delete ---')
 
-  await graph.del('post/2')
+  await graph.del('post/2', { keyPair })
   console.log('Deleted post/2')
 
   const deleted = await graph.get('post/2')

@@ -1,4 +1,5 @@
 const { assertConverged, pumpUntil, snapshotCanonical } = require('../harness')
+const crypto = require('hypercore-crypto')
 
 module.exports = async function replyBeforeParent (t, h) {
   const owner = await h.createPeer('rbp-owner')
@@ -39,11 +40,12 @@ module.exports = async function replyBeforeParent (t, h) {
   // This should not crash and should replicate.
   const comment = await peer.graph.put({ type: 'comment' })
   await peer.graph.putContent(comment.id, 'orphan', 'text')
+  const peerKeyPair = crypto.keyPair()
   await peer.graph.relate({
     from: comment.id,
     to: post.id,
     type: 'reply',
-    author: peer.graph.key.toString('hex'),
+    keyPair: peerKeyPair,
     context: commentsKey
   })
 

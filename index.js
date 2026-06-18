@@ -4,7 +4,7 @@ const ContextBase = require('./src/context-base')
 const RoleBase = require('./src/role-base')
 const GraphView = require('./src/view')
 const GraphQuery = require('./src/query')
-const tools = require('./tools')
+//const tools = require('./tools')
 
 /**
  * Hypergraph - A minimal graph database optimized for P2P social apps.
@@ -37,5 +37,5 @@ module.exports = {
   RoleBase,
   GraphView,
   GraphQuery,
-  tools
+  // tools
 }

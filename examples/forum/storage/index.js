@@ -21,6 +21,7 @@ module.exports = class ForumStorage {
     this.commentsContext = opts.commentsContext
     this.moderationContext = opts.moderationContext
 
+    this.keyPair = opts.keyPair || crypto.keyPair()
     this.moderationKeyPair = opts.moderationKeyPair || crypto.keyPair()
   }
 
@@ -46,7 +47,7 @@ module.exports = class ForumStorage {
       from: comment.id,
       to: postId,
       type: 'reply',
-      author: this.graph.key.toString('hex'),
+      keyPair: this.keyPair,
       context: this.commentsContext
     })
 

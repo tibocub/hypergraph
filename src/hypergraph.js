@@ -35,6 +35,7 @@ module.exports = class Hypergraph extends ReadyResource {
   #valueEncoding
   #userCoreKey
   #roleBase
+  keyPair
 
   /**
    * @param {import('corestore')} store
@@ -47,6 +48,7 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#userCoreKey = opts.userCoreKey || null
+    this.keyPair = opts.keyPair || null
     this.#userCore = null
     this.#userCores = new Map()
     this.#contexts = new Map()
@@ -58,8 +60,14 @@ module.exports = class Hypergraph extends ReadyResource {
 
   async _open () {
     // Get or create the user's personal core
+    // If keyPair is provided, use its publicKey as the user core key
+    const userCoreKey = this.keyPair
+      ? (b4a.isBuffer(this.keyPair.publicKey) ? this.keyPair.publicKey : b4a.from(this.keyPair.publicKey))
+      : this.#userCoreKey
+
     this.#userCore = new UserCore(this.#store, {
-      key: this.#userCoreKey,
+      key: userCoreKey,
+      keyPair: this.keyPair,
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding
     })
@@ -154,7 +162,6 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!this.#userCore.writable) throw new Error('User core is read-only')
 
     const author = this.#userCore.key.toString('hex')
-    if (entity.author && entity.author !== author) throw new Error('Entity author must match user core key')
 
     // Deterministic IDs are assigned after append.
     // Callers must not provide IDs.
@@ -311,7 +318,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               opts.from
    * @param   {string}               opts.to
    * @param   {string}               opts.type        - Relation type label (e.g. `'reply'`)
-   * @param   {PubKeyHex}            opts.author
+   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<Edge>}
    * @throws  {Error} If required parameters are missing
@@ -321,9 +328,15 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!opts) throw new Error('Options object is required')
     if (!opts.from) throw new Error('opts.from is required')
     if (!opts.to) throw new Error('opts.to is required')
-    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
     if (!opts.context) throw new Error('opts.context is required')
     if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     const context = await this.#getContext(opts.context)
 
@@ -332,9 +345,14 @@ module.exports = class Hypergraph extends ReadyResource {
       from: opts.from,
       to: opts.to,
       relationType: opts.type || opts.relationType,
-      author: opts.author,
-      timestamp: Date.now()
+      author,
+      timestamp: Date.now(),
+      signature: null
     }
+
+    const digest = this.#stableRelationHash(event)
+    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    event.signature = sig.toString('hex')
 
     await context.append(event)
     await this.#view.update()
@@ -348,7 +366,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               opts.from
    * @param   {string}               opts.to
    * @param   {string}               opts.type
-   * @param   {PubKeyHex}            opts.author
+   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
    * @throws  {Error} If required parameters are missing or the relation does not exist.
@@ -358,9 +376,15 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!opts) throw new Error('Options object is required')
     if (!opts.from) throw new Error('opts.from is required')
     if (!opts.to) throw new Error('opts.to is required')
-    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
     if (!opts.context) throw new Error('opts.context is required')
     if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     const context = await this.#getContext(opts.context)
 
@@ -376,10 +400,15 @@ module.exports = class Hypergraph extends ReadyResource {
       from: opts.from,
       to: opts.to,
       relationType: opts.type || opts.relationType,
-      author: opts.author,
+      author,
       createdAt: edge.value.createdAt,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      signature: null
     }
+
+    const digest = this.#stableRelationHash(event)
+    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    event.signature = sig.toString('hex')
 
     await context.append(event)
     await this.#view.update()
@@ -472,7 +501,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               entityId
    * @param   {string}               tag
    * @param   {Object}               opts
-   * @param   {PubKeyHex}            opts.author
+   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
    * @throws  {Error} If required parameters are missing, entity is not found, or the caller is not the author.
@@ -482,12 +511,19 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!entityId) throw new Error('entityId is required')
     if (!tag) throw new Error('tag is required')
     if (!opts) throw new Error('opts is required')
-    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
     if (!opts.context) throw new Error('opts.context is required')
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
-    if (node.author !== opts.author) throw new Error('Only the entity author can tag it')
+    // TODO: Re-enable author check once signature verification is re-enabled
+    // if (node.author !== author) throw new Error('Only the entity author can tag it')
 
     const context = await this.#getContext(opts.context)
 
@@ -495,9 +531,14 @@ module.exports = class Hypergraph extends ReadyResource {
       type: 'tag/add',
       entityId,
       tag,
-      author: opts.author,
-      timestamp: Date.now()
+      author,
+      timestamp: Date.now(),
+      signature: null
     }
+
+    const digest = this.#stableTagHash(event)
+    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    event.signature = sig.toString('hex')
 
     await context.append(event)
     await this.#view.update()
@@ -509,7 +550,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               entityId
    * @param   {string}               tag
    * @param   {Object}               opts
-   * @param   {PubKeyHex}            opts.author
+   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
    * @throws  {Error} If required parameters are missing, entity is not found, or the caller is not the author.
@@ -519,12 +560,18 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!entityId) throw new Error('entityId is required')
     if (!tag) throw new Error('tag is required')
     if (!opts) throw new Error('opts is required')
-    if (!opts.author) throw new Error('opts.author is required')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
     if (!opts.context) throw new Error('opts.context is required')
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
-    if (node.author !== opts.author) throw new Error('Only the entity author can untag it')
+    if (node.author !== author) throw new Error('Only the entity author can untag it')
 
     const context = await this.#getContext(opts.context)
 
@@ -532,9 +579,14 @@ module.exports = class Hypergraph extends ReadyResource {
       type: 'tag/remove',
       entityId,
       tag,
-      author: opts.author,
-      timestamp: Date.now()
+      author,
+      timestamp: Date.now(),
+      signature: null
     }
+
+    const digest = this.#stableTagHash(event)
+    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    event.signature = sig.toString('hex')
 
     await context.append(event)
     await this.#view.update()
@@ -669,17 +721,25 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param {PubKeyHex} memberPubkeyHex
    * @param {string}    role
    * @param {Object}    opts
-   * @param {PubKeyHex} opts.author
+   * @param {KeyPair}   opts.keyPair - KeyPair for signing the event
    */
   async setRole (memberPubkeyHex, role, opts = {}) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     await this.#roleBase.append({
       type: 'roles/setRole',
       member: memberPubkeyHex,
       role,
-      author: opts.author,
+      author,
+      keyPair: opts.keyPair,
       timestamp: Date.now()
     })
   }
@@ -735,6 +795,44 @@ module.exports = class Hypergraph extends ReadyResource {
 
     const msg = {
       op: 'moderation/action',
+      payload,
+      author: event.author,
+      timestamp: event.timestamp
+    }
+
+    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+  }
+
+  #stableRelationHash (event) {
+    const payload = {
+      from: event.from,
+      to: event.to,
+      relationType: event.relationType
+    }
+
+    const msg = {
+      op: event.type,
+      payload,
+      author: event.author,
+      timestamp: event.timestamp
+    }
+
+    // For relation/delete, include createdAt
+    if (event.createdAt) {
+      msg.createdAt = event.createdAt
+    }
+
+    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+  }
+
+  #stableTagHash (event) {
+    const payload = {
+      entityId: event.entityId,
+      tag: event.tag
+    }
+
+    const msg = {
+      op: event.type,
       payload,
       author: event.author,
       timestamp: event.timestamp

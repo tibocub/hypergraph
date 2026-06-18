@@ -2,7 +2,7 @@
   "name": "hypergraph",
   "version": "0.0.1",
   "description": "P2P graph store built on Hypercore/Autobase with a focus on ease of use.",
-  "main": "lib/hypergraph/index.js",
+  "main": "index.js",
   "bin": {
     "hypergraph-inspect": "bin/hypergraph-inspect.js"
   },

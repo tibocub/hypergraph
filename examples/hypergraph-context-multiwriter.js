@@ -66,11 +66,12 @@ async function main () {
   }
 
   // Both peers append to the same context (multi-writer)
+  const keyPairB = crypto.keyPair()
   await a.relate({
     from: 'comment/1',
     to: 'post/1',
     type: 'reply',
-    author: authorB,
+    keyPair: keyPairB,
     context: ctxKeyHex
   })
 

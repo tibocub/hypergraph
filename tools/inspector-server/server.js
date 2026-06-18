@@ -223,6 +223,14 @@ async function handleApi (session, req, res) {
   // Writes
   if (req.method === 'POST' && req.url === '/api/write/put') {
     const body = await readBody(req)
+    // Convert hex strings to buffers if needed
+    let keyPair = null
+    if (body.keyPair && body.keyPair.secretKey && body.keyPair.publicKey) {
+      keyPair = {
+        publicKey: typeof body.keyPair.publicKey === 'string' ? Buffer.from(body.keyPair.publicKey, 'hex') : body.keyPair.publicKey,
+        secretKey: typeof body.keyPair.secretKey === 'string' ? Buffer.from(body.keyPair.secretKey, 'hex') : body.keyPair.secretKey
+      }
+    }
     const node = await graph.put({ type: body.entityType })
     return sendJson(res, 200, node)
   }
@@ -235,12 +243,14 @@ async function handleApi (session, req, res) {
 
   if (req.method === 'POST' && req.url === '/api/write/relate') {
     const body = await readBody(req)
-    const author = body.author || (graph.key ? graph.key.toString('hex') : null)
+    if (!body.keyPair || !body.keyPair.secretKey || !body.keyPair.publicKey) {
+      return sendJson(res, 400, { error: 'keyPair is required' })
+    }
     const out = await graph.relate({
       from: body.from,
       to: body.to,
-      relationType: body.relationType,
-      author,
+      type: body.relationType,
+      keyPair: body.keyPair,
       context: body.contextKey
     })
     return sendJson(res, 200, out)
@@ -248,12 +258,14 @@ async function handleApi (session, req, res) {
 
   if (req.method === 'POST' && req.url === '/api/write/unrelate') {
     const body = await readBody(req)
-    const author = body.author || (graph.key ? graph.key.toString('hex') : null)
+    if (!body.keyPair || !body.keyPair.secretKey || !body.keyPair.publicKey) {
+      return sendJson(res, 400, { error: 'keyPair is required' })
+    }
     const out = await graph.unrelate({
       from: body.from,
       to: body.to,
-      relationType: body.relationType,
-      author,
+      type: body.relationType,
+      keyPair: body.keyPair,
       context: body.contextKey
     })
     return sendJson(res, 200, out || { ok: true })
@@ -261,15 +273,30 @@ async function handleApi (session, req, res) {
 
   if (req.method === 'POST' && req.url === '/api/write/tag') {
     const body = await readBody(req)
-    const author = body.author || (graph.key ? graph.key.toString('hex') : null)
-    const out = await graph.tag(body.entityId, body.tag, { author, context: body.contextKey })
+    if (!body.keyPair || !body.keyPair.secretKey || !body.keyPair.publicKey) {
+      return sendJson(res, 400, { error: 'keyPair is required' })
+    }
+    // Convert hex strings to buffers if needed
+    const keyPair = {
+      publicKey: typeof body.keyPair.publicKey === 'string' ? Buffer.from(body.keyPair.publicKey, 'hex') : body.keyPair.publicKey,
+      secretKey: typeof body.keyPair.secretKey === 'string' ? Buffer.from(body.keyPair.secretKey, 'hex') : body.keyPair.secretKey
+    }
+    const out = await graph.tag(body.entityId, body.tag, {
+      keyPair,
+      context: body.contextKey
+    })
     return sendJson(res, 200, out || { ok: true })
   }
 
   if (req.method === 'POST' && req.url === '/api/write/untag') {
     const body = await readBody(req)
-    const author = body.author || (graph.key ? graph.key.toString('hex') : null)
-    const out = await graph.untag(body.entityId, body.tag, { author, context: body.contextKey })
+    if (!body.keyPair || !body.keyPair.secretKey || !body.keyPair.publicKey) {
+      return sendJson(res, 400, { error: 'keyPair is required' })
+    }
+    const out = await graph.untag(body.entityId, body.tag, {
+      keyPair: body.keyPair,
+      context: body.contextKey
+    })
     return sendJson(res, 200, out || { ok: true })
   }
 
@@ -277,6 +304,17 @@ async function handleApi (session, req, res) {
     const body = await readBody(req)
     const ctx = await graph.openContext(body.contextKey, { writeMode: body.writeMode })
     const out = await ctx.addWriter(Buffer.from(body.writerCoreKeyHex, 'hex'), { author: body.author })
+    return sendJson(res, 200, out || { ok: true })
+  }
+
+  if (req.method === 'POST' && req.url === '/api/write/setrole') {
+    const body = await readBody(req)
+    if (!body.keyPair || !body.keyPair.secretKey || !body.keyPair.publicKey) {
+      return sendJson(res, 400, { error: 'keyPair is required' })
+    }
+    const out = await graph.setRole(body.memberPubkeyHex, body.role, {
+      keyPair: body.keyPair
+    })
     return sendJson(res, 200, out || { ok: true })
   }
 

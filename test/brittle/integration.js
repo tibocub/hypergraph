@@ -4,6 +4,7 @@ const { Hypergraph } = require('../../index.js')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('hypercore-crypto')
 
 async function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -43,12 +44,12 @@ async function pumpUntil (fn, timeoutMs = 20000, intervalMs = 50) {
   }
 }
 
-async function createPeer (name) {
+async function createPeer (name, keyPair = null) {
   const tmpDir = path.join(os.tmpdir(), `hypergraph-test-${name}-${process.pid}-${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 
   const store = new Corestore(tmpDir)
-  const graph = new Hypergraph(store)
+  const graph = new Hypergraph(store, keyPair ? { keyPair } : {})
   await graph.ready()
 
   return { name, store, graph, tmpDir }
@@ -63,23 +64,24 @@ async function cleanup (peers) {
 }
 
 test('hypergraph: integration (single peer, multi-context)', async (t) => {
-  const peer1 = await createPeer('peer1')
-  t.teardown(async () => cleanup([peer1]))
+  const keyPair1 = crypto.keyPair()
+  const author1 = keyPair1.publicKey.toString('hex')
 
-  const author1 = peer1.graph.key.toString('hex')
+  const peer1 = await createPeer('peer1', keyPair1)
+  t.teardown(async () => cleanup([peer1]))
 
   const post1 = await peer1.graph.put({ type: 'post' })
   await peer1.graph.putContent(post1.id, 'Hello from peer 1!', 'text')
   t.is((await peer1.graph.getContent(post1.id)).body, 'Hello from peer 1!')
 
   const tagContext = await peer1.graph.createContext()
-  await peer1.graph.tag(post1.id, 'important', { author: author1, context: tagContext })
+  await peer1.graph.tag(post1.id, 'important', { keyPair: keyPair1, context: tagContext })
 
   const commentsContext = await peer1.graph.createContext()
   const c1 = await peer1.graph.put({ type: 'comment' })
   const c2 = await peer1.graph.put({ type: 'comment' })
-  await peer1.graph.relate({ from: c1.id, to: post1.id, type: 'reply', author: author1, context: commentsContext })
-  await peer1.graph.relate({ from: c2.id, to: post1.id, type: 'reply', author: author1, context: commentsContext })
+  await peer1.graph.relate({ from: c1.id, to: post1.id, type: 'reply', keyPair: keyPair1, context: commentsContext })
+  await peer1.graph.relate({ from: c2.id, to: post1.id, type: 'reply', keyPair: keyPair1, context: commentsContext })
 
   const replies = []
   for await (const edge of peer1.graph.edges(post1.id, { direction: 'in', type: 'reply' })) replies.push(edge)
@@ -91,11 +93,11 @@ test('hypergraph: integration (single peer, multi-context)', async (t) => {
   const bob = await peer1.graph.put({ type: 'user' })
 
   const authorContext = await peer1.graph.createContext()
-  await peer1.graph.relate({ from: alice.id, to: post1.id, type: 'author', author: author1, context: authorContext })
-  await peer1.graph.relate({ from: alice.id, to: post3.id, type: 'author', author: author1, context: authorContext })
+  await peer1.graph.relate({ from: alice.id, to: post1.id, type: 'author', keyPair: keyPair1, context: authorContext })
+  await peer1.graph.relate({ from: alice.id, to: post3.id, type: 'author', keyPair: keyPair1, context: authorContext })
 
-  await peer1.graph.tag(post1.id, 'tech', { author: author1, context: tagContext })
-  await peer1.graph.tag(post3.id, 'tech', { author: author1, context: tagContext })
+  await peer1.graph.tag(post1.id, 'tech', { keyPair: keyPair1, context: tagContext })
+  await peer1.graph.tag(post3.id, 'tech', { keyPair: keyPair1, context: tagContext })
 
   const posts = await peer1.graph.query().type('post').toArray()
   t.is(posts.length, 3)
@@ -104,12 +106,12 @@ test('hypergraph: integration (single peer, multi-context)', async (t) => {
   for await (const node of peer1.graph.getByTag('tech')) tech.push(node)
   t.is(tech.length, 2)
 
-  await peer1.graph.del(post3.id, { author: author1 })
+  await peer1.graph.del(post3.id, { keyPair: keyPair1 })
   t.is(await peer1.graph.get(post3.id), null)
 
   const reactionsContext = await peer1.graph.createContext()
   const reaction = await peer1.graph.put({ type: 'reaction' })
-  await peer1.graph.relate({ from: reaction.id, to: post1.id, type: 'like', author: author1, context: reactionsContext })
+  await peer1.graph.relate({ from: reaction.id, to: post1.id, type: 'like', keyPair: keyPair1, context: reactionsContext })
 
   const likes = []
   for await (const edge of peer1.graph.edges(post1.id, { direction: 'in', type: 'like' })) likes.push(edge)
@@ -178,14 +180,16 @@ test('hypergraph: context writeMode T-closed-authorized', async (t) => {
   const repl = replicatePair(a, b)
   t.teardown(async () => repl.close())
 
-  const owner = a.graph.key.toString('hex')
-  const peerB = b.graph.key.toString('hex')
+  const ownerKeyPair = crypto.keyPair()
+  const owner = ownerKeyPair.publicKey.toString('hex')
+  const peerBKeyPair = crypto.keyPair()
+  const peerB = peerBKeyPair.publicKey.toString('hex')
 
   const roleKey = await a.graph.createRoleBase()
   await a.graph.openRoleBase(roleKey)
   await b.graph.openRoleBase(roleKey)
   await a.graph.roleBase.init(owner)
-  await a.graph.setRole(peerB, 'admin', { author: owner })
+  await a.graph.setRole(peerB, 'admin', { keyPair: ownerKeyPair })
 
   await a.graph.update()
 

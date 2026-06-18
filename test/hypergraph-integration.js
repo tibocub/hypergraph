@@ -16,6 +16,7 @@ const { Hypergraph } = require('../index.js')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('hypercore-crypto')
 
 // Helper to create a peer (without Hyperswarm to avoid hanging)
 async function createPeer (name) {
@@ -47,7 +48,8 @@ async function test () {
   console.log('--- Test 1: Single Peer Basic Operations ---')
 
   const peer1 = await createPeer('peer1')
-  const author1 = peer1.graph.key.toString('hex')
+  const keyPair1 = crypto.keyPair()
+  const author1 = keyPair1.publicKey.toString('hex')
 
   console.log('Peer 1 key:', author1.slice(0, 16) + '...')
 
@@ -59,7 +61,8 @@ async function test () {
   console.log('Created post:', post?.id, '- content:', (await peer1.graph.getContent('post/1'))?.body)
 
   // Create a tag
-  await peer1.graph.tag('post/1', 'important', { author: author1 })
+  const tagContext = await peer1.graph.createContext()
+  await peer1.graph.tag('post/1', 'important', { keyPair: keyPair1, context: tagContext })
   console.log('Tagged post/1 as important')
 
   console.log('Test 1: PASSED\n')
@@ -78,7 +81,7 @@ async function test () {
     from: 'comment/1',
     to: 'post/1',
     type: 'reply',
-    author: author1,
+    keyPair: keyPair1,
     context
   })
   console.log('Added comment/1 -> post/1')
@@ -88,7 +91,7 @@ async function test () {
     from: 'comment/2',
     to: 'post/1',
     type: 'reply',
-    author: author1,
+    keyPair: keyPair1,
     context
   })
   console.log('Added comment/2 -> post/1')
@@ -112,23 +115,27 @@ async function test () {
   await peer1.graph.put({ id: 'user/alice', type: 'user', author: author1 })
   await peer1.graph.put({ id: 'user/bob', type: 'user', author: author1 })
 
+  const authorContext = await peer1.graph.createContext()
+
   // Create relations
   await peer1.graph.relate({
     from: 'user/alice',
     to: 'post/1',
     type: 'author',
-    author: author1
+    keyPair: keyPair1,
+    context: authorContext
   })
   await peer1.graph.relate({
     from: 'user/alice',
     to: 'post/3',
     type: 'author',
-    author: author1
+    keyPair: keyPair1,
+    context: authorContext
   })
 
   // Tag posts
-  await peer1.graph.tag('post/1', 'tech', { author: author1 })
-  await peer1.graph.tag('post/3', 'tech', { author: author1 })
+  await peer1.graph.tag('post/1', 'tech', { keyPair: keyPair1, context: tagContext })
+  await peer1.graph.tag('post/3', 'tech', { keyPair: keyPair1, context: tagContext })
 
   // Query all posts
   const posts = await peer1.graph.query().type('post').toArray()
@@ -204,7 +211,7 @@ async function test () {
     from: 'reaction/1',
     to: 'post/1',
     type: 'like',
-    author: author1,
+    keyPair: keyPair1,
     context: reactions
   })
 

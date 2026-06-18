@@ -19,6 +19,7 @@ module.exports = class UserCore extends ReadyResource {
   #valueEncoding
   #length
   #key
+  #keyPair
 
   /**
    * Create a new UserCore instance.
@@ -34,6 +35,7 @@ module.exports = class UserCore extends ReadyResource {
 
     this.#store = store
     this.#key = opts.key || null
+    this.#keyPair = opts.keyPair || null
     this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#core = null
@@ -45,9 +47,12 @@ module.exports = class UserCore extends ReadyResource {
   async _open () {
     // Get or create the user's personal core.
     // If a key is provided, open that core instead (useful for remote / read-only replication).
-    this.#core = this.#key
-      ? this.#store.get(this.#key)
-      : this.#store.get({ name: 'user-core' })
+    // If keyPair is provided, pass it to make the core writable.
+    if (this.#key) {
+      this.#core = this.#store.get({ key: this.#key, keyPair: this.#keyPair })
+    } else {
+      this.#core = this.#store.get({ name: 'user-core', keyPair: this.#keyPair })
+    }
     await this.#core.ready()
     this.#length = this.#core.length
   }
