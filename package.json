@@ -4,7 +4,7 @@
   "description": "P2P graph store built on Hypercore/Autobase with a focus on ease of use.",
   "main": "index.js",
   "bin": {
-    "hypergraph-inspect": "bin/hypergraph-inspect.js"
+    "hypergraph-inspect": "bin/hypergraph-inspector.js"
   },
   "scripts": {
     "test": "npm run test:all",

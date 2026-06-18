@@ -8,8 +8,8 @@ async function main () {
   await graph.ready()
 
   const author = graph.key.toString('hex')
-  await graph.put({ id: 'post/1', type: 'post', author })
-  await graph.putContent('post/1', 'Hello!', 'text')
+  const post = await graph.put({ type: 'post' })
+  await graph.putContent(post.id, 'Hello!', 'text')
 
   const moderationContext = await graph.createContext()
 
@@ -18,8 +18,8 @@ async function main () {
 
   await graph.moderateAction({
     context: moderationContext,
-    action: 'flag',
-    target: 'post/1',
+    action: 'content.flag',
+    target: post.id,
     reason: 'spam',
     keyPair: moderatorKeyPair
   })
@@ -30,7 +30,7 @@ async function main () {
   for await (const ev of graph.queryContext({
     type: 'moderation',
     context: moderationContext,
-    target: 'post/1'
+    target: post.id
   })) {
     console.log(ev)
   }

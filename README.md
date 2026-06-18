@@ -130,11 +130,11 @@ await graph.ready()
 
 const author = graph.key.toString('hex')
 
-await graph.put({ id: 'post/1', type: 'post', author })
-await graph.putContent('post/1', 'Hello!', 'text')
+const post = await graph.put({ type: 'post' })
+await graph.putContent(post.id, 'Hello!', 'text')
 
 const tagsContext = await graph.createContext()
-await graph.tag('post/1', 'important', { author, context: tagsContext })
+await graph.tag(post.id, 'important', { author, context: tagsContext })
 
 for await (const node of graph.getByTag('important', { authors: [author] })) {
   console.log(node.id)
@@ -145,8 +145,8 @@ const moderationContext = await graph.createContext()
 const moderatorKeyPair = crypto.keyPair()
 await graph.moderateAction({
   context: moderationContext,
-  action: 'flag',
-  target: 'post/1',
+  action: 'content.flag',
+  target: post.id,
   reason: 'spam',
   keyPair: moderatorKeyPair
 })
@@ -154,7 +154,7 @@ await graph.moderateAction({
 for await (const ev of graph.queryContext({
   type: 'moderation',
   context: moderationContext,
-  target: 'post/1',
+  target: post.id,
   authors: [moderatorKeyPair.publicKey.toString('hex')]
 })) {
   console.log(ev.action, ev.target, ev.author)

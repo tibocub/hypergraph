@@ -41,8 +41,8 @@ async function main () {
   const authorA = a.key.toString('hex')
   const authorB = b.key.toString('hex')
 
-  await a.put({ id: 'post/1', type: 'post', author: authorA })
-  await b.put({ id: 'comment/1', type: 'comment', author: authorB })
+  const post1 = await a.put({ type: 'post' })
+  const comment1 = await b.put({ type: 'comment' })
 
   // Shared multi-writer context (Autobase)
   const ctxKeyHex = await a.createContext()
@@ -68,8 +68,8 @@ async function main () {
   // Both peers append to the same context (multi-writer)
   const keyPairB = crypto.keyPair()
   await a.relate({
-    from: 'comment/1',
-    to: 'post/1',
+    from: comment1.id,
+    to: post1.id,
     type: 'reply',
     keyPair: keyPairB,
     context: ctxKeyHex
@@ -78,8 +78,8 @@ async function main () {
   const modKeyPair = crypto.keyPair()
   await b.moderateAction({
     context: ctxKeyHex,
-    action: 'flag',
-    target: 'post/1',
+    action: 'content.flag',
+    target: post1.id,
     reason: 'test',
     keyPair: modKeyPair
   })
@@ -89,16 +89,16 @@ async function main () {
     await a.update(); await b.update()
 
     const edgesA = []
-    for await (const e of a.edges('comment/1', { direction: 'out', type: 'reply' })) edgesA.push(e)
+    for await (const e of a.edges(comment1.id, { direction: 'out', type: 'reply' })) edgesA.push(e)
 
     const edgesB = []
-    for await (const e of b.edges('comment/1', { direction: 'out', type: 'reply' })) edgesB.push(e)
+    for await (const e of b.edges(comment1.id, { direction: 'out', type: 'reply' })) edgesB.push(e)
 
     const modsA = []
-    for await (const ev of a.queryContext({ type: 'moderation', context: ctxKeyHex, target: 'post/1' })) modsA.push(ev)
+    for await (const ev of a.queryContext({ type: 'moderation', context: ctxKeyHex, target: post1.id })) modsA.push(ev)
 
     const modsB = []
-    for await (const ev of b.queryContext({ type: 'moderation', context: ctxKeyHex, target: 'post/1' })) modsB.push(ev)
+    for await (const ev of b.queryContext({ type: 'moderation', context: ctxKeyHex, target: post1.id })) modsB.push(ev)
 
     const ok = edgesA.length === 1 && edgesB.length === 1 && modsA.length === 1 && modsB.length === 1
     if (ok) {

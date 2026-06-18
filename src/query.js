@@ -149,13 +149,13 @@ module.exports = class GraphQuery {
   // ========================================
 
   async * [Symbol.asyncIterator] () {
-    let count = 0
+    const countRef = { value: 0 }
 
     // Determine source stream based on filters
     let source = this.#getSourceStream()
 
     for await (const node of source) {
-      if (count >= this.#limit) break
+      if (countRef.value >= this.#limit) break
 
       // Apply filters
       let matches = true
@@ -170,10 +170,10 @@ module.exports = class GraphQuery {
       if (matches) {
         // Apply traversal if specified
         if (this.#traverse) {
-          yield * this.#traverseEdges(node)
+          yield * this.#traverseEdges(node, countRef)
         } else {
           yield node
-          count++
+          countRef.value++
         }
       }
     }
@@ -195,7 +195,7 @@ module.exports = class GraphQuery {
     }
   }
 
-  async * #traverseEdges (node) {
+  async * #traverseEdges (node, countRef) {
     if (!this.#traverse) {
       yield node
       return
@@ -207,10 +207,13 @@ module.exports = class GraphQuery {
     })
 
     for await (const edge of edges) {
+      if (countRef.value >= this.#limit) break
+
       const targetId = this.#traverse.direction === 'out' ? edge.to : edge.from
       const target = await this.#view.getNode(targetId)
       if (target) {
         yield { ...target, relation: edge }
+        countRef.value++
       }
     }
   }
