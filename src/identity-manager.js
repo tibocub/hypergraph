@@ -20,11 +20,12 @@ class IdentityManager {
 
   /**
    * Create a new IdentityManager instance.
-   * 
+   *
    * @param {Object} opts
    * @param {string} [opts.mnemonic] - Recover identity from mnemonic
    * @param {Buffer} [opts.seed] - Recover identity from seed
    * @param {IdentityKey} [opts.identityKey] - Use existing IdentityKey instance
+   * @param {Object} [opts.deviceKeyPair] - Use existing device keyPair for persistence
    */
   constructor (opts = {}) {
     if (opts.identityKey) {
@@ -33,12 +34,12 @@ class IdentityManager {
       this.#identityKey = null
     }
 
-    // Generate device keyPair for this device
-    this.#deviceKeyPair = hypercoreCrypto.keyPair()
-    
+    // Use provided device keyPair or generate a new one
+    this.#deviceKeyPair = opts.deviceKeyPair || hypercoreCrypto.keyPair()
+
     // Attestation will be set after identity is initialized
     this.#attestationProof = null
-    
+
     // Store initialization options for async init
     this._initOpts = { mnemonic: opts.mnemonic, seed: opts.seed }
   }

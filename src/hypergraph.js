@@ -55,10 +55,11 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#userCoreKey = opts.userCoreKey || null
     
     // Initialize identity system
-    this.identity = new IdentityManager({ 
-      mnemonic: opts.mnemonic, 
+    this.identity = new IdentityManager({
+      mnemonic: opts.mnemonic,
       seed: opts.seed,
-      identityKey: opts.identity
+      identityKey: opts.identity,
+      deviceKeyPair: opts.deviceKeyPair
     })
     
     this.#userCore = null

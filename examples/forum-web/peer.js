@@ -46,6 +46,24 @@ function loadOrCreateModerationKeyPair (storageDir) {
   return kp
 }
 
+function loadOrCreateDeviceKeyPair (storageDir) {
+  const p = path.join(storageDir, 'device-keypair.json')
+  const existing = readJson(p)
+  if (existing && existing.publicKey && existing.secretKey) {
+    return {
+      publicKey: Buffer.from(existing.publicKey, 'hex'),
+      secretKey: Buffer.from(existing.secretKey, 'hex')
+    }
+  }
+
+  const kp = hypercoreCrypto.keyPair()
+  writeJson(p, {
+    publicKey: kp.publicKey.toString('hex'),
+    secretKey: kp.secretKey.toString('hex')
+  })
+  return kp
+}
+
 function loadOrCreateMnemonic (storageDir) {
   const p = path.join(storageDir, 'identity-mnemonic.json')
   const existing = readJson(p)
@@ -164,9 +182,10 @@ async function main () {
   fs.mkdirSync(storageDir, { recursive: true })
 
   const mnemonic = loadOrCreateMnemonic(storageDir)
+  const deviceKeyPair = loadOrCreateDeviceKeyPair(storageDir)
 
   const store = new Corestore(storageDir)
-  const graph = new Hypergraph(store, { mnemonic })
+  const graph = new Hypergraph(store, { mnemonic, deviceKeyPair })
   await graph.ready()
 
   let bootstrap = readJson(bootstrapPath)
@@ -216,11 +235,15 @@ async function main () {
 
     const hasMaxFlags = Boolean(bootstrap.moderation && typeof bootstrap.moderation.maxFlags === 'number')
 
+    // Always ensure owner's moderation key is in trusted list
+    // This handles the case where bootstrap was created with a different identity
     if (!keys.includes(pub) || !hasMaxFlags) {
       bootstrap.moderation = bootstrap.moderation || {}
-      if (!keys.includes(pub)) bootstrap.moderation.trustedModeratorKeys = keys.concat([pub])
+      const updatedKeys = keys.includes(pub) ? keys : keys.concat([pub])
+      bootstrap.moderation.trustedModeratorKeys = updatedKeys
       if (!hasMaxFlags) bootstrap.moderation.maxFlags = 3
       writeJson(bootstrapPath, bootstrap)
+      console.log(`[${name}] Updated bootstrap with owner's moderation key: ${pub.slice(0, 8)}`)
     }
   }
 

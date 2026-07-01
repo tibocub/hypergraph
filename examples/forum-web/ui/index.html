@@ -145,6 +145,7 @@
         const isMod = Boolean(state.me && state.me.isModerator)
         const canDelete = Boolean(isMine || isMod)
         const canEdit = Boolean(isMine)
+        const canFlag = !isMod && !isMine
         const showMenu = Boolean(isMod || canEdit || canDelete)
 
         const root = document.createElement('div')
@@ -154,11 +155,12 @@
         if (openMenuId === mid) root.classList.add('open')
 
         const toggle = document.createElement('button')
-        toggle.textContent = showMenu ? '...' : 'Flag'
+        toggle.textContent = showMenu ? '...' : (canFlag ? 'Flag' : '')
+        if (!showMenu && !canFlag) toggle.style.display = 'none'
         toggle.onclick = async (e) => {
           e.stopPropagation()
 
-          if (!showMenu) {
+          if (!showMenu && canFlag) {
             await moderate(id, 'content.flag')
             return
           }
