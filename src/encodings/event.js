@@ -20,7 +20,8 @@ const EVENT_TYPES = {
   'identity/update': 8,
   'addWriter': 9,
   'roles/addWriter': 10,
-  'moderation/action': 11
+  'moderation/action': 11,
+  'message': 12
 }
 
 // Map from code to string
@@ -35,7 +36,8 @@ const EVENT_TYPE_NAMES = {
   8: 'identity/update',
   9: 'addWriter',
   10: 'roles/addWriter',
-  11: 'moderation/action'
+  11: 'moderation/action',
+  12: 'message'
 }
 
 // Compact encoding for events
@@ -110,6 +112,12 @@ const eventEncoding = {
         c.uint.preencode(state, event.timestamp)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         break
+
+      case 'message':
+        c.string.preencode(state, event.text)
+        c.string.preencode(state, event.username)
+        c.string.preencode(state, event.author)
+        break
     }
   },
 
@@ -182,6 +190,12 @@ const eventEncoding = {
         c.string.encode(state, event.author)
         c.uint.encode(state, event.timestamp)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'message':
+        c.string.encode(state, event.text)
+        c.string.encode(state, event.username)
+        c.string.encode(state, event.author)
         break
     }
   },
@@ -272,6 +286,12 @@ const eventEncoding = {
         event.timestamp = c.uint.decode(state)
         const sig4 = c.buffer.decode(state)
         event.signature = sig4.length > 0 ? sig4.toString('hex') : null
+        break
+
+      case 'message':
+        event.text = c.string.decode(state)
+        event.username = c.string.decode(state)
+        event.author = c.string.decode(state)
         break
     }
 

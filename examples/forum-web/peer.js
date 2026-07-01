@@ -3,7 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const http = require('http')
 const crypto = require('crypto')
-const { Hypergraph } = require('../../index.js')
+const { Hypergraph, HypergraphNetworking } = require('../../index.js')
 const ForumNetwork = require('../forum/network/hyperswarm')
 const ForumStorage = require('../forum/storage')
 const { buildForumState, ForumPolicy } = require('./state')
@@ -44,6 +44,19 @@ function loadOrCreateModerationKeyPair (storageDir) {
     secretKey: kp.secretKey.toString('hex')
   })
   return kp
+}
+
+function loadOrCreateMnemonic (storageDir) {
+  const p = path.join(storageDir, 'identity-mnemonic.json')
+  const existing = readJson(p)
+  if (existing && existing.mnemonic) {
+    return existing.mnemonic
+  }
+
+  const IdentityManager = require('../../src/identity-manager.js')
+  const mnemonic = IdentityManager.generateMnemonic()
+  writeJson(p, { mnemonic })
+  return mnemonic
 }
 
 async function readBody (req) {
@@ -150,8 +163,10 @@ async function main () {
 
   fs.mkdirSync(storageDir, { recursive: true })
 
+  const mnemonic = loadOrCreateMnemonic(storageDir)
+
   const store = new Corestore(storageDir)
-  const graph = new Hypergraph(store)
+  const graph = new Hypergraph(store, { mnemonic })
   await graph.ready()
 
   let bootstrap = readJson(bootstrapPath)
@@ -484,7 +499,7 @@ async function main () {
           await graph.del(id)
         } else {
           if (!isModerator) return sendText(res, 403, 'only moderators can delete others')
-          await storage.moderate(id, 'remove', null)
+          await storage.moderate(id, 'content.remove', null)
         }
 
         await pushState()

@@ -1,4 +1,6 @@
 node_modules
 examples/forum-web/.forum-web/**/*
+examples/cli-chat/*-data
 out
 lib
+test-*

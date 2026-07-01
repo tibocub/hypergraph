@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hyper Chat</title>
+    <style>
+      body { font-family: monospace; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+      header { padding: 12px 16px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
+      main { display: grid; grid-template-columns: 250px 1fr; gap: 12px; padding: 12px; height: calc(100vh - 49px); overflow: hidden; box-sizing: border-box; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; overflow: auto; min-height: 0; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      input, textarea, select, button { font: inherit; }
+      textarea { width: 100%; min-height: 72px; }
+      .list { display: flex; flex-direction: column; gap: 8px; }
+      .room { padding: 8px; border: 1px solid #eee; border-radius: 6px; cursor: pointer; }
+      .room.active { background: #e6f3ff; border-color: #b3d9ff; }
+      .room:hover { background: #f5f5f5; }
+      .meta { color: #666; font-size: 12px; }
+      .messages { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
+      .message { padding: 8px; border-radius: 6px; }
+      .message.mine { background: rgba(0, 0, 0, 0.03); }
+      .message-header { display: flex; gap: 8px; align-items: baseline; }
+      .message-time { color: #666; font-size: 11px; }
+      .message-body { white-space: pre-wrap; word-break: break-word; }
+      .input-area { border-top: 1px solid #ddd; padding: 12px; background: #f9f9f9; }
+      .actions { display: flex; gap: 6px; align-items: center; }
+      .btnlink { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 2px 6px; cursor: pointer; font-size: 12px; }
+      .item { position: relative; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Hyper Chat</strong>
+      <span class="meta" id="me"></span>
+      <div class="row" style="margin-left:auto">
+        <input id="username" placeholder="username" />
+        <button id="setUsername">Set name</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <div style="justify-content: space-between;">
+          <div class="row">
+            <h3>Rooms</h3>
+            <span class="meta" id="status"></span>
+          </div>
+          <button id="createRoom">Create room</button>
+        </div>
+
+        <br />
+        <div class="list" id="rooms"></div>
+      </section>
+
+      <section class="card" id="chatPanel">
+        <div id="chatPlaceholder" style="text-align: center; padding: 40px; color: #666;">
+          Select a room to start chatting
+        </div>
+        <div id="chatContent" style="display: none; height: 100%; display: flex; flex-direction: column;">
+          <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+            <h3 id="currentRoomName"></h3>
+            <button id="leaveRoom" class="btnlink">Leave</button>
+          </div>
+          <div class="messages" id="messages"></div>
+          <div class="input-area">
+            <textarea id="messageInput" placeholder="Type a message..."></textarea>
+            <div class="row">
+              <button id="sendMessage">Send</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      let currentRoom = null
+      let lastState = null
+      let loadInFlight = false
+
+      function el (id) { return document.getElementById(id) }
+
+      async function api (path, method, body) {
+        const res = await fetch(path, {
+          method,
+          headers: body ? { 'content-type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined
+        })
+        if (!res.ok) throw new Error(await res.text())
+        return res.json()
+      }
+
+      function fmtTime (ms) {
+        if (!ms) return ''
+        try {
+          return new Date(ms).toLocaleTimeString()
+        } catch {
+          return ''
+        }
+      }
+
+      function render (state) {
+        lastState = state
+        const meKey = state.me && state.me.pubkey ? state.me.pubkey : null
+        if (state.me && state.me.pubkey) {
+          const u = state.me.username ? state.me.username : '(no name)'
+          el('me').textContent = `you: ${u} (${state.me.pubkey.slice(0, 8)})`
+        } else {
+          el('me').textContent = ''
+        }
+
+        const rooms = el('rooms')
+        rooms.innerHTML = ''
+
+        for (const r of state.rooms || []) {
+          const div = document.createElement('div')
+          div.className = 'room' + (currentRoom === r.id ? ' active' : '')
+          div.innerHTML = `
+            <div><strong>${r.name || 'Unnamed'}</strong></div>
+            <div class="meta">${r.messageCount || 0} messages</div>
+          `
+          div.onclick = () => {
+            currentRoom = r.id
+            render(state)
+            loadState()
+          }
+          rooms.appendChild(div)
+        }
+
+        const chatPlaceholder = el('chatPlaceholder')
+        const chatContent = el('chatContent')
+
+        if (!currentRoom) {
+          chatPlaceholder.style.display = ''
+          chatContent.style.display = 'none'
+          return
+        }
+
+        chatPlaceholder.style.display = 'none'
+        chatContent.style.display = 'flex'
+
+        const room = state.room
+        if (!room) {
+          el('currentRoomName').textContent = 'Loading...'
+          el('messages').innerHTML = '<div class="meta">Loading messages...</div>'
+          return
+        }
+
+        el('currentRoomName').textContent = room.name || 'Unnamed'
+
+        const messages = el('messages')
+        messages.innerHTML = ''
+
+        for (const m of (room.messages || [])) {
+          const div = document.createElement('div')
+          div.className = 'message' + (meKey && m.author === meKey ? ' mine' : '')
+          div.innerHTML = `
+            <div class="message-header">
+              <strong>${m.username}</strong>
+              <span class="message-time">${fmtTime(m.createdAt)}</span>
+            </div>
+            <div class="message-body">${m.body || ''}</div>
+          `
+          messages.appendChild(div)
+        }
+
+        messages.scrollTop = messages.scrollHeight
+      }
+
+      async function loadState () {
+        if (loadInFlight) return
+        loadInFlight = true
+        el('status').textContent = 'loading...'
+        try {
+          const qs = currentRoom ? `?room=${encodeURIComponent(currentRoom)}` : ''
+          const state = await api('/api/state' + qs, 'GET')
+          render(state)
+          el('status').textContent = ''
+        } catch (e) {
+          el('status').textContent = e.message
+        } finally {
+          loadInFlight = false
+        }
+      }
+
+      function connectEvents () {
+        const ev = new EventSource('/events')
+        ev.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg && msg.type === 'state:update') {
+              if (currentRoom) {
+                loadState()
+              } else {
+                render(msg.state)
+              }
+            }
+          } catch {}
+        }
+        ev.onerror = () => {
+          try { ev.close() } catch {}
+          setTimeout(connectEvents, 1000)
+        }
+      }
+
+      el('setUsername').onclick = async () => {
+        const username = el('username').value.trim()
+        if (!username) return
+        await api('/api/identity', 'POST', { username })
+        await loadState()
+      }
+
+      el('createRoom').onclick = async () => {
+        const name = prompt('Enter room name:')
+        if (!name) return
+        try {
+          await api('/api/rooms', 'POST', { name })
+          await loadState()
+        } catch (e) {
+          alert('Error creating room: ' + e.message)
+        }
+      }
+
+      el('leaveRoom').onclick = () => {
+        currentRoom = null
+        render(lastState)
+      }
+
+      el('sendMessage').onclick = async () => {
+        if (!currentRoom) return
+        const body = el('messageInput').value
+        if (!body.trim()) return
+        try {
+          await api('/api/messages', 'POST', { roomId: currentRoom, body })
+          el('messageInput').value = ''
+          await loadState()
+        } catch (e) {
+          alert('Error sending message: ' + e.message)
+        }
+      }
+
+      el('messageInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          el('sendMessage').click()
+        }
+      })
+
+      connectEvents()
+      loadState()
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) loadState().catch(() => {})
+      })
+    </script>
+  </body>
+</html>

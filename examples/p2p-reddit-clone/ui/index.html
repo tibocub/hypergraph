@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P2P Reddit Clone</title>
+    <style>
+      body { font-family: monospace; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+      header { padding: 12px 16px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
+      main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; height: calc(100vh - 49px); overflow: hidden; box-sizing: border-box; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; overflow: auto; min-height: 0; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      input, textarea, select, button { font: inherit; }
+      textarea { width: 100%; min-height: 72px; }
+      .list { display: flex; flex-direction: column; gap: 8px; }
+      .post { padding: 8px; border: 1px solid #eee; border-radius: 6px; cursor: pointer; }
+      .post.hidden { opacity: 0.5; }
+      .meta { color: #666; font-size: 12px; }
+      .thread-body { white-space: pre-wrap; }
+      .comment { border-top: 1px solid #eee; padding-top: 8px; margin-top: 8px; }
+      .actions { display: flex; gap: 6px; align-items: center; }
+      .btnlink { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 2px 6px; cursor: pointer; font-size: 12px; }
+      .vote-btn { background: #ff4500; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-weight: bold; }
+      .vote-btn.down { background: #7193ff; }
+      .vote-count { font-weight: bold; min-width: 30px; text-align: center; }
+      .item { position: relative; }
+      .mine { background: rgba(0, 0, 0, 0.03); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>P2P Reddit Clone</strong>
+      <span class="meta" id="me"></span>
+      <div class="row" style="margin-left:auto">
+        <input id="username" placeholder="username" />
+        <button id="setUsername">Set name</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <div style="justify-content: space-between;">
+          <div class="row">
+            <h3>Posts</h3>
+            <span class="meta" id="status"></span>
+          </div>
+          <div class="row">
+            <button id="openNewPost">New post</button>
+            <button id="refresh">Refresh</button>
+          </div>
+        </div>
+
+        <br />
+        <div class="list" id="posts"></div>
+      </section>
+
+      <section class="card" id="rightPanel">
+        <div class="row" style="justify-content:right">
+          <button id="closeRight" class="btnlink" style="display:none">Close</button>
+        </div>
+        <div id="right"></div>
+      </section>
+    </main>
+
+    <script>
+      let currentThread = null
+      let lastState = null
+      let rightMode = 'none'
+      let threadLoadInFlight = false
+      let loadInFlight = false
+
+      function el (id) { return document.getElementById(id) }
+
+      async function api (path, method, body) {
+        const res = await fetch(path, {
+          method,
+          headers: body ? { 'content-type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined
+        })
+        if (!res.ok) throw new Error(await res.text())
+        return res.json()
+      }
+
+      function setRightMode (mode) {
+        rightMode = mode
+        el('closeRight').style.display = mode === 'none' ? 'none' : ''
+      }
+
+      function closeRight () {
+        setRightMode('none')
+        el('right').innerHTML = ''
+        currentThread = null
+      }
+
+      function renderPosts (state) {
+        const posts = state.posts || []
+        const container = el('posts')
+        container.innerHTML = ''
+
+        for (const post of posts) {
+          if (!post.visible) continue
+
+          console.log('Rendering post:', post.id, post.body)
+          const div = document.createElement('div')
+          div.className = 'post item'
+          if (post.author === state.me.pubkey) div.classList.add('mine')
+
+          div.innerHTML = `
+            <div class="row" style="justify-content: space-between">
+              <span class="meta">${post.username || post.author.slice(0, 8)}</span>
+              <span class="meta">${new Date(post.createdAt || 0).toLocaleString()}</span>
+            </div>
+            <div style="margin: 8px 0">${post.body}</div>
+            <div class="row actions">
+              <button class="vote-btn" data-id="${post.id}" data-value="1">▲</button>
+              <span class="vote-count">${post.voteCount}</span>
+              <button class="vote-btn down" data-id="${post.id}" data-value="-1">▼</button>
+              <span class="meta">${post.commentCount} comments</span>
+            </div>
+          `
+
+          div.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+              const btn = e.target
+              if (btn.classList.contains('vote-btn')) {
+                const id = btn.getAttribute('data-id')
+                const value = parseInt(btn.getAttribute('data-value'))
+                console.log('Post div click handler - vote:', id, value)
+                vote(id, value)
+                return
+              }
+            }
+            loadThread(post.id)
+          })
+
+          container.appendChild(div)
+        }
+      }
+
+      function renderThread (state) {
+        const thread = state.thread
+        if (!thread) return
+
+        const container = el('right')
+        container.innerHTML = ''
+
+        const postDiv = document.createElement('div')
+        postDiv.className = 'post'
+        postDiv.innerHTML = `
+          <div class="row" style="justify-content: space-between">
+            <span class="meta">${thread.username || thread.author.slice(0, 8)}</span>
+            <span class="meta">${new Date(thread.createdAt || 0).toLocaleString()}</span>
+          </div>
+          <div style="margin: 8px 0">${thread.body}</div>
+          <div class="row actions">
+            <button class="vote-btn" data-id="${thread.id}" data-value="1">▲</button>
+            <span class="vote-count">${thread.voteCount}</span>
+            <button class="vote-btn down" data-id="${thread.id}" data-value="-1">▼</button>
+          </div>
+        `
+        
+        postDiv.addEventListener('click', (e) => {
+          if (e.target.tagName === 'BUTTON' && e.target.classList.contains('vote-btn')) {
+            const id = e.target.getAttribute('data-id')
+            const value = parseInt(e.target.getAttribute('data-value'))
+            console.log('Thread post vote:', id, value)
+            vote(id, value)
+          }
+        })
+        
+        container.appendChild(postDiv)
+
+        const commentsDiv = document.createElement('div')
+        commentsDiv.innerHTML = '<h4>Comments</h4>'
+        container.appendChild(commentsDiv)
+
+        for (const comment of thread.comments || []) {
+          if (!comment.visible) continue
+
+          const commentDiv = document.createElement('div')
+          commentDiv.className = 'comment item'
+          if (comment.author === state.me.pubkey) commentDiv.classList.add('mine')
+
+          commentDiv.innerHTML = `
+            <div class="row" style="justify-content: space-between">
+              <span class="meta">${comment.username || comment.author.slice(0, 8)}</span>
+              <span class="meta">${new Date(comment.createdAt || 0).toLocaleString()}</span>
+            </div>
+            <div style="margin: 8px 0">${comment.body}</div>
+            <div class="row actions">
+              <button class="vote-btn" data-id="${comment.id}" data-value="1">▲</button>
+              <span class="vote-count">${comment.voteCount}</span>
+              <button class="vote-btn down" data-id="${comment.id}" data-value="-1">▼</button>
+            </div>
+          `
+          container.appendChild(commentDiv)
+        }
+
+        const commentForm = document.createElement('div')
+        commentForm.style.marginTop = '16px'
+        commentForm.innerHTML = `
+          <textarea id="newComment" placeholder="Write a comment..."></textarea>
+          <div class="row" style="margin-top: 8px">
+            <button id="submitComment">Submit</button>
+          </div>
+        `
+        container.appendChild(commentForm)
+
+        el('submitComment').addEventListener('click', async () => {
+          const body = el('newComment').value
+          if (!body) return
+          console.log('Submitting comment:', body)
+          try {
+            const res = await api(`/api/posts/${thread.id}/comments`, 'POST', { body })
+            console.log('Comment response:', res)
+            el('newComment').value = ''
+            setTimeout(() => loadThread(thread.id), 500)
+          } catch (err) {
+            console.error('Comment error:', err)
+            alert(err.message)
+          }
+        })
+      }
+
+      async function loadThread (postId) {
+        if (threadLoadInFlight) return
+        threadLoadInFlight = true
+
+        try {
+          setRightMode('thread')
+          currentThread = postId
+
+          const state = await api('/api/state', 'GET')
+          renderThread({ ...state, thread: state.posts.find(p => p.id === postId) || null })
+        } catch (err) {
+          console.error(err)
+        } finally {
+          threadLoadInFlight = false
+        }
+      }
+
+      async function vote (targetId, value) {
+        console.log('Voting:', targetId, value)
+        try {
+          const res = await api(`/api/vote/${targetId}`, 'POST', { value })
+          console.log('Vote response:', res)
+          // Force reload after a short delay to ensure graph updates
+          setTimeout(() => {
+            if (currentThread) {
+              loadThread(currentThread)
+            } else {
+              loadState()
+            }
+          }, 500)
+        } catch (err) {
+          console.error('Vote error:', err)
+          alert(err.message)
+        }
+      }
+
+      async function loadState () {
+        if (loadInFlight) return
+        loadInFlight = true
+
+        try {
+          const state = await api('/api/state', 'GET')
+          lastState = state
+
+          el('me').textContent = state.me.username ? `@${state.me.username}` : state.me.pubkey.slice(0, 8)
+          el('status').textContent = `${state.posts.length} posts`
+
+          renderPosts(state)
+
+          if (currentThread) {
+            renderThread(state)
+          }
+        } catch (err) {
+          console.error(err)
+        } finally {
+          loadInFlight = false
+        }
+      }
+
+      el('closeRight').addEventListener('click', closeRight)
+
+      el('refresh').addEventListener('click', loadState)
+
+      el('setUsername').addEventListener('click', async () => {
+        const username = el('username').value
+        if (!username) return
+        try {
+          await api('/api/identity', 'POST', { username })
+          el('username').value = ''
+          loadState()
+        } catch (err) {
+          alert(err.message)
+        }
+      })
+
+      el('openNewPost').addEventListener('click', () => {
+        setRightMode('newpost')
+        el('right').innerHTML = `
+          <h3>New Post</h3>
+          <textarea id="newPostBody" placeholder="Write your post..."></textarea>
+          <div class="row" style="margin-top: 8px">
+            <button id="submitPost">Submit</button>
+          </div>
+        `
+
+        el('submitPost').addEventListener('click', async () => {
+          const body = el('newPostBody').value
+          const username = el('username').value
+          if (!body) return
+          try {
+            await api('/api/posts', 'POST', { body, username })
+            el('newPostBody').value = ''
+            closeRight()
+            loadState()
+          } catch (err) {
+            alert(err.message)
+          }
+        })
+      })
+
+      // Server-sent events
+      const events = new EventSource('/events')
+      events.addEventListener('message', (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          if (data.type === 'state:update') {
+            lastState = data.state
+            el('me').textContent = data.state.me.username ? `@${data.state.me.username}` : data.state.me.pubkey.slice(0, 8)
+            el('status').textContent = `${data.state.posts.length} posts`
+            renderPosts(data.state)
+            if (currentThread) {
+              renderThread(data.state)
+            }
+          }
+        } catch (err) {
+          console.error(err)
+        }
+      })
+
+      // Initial load
+      loadState()
+    </script>
+  </body>
+</html>

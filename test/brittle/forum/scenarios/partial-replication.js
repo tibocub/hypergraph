@@ -12,7 +12,6 @@ module.exports = async function partialReplication (t, h) {
   const post = await owner.storage.createPost('seed')
 
   const roleKeyHex = await owner.graph.createRoleBase()
-  await owner.graph.openRoleBase(roleKeyHex)
   const siteOwner = owner.graph.key.toString('hex')
   await owner.graph.roleBase.init(siteOwner)
   await owner.graph.roleBase.append({

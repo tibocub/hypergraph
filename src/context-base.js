@@ -1,5 +1,6 @@
 const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
+const EventEmitter = require('events')
 const codecs = require('codecs')
 const crypto = require('crypto')
 const hypercoreCrypto = require('hypercore-crypto')
@@ -28,6 +29,10 @@ module.exports = class ContextBase extends ReadyResource {
   #valueEncoding
   #roleBase
   #writeMode
+  #pendingWriterRequests
+  #emitter
+  #keyPair
+  #verifySignatures
 
   /**
    * Create a new ContextBase instance.
@@ -39,6 +44,8 @@ module.exports = class ContextBase extends ReadyResource {
    * @param {string} [opts.valueEncoding] - Codec name for values
    * @param {RoleBase} [opts.roleBase] - Attached RoleBase for permission checks
    * @param {'open'|'closed'} [opts.writeMode='open'] - Write mode for the context
+   * @param {Object} [opts.keyPair] - KeyPair for the local writer (required when joining existing context in open mode)
+   * @param {boolean} [opts.verifySignatures=true] - Whether to verify cryptographic signatures on relations
    */
   constructor (store, bootstrapKey, opts = {}) {
     super()
@@ -54,23 +61,72 @@ module.exports = class ContextBase extends ReadyResource {
     this.#writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
     this.#base = null
     this.#viewBee = null
+    this.#pendingWriterRequests = new Map()
+    this.#emitter = new EventEmitter()
+    this.#verifySignatures = opts.verifySignatures !== undefined ? opts.verifySignatures : true
+
+    // Use provided keyPair if available
+    // In open mode, we don't generate a keyPair to allow Autobase to handle local core creation
+    // This enables better replication between peers
+    this.#keyPair = opts.keyPair || null
 
     this.ready().catch(safetyCatch)
   }
 
   async _open () {
     // Create Autobase for this context
-    // Use a namespace to isolate each context's cores
+    // Use namespace to isolate context cores from other contexts
     const ns = this.#store.namespace(this.#namespace)
-    this.#base = new Autobase(ns, this.#bootstrap, {
+    const autobaseOpts = {
       open: this.#openView.bind(this),
       apply: this.#applyView.bind(this),
       valueEncoding: { encode: encodeEvent, decode: decodeEvent },
       ackInterval: 0,
       ackThreshold: 0,
       fastForward: false
-    })
+    }
+
+    // Don't pass keyPair to Autobase - let it handle local writer creation automatically
+    // This matches the old hypergraph behavior and avoids "Autobase failed to open" errors
+    // Writers are managed via addWriter method after the context is ready
+
+    this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
     await this.#base.ready()
+  }
+
+  /**
+   * Handle a peer connection for automatic writer authorization.
+   * In open mode, automatically adds the peer as a writer.
+   * In closed mode, emits a 'writer-request' event for approval.
+   * 
+   * @param {Buffer} peerKey - The peer's public key
+   * @param {Object} [opts] - Additional options
+   * @returns {Promise<void>}
+   */
+  async handlePeerConnection (peerKey, opts = {}) {
+    if (!Buffer.isBuffer(peerKey)) {
+      peerKey = Buffer.from(peerKey, 'hex')
+    }
+
+    const keyHex = peerKey.toString('hex')
+
+    // In open mode, automatically add the peer as a writer
+    if (this.#writeMode === 'open') {
+      try {
+        await this.addWriter(peerKey)
+        this.#emitter.emit('writer-added', peerKey)
+      } catch (err) {
+        // Writer might already exist or other error
+        safetyCatch(err)
+      }
+      return
+    }
+
+    // In closed mode, emit a writer-request event for approval
+    if (!this.#pendingWriterRequests.has(keyHex)) {
+      this.#pendingWriterRequests.set(keyHex, { timestamp: Date.now() })
+      this.#emitter.emit('writer-request', peerKey)
+    }
   }
 
   async _close () {
@@ -117,6 +173,9 @@ module.exports = class ContextBase extends ReadyResource {
           break
         case 'moderation/action':
           await this.#applyModerationAction(view, event, from, length)
+          break
+        case 'message':
+          await this.#applyMessage(view, event)
           break
       }
     }
@@ -330,8 +389,8 @@ module.exports = class ContextBase extends ReadyResource {
   }
 
   async #applyRelation (view, event) {
-    // Verify signature before applying
-    if (!this.#verifyRelationSignature(event)) return
+    // Verify signature before applying (if enabled)
+    if (this.#verifySignatures && !this.#verifyRelationSignature(event)) return
 
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
     const existingRef = await view.get(edgeRefKey)
@@ -378,8 +437,8 @@ module.exports = class ContextBase extends ReadyResource {
   }
 
   async #applyRelationDelete (view, event) {
-    // Verify signature before applying
-    if (!this.#verifyRelationSignature(event)) return
+    // Verify signature before applying (if enabled)
+    if (this.#verifySignatures && !this.#verifyRelationSignature(event)) return
 
     const createdAtKey = toSortableTs(event.createdAt)
     const key = `e:${event.from}:${event.relationType}:${createdAtKey}:${event.to}`
@@ -436,9 +495,30 @@ module.exports = class ContextBase extends ReadyResource {
     await view.del(refKey)
   }
 
+  async #applyMessage (view, event) {
+    // Store message in the view with a unique key
+    const key = `msg:${event.timestamp}:${event.author.slice(0, 8)}`
+    await view.put(key, {
+      text: event.text,
+      username: event.username,
+      author: event.author,
+      timestamp: event.timestamp
+    })
+  }
+
   // ========================================
   // Properties
   // ========================================
+
+  /** @returns {import('autobase')|undefined} The underlying Autobase instance */
+  get base () {
+    return this.#base
+  }
+
+  /** @returns {boolean} Whether the context is writable */
+  get writable () {
+    return this.#base ? this.#base.writable : false
+  }
 
   /** @returns {import('hypercore')|undefined} The underlying Autobase core */
   get core () {
@@ -475,6 +555,11 @@ module.exports = class ContextBase extends ReadyResource {
     return this.#base?.writable
   }
 
+  /** @returns {'open'|'closed'} The write mode of this context */
+  get writeMode () {
+    return this.#writeMode
+  }
+
   /**
    * Get all writer keys for this context.
    *
@@ -509,12 +594,20 @@ module.exports = class ContextBase extends ReadyResource {
   /**
    * Append an event to the context.
    *
+   * In 'open' mode, if the local writer is not already in the writer list,
+   * they will be automatically added before appending.
+   *
    * @param {Object} event - The event to append
    * @returns {Promise<{length: number}>} The length of the base after append
    */
   async append (event) {
     if (!this.opened) await this.ready()
-    await this.#base.append(event)
+    
+    // In open mode, use optimistic appends to allow any peer to replicate events
+    // This is required for P2P replication to work correctly
+    const opts = this.#writeMode === 'open' ? { optimistic: true } : {}
+    
+    await this.#base.append(event, opts)
     await this.#base.update()
     return { length: this.#base.length }
   }
@@ -534,35 +627,12 @@ module.exports = class ContextBase extends ReadyResource {
   async addWriter (coreKey, opts = {}) {
     if (!this.opened) await this.ready()
 
-    if (this.#writeMode === 'open') {
-      const keyHex = Buffer.isBuffer(coreKey) ? coreKey.toString('hex') : coreKey
-      await this.#base.append({ type: 'roles/addWriter', key: keyHex })
-      await this.#base.update()
-      return
-    }
+    const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
+    const keyHex = key.toString('hex')
 
-    if (!this.#roleBase || typeof this.#roleBase.getRegistry !== 'function') {
-      throw new Error('RoleBase is required in closed write mode')
-    }
-
-    if (!opts || typeof opts.author !== 'string' || opts.author.length === 0) {
-      throw new Error('author is required')
-    }
-
-    const registry = await this.#roleBase.getRegistry()
-    if (!registry) throw new Error('Role registry not ready')
-
-    if (!canRole(registry, opts.author, 'context.write')) {
-      throw new Error('Not authorized')
-    }
-
-    const keyHex = Buffer.isBuffer(coreKey) ? coreKey.toString('hex') : coreKey
-    await this.#base.append({
-      type: 'roles/addWriter',
-      key: keyHex,
-      author: opts.author,
-      timestamp: Date.now()
-    })
+    // Add the writer by appending a roles/addWriter event to the system core
+    // This is the correct way to add writers in Autobase
+    await this.#base.append({ type: 'roles/addWriter', key: keyHex })
     await this.#base.update()
   }
 
@@ -603,12 +673,12 @@ module.exports = class ContextBase extends ReadyResource {
   /**
    * Create a replication stream for the context.
    *
-   * @param {boolean} isInitiator - Whether this side initiated the connection
+   * @param {boolean|import('streamx').Duplex} isInitiatorOrStream - Whether this side initiated the connection, or a stream to replicate to
    * @param {Object} [opts] - Replication options (passed to Autobase.replicate)
-   * @returns {import('streamx').Duplex} The replication stream
+   * @returns {import('streamx').Duplex|void} The replication stream (if isInitiator is boolean)
    */
-  replicate (isInitiator, opts) {
-    return this.#base.replicate(isInitiator, opts)
+  replicate (isInitiatorOrStream, opts) {
+    return this.#base.replicate(isInitiatorOrStream, opts)
   }
 
   /**
@@ -663,5 +733,144 @@ module.exports = class ContextBase extends ReadyResource {
       // Whether allowed or not, once registry is available the decision is final.
       await view.del(entry.key)
     }
+  }
+
+  // ========================================
+  // Event Emitter Methods
+  // ========================================
+
+  /**
+   * Register a context event listener.
+   * @param {string} event - Event name (e.g., 'writer-request')
+   * @param {Function} callback - Callback function
+   */
+  onContextEvent (event, callback) {
+    this.#emitter.on(event, callback)
+  }
+
+  /**
+   * Remove a context event listener.
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function
+   */
+  offContextEvent (event, callback) {
+    this.#emitter.off(event, callback)
+  }
+
+  /**
+   * Emit a context event.
+   * @param {string} event - Event name
+   * @param {...any} args - Event arguments
+   */
+  emitContextEvent (event, ...args) {
+    this.#emitter.emit(event, ...args)
+  }
+
+  // ========================================
+  // Writer Authorization
+  // ========================================
+
+  /**
+   * Request writer access for this context.
+   * In open mode, this is automatically approved. In closed mode, it emits a 'writer-request' event.
+   *
+   * @param {Buffer|string} writerKey - The writer's core key
+   * @param {Object} [opts] - Options
+   * @param {string} [opts.userCore] - The user's core key (for identification)
+   * @returns {Promise<boolean>} True if the writer was added, false if pending
+   */
+  async requestWriter (writerKey, opts = {}) {
+    if (!this.opened) await this.ready()
+
+    const keyHex = Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey
+
+    // Check if already a writer
+    const writers = this.writerKeys()
+    if (writers.includes(keyHex)) return true
+
+    // In open mode, auto-approve
+    if (this.#writeMode === 'open') {
+      await this.addWriter(writerKey)
+      return true
+    }
+
+    // In closed mode, emit a request event
+    this.#pendingWriterRequests.set(keyHex, {
+      key: keyHex,
+      userCore: opts.userCore || null,
+      timestamp: Date.now()
+    })
+
+    this.emitContextEvent('writer-request', {
+      key: keyHex,
+      userCore: opts.userCore || null,
+      approve: async () => {
+        await this.addWriter(writerKey)
+        this.#pendingWriterRequests.delete(keyHex)
+      },
+      reject: () => {
+        this.#pendingWriterRequests.delete(keyHex)
+      }
+    })
+
+    return false
+  }
+
+  /**
+   * Approve a pending writer request.
+   *
+   * @param {Buffer|string} writerKey - The writer's core key
+   * @returns {Promise<void>}
+   */
+  async approveWriter (writerKey) {
+    if (!this.opened) await this.ready()
+    const keyHex = Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey
+    await this.addWriter(writerKey)
+    this.#pendingWriterRequests.delete(keyHex)
+    this.#emitter.emit('writer-approved', Buffer.isBuffer(writerKey) ? writerKey : Buffer.from(writerKey, 'hex'))
+  }
+
+  /**
+   * Reject a pending writer request.
+   *
+   * @param {Buffer|string} writerKey - The writer's core key
+   */
+  rejectWriter (writerKey) {
+    const keyHex = Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey
+    this.#pendingWriterRequests.delete(keyHex)
+    this.#emitter.emit('writer-rejected', Buffer.isBuffer(writerKey) ? writerKey : Buffer.from(writerKey, 'hex'))
+  }
+
+  /**
+   * Register an event listener for writer-related events.
+   * 
+   * @param {string} event - Event name ('writer-request', 'writer-added', 'writer-approved', 'writer-rejected')
+   * @param {Function} callback - Callback function
+   * @returns {this}
+   */
+  on (event, callback) {
+    this.#emitter.on(event, callback)
+    return this
+  }
+
+  /**
+   * Remove an event listener.
+   * 
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function
+   * @returns {this}
+   */
+  off (event, callback) {
+    this.#emitter.off(event, callback)
+    return this
+  }
+
+  /**
+   * Get pending writer requests.
+   *
+   * @returns {Array<Object>} Array of pending writer requests
+   */
+  getPendingWriterRequests () {
+    return Array.from(this.#pendingWriterRequests.values())
   }
 }

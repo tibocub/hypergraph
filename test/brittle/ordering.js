@@ -22,8 +22,7 @@ test('hypergraph: edge ordering + limit (in/out)', async (t) => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  const keyPair = crypto.keyPair()
-  const author = keyPair.publicKey.toString('hex')
+  const author = graph.identity.deviceKeyPair.publicKey.toString('hex')
   const ctx = await graph.createContext()
 
   const post = await graph.put({ type: 'post' })
@@ -31,11 +30,11 @@ test('hypergraph: edge ordering + limit (in/out)', async (t) => {
   const c2 = await graph.put({ type: 'comment' })
   const c3 = await graph.put({ type: 'comment' })
 
-  await graph.relate({ from: c1.id, to: post.id, type: 'reply', keyPair, context: ctx })
+  await graph.relate({ from: c1.id, to: post.id, type: 'reply', context: ctx })
   await sleep(2)
-  await graph.relate({ from: c2.id, to: post.id, type: 'reply', keyPair, context: ctx })
+  await graph.relate({ from: c2.id, to: post.id, type: 'reply', context: ctx })
   await sleep(2)
-  await graph.relate({ from: c3.id, to: post.id, type: 'reply', keyPair, context: ctx })
+  await graph.relate({ from: c3.id, to: post.id, type: 'reply', context: ctx })
 
   const inAsc = []
   for await (const e of graph.edges(post.id, { direction: 'in', type: 'reply', order: 'asc' })) inAsc.push(e)

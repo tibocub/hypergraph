@@ -33,7 +33,6 @@ module.exports = async function moderationPropagation (t, h) {
   const repl = h.replicatePair(p1, p2)
 
   const roleKeyHex = await p1.graph.createRoleBase()
-  await p1.graph.openRoleBase(roleKeyHex)
   const owner = p1.graph.key.toString('hex')
   await p1.graph.roleBase.init(owner)
   await p1.graph.roleBase.append({

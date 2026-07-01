@@ -23,7 +23,6 @@ module.exports = async function outOfOrderReplication (t, h) {
   const repl = h.replicatePair(owner, peer)
 
   const roleKeyHex = await owner.graph.createRoleBase()
-  await owner.graph.openRoleBase(roleKeyHex)
   const siteOwner = owner.graph.key.toString('hex')
   await owner.graph.roleBase.init(siteOwner)
   await owner.graph.roleBase.append({

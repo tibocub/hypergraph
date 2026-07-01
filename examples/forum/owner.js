@@ -60,7 +60,6 @@ async function main () {
     moderationContext = await graph.createContext()
 
     roleBaseKey = await graph.createRoleBase()
-    await graph.openRoleBase(roleBaseKey)
     const ownerKey = graph.key.toString('hex')
     await graph.roleBase.init(ownerKey)
     await graph.roleBase.append({
@@ -87,10 +86,6 @@ async function main () {
 
   const commentsCtx = await graph.openContext(commentsContext)
   const moderationCtx = await graph.openContext(moderationContext)
-
-  if (roleBaseKey) {
-    await graph.openRoleBase(roleBaseKey)
-  }
 
   if (addCommentsWriter) {
     await commentsCtx.addWriter(Buffer.from(addCommentsWriter, 'hex'))

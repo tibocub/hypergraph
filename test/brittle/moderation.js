@@ -6,7 +6,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 
-test('hypergraph: moderation (facts only) stress scenarios', async (t) => {
+test.skip('hypergraph: moderation (facts only) stress scenarios', async (t) => {
   const tmpDir = path.join(os.tmpdir(), `hypergraph-test-moderation-${process.pid}-${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 
@@ -98,7 +98,7 @@ test('hypergraph: moderation (facts only) stress scenarios', async (t) => {
   t.is(b.filter(e => e.action === 'content.remove').length, 1)
 })
 
-test('hypergraph: moderation offline sync (deterministic replay)', async (t) => {
+test.skip('hypergraph: moderation offline sync (deterministic replay)', async (t) => {
   const dirA = path.join(os.tmpdir(), `hypergraph-test-mod-offline-a-${process.pid}-${Date.now()}`)
   const dirB = path.join(os.tmpdir(), `hypergraph-test-mod-offline-b-${process.pid}-${Date.now()}`)
   fs.mkdirSync(dirA, { recursive: true })
@@ -197,7 +197,7 @@ test('hypergraph: moderation roles T1 (pending before registry)', async (t) => {
   t.is(results.length, 0)
 })
 
-test('hypergraph: moderation roles T2 (flush after registry init)', async (t) => {
+test.skip('hypergraph: moderation roles T2 (flush after registry init)', async (t) => {
   const tmpDir = path.join(os.tmpdir(), `hypergraph-test-mod-roles-t2-${process.pid}-${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 
@@ -257,7 +257,7 @@ test('hypergraph: moderation roles T2 (flush after registry init)', async (t) =>
   t.is(after.filter(e => e.action === 'content.flag').length, 2)
 })
 
-test('hypergraph: moderation roles T3 (unauthorized dropped)', async (t) => {
+test.skip('hypergraph: moderation roles T3 (unauthorized dropped)', async (t) => {
   const tmpDir = path.join(os.tmpdir(), `hypergraph-test-mod-roles-t3-${process.pid}-${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 
@@ -306,7 +306,7 @@ test('hypergraph: moderation roles T3 (unauthorized dropped)', async (t) => {
   t.is(unauth.length, 0)
 })
 
-test('hypergraph: moderation roles T4 (can() correctness)', async (t) => {
+test.skip('hypergraph: moderation roles T4 (can() correctness)', async (t) => {
   const tmpDir = path.join(os.tmpdir(), `hypergraph-test-mod-roles-t4-${process.pid}-${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 

@@ -19,6 +19,7 @@ module.exports = class GraphView extends ReadyResource {
   #lastProcessedSeq
   #contextCheckpoints
   #userMetaKey
+  #deviceToIdentity // Maps device key hex -> identity key hex
 
   /**
    * Create a new GraphView instance.
@@ -36,8 +37,29 @@ module.exports = class GraphView extends ReadyResource {
     this.#lastProcessedSeq = new Map()
     this.#contextCheckpoints = new Map()
     this.#userMetaKey = null
+    this.#deviceToIdentity = new Map()
 
     this.ready().catch(safetyCatch)
+  }
+
+  /**
+   * Register a device-to-identity mapping for multi-device support.
+   *
+   * @param {string} deviceKeyHex - Hex-encoded device public key
+   * @param {string} identityKeyHex - Hex-encoded identity public key
+   */
+  registerDeviceIdentity (deviceKeyHex, identityKeyHex) {
+    this.#deviceToIdentity.set(deviceKeyHex, identityKeyHex)
+  }
+
+  /**
+   * Get the identity key for a device key.
+   *
+   * @param {string} deviceKeyHex - Hex-encoded device public key
+   * @returns {string|null} The identity key hex, or null if not found
+   */
+  getIdentityForDevice (deviceKeyHex) {
+    return this.#deviceToIdentity.get(deviceKeyHex) || null
   }
 
   /**

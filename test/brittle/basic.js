@@ -10,11 +10,8 @@ test('hypergraph: basic operations', async (t) => {
   const tmpDir = path.join(os.tmpdir(), `hypergraph-test-basic-${process.pid}-${Date.now()}-${Math.random()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 
-  const keyPair = crypto.keyPair()
-  const author = keyPair.publicKey.toString('hex')
-
   const store = new Corestore(tmpDir)
-  const graph = new Hypergraph(store, { keyPair })
+  const graph = new Hypergraph(store)
   await graph.ready()
 
   t.teardown(async () => {
@@ -23,6 +20,7 @@ test('hypergraph: basic operations', async (t) => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
+  const author = graph.identity.deviceKeyPair.publicKey.toString('hex')
   const contextKey = await graph.createContext()
 
   const post1 = await graph.put({ type: 'post' })
@@ -40,7 +38,6 @@ test('hypergraph: basic operations', async (t) => {
     from: post2.id,
     to: post1.id,
     type: 'reply',
-    keyPair,
     context: contextKey
   })
 
@@ -49,7 +46,6 @@ test('hypergraph: basic operations', async (t) => {
     from: post2.id,
     to: post1.id,
     type: 'reply',
-    keyPair,
     context: contextKey
   })
 
@@ -68,14 +64,13 @@ test('hypergraph: basic operations', async (t) => {
     from: post2.id,
     to: post1.id,
     type: 'reply',
-    keyPair,
     context: contextKey
   })
 
   t.is(await graph.countEdgesIn(post1.id, 'reply'), 0)
   t.is(await graph.countEdgesOut(post2.id, 'reply'), 0)
 
-  await graph.tag(post1.id, 'important', { keyPair, context: contextKey })
+  await graph.tag(post1.id, 'important', { context: contextKey })
   // TODO: Re-enable this test once author check is re-enabled in tag()
   // const keyPairBob = crypto.keyPair()
   // await t.exception(graph.tag(post1.id, 'important', { keyPair: keyPairBob, context: contextKey }), /Only the entity author can tag it/)
@@ -93,6 +88,6 @@ test('hypergraph: basic operations', async (t) => {
   for await (const n of graph.getByTag('important', { authors: [author] })) taggedTrusted.push(n)
   t.is(taggedTrusted.length, 1)
 
-  await graph.del(post2.id, { keyPair })
+  await graph.del(post2.id)
   t.is(await graph.get(post2.id), null)
 })

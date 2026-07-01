@@ -1,4 +1,5 @@
 const ReadyResource = require('ready-resource')
+const EventEmitter = require('events')
 const safetyCatch = require('safety-catch')
 const codecs = require('codecs')
 const Hyperbee = require('hyperbee')
@@ -10,6 +11,8 @@ const ContextBase = require('./context-base')
 const RoleBase = require('./role-base')
 const GraphView = require('./view')
 const GraphQuery = require('./query')
+const PeerDiscovery = require('./peer-discovery')
+const IdentityManager = require('./identity-manager')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
@@ -35,7 +38,9 @@ module.exports = class Hypergraph extends ReadyResource {
   #valueEncoding
   #userCoreKey
   #roleBase
-  keyPair
+  #peerDiscovery
+  #emitter
+  identity
 
   /**
    * @param {import('corestore')} store
@@ -48,26 +53,48 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#userCoreKey = opts.userCoreKey || null
-    this.keyPair = opts.keyPair || null
+    
+    // Initialize identity system
+    this.identity = new IdentityManager({ 
+      mnemonic: opts.mnemonic, 
+      seed: opts.seed,
+      identityKey: opts.identity
+    })
+    
     this.#userCore = null
     this.#userCores = new Map()
     this.#contexts = new Map()
     this.#view = null
     this.#roleBase = null
+    this.#peerDiscovery = new PeerDiscovery(this)
+    this.#emitter = new EventEmitter()
+
+    // Forward peer discovery events to unified change event
+    this.#peerDiscovery.on('peer-join', (peerInfo) => {
+      this.#emitter.emit('change', { type: 'peer-join', ...peerInfo })
+    })
+    this.#peerDiscovery.on('peer-leave', (peerInfo) => {
+      this.#emitter.emit('change', { type: 'peer-leave', ...peerInfo })
+    })
 
     this.ready().catch(safetyCatch)
   }
 
   async _open () {
+    // Initialize identity system
+    await this.identity.init()
+    
     // Get or create the user's personal core
-    // If keyPair is provided, use its publicKey as the user core key
-    const userCoreKey = this.keyPair
-      ? (b4a.isBuffer(this.keyPair.publicKey) ? this.keyPair.publicKey : b4a.from(this.keyPair.publicKey))
-      : this.#userCoreKey
+    // If userCoreKey is provided, open that core (for replication of other devices)
+    // Otherwise, use device keyPair for the user core (each device has its own core)
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const userCoreKey = this.#userCoreKey || (b4a.isBuffer(deviceKeyPair.publicKey) 
+      ? deviceKeyPair.publicKey 
+      : b4a.from(deviceKeyPair.publicKey))
 
     this.#userCore = new UserCore(this.#store, {
       key: userCoreKey,
-      keyPair: this.keyPair,
+      keyPair: this.#userCoreKey ? null : deviceKeyPair, // No keyPair if opening existing core
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding
     })
@@ -89,6 +116,12 @@ module.exports = class Hypergraph extends ReadyResource {
 
     this.#view = new GraphView(viewBee, this.#userCores, this.#contexts)
     await this.#view.ready()
+
+    // Register device-to-identity mapping for multi-device support
+    const identityKeyHex = b4a.isBuffer(this.identity.identityPublicKey)
+      ? this.identity.identityPublicKey.toString('hex')
+      : String(this.identity.identityPublicKey)
+    this.#view.registerDeviceIdentity(localKeyHex, identityKeyHex)
   }
 
   async _close () {
@@ -181,6 +214,16 @@ module.exports = class Hypergraph extends ReadyResource {
     // IDs are derived from (type, coreKeyHex, seq) at read/index time.
     // The event's stored `id` is not used by the view.
     await this.#view.update()
+    
+    // Emit unified change event
+    this.#emitter.emit('change', { 
+      type: 'entity-create', 
+      id,
+      entityType: entity.type,
+      author,
+      timestamp: Date.now()
+    })
+    
     return { id, type: entity.type, author }
   }
 
@@ -223,6 +266,14 @@ module.exports = class Hypergraph extends ReadyResource {
 
     await this.#userCore.append(event)
     await this.#view.update()
+    
+    // Emit unified change event
+    this.#emitter.emit('change', { 
+      type: 'entity-delete', 
+      id,
+      author,
+      timestamp: Date.now()
+    })
   }
 
 
@@ -252,6 +303,15 @@ module.exports = class Hypergraph extends ReadyResource {
 
     await this.#userCore.append(event)
     await this.#view.update()
+    
+    // Emit unified change event
+    this.#emitter.emit('change', { 
+      type: 'content-append', 
+      entityId,
+      contentType,
+      timestamp: Date.now()
+    })
+    
     return { entityId, contentType, body: content }
   }
 
@@ -318,7 +378,6 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               opts.from
    * @param   {string}               opts.to
    * @param   {string}               opts.type        - Relation type label (e.g. `'reply'`)
-   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<Edge>}
    * @throws  {Error} If required parameters are missing
@@ -328,15 +387,13 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!opts) throw new Error('Options object is required')
     if (!opts.from) throw new Error('opts.from is required')
     if (!opts.to) throw new Error('opts.to is required')
-    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
-      throw new Error('opts.keyPair is required')
-    }
     if (!opts.context) throw new Error('opts.context is required')
     if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
 
-    const author = b4a.isBuffer(opts.keyPair.publicKey)
-      ? opts.keyPair.publicKey.toString('hex')
-      : String(opts.keyPair.publicKey)
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const author = b4a.isBuffer(deviceKeyPair.publicKey)
+      ? deviceKeyPair.publicKey.toString('hex')
+      : String(deviceKeyPair.publicKey)
 
     const context = await this.#getContext(opts.context)
 
@@ -351,11 +408,23 @@ module.exports = class Hypergraph extends ReadyResource {
     }
 
     const digest = this.#stableRelationHash(event)
-    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
     await context.append(event)
     await this.#view.update()
+    
+    // Emit unified change event
+    this.#emitter.emit('change', { 
+      type: 'relation-create', 
+      from: opts.from,
+      to: opts.to,
+      relationType: opts.type || opts.relationType,
+      context: opts.context,
+      author,
+      timestamp: Date.now()
+    })
+    
     return event
   }
 
@@ -366,7 +435,6 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               opts.from
    * @param   {string}               opts.to
    * @param   {string}               opts.type
-   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
    * @throws  {Error} If required parameters are missing or the relation does not exist.
@@ -376,15 +444,13 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!opts) throw new Error('Options object is required')
     if (!opts.from) throw new Error('opts.from is required')
     if (!opts.to) throw new Error('opts.to is required')
-    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
-      throw new Error('opts.keyPair is required')
-    }
     if (!opts.context) throw new Error('opts.context is required')
     if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
 
-    const author = b4a.isBuffer(opts.keyPair.publicKey)
-      ? opts.keyPair.publicKey.toString('hex')
-      : String(opts.keyPair.publicKey)
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const author = b4a.isBuffer(deviceKeyPair.publicKey)
+      ? deviceKeyPair.publicKey.toString('hex')
+      : String(deviceKeyPair.publicKey)
 
     const context = await this.#getContext(opts.context)
 
@@ -407,7 +473,7 @@ module.exports = class Hypergraph extends ReadyResource {
     }
 
     const digest = this.#stableRelationHash(event)
-    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
     await context.append(event)
@@ -501,7 +567,6 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               entityId
    * @param   {string}               tag
    * @param   {Object}               opts
-   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
    * @throws  {Error} If required parameters are missing, entity is not found, or the caller is not the author.
@@ -511,14 +576,12 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!entityId) throw new Error('entityId is required')
     if (!tag) throw new Error('tag is required')
     if (!opts) throw new Error('opts is required')
-    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
-      throw new Error('opts.keyPair is required')
-    }
     if (!opts.context) throw new Error('opts.context is required')
 
-    const author = b4a.isBuffer(opts.keyPair.publicKey)
-      ? opts.keyPair.publicKey.toString('hex')
-      : String(opts.keyPair.publicKey)
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const author = b4a.isBuffer(deviceKeyPair.publicKey)
+      ? deviceKeyPair.publicKey.toString('hex')
+      : String(deviceKeyPair.publicKey)
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
@@ -537,7 +600,7 @@ module.exports = class Hypergraph extends ReadyResource {
     }
 
     const digest = this.#stableTagHash(event)
-    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
     await context.append(event)
@@ -550,7 +613,6 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {string}               entityId
    * @param   {string}               tag
    * @param   {Object}               opts
-   * @param   {KeyPair}              opts.keyPair     - KeyPair for signing the event
    * @param   {ContextKeyHex|Buffer} opts.context
    * @returns {Promise<void>}
    * @throws  {Error} If required parameters are missing, entity is not found, or the caller is not the author.
@@ -560,14 +622,12 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!entityId) throw new Error('entityId is required')
     if (!tag) throw new Error('tag is required')
     if (!opts) throw new Error('opts is required')
-    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
-      throw new Error('opts.keyPair is required')
-    }
     if (!opts.context) throw new Error('opts.context is required')
 
-    const author = b4a.isBuffer(opts.keyPair.publicKey)
-      ? opts.keyPair.publicKey.toString('hex')
-      : String(opts.keyPair.publicKey)
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const author = b4a.isBuffer(deviceKeyPair.publicKey)
+      ? deviceKeyPair.publicKey.toString('hex')
+      : String(deviceKeyPair.publicKey)
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
@@ -585,7 +645,7 @@ module.exports = class Hypergraph extends ReadyResource {
     }
 
     const digest = this.#stableTagHash(event)
-    const sig = hypercoreCrypto.sign(digest, opts.keyPair.secretKey)
+    const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
     await context.append(event)
@@ -657,7 +717,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
     if (this.#roleBase) await this.#roleBase.close()
 
-    const roles = new RoleBase(this.#store, null)
+    const roles = new RoleBase(this.#store, null, { identity: this.identity })
     await roles.ready()
     this.#roleBase = roles
     return roles.key.toString('hex')
@@ -678,7 +738,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
     if (this.#roleBase) await this.#roleBase.close()
 
-    const roles = new RoleBase(this.#store, Buffer.from(keyHex, 'hex'))
+    const roles = new RoleBase(this.#store, Buffer.from(keyHex, 'hex'), { identity: this.identity })
     await roles.ready()
     this.#roleBase = roles
     return roles
@@ -981,6 +1041,8 @@ module.exports = class Hypergraph extends ReadyResource {
    * @property {'open'|'closed'} [writeMode='open']
    *   `'open'`   — any core can be added as a writer freely.
    *   `'closed'` — writers must be explicitly authorised; requires an attached RoleBase.
+   * @property {Object} [keyPair]
+   *   Optional keyPair for the local writer. In closed mode, this is typically required.
    */
 
   async #getContext (keyOrHex, opts = {}) {
@@ -992,7 +1054,10 @@ module.exports = class Hypergraph extends ReadyResource {
     if (this.#contexts.has(keyHex)) return this.#contexts.get(keyHex)
 
     const bootstrapKey = Buffer.from(keyHex, 'hex')
-    const context = new ContextBase(this.#store, bootstrapKey, {
+    
+    // In open mode, provide the user's keyPair to ensure the local writer is set up
+    // This allows peers to append when joining an existing context
+    const contextOpts = {
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
@@ -1000,12 +1065,56 @@ module.exports = class Hypergraph extends ReadyResource {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
       }
-    })
+    }
+
+    // Pass through keyPair if explicitly provided (required for closed mode)
+    if (opts.keyPair) {
+      contextOpts.keyPair = opts.keyPair
+    } else if (opts.writeMode === 'open' && bootstrapKey) {
+      // In open mode without explicit keyPair, use the user's keyPair
+      contextOpts.keyPair = this.identity.deviceKeyPair
+    }
+    
+    const context = new ContextBase(this.#store, bootstrapKey, contextOpts)
     await context.ready()
     this.#contexts.set(keyHex, context)
 
     // Register context with view
     this.#view.addContext(keyHex, context)
+
+    // Forward context events to unified change event
+    context.on('writer-added', (writerKey) => {
+      this.#emitter.emit('change', { 
+        type: 'writer-added', 
+        contextKey: keyHex,
+        writerKey: Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey,
+        timestamp: Date.now()
+      })
+    })
+    context.on('writer-request', (writerKey) => {
+      this.#emitter.emit('change', { 
+        type: 'writer-request', 
+        contextKey: keyHex,
+        writerKey: Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey,
+        timestamp: Date.now()
+      })
+    })
+    context.on('writer-approved', (writerKey) => {
+      this.#emitter.emit('change', { 
+        type: 'writer-approved', 
+        contextKey: keyHex,
+        writerKey: Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey,
+        timestamp: Date.now()
+      })
+    })
+    context.on('writer-rejected', (writerKey) => {
+      this.#emitter.emit('change', { 
+        type: 'writer-rejected', 
+        contextKey: keyHex,
+        writerKey: Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey,
+        timestamp: Date.now()
+      })
+    })
 
     return context
   }
@@ -1086,6 +1195,226 @@ module.exports = class Hypergraph extends ReadyResource {
   // ========================================
 
   /**
+   * Announce this peer's presence to the graph.
+   * 
+   * @param {Object} [opts] - Announcement options
+   * @param {Object} [opts.metadata] - Optional metadata to include
+   * @returns {Promise<void>}
+   */
+  async announce (opts = {}) {
+    return this.#peerDiscovery.announce(opts)
+  }
+
+  /**
+   * Discover other peers in the graph.
+   * 
+   * @param {Object} [opts] - Discovery options
+   * @returns {Promise<AsyncGenerator<Array<{userCoreKey: string, timestamp: number, metadata: Object|null}>>>}
+   */
+  async discoverPeers (opts = {}) {
+    return this.#peerDiscovery.discoverPeers(opts)
+  }
+
+  /**
+   * Get the list of known peers.
+   * 
+   * @returns {Array<{userCoreKey: string, timestamp: number, metadata: Object|null}>}
+   */
+  listPeers () {
+    return this.#peerDiscovery.listPeers()
+  }
+
+  /**
+   * Handle a peer connection for automatic writer authorization.
+   * This should be called when a peer connects via Hyperswarm.
+   * Follows the forum-web pattern for peer discovery using relation edges.
+   * 
+   * @param {Buffer} peerKey - The peer's public key
+   * @param {Buffer|string|undefined} [contextKey] - Optional context key for context-specific writer authorization
+   * @param {Object} [opts] - Additional options
+   * @returns {Promise<void>}
+   */
+  async handlePeerConnection (peerKey, contextKey, opts = {}) {
+    // Handle peer discovery
+    await this.#peerDiscovery.handlePeerConnection(peerKey, opts)
+
+    // Handle writer authorization for the specified context
+    if (contextKey) {
+      try {
+        const context = await this.openContext(contextKey)
+        await context.handlePeerConnection(peerKey, opts)
+        
+        // Announce local core using graph.relate() (forum-web pattern)
+        if (context.base && context.base.local) {
+          try {
+            const author = this.identity.deviceKeyPair.publicKey.toString('hex')
+            await this.relate({
+              from: `localcore:${context.base.local.key.toString('hex')}`,
+              to: `context:${contextKey}`,
+              type: 'local-core-announce',
+              author,
+              context: contextKey
+            })
+          } catch (err) {
+            safetyCatch(err)
+          }
+        }
+        
+        // Discover remote local cores using graph.edges() (forum-web pattern)
+        await this.discoverRemoteLocalCores(contextKey)
+      } catch (err) {
+        // Context might not exist yet
+        safetyCatch(err)
+      }
+    }
+  }
+
+  /**
+   * Discover and open remote local cores from relation announcements.
+   * This follows the forum-web pattern for peer discovery.
+   * 
+   * @param {Buffer|string} contextKey - The context key
+   * @returns {Promise<void>}
+   */
+  async discoverRemoteLocalCores (contextKey) {
+    try {
+      await this.update()
+      const contextKeyStr = Buffer.isBuffer(contextKey) ? contextKey.toString('hex') : contextKey
+      
+      for await (const e of this.edges(`context:${contextKeyStr}`, { direction: 'in', type: 'local-core-announce' })) {
+        const from = e && e.from ? String(e.from) : ''
+        if (!from.startsWith('localcore:')) continue
+        const localKeyHex = from.slice('localcore:'.length)
+        if (!localKeyHex) continue
+        
+        // Don't try to open our own local core
+        const context = await this.openContext(contextKey)
+        if (context.base && context.base.local && localKeyHex === context.base.local.key.toString('hex')) continue
+        
+        // Try to open the remote local core
+        try {
+          const core = this.#store.get({ key: Buffer.from(localKeyHex, 'hex') })
+          await core.ready()
+          // The core is now in the store and will be replicated
+        } catch (err) {
+          // Core might not be available yet
+          safetyCatch(err)
+        }
+      }
+    } catch (err) {
+      safetyCatch(err)
+    }
+  }
+
+  /**
+   * Handle a peer disconnection.
+   * 
+   * @param {Buffer} peerKey - The peer's public key
+   * @param {Object} [opts] - Additional options
+   * @returns {Promise<void>}
+   */
+  async handlePeerDisconnection (peerKey, opts = {}) {
+    return this.#peerDiscovery.handlePeerDisconnection(peerKey, opts)
+  }
+
+  /**
+   * Register an event listener for peer-related events.
+   * 
+   * @param {string} event - Event name ('peer-join', 'peer-leave')
+   * @param {Function} callback - Callback function
+   * @returns {this}
+   */
+  on (event, callback) {
+    if (event === 'change') {
+      this.#emitter.on('change', callback)
+    } else {
+      this.#peerDiscovery.on(event, callback)
+    }
+    return this
+  }
+
+  /**
+   * Remove an event listener.
+   * 
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function
+   * @returns {this}
+   */
+  off (event, callback) {
+    if (event === 'change') {
+      this.#emitter.off('change', callback)
+    } else {
+      this.#peerDiscovery.off(event, callback)
+    }
+    return this
+  }
+
+  /**
+   * Export the graph state as a bootstrap object.
+   * This can be shared with other peers to join the graph.
+   * 
+   * @param {Object} [opts] - Export options
+   * @param {boolean} [opts.includeNetworking=false] - Include networking configuration
+   * @param {Buffer|string} [opts.topic] - Hyperswarm topic to include (if includeNetworking is true)
+   * @returns {Promise<{version: number, userCoreKey: string, contexts: Array<{key: string, writeMode: 'open' | 'closed'}>, timestamp: number, networking?: {topic: string}>} Bootstrap object
+   */
+  async export (opts = {}) {
+    if (!this.opened) await this.ready()
+
+    const userCoreKey = this.key ? this.key.toString('hex') : ''
+    const bootstrap = {
+      version: 1,
+      userCoreKey,
+      contexts: [],
+      timestamp: Date.now()
+    }
+
+    // Export all contexts
+    for (const [key, context] of this.#contexts) {
+      bootstrap.contexts.push({
+        key,
+        writeMode: context.writeMode
+      })
+    }
+
+    // Include networking info if requested
+    if (opts.includeNetworking && opts.topic) {
+      const topic = typeof opts.topic === 'string' ? opts.topic : opts.topic.toString('hex')
+      bootstrap.networking = {
+        topic
+      }
+    }
+
+    return bootstrap
+  }
+
+  /**
+   * Join a graph using a bootstrap object.
+   * This is a static method that creates a new Hypergraph instance.
+   * 
+   * @param {import('corestore')} store - Corestore instance
+   * @param {{version: number, userCoreKey: string, contexts: Array<{key: string, writeMode: 'open' | 'closed'}>, timestamp: number}} bootstrap - Bootstrap object from graph.export()
+   * @param {Object} [opts] - Additional options
+   * @returns {Promise<Hypergraph>}
+   */
+  static async join (store, bootstrap, opts = {}) {
+    const graph = new Hypergraph(store, opts)
+    await graph.ready()
+
+    // Open all contexts from the bootstrap
+    for (const ctx of bootstrap.contexts || []) {
+      try {
+        await graph.openContext(ctx.key, { writeMode: ctx.writeMode })
+      } catch (err) {
+        // Context might not exist yet
+        safetyCatch(err)
+      }
+    }
+
+    return graph
+  }
+
+  /**
    * Create a replication stream for the underlying corestore.
    *
    * @param   {boolean} isInitiator - Whether this side initiated the connection
@@ -1094,6 +1423,59 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   replicate (isInitiator, opts) {
     return this.#store.replicate(isInitiator, opts)
+  }
+
+  /**
+   * Connect to a Hyperswarm topic for P2P networking.
+   * This is a convenience method that uses HypergraphNetworking internally.
+   *
+   * @param {Buffer|string} topic - Hyperswarm topic (Buffer or hex string)
+   * @param {Object} [opts] - Connection options
+   * @param {import('hyperswarm')} [opts.swarm] - Hyperswarm instance (optional, will create if not provided)
+   * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
+   * @param {Object<string, string|Buffer>} [opts.contexts] - Context keys for writer authorization (key-value pairs)
+   * @param {number} [opts.maxPeers=16] - Maximum peers per swarm
+   * @returns {Promise<import('./networking')>} The HypergraphNetworking instance
+   */
+  async connectToSwarm (topic, opts = {}) {
+    const HypergraphNetworking = require('./networking')
+    const networking = new HypergraphNetworking(this, this.#store, {
+      dataSwarm: opts.swarm,
+      topic,
+      role: opts.role || 'peer',
+      contexts: opts.contexts || {},
+      maxPeers: opts.maxPeers || 16
+    })
+    await networking.connect()
+    return networking
+  }
+
+  /**
+   * Disconnect from a Hyperswarm topic.
+   *
+   * @param {import('./networking')} networking - The HypergraphNetworking instance from connectToSwarm
+   * @returns {Promise<void>}
+   */
+  async disconnectFromSwarm (networking) {
+    await networking.disconnect()
+  }
+
+  // ========================================
+  // Writer Authorization
+  // ========================================
+
+  /**
+   * Get writer keys for all contexts.
+   *
+   * @returns {Object} Object mapping context keys to arrays of writer keys
+   */
+  getAllWriterKeys () {
+    const results = {}
+    for (const [contextKey, context] of this.#contexts) {
+      if (!context.opened) continue
+      results[contextKey] = context.writerKeys()
+    }
+    return results
   }
 
   /**

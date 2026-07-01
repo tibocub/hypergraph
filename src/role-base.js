@@ -19,9 +19,9 @@ const { initRegistry, applyRoleEvent, can } = require('./roles-registry')
 module.exports = class RoleBase extends ReadyResource {
   #store
   #bootstrap
-  #namespace
   #base
   #viewBee
+  #identity
 
   /**
    * Create a new RoleBase instance.
@@ -29,15 +29,14 @@ module.exports = class RoleBase extends ReadyResource {
    * @param {import('corestore')} store - Corestore instance for core management
    * @param {Buffer|string|null} bootstrapKey - Autobase key to join existing RoleBase, or null to create new
    * @param {Object} [opts] - Configuration options
+   * @param {Object} [opts.identity] - IdentityManager instance for signing
    */
   constructor (store, bootstrapKey, opts = {}) {
     super()
 
     this.#store = store
     this.#bootstrap = bootstrapKey || null
-    this.#namespace = this.#bootstrap
-      ? this.#bootstrap.toString('hex')
-      : `roles-new-${crypto.randomBytes(8).toString('hex')}`
+    this.#identity = opts.identity || null
 
     this.#base = null
     this.#viewBee = null
@@ -46,9 +45,7 @@ module.exports = class RoleBase extends ReadyResource {
   }
 
   async _open () {
-    const ns = this.#store.namespace(this.#namespace)
-
-    this.#base = new Autobase(ns, this.#bootstrap, {
+    this.#base = new Autobase(this.#store, this.#bootstrap, {
       open: this.#openView.bind(this),
       apply: this.#applyView.bind(this),
       valueEncoding: 'json',
@@ -214,10 +211,11 @@ module.exports = class RoleBase extends ReadyResource {
       if (!event.author || typeof event.author !== 'string') throw new Error('event.author is required')
       if (!can(registry, event.author, required)) throw new Error('Not authorized')
 
-      // Sign the event if keyPair is provided
-      if (event.keyPair) {
+      // Sign the event using identity
+      if (this.#identity) {
+        const deviceKeyPair = this.#identity.deviceKeyPair
         const digest = this.#stableRoleHash(event)
-        const sig = hypercoreCrypto.sign(digest, event.keyPair.secretKey)
+        const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
         event.signature = sig.toString('hex')
       }
     }

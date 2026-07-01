@@ -159,7 +159,7 @@
           e.stopPropagation()
 
           if (!showMenu) {
-            await moderate(id, 'flag')
+            await moderate(id, 'content.flag')
             return
           }
 
@@ -196,9 +196,9 @@
             panel.appendChild(delBtn)
           }
 
-          if (isMod && act !== 'remove') {
-            const hideLabel = act === 'hide' ? 'Reveal' : 'Hide'
-            const hideAction = act === 'hide' ? 'reveal' : 'hide'
+          if (isMod && act !== 'content.remove') {
+            const hideLabel = act === 'content.hide' ? 'Reveal' : 'Hide'
+            const hideAction = act === 'content.hide' ? 'content.reveal' : 'content.hide'
 
             const hideBtn = document.createElement('button')
             hideBtn.textContent = hideLabel
@@ -231,6 +231,7 @@
 
       function render (state) {
         lastState = state
+        if (!state) return
         const meKey = state.me && state.me.pubkey ? state.me.pubkey : null
         if (state.me && state.me.pubkey) {
           const u = state.me.username ? state.me.username : '(no name)'
@@ -248,8 +249,8 @@
 
           let modLine = ''
           if (p.moderation) {
-            if (p.moderation.action === 'remove') modLine = '[removed]'
-            else if (p.moderation.action === 'hide') modLine = '[hidden]'
+            if (p.moderation.action === 'content.remove') modLine = '[removed]'
+            else if (p.moderation.action === 'content.hide') modLine = '[hidden]'
             else if (p.moderation.flags) modLine = `[flags ${p.moderation.flags}]`
           } else if (!p.visible) {
             modLine = '[hidden by policy]'
@@ -379,8 +380,8 @@
 
         let threadMod = ''
         if (t.moderation) {
-          if (t.moderation.action === 'remove') threadMod = '[removed]'
-          else if (t.moderation.action === 'hide') threadMod = '[hidden]'
+          if (t.moderation.action === 'content.remove') threadMod = '[removed]'
+          else if (t.moderation.action === 'content.hide') threadMod = '[hidden]'
           else if (t.moderation.flags) threadMod = `[flags ${t.moderation.flags}]`
         } else if (!t.visible) {
           threadMod = '[hidden by policy]'
@@ -428,8 +429,8 @@
 
           let rMod = ''
           if (r.moderation) {
-            if (r.moderation.action === 'remove') rMod = '[removed]'
-            else if (r.moderation.action === 'hide') rMod = '[hidden]'
+            if (r.moderation.action === 'content.remove') rMod = '[removed]'
+            else if (r.moderation.action === 'content.hide') rMod = '[hidden]'
             else if (r.moderation.flags) rMod = `[flags ${r.moderation.flags}]`
           } else if (r.visible === false) {
             rMod = '[hidden by policy]'
