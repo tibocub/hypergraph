@@ -23,6 +23,14 @@ Contexts support two write modes:
 - Author must have `context.write` privilege
 - Suitable for private or moderated contexts
 
+> **Known limitation:** closed-mode authorization currently requires a peer to already be
+> a writer *before* opening an existing context, which conflicts with Autobase's normal
+> open-then-authorize flow. This needs an application-level redesign (a role check gating
+> `addWriter`/`append`) rather than relying on Autobase-level write access alone. See the
+> two skipped tests in `test/brittle/core/contexts.js` and the CHANGELOG's "Known gaps"
+> section. Until this is resolved, closed mode should be considered unproven in practice —
+> stick to open mode plus application-level moderation (see below) for now.
+
 ### Context Isolation
 
 Contexts are isolated at two levels:

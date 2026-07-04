@@ -53,7 +53,7 @@ class IdentityManager {
     if (this.#identityKey) {
       // Already initialized
       if (!this.#attestationProof) {
-        this.#attestationProof = this.#identityKey.bootstrap(this.#deviceKeyPair.publicKey)
+        this.#attestationProof = await this.#identityKey.bootstrap(this.#deviceKeyPair.publicKey)
       }
       return
     }
@@ -70,7 +70,7 @@ class IdentityManager {
     }
 
     // Bootstrap device attestation
-    this.#attestationProof = this.#identityKey.bootstrap(this.#deviceKeyPair.publicKey)
+    this.#attestationProof = await this.#identityKey.bootstrap(this.#deviceKeyPair.publicKey)
   }
 
   /**

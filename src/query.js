@@ -79,21 +79,7 @@ module.exports = class GraphQuery {
    * other filters. This would require restructuring filter execution order.
    */
   tag (tag) {
-    this.#filters.push(async (node) => {
-      // Check if node has this tag
-      const prefix = `tref:${tag}:${node.id}:`
-      const stream = this.#view.createReadStream({
-        gte: prefix,
-        lt: prefix + '\uffff',
-        limit: 1
-      })
-
-      for await (const entry of stream) {
-        if (entry && (/** @type {any} */ (entry)).key && (/** @type {any} */ (entry)).key.startsWith(prefix)) return true
-      }
-
-      return false
-    })
+    this.#filters.push((node) => this.#view.hasTag(node.id, tag))
     return this
   }
 
@@ -188,7 +174,8 @@ module.exports = class GraphQuery {
     // The filters will be applied in the main iterator
     const stream = this.#view.createReadStream({
       gte: 'n:',
-      lt: 'n:\uffff'
+      lt: 'n:\uffff',
+      reverse: this.#reverse
     })
 
     for await (const entry of stream) {

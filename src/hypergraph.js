@@ -285,6 +285,9 @@ module.exports = class Hypergraph extends ReadyResource {
 
     if (!entityId) throw new Error('entityId is required')
 
+    const node = await this.#view.getNode(entityId)
+    if (!node) throw new Error('Entity not found')
+
     const event = {
       type: 'content/append',
       entityId,
@@ -746,8 +749,9 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!this.#roleBase) throw new Error('RoleBase is not open')
     if (typeof pubkeyHex !== 'string' || pubkeyHex.length === 0) throw new Error('Invalid pubkeyHex')
 
-    const entry = await this.#roleBase.view.get(`roles:member:${pubkeyHex}`)
-    return entry && entry.value ? entry.value.role : null
+    const registry = await this.#roleBase.getRegistry()
+    if (!registry || !registry.members) return null
+    return registry.members[pubkeyHex] || null
   }
 
   /**
@@ -1169,45 +1173,6 @@ module.exports = class Hypergraph extends ReadyResource {
   // ========================================
 
   /**
-   * Announce this peer's presence to the graph.
-   * 
-   * @param {Object} [opts] - Announcement options
-   * @param {Object} [opts.metadata] - Optional metadata to include
-   * @returns {Promise<void>}
-   */
-  async announce (opts = {}) {
-    // Peer discovery is now handled by HypergraphNetwork
-    // This method is kept for backward compatibility
-  }
-
-  /**
-   * Discover other peers in the graph.
-   * 
-   * @param {Object} [opts] - Discovery options
-   * @returns {Promise<AsyncGenerator<Array<{userCoreKey: string, timestamp: number, metadata: Object|null}>>>}
-   *
-   * @deprecated Peer discovery is now handled by HypergraphNetwork using Hyperswarm's native peer discovery.
-   * This method is kept for backward compatibility but returns an empty generator.
-   */
-  async * discoverPeers (opts = {}) {
-    // Peer discovery is now handled by HypergraphNetwork
-    yield []
-  }
-
-  /**
-   * Get the list of known peers.
-   * 
-   * @returns {Array<{userCoreKey: string, timestamp: number, metadata: Object|null}>}
-   *
-   * @deprecated Peer discovery is now handled by HypergraphNetwork using Hyperswarm's native peer discovery.
-   * This method is kept for backward compatibility but returns an empty array.
-   */
-  listPeers () {
-    // Peer discovery is now handled by HypergraphNetwork
-    return []
-  }
-
-  /**
    * Handle a peer connection for automatic writer authorization.
    * This should be called when a peer connects via Hyperswarm.
    * Follows the forum-web pattern for peer discovery using relation edges.
@@ -1290,50 +1255,39 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Handle a peer disconnection.
-   * 
-   * @param {Buffer} peerKey - The peer's public key
-   * @param {Object} [opts] - Additional options
-   * @returns {Promise<void>}
-   */
-  async handlePeerDisconnection (peerKey, opts = {}) {
-    // Peer discovery is now handled by HypergraphNetwork
-    // This method is kept for backward compatibility
-  }
-
-  /**
-   * Register an event listener for peer-related events.
-   * 
-   * @param {string} event - Event name ('peer-join', 'peer-leave')
-   * @param {Function} callback - Callback function
+   * Register an event listener.
+   *
+   * Hypergraph currently only emits `'change'`. Peer discovery events
+   * (`'peer-join'`, `'peer-leave'`) are emitted by `HypergraphNetwork`, not
+   * by Hypergraph itself — subscribe on your `HypergraphNetwork` instance
+   * for those.
+   *
+   * @param   {string}   event - Event name (only `'change'` is supported)
+   * @param   {Function} callback
    * @returns {this}
+   * @throws  {Error} If `event` is not `'change'`
    */
   on (event, callback) {
-    if (event === 'change') {
-      this.#emitter.on('change', callback)
-    } else {
-      // Peer discovery events are now handled by HypergraphNetwork
-      // This is kept for backward compatibility
-      this.#emitter.on(event, callback)
+    if (event !== 'change') {
+      throw new Error(`Unsupported event '${event}'. Hypergraph only emits 'change'; peer discovery events are emitted by HypergraphNetwork.`)
     }
+    this.#emitter.on('change', callback)
     return this
   }
 
   /**
    * Remove an event listener.
-   * 
-   * @param {string} event - Event name
-   * @param {Function} callback - Callback function
+   *
+   * @param   {string}   event - Event name (only `'change'` is supported)
+   * @param   {Function} callback
    * @returns {this}
+   * @throws  {Error} If `event` is not `'change'`
    */
   off (event, callback) {
-    if (event === 'change') {
-      this.#emitter.off('change', callback)
-    } else {
-      // Peer discovery events are now handled by HypergraphNetwork
-      // This is kept for backward compatibility
-      this.#emitter.off(event, callback)
+    if (event !== 'change') {
+      throw new Error(`Unsupported event '${event}'. Hypergraph only emits 'change'; peer discovery events are emitted by HypergraphNetwork.`)
     }
+    this.#emitter.off('change', callback)
     return this
   }
 
@@ -1415,7 +1369,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
   /**
    * Connect to a Hyperswarm topic for P2P networking.
-   * This is a convenience method that uses HypergraphNetworking internally.
+   * This is a convenience method that uses HypergraphNetwork internally.
    *
    * @param {Buffer|string} topic - Hyperswarm topic (Buffer or hex string)
    * @param {Object} [opts] - Connection options
@@ -1423,12 +1377,13 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
    * @param {Object<string, string|Buffer>} [opts.contexts] - Context keys for writer authorization (key-value pairs)
    * @param {number} [opts.maxPeers=16] - Maximum peers per swarm
-   * @returns {Promise<Object>} The HypergraphNetworking instance
+   * @returns {Promise<Object>} The HypergraphNetwork instance
    */
   async connectToSwarm (topic, opts = {}) {
-    const HypergraphNetworking = require('./networking')
-    const networking = new HypergraphNetworking(this, this.#store, {
-      dataSwarm: opts.swarm,
+    const HypergraphNetwork = require('./networking')
+    const Hyperswarm = require('hyperswarm')
+    const swarm = opts.swarm || new Hyperswarm()
+    const networking = new HypergraphNetwork(this, this.#store, swarm, {
       topic,
       role: opts.role || 'peer',
       contexts: opts.contexts || {},
@@ -1441,7 +1396,7 @@ module.exports = class Hypergraph extends ReadyResource {
   /**
    * Disconnect from a Hyperswarm topic.
    *
-   * @param {Object} networking - The HypergraphNetworking instance from connectToSwarm
+   * @param {Object} networking - The HypergraphNetwork instance from connectToSwarm
    * @returns {Promise<void>}
    */
   async disconnectFromSwarm (networking) {

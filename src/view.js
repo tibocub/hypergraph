@@ -437,6 +437,38 @@ module.exports = class GraphView extends ReadyResource {
   }
 
   /**
+   * Check whether an entity has been tagged with a given tag, in any context.
+   *
+   * Tag refs live in each ContextBase's own Hyperbee view (not the top-level
+   * graph view), so this scans across all attached contexts.
+   *
+   * @param {string} entityId - The entity id to check
+   * @param {string} tag - The tag to check for
+   * @returns {Promise<boolean>}
+   */
+  async hasTag (entityId, tag) {
+    if (!this.opened) await this.ready()
+
+    const prefix = `tref:${tag}:${entityId}:`
+
+    for (const [name, context] of this.#contexts) {
+      if (!context.opened) continue
+
+      const stream = context.view.createReadStream({
+        gte: prefix,
+        lt: prefix + '\uffff',
+        limit: 1
+      })
+
+      for await (const entry of stream) {
+        if (entry && entry.key && entry.key.startsWith(prefix)) return true
+      }
+    }
+
+    return false
+  }
+
+  /**
    * Get entities by type from the view.
    *
    * @param {string} type - The entity type to filter by (use '*' or null for all types)

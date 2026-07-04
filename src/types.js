@@ -312,18 +312,6 @@
  * @property {Function} createReadStream - Create a readable stream
  */
 
-/**
- * PeerDiscovery instance - manages peer announcements and discovery.
- * @typedef {Object} PeerDiscovery
- * @property {Function} announce - Announce presence to the graph
- * @property {Function} discoverPeers - Discover other peers
- * @property {Function} listPeers - Get list of known peers
- * @property {Function} handlePeerConnection - Handle a peer connection
- * @property {Function} handlePeerDisconnection - Handle a peer disconnection
- * @property {Function} on - Register an event listener
- * @property {Function} off - Remove an event listener
- */
-
 
 
 

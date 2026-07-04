@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Test suite refactor (from-scratch rewrite, no backward compatibility)
+Rewrote the entire test suite from scratch to test the intended, current API rather than
+legacy/historical behavior. Old ad-hoc test files (`basic.js`, `identity.js`, `ordering.js`,
+`moderation.js`, `integration.js`, `hyperswarm.js`, `networking.js`, and the non-brittle
+`replication-scenarios.js` script) were removed and replaced with:
+- `test/brittle/core/` — entities, identity-manager, identity-graph, contexts, relations,
+  tags, query, roles, moderation, events. All run locally with no network access and are
+  fully verified (60 tests, 143 assertions).
+- `test/brittle/networking/` — HypergraphNetwork, peer connection, bootstrap/export,
+  connectToSwarm. Two files (`bootstrap-export.js`, most of `connect-to-swarm.js`) run
+  locally; the rest need a real Hyperswarm/DHT connection.
+- `test/brittle/replication/` — late-joiner, concurrent-writes, peer-reconnection,
+  HypergraphNetwork integration. All need a real DHT connection to run.
+- `test/brittle/integration/full-app-flow.js` — a single-process end-to-end flow through
+  identity, entities, content, relations, tags, roles, moderation, query, and export/join.
+- `test/brittle/forum/` — unchanged, still passing (12 tests, 43 assertions).
+
+npm scripts were reorganized into one script per test module (`npm run test:entities`,
+`test:roles`, `test:queries`, `test:moderation`, `test:replication`, etc.) plus grouped
+scripts (`test:core`, `test:networking`, `test:replication`) and a top-level `npm test`
+that runs everything. See `package.json`.
+
+Per-module perf/stress tests remain deliberately out of scope for now (moderation stress
+scenarios); reliability/correctness is the current focus.
+
+### Fixed
+Writing real tests against the actual API surface (rather than through the historical
+happy-path scripts) surfaced several previously-undetected bugs, none of which had any
+test coverage before this refactor:
+- **`getRole()` always crashed.** It read a non-existent `RoleBase.view` property; fixed
+  to use the existing `getRegistry()` accessor (same one `can()` already used correctly).
+- **`GraphQuery.tag()` always returned zero results.** It queried the top-level graph
+  view's own Hyperbee, but tag refs are written into each context's own per-context
+  Hyperbee. Added `GraphView.hasTag()` and pointed `.tag()` at it.
+- **`GraphQuery.reverse()` did nothing.** The `#reverse` flag was set but never read
+  anywhere in the iterator; now passed through to the underlying `createReadStream`.
+- **`IdentityManager.init()` never awaited `bootstrap()`**, even though it's an async
+  method, so `attestationProof` silently held a `Promise` instead of a real proof. Only
+  surfaced once something tried to actually use the proof (e.g. `attestDevice()`), which
+  then crashed. Old tests only checked truthiness, which a Promise also satisfies.
+- **`putContent()` accepted content for entities that don't exist.** Now throws
+  `Entity not found`, matching `del()`'s existing behavior, instead of silently writing
+  orphaned content events.
+- **`connectToSwarm()` always threw `"Topic is required"`.** It passed the options object
+  as the 3rd positional constructor argument (`swarm`) instead of passing `swarm` and
+  `opts` separately, so `HypergraphNetwork` never actually received a `topic`. Also never
+  auto-created a Hyperswarm when `opts.swarm` was omitted, despite the docstring promising
+  it would; both are fixed.
+- **Two redundant `openRoleBase()` calls crashed with `"Autobase failed to open"`.**
+  `createRoleBase()` already attaches the created RoleBase to the graph; calling
+  `openRoleBase()` again immediately afterward (previously present in three moderation
+  tests) closed and reopened it, crashing Autobase. Removed the redundant calls.
+
+### Removed (no backward compatibility)
+- `Hypergraph#announce()`, `#discoverPeers()`, `#listPeers()` — dead no-ops kept only for
+  backward compatibility. Peer discovery is exclusively `HypergraphNetwork`'s
+  responsibility now (`peer-join`/`peer-leave` events on the `HypergraphNetwork` instance).
+- `Hypergraph#handlePeerDisconnection()` — also a dead no-op with the same rationale.
+- `Hypergraph#on()`/`#off()` no longer silently accept arbitrary event names. They only
+  support `'change'` (the only event Hypergraph itself ever emits) and now throw for
+  anything else — including `'peer-join'`/`'peer-leave'`, which were never actually wired
+  up to fire on `Hypergraph` (only `HypergraphNetwork` emits those). Previously, code that
+  called `graph.on('peer-join', ...)` would register a listener that could never fire,
+  with no error to indicate the mistake.
+- The stale `PeerDiscovery` JSDoc typedef in `src/types.js`, describing a module that was
+  already deleted in a previous refactor.
+
+### Known gaps (deliberately left unaddressed for now)
+- Closed-mode context write authorization (`test/brittle/core/contexts.js`, two skipped
+  tests) requires a peer to already be a writer before opening an existing context, which
+  conflicts with Autobase's open-then-authorize model. This needs an application-level
+  redesign (role check gating `addWriter`/`append`), not a test fix. Tracked for follow-up.
+- Moderation stress/perf scenarios (many flaggers, adversarial spam, competing trust sets)
+  remain skipped; out of scope until the moderation event model has stabilized.
+
 ### Added
 - Contributor documentation in `docs/architecture.md` with low-level architecture details
 - Platform-specific considerations section to README for Windows file locking issues

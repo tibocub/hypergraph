@@ -7,18 +7,29 @@
     "hypergraph-inspect": "bin/hypergraph-inspector.js"
   },
   "scripts": {
-    "test": "npm run test:all",
-    "test:all": "npm run test:brittle && npm run test:forum:brittle && npm run test:forum",
-    "test:brittle": "npx brittle test/brittle/*.js test/brittle/tools/*.js",
-    "test:forum": "node examples/forum/test-runner.js",
-    "test:forum:brittle": "npx brittle test/brittle/forum/index.js",
+    "test": "npm run test:core && npm run test:networking && npm run test:replication && npm run test:forum && npm run test:integration",
+    "test:entities": "npx brittle test/brittle/core/entities.js",
+    "test:events": "npx brittle test/brittle/core/events.js",
+    "test:identity-manager": "npx brittle test/brittle/core/identity-manager.js test/brittle/core/identity-graph.js",
+    "test:contexts": "npx brittle test/brittle/core/contexts.js",
+    "test:relations": "npx brittle test/brittle/core/relations.js",
+    "test:tags": "npx brittle test/brittle/core/tags.js",
+    "test:queries": "npx brittle test/brittle/core/query.js",
+    "test:roles": "npx brittle test/brittle/core/roles.js",
+    "test:moderation": "npx brittle test/brittle/core/moderation.js",
+    "test:core": "npx brittle test/brittle/core/*.js",
+    "test:hypergraph-network": "npx brittle test/brittle/networking/hypergraph-network.js",
+    "test:connect-to-swarm": "npx brittle test/brittle/networking/connect-to-swarm.js",
+    "test:peer-connection": "npx brittle test/brittle/networking/peer-connection.js",
+    "test:bootstrap-export": "npx brittle test/brittle/networking/bootstrap-export.js",
+    "test:networking": "npx brittle test/brittle/networking/*.js",
+    "test:replication": "npx brittle test/brittle/replication/*.js",
+    "test:forum": "npx brittle test/brittle/forum/index.js",
+    "test:integration": "npx brittle test/brittle/integration/*.js",
     "populate:inspector": "node scripts/populate-inspector-fixture.js",
     "validate:roles": "node scripts/validate-roles.js",
     "forum:web:owner": "node examples/forum-web/peer.js --name=owner --role=owner --topic=hyper-bbs-forum-demo",
     "forum:web:peer": "node examples/forum-web/peer.js --name=peer --role=peer --topic=hyper-bbs-forum-demo",
-    "test:legacy": "node test/hypergraph.js",
-    "test:legacy:integration": "node test/hypergraph-integration.js",
-    "test:legacy:hyperswarm": "node test/hypergraph-hyperswarm.js",
     "docs": "jsdoc -c jsdoc.json"
   },
   "dependencies": {
@@ -32,7 +43,6 @@
     "keet-identity-key": "^3.2.0"
   },
   "devDependencies": {
-    "better-docs": "^2.7.3",
     "brittle": "^3.0.0",
     "hyperswarm": "^4.17.0",
     "random-access-memory": "^3.0.0"
