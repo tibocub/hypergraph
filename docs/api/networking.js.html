@@ -1,0 +1,337 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> networking.js</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    Documentation
+                </a>
+                
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Source</p>
+                    <h1>networking.js</h1>
+                </header>
+                
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>const EventEmitter = require('events')
+const safetyCatch = require('safety-catch')
+const crypto = require('crypto')
+const b4a = require('b4a')
+
+function sleep (ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function withTimeout (promise, ms) {
+  return await Promise.race([
+    promise,
+    sleep(ms).then(() => null)
+  ])
+}
+
+/**
+ * HypergraphNetworking - Helper class for Hypergraph + Hyperswarm integration
+ * 
+ * This class provides a simple networking solution for Hypergraph applications by:
+ * - Using a single Hyperswarm for core replication via store.replicate(conn)
+ * - Automatically calling store.replicate(conn) on every connection
+ * - Handling writer authorization via context keys (simplified approach)
+ * - Sensible defaults for simple use cases, options for advanced customization
+ * 
+ * Simplified approach:
+ * - Single swarm for data replication (matches old hypergraph approach)
+ * - Writer authorization handled via context keys (simplified approach)
+ * - No separate control swarm or protomux (simpler, more reliable)
+ * - Can be extended with control swarm later if needed
+ *
+ * @example
+ * const networking = new HypergraphNetworking(graph, store, {
+ *   topic: myTopic
+ * })
+ * await networking.connect()
+ *
+ * Advanced mode (custom swarm):
+ * @example
+ * const customSwarm = new Hyperswarm({ maxPeers: 8 })
+ * const networking = new HypergraphNetworking(graph, store, {
+ *   topic: myTopic,
+ *   swarm: customSwarm
+ * })
+ * await networking.connect()
+ */
+module.exports = class HypergraphNetworking extends EventEmitter {
+  #graph
+  #store
+  #swarm
+  #topic
+  #maxPeers
+  #connected = false
+  #ownsSwarm = false
+  #peerConnections = new Set()
+
+  /**
+   * @param {Object} graph - Hypergraph instance
+   * @param {Object} store - Corestore instance
+   * @param {Object} opts - Configuration options
+   * @param {Buffer|string} opts.topic - Hyperswarm topic (Buffer or hex string)
+   * @param {number} [opts.maxPeers=16] - Maximum peers
+   * @param {Object} [opts.swarm] - Optional custom swarm
+   */
+  constructor (graph, store, opts = {}) {
+    super()
+    this.#graph = graph
+    this.#store = store
+    this.#topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
+    this.#maxPeers = opts.maxPeers || 16
+    this.#swarm = opts.swarm || null
+    this.#ownsSwarm = !opts.swarm
+
+    if (!this.#topic) {
+      throw new Error('Topic is required')
+    }
+  }
+
+  /**
+   * Handle connection - replicate cores
+   * @private
+   */
+  _handleConnection (conn, info) {
+    // Replicate the entire store (includes usercore, viewcore, context cores)
+    // Corestore replicates all cores loaded in memory
+    this.#store.replicate(conn)
+    this.emit('connection', { conn, info })
+  }
+
+  /**
+   * Connect to the Hyperswarm topic
+   */
+  async connect () {
+    if (this.#connected) return
+
+    const Hyperswarm = require('hyperswarm')
+
+    // Create swarm if not provided
+    if (!this.#swarm) {
+      this.#swarm = new Hyperswarm({ maxPeers: this.#maxPeers })
+    }
+
+    // Set up connection handler
+    this.#swarm.on('connection', (conn, info) => {
+      this.#peerConnections.add(conn)
+      this._handleConnection(conn, info)
+
+      const peerKey = info &amp;&amp; info.publicKey ? info.publicKey.toString('hex') : 'unknown'
+      this.emit('peer-join', { peerKey, conn, info })
+
+      conn.on('error', (err) => {
+        safetyCatch(err)
+        this.emit('peer-error', { peerKey, err })
+      })
+
+      conn.on('close', () => {
+        this.#peerConnections.delete(conn)
+        this.emit('peer-leave', { peerKey, conn, info })
+      })
+    })
+
+    // Join topic
+    const discovery = this.#swarm.join(this.#topic, { server: true, client: true })
+
+    // Wait for discovery and swarm to be ready with timeout
+    await withTimeout(discovery.flushed(), 10000)
+    await withTimeout(this.#swarm.flush(), 10000)
+
+    this.#connected = true
+    this.emit('connected')
+  }
+
+
+  /**
+   * Disconnect from the Hyperswarm topic
+   */
+  async disconnect () {
+    if (!this.#connected) return
+
+    // Leave topic
+    if (this.#swarm) {
+      this.#swarm.leave(this.#topic)
+      await this.#swarm.flush()
+    }
+
+    this.#connected = false
+    this.emit('disconnected')
+  }
+
+
+  /**
+   * Get the swarm instance
+   */
+  get swarm () {
+    return this.#swarm
+  }
+
+  /**
+   * Get the topic
+   */
+  get topic () {
+    return this.#topic
+  }
+
+  /**
+   * Check if connected
+   */
+  get connected () {
+    return this.#connected
+  }
+
+  /**
+   * Get the number of active peer connections
+   */
+  get peerCount () {
+    return this.#peerConnections.size
+  }
+
+  /**
+   * Wait for at least one peer connection
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 10000)
+   */
+  async waitForPeer (timeoutMs = 10000) {
+    if (this.#peerConnections.size > 0) return true
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.off('peer-join', onJoin)
+        reject(new Error(`No peer connection within ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      const onJoin = () => {
+        clearTimeout(timeout)
+        this.off('peer-join', onJoin)
+        resolve(true)
+      }
+
+      this.on('peer-join', onJoin)
+    })
+  }
+
+  /**
+   * Destroy the networking helper
+   * Disconnects and cleans up resources
+   */
+  async destroy () {
+    await this.disconnect()
+
+    // Only destroy swarm if we created it
+    if (this.#ownsSwarm) {
+      try {
+        if (this.#swarm) await this.#swarm.destroy()
+      } catch (err) {
+        safetyCatch(err)
+      }
+    }
+
+    this.removeAllListeners()
+  }
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+
+</body>
+</html>

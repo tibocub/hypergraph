@@ -1,0 +1,462 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> encodings/event.js</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    Documentation
+                </a>
+                
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Source</p>
+                    <h1>encodings/event.js</h1>
+                </header>
+                
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>const c = require('compact-encoding')
+const b4a = require('b4a')
+
+/**
+ * Compact encoding/decoding for hypergraph events.
+ *
+ * Provides binary encoding for graph events to minimize storage and transmission overhead.
+ * Supports entity creation, content append, relations, tags, identity updates, and more.
+ */
+
+// Event type constants - map from string to code
+const EVENT_TYPES = {
+  'entity/create': 1,
+  'entity/tombstone': 2,
+  'content/append': 3,
+  'relation/create': 4,
+  'relation/delete': 5,
+  'tag/add': 6,
+  'tag/remove': 7,
+  'identity/update': 8,
+  'addWriter': 9,
+  'roles/addWriter': 10,
+  'moderation/action': 11,
+  'message': 12
+}
+
+// Map from code to string
+const EVENT_TYPE_NAMES = {
+  1: 'entity/create',
+  2: 'entity/tombstone',
+  3: 'content/append',
+  4: 'relation/create',
+  5: 'relation/delete',
+  6: 'tag/add',
+  7: 'tag/remove',
+  8: 'identity/update',
+  9: 'addWriter',
+  10: 'roles/addWriter',
+  11: 'moderation/action',
+  12: 'message'
+}
+
+// Compact encoding for events
+const eventEncoding = {
+  preencode (state, event) {
+    c.uint.preencode(state, EVENT_TYPES[event.type] || 0)
+    c.uint.preencode(state, event.timestamp || 0)
+
+    switch (event.type) {
+      case 'entity/create':
+        c.string.preencode(state, event.id)
+        c.string.preencode(state, event.entityType)
+        c.string.preencode(state, event.author)
+        break
+
+      case 'entity/tombstone':
+        c.string.preencode(state, event.id)
+        c.string.preencode(state, event.author)
+        break
+
+      case 'content/append':
+        c.string.preencode(state, event.entityId)
+        c.string.preencode(state, event.contentType)
+        c.string.preencode(state, event.body)
+        break
+
+      case 'relation/create':
+        c.string.preencode(state, event.from)
+        c.string.preencode(state, event.to)
+        c.string.preencode(state, event.relationType)
+        c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'relation/delete':
+        c.string.preencode(state, event.from)
+        c.string.preencode(state, event.to)
+        c.string.preencode(state, event.relationType)
+        c.string.preencode(state, event.author)
+        c.uint.preencode(state, event.createdAt || 0)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'tag/add':
+      case 'tag/remove':
+        c.string.preencode(state, event.entityId)
+        c.string.preencode(state, event.tag)
+        c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'identity/update':
+        c.string.preencode(state, event.author)
+        c.string.preencode(state, event.username)
+        c.string.preencode(state, event.bio || '')
+        break
+
+      case 'addWriter':
+      case 'roles/addWriter':
+        c.string.preencode(state, event.key)
+        if (event.author) c.string.preencode(state, event.author)
+        if (event.timestamp) c.uint.preencode(state, event.timestamp)
+        break
+
+      case 'moderation/action':
+        c.uint.preencode(state, event.version || 1)
+        c.string.preencode(state, event.action)
+        c.string.preencode(state, event.target)
+        c.string.preencode(state, event.reason || '')
+        c.string.preencode(state, event.context || '')
+        c.string.preencode(state, event.author)
+        c.uint.preencode(state, event.timestamp)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'message':
+        c.string.preencode(state, event.text)
+        c.string.preencode(state, event.username)
+        c.string.preencode(state, event.author)
+        break
+    }
+  },
+
+  encode (state, event) {
+    c.uint.encode(state, EVENT_TYPES[event.type] || 0)
+    c.uint.encode(state, event.timestamp || 0)
+
+    switch (event.type) {
+      case 'entity/create':
+        c.string.encode(state, event.id)
+        c.string.encode(state, event.entityType)
+        c.string.encode(state, event.author)
+        break
+
+      case 'entity/tombstone':
+        c.string.encode(state, event.id)
+        c.string.encode(state, event.author)
+        break
+
+      case 'content/append':
+        c.string.encode(state, event.entityId)
+        c.string.encode(state, event.contentType)
+        c.string.encode(state, event.body)
+        break
+
+      case 'relation/create':
+        c.string.encode(state, event.from)
+        c.string.encode(state, event.to)
+        c.string.encode(state, event.relationType)
+        c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'relation/delete':
+        c.string.encode(state, event.from)
+        c.string.encode(state, event.to)
+        c.string.encode(state, event.relationType)
+        c.string.encode(state, event.author)
+        c.uint.encode(state, event.createdAt || 0)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'tag/add':
+      case 'tag/remove':
+        c.string.encode(state, event.entityId)
+        c.string.encode(state, event.tag)
+        c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'identity/update':
+        c.string.encode(state, event.author)
+        c.string.encode(state, event.username)
+        c.string.encode(state, event.bio || '')
+        break
+
+      case 'addWriter':
+      case 'roles/addWriter':
+        c.string.encode(state, event.key)
+        if (event.author) c.string.encode(state, event.author)
+        if (event.timestamp) c.uint.encode(state, event.timestamp)
+        break
+
+      case 'moderation/action':
+        c.uint.encode(state, event.version || 1)
+        c.string.encode(state, event.action)
+        c.string.encode(state, event.target)
+        c.string.encode(state, event.reason || '')
+        c.string.encode(state, event.context || '')
+        c.string.encode(state, event.author)
+        c.uint.encode(state, event.timestamp)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'message':
+        c.string.encode(state, event.text)
+        c.string.encode(state, event.username)
+        c.string.encode(state, event.author)
+        break
+    }
+  },
+
+  decode (state) {
+    const typeCode = c.uint.decode(state)
+    const timestamp = c.uint.decode(state)
+    const type = EVENT_TYPE_NAMES[typeCode]
+
+    const event = { type, timestamp }
+
+    switch (type) {
+      case 'entity/create':
+        event.id = c.string.decode(state)
+        event.entityType = c.string.decode(state)
+        event.author = c.string.decode(state)
+        break
+
+      case 'entity/tombstone':
+        event.id = c.string.decode(state)
+        event.author = c.string.decode(state)
+        break
+
+      case 'content/append':
+        event.entityId = c.string.decode(state)
+        event.contentType = c.string.decode(state)
+        event.body = c.string.decode(state)
+        break
+
+      case 'relation/create':
+        event.from = c.string.decode(state)
+        event.to = c.string.decode(state)
+        event.relationType = c.string.decode(state)
+        event.author = c.string.decode(state)
+        const sig1 = c.buffer.decode(state)
+        event.signature = sig1.length > 0 ? sig1.toString('hex') : null
+        break
+
+      case 'relation/delete':
+        event.from = c.string.decode(state)
+        event.to = c.string.decode(state)
+        event.relationType = c.string.decode(state)
+        event.author = c.string.decode(state)
+        event.createdAt = c.uint.decode(state)
+        const sig2 = c.buffer.decode(state)
+        event.signature = sig2.length > 0 ? sig2.toString('hex') : null
+        break
+
+      case 'tag/add':
+      case 'tag/remove':
+        event.entityId = c.string.decode(state)
+        event.tag = c.string.decode(state)
+        event.author = c.string.decode(state)
+        const sig3 = c.buffer.decode(state)
+        event.signature = sig3.length > 0 ? sig3.toString('hex') : null
+        break
+
+      case 'identity/update':
+        event.author = c.string.decode(state)
+        event.username = c.string.decode(state)
+        event.bio = c.string.decode(state) || null
+        break
+
+      case 'addWriter':
+      case 'roles/addWriter':
+        event.key = c.string.decode(state)
+        if (state.end > state.start) {
+          // Check if there are more fields (author, timestamp)
+          // These fields are optional for backward compatibility
+          // Try-catch handles both old format (key only) and new format (key + author + timestamp)
+          try {
+            event.author = c.string.decode(state)
+            if (state.end > state.start) {
+              event.timestamp = c.uint.decode(state)
+            }
+          } catch {
+            // No more fields - old format event
+          }
+        }
+        break
+
+      case 'moderation/action':
+        event.version = c.uint.decode(state)
+        event.action = c.string.decode(state)
+        event.target = c.string.decode(state)
+        event.reason = c.string.decode(state) || null
+        event.context = c.string.decode(state) || null
+        event.author = c.string.decode(state)
+        event.timestamp = c.uint.decode(state)
+        const sig4 = c.buffer.decode(state)
+        event.signature = sig4.length > 0 ? sig4.toString('hex') : null
+        break
+
+      case 'message':
+        event.text = c.string.decode(state)
+        event.username = c.string.decode(state)
+        event.author = c.string.decode(state)
+        break
+    }
+
+    return event
+  }
+}
+
+/**
+ * Encode an event to a binary buffer.
+ *
+ * @param {Object} event - The event to encode
+ * @returns {Buffer} The encoded event as a Buffer
+ */
+function encodeEvent (event) {
+  const state = { start: 0, end: 0, buffer: null }
+  eventEncoding.preencode(state, event)
+  state.buffer = b4a.allocUnsafe(state.end)
+  eventEncoding.encode(state, event)
+  return state.buffer
+}
+
+/**
+ * Decode an event from a binary buffer.
+ *
+ * @param {Buffer} buffer - The binary buffer to decode
+ * @returns {Object|null} The decoded event, or null if buffer is falsy
+ */
+function decodeEvent (buffer) {
+  if (!buffer) return null
+  const state = { start: 0, end: buffer.length, buffer }
+  return eventEncoding.decode(state)
+}
+
+/**
+ * Event encoding exports.
+ *
+ * @module event-encoding
+ * @property {Object} eventEncoding - The compact-encoding state machine for events
+ * @property {Function} encodeEvent - Function to encode events to binary
+ * @property {Function} decodeEvent - Function to decode events from binary
+ * @property {Object} EVENT_TYPES - Mapping from event type strings to numeric codes
+ * @property {Object} EVENT_TYPE_NAMES - Mapping from numeric codes to event type strings
+ */
+module.exports = {
+  eventEncoding,
+  encodeEvent,
+  decodeEvent,
+  EVENT_TYPES,
+  EVENT_TYPE_NAMES
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+
+</body>
+</html>

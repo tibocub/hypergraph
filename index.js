@@ -4,7 +4,7 @@ const ContextBase = require('./src/context-base')
 const RoleBase = require('./src/role-base')
 const GraphView = require('./src/view')
 const GraphQuery = require('./src/query')
-const HypergraphNetworking = require('./src/networking')
+const HypergraphNetwork = require('./src/networking')
 //const tools = require('./tools')
 
 /**
@@ -29,7 +29,7 @@ const HypergraphNetworking = require('./src/networking')
  * @property {typeof RoleBase} RoleBase - Role-based access control system
  * @property {typeof GraphView} GraphView - Materialized view for graph operations
  * @property {typeof GraphQuery} GraphQuery - Query builder for graph traversal
- * @property {typeof HypergraphNetworking} HypergraphNetworking - Helper class for Hyperswarm integration
+ * @property {typeof HypergraphNetwork} HypergraphNetwork - Helper class for Hyperswarm integration
  * @property {Object} tools - Developer tools and utilities
  */
 module.exports = {
@@ -39,6 +39,6 @@ module.exports = {
   RoleBase,
   GraphView,
   GraphQuery,
-  HypergraphNetworking,
+  HypergraphNetwork,
   // tools
 }

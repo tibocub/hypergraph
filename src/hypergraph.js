@@ -11,12 +11,11 @@ const ContextBase = require('./context-base')
 const RoleBase = require('./role-base')
 const GraphView = require('./view')
 const GraphQuery = require('./query')
-const PeerDiscovery = require('./peer-discovery')
 const IdentityManager = require('./identity-manager')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
-const { toSortableTs } = require('./utils')
+const { toSortableTs, stableTagHash } = require('./utils')
 
 
 /**
@@ -26,7 +25,9 @@ const { toSortableTs } = require('./utils')
  * Hyperbee. It exposes a local graph API; networking is the responsibility of
  * the application (typically via Hyperswarm).
  *
+ * @class Hypergraph
  * @extends ReadyResource
+ * @module hypergraph
  */
 module.exports = class Hypergraph extends ReadyResource {
   #store
@@ -38,13 +39,12 @@ module.exports = class Hypergraph extends ReadyResource {
   #valueEncoding
   #userCoreKey
   #roleBase
-  #peerDiscovery
   #emitter
   identity
 
   /**
-   * @param {import('corestore')} store
-   * @param {HypergraphOpts}      [opts]
+   * @param {Object} store - Corestore instance for core management
+   * @param {HypergraphOpts} [opts] - Configuration options
    */
   constructor (store, opts = {}) {
     super()
@@ -67,16 +67,7 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#contexts = new Map()
     this.#view = null
     this.#roleBase = null
-    this.#peerDiscovery = new PeerDiscovery(this)
     this.#emitter = new EventEmitter()
-
-    // Forward peer discovery events to unified change event
-    this.#peerDiscovery.on('peer-join', (peerInfo) => {
-      this.#emitter.emit('change', { type: 'peer-join', ...peerInfo })
-    })
-    this.#peerDiscovery.on('peer-leave', (peerInfo) => {
-      this.#emitter.emit('change', { type: 'peer-leave', ...peerInfo })
-    })
 
     this.ready().catch(safetyCatch)
   }
@@ -139,7 +130,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
 // ── Getters ──────────────────────────────────────────────────────────────
 
-  /** @returns {import('hypercore')|undefined} The raw user Hypercore (used for replication). */
+  /** @returns {Hypercore|undefined} The raw user Hypercore (used for replication). */
   get core () {
     return this.#userCore?.core
   }
@@ -149,7 +140,7 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.#view
   }
 
-	/** @returns {import('hypercore')|undefined} The raw view Hypercore. */
+	/** @returns {Hypercore|undefined} The raw view Hypercore. */
   get viewCore () {
     return this.#view?.bee?.core
   }
@@ -586,8 +577,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
-    // TODO: Re-enable author check once signature verification is re-enabled
-    // if (node.author !== author) throw new Error('Only the entity author can tag it')
+    if (node.author !== author) throw new Error('Only the entity author can tag it')
 
     const context = await this.#getContext(opts.context)
 
@@ -600,7 +590,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = this.#stableTagHash(event)
+    const digest = stableTagHash(event)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -645,7 +635,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = this.#stableTagHash(event)
+    const digest = stableTagHash(event)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -830,7 +820,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * Requires '*' privilege. Adds the writer core and assigns the owner role.
    *
    * @param {PubKeyHex} memberPubkeyHex - The new owner's hex public key
-   * @param {import('hypercore')} writerCore - The writer core to add
+   * @param {Object} writerCore - The writer core to add
    * @param {Object} opts - Options object
    * @param {PubKeyHex} opts.author - The author's hex public key (must have '*' privilege)
    * @returns {Promise<void>}
@@ -885,23 +875,6 @@ module.exports = class Hypergraph extends ReadyResource {
 
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
-
-  #stableTagHash (event) {
-    const payload = {
-      entityId: event.entityId,
-      tag: event.tag
-    }
-
-    const msg = {
-      op: event.type,
-      payload,
-      author: event.author,
-      timestamp: event.timestamp
-    }
-
-    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
-  }
-
 
   /**
    * Publish a signed moderation action into a context.
@@ -1203,7 +1176,8 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Promise<void>}
    */
   async announce (opts = {}) {
-    return this.#peerDiscovery.announce(opts)
+    // Peer discovery is now handled by HypergraphNetwork
+    // This method is kept for backward compatibility
   }
 
   /**
@@ -1211,18 +1185,26 @@ module.exports = class Hypergraph extends ReadyResource {
    * 
    * @param {Object} [opts] - Discovery options
    * @returns {Promise<AsyncGenerator<Array<{userCoreKey: string, timestamp: number, metadata: Object|null}>>>}
+   *
+   * @deprecated Peer discovery is now handled by HypergraphNetwork using Hyperswarm's native peer discovery.
+   * This method is kept for backward compatibility but returns an empty generator.
    */
-  async discoverPeers (opts = {}) {
-    return this.#peerDiscovery.discoverPeers(opts)
+  async * discoverPeers (opts = {}) {
+    // Peer discovery is now handled by HypergraphNetwork
+    yield []
   }
 
   /**
    * Get the list of known peers.
    * 
    * @returns {Array<{userCoreKey: string, timestamp: number, metadata: Object|null}>}
+   *
+   * @deprecated Peer discovery is now handled by HypergraphNetwork using Hyperswarm's native peer discovery.
+   * This method is kept for backward compatibility but returns an empty array.
    */
   listPeers () {
-    return this.#peerDiscovery.listPeers()
+    // Peer discovery is now handled by HypergraphNetwork
+    return []
   }
 
   /**
@@ -1236,8 +1218,8 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Promise<void>}
    */
   async handlePeerConnection (peerKey, contextKey, opts = {}) {
-    // Handle peer discovery
-    await this.#peerDiscovery.handlePeerConnection(peerKey, opts)
+    // Peer discovery is now handled by HypergraphNetwork
+    // This method is kept for backward compatibility
 
     // Handle writer authorization for the specified context
     if (contextKey) {
@@ -1315,7 +1297,8 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Promise<void>}
    */
   async handlePeerDisconnection (peerKey, opts = {}) {
-    return this.#peerDiscovery.handlePeerDisconnection(peerKey, opts)
+    // Peer discovery is now handled by HypergraphNetwork
+    // This method is kept for backward compatibility
   }
 
   /**
@@ -1329,7 +1312,9 @@ module.exports = class Hypergraph extends ReadyResource {
     if (event === 'change') {
       this.#emitter.on('change', callback)
     } else {
-      this.#peerDiscovery.on(event, callback)
+      // Peer discovery events are now handled by HypergraphNetwork
+      // This is kept for backward compatibility
+      this.#emitter.on(event, callback)
     }
     return this
   }
@@ -1345,7 +1330,9 @@ module.exports = class Hypergraph extends ReadyResource {
     if (event === 'change') {
       this.#emitter.off('change', callback)
     } else {
-      this.#peerDiscovery.off(event, callback)
+      // Peer discovery events are now handled by HypergraphNetwork
+      // This is kept for backward compatibility
+      this.#emitter.off(event, callback)
     }
     return this
   }
@@ -1393,7 +1380,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * Join a graph using a bootstrap object.
    * This is a static method that creates a new Hypergraph instance.
    * 
-   * @param {import('corestore')} store - Corestore instance
+   * @param {Object} store - Corestore instance
    * @param {{version: number, userCoreKey: string, contexts: Array<{key: string, writeMode: 'open' | 'closed'}>, timestamp: number}} bootstrap - Bootstrap object from graph.export()
    * @param {Object} [opts] - Additional options
    * @returns {Promise<Hypergraph>}
@@ -1432,11 +1419,11 @@ module.exports = class Hypergraph extends ReadyResource {
    *
    * @param {Buffer|string} topic - Hyperswarm topic (Buffer or hex string)
    * @param {Object} [opts] - Connection options
-   * @param {import('hyperswarm')} [opts.swarm] - Hyperswarm instance (optional, will create if not provided)
+   * @param {Object} [opts.swarm] - Hyperswarm instance (optional, will create if not provided)
    * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
    * @param {Object<string, string|Buffer>} [opts.contexts] - Context keys for writer authorization (key-value pairs)
    * @param {number} [opts.maxPeers=16] - Maximum peers per swarm
-   * @returns {Promise<import('./networking')>} The HypergraphNetworking instance
+   * @returns {Promise<Object>} The HypergraphNetworking instance
    */
   async connectToSwarm (topic, opts = {}) {
     const HypergraphNetworking = require('./networking')
@@ -1454,7 +1441,7 @@ module.exports = class Hypergraph extends ReadyResource {
   /**
    * Disconnect from a Hyperswarm topic.
    *
-   * @param {import('./networking')} networking - The HypergraphNetworking instance from connectToSwarm
+   * @param {Object} networking - The HypergraphNetworking instance from connectToSwarm
    * @returns {Promise<void>}
    */
   async disconnectFromSwarm (networking) {
@@ -1484,7 +1471,7 @@ module.exports = class Hypergraph extends ReadyResource {
    *
    * Returns the user core, view core, and all context cores.
    *
-   * @returns {Array<import('hypercore')>} Array of Hypercore instances
+   * @returns {Array<Object>} Array of Hypercore instances
    */
   getCores () {
     const cores = [this.core, this.viewCore]

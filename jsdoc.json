@@ -1,0 +1,16 @@
+{
+  "source": {
+    "include": ["src", "docs"],
+    "includePattern": ".+\\.js(doc)?$",
+    "exclude": ["node_modules", "docs/api", "docs/contributors"]
+  },
+  "opts": {
+    "destination": "./docs/api",
+    "recurse": true,
+    "template": "node_modules/better-docs"
+  },
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false
+  }
+}

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> docs</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    Documentation
+                </a>
+                
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Module</p>
+                    <h1>docs</h1>
+                </header>
+                
+
+
+
+
+<section>
+
+<header>
+    
+        
+            
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description">Hypergraph Architecture
+
+Hypergraph is a minimal graph database optimized for P2P social apps on the Holepunch stack.
+It is a thin composition over Hypercore, Corestore, Autobase and Hyperbee.
+
+## Core Components
+
+- **UserCore**: Single-writer Hypercore storing user's identity and authored entities
+- **ContextBase**: Multi-writer Autobase storing shared graph data (relations, tags, moderation)
+- **RoleBase**: Manages access control and permissions for contexts
+- **GraphView**: Materialized view combining data from all cores for efficient querying
+- **GraphQuery**: Query builder for traversing the graph
+
+## Data Model
+
+- **Entities**: Nodes in the graph (posts, profiles, etc.) stored in UserCore
+- **Relations**: Edges connecting entities stored in ContextBase
+- **Tags**: Labels attached to entities stored in ContextBase
+- **Moderation**: Content moderation events stored in ContextBase
+
+## Identity System
+
+Hypergraph uses a dual-key identity system:
+- **Identity Key**: Long-term public key representing the user's identity
+- **Device Key**: Ephemeral key per device for signing operations
+
+This allows multiple devices to share the same identity while maintaining device-specific
+signing capabilities.
+
+## Contexts and Roles
+
+Contexts are isolated graph spaces with their own access control:
+- **Open contexts**: Anyone can write (e.g., public forums)
+- **Closed contexts**: Only authorized writers can contribute (e.g., private groups)
+
+Roles define permissions within contexts:
+- **Owner**: Full control including role management
+- **Moderator**: Can perform moderation actions
+- **Member**: Can read and write based on context settings
+
+## Networking
+
+Hypergraph exposes a local graph API; networking is the responsibility of the application.
+Typically done via Hyperswarm for P2P discovery and replication.
+
+## Querying
+
+GraphQuery provides a fluent API for querying the graph:
+- Filter by entity type, author, or custom criteria
+- Traverse relations in any direction
+- Limit and sort results
+- Stream results for large datasets</div>
+        
+
+        
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    
+
+    
+    <dt class="tag-see">See:</dt>
+    <dd class="tag-see">
+        <ul>
+            <li>hypergraph</li>
+        </ul>
+    </dd>
+    
+
+    
+
+    
+        <p class="tag-source">
+            <a href="docs.js.html" class="button">View Source</a>
+            <span>
+                <a href="docs.js.html">docs.js</a>, <a href="docs.js.html#line7">line 7</a>
+            </span>
+        </p>
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+    
+    </div>
+    
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+
+</body>
+</html>

@@ -26,7 +26,7 @@ module.exports = class RoleBase extends ReadyResource {
   /**
    * Create a new RoleBase instance.
    *
-   * @param {import('corestore')} store - Corestore instance for core management
+   * @param {Object} store - Corestore instance for core management
    * @param {Buffer|string|null} bootstrapKey - Autobase key to join existing RoleBase, or null to create new
    * @param {Object} [opts] - Configuration options
    * @param {Object} [opts.identity] - IdentityManager instance for signing
@@ -167,7 +167,7 @@ module.exports = class RoleBase extends ReadyResource {
   /**
    * Get the current role registry state.
    *
-   * @returns {Promise<import('./types').RoleRegistry|null>} The role registry, or null if not initialized
+   * @returns {Promise<Object|null>} The role registry, or null if not initialized
    */
   async getRegistry () {
     if (!this.opened) await this.ready()
@@ -180,7 +180,7 @@ module.exports = class RoleBase extends ReadyResource {
    *
    * Performs authorization checks for role modification events.
    *
-   * @param {import('./types').RoleEvent} event - The role event to append
+   * @param {Object} event - The role event to append
    * @returns {Promise<void>}
    * @throws {Error} If the event type is invalid, registry is missing, or authorization fails
    */
@@ -269,7 +269,7 @@ module.exports = class RoleBase extends ReadyResource {
    * Requires '*' privilege. Adds the writer core and assigns the owner role.
    *
    * @param {string} memberPubkeyHex - The new owner's hex public key
-   * @param {import('hypercore')} writerCore - The writer core to add
+   * @param {Object} writerCore - The writer core to add
    * @param {Object} [opts] - Options object
    * @param {string} [opts.author] - The author's hex public key (must have '*' privilege)
    * @returns {Promise<void>}

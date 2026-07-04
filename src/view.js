@@ -24,9 +24,9 @@ module.exports = class GraphView extends ReadyResource {
   /**
    * Create a new GraphView instance.
    *
-   * @param {import('hyperbee')} bee - The Hyperbee instance for the view
-   * @param {Map<string, import('./user-core')>} userCores - Map of user core keys to UserCore instances
-   * @param {Map<string, import('./context-base')>} contexts - Map of context names to ContextBase instances
+   * @param {Object} bee - The Hyperbee instance for the view
+   * @param {Map} userCores - Map of user core keys to UserCore instances
+   * @param {Map} contexts - Map of context names to ContextBase instances
    */
   constructor (bee, userCores, contexts) {
     super()
@@ -87,7 +87,7 @@ module.exports = class GraphView extends ReadyResource {
     // Nothing to close, bee is managed by Hypergraph
   }
 
-  /** @returns {import('hyperbee')} The underlying Hyperbee instance */
+  /** @returns {Object} The underlying Hyperbee instance */
   get bee () {
     return this.#bee
   }
@@ -246,7 +246,7 @@ module.exports = class GraphView extends ReadyResource {
    * Add a user core to the view.
    *
    * @param {string} keyHex - Hex-encoded public key of the user core
-   * @param {import('./user-core')} userCore - The UserCore instance
+   * @param {Object} userCore - The UserCore instance
    * @returns {void}
    */
   addUserCore (keyHex, userCore) {
@@ -269,7 +269,7 @@ module.exports = class GraphView extends ReadyResource {
    * Add a context to the view.
    *
    * @param {string} name - The context name/identifier
-   * @param {import('./context-base')} context - The ContextBase instance
+   * @param {Object} context - The ContextBase instance
    * @returns {void}
    */
   addContext (name, context) {

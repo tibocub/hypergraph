@@ -4,7 +4,7 @@
  * Create an initial role registry state with an owner.
  *
  * @param {string} ownerPubkeyHex - The owner's hex public key
- * @returns {import('./types').RoleRegistry} The initial registry state with default roles and permissions
+ * @returns {Object} The initial registry state with default roles and permissions
  * @throws {Error} If ownerPubkeyHex is not a valid non-empty string
  */
 function initRegistry (ownerPubkeyHex) {
@@ -32,9 +32,9 @@ function initRegistry (ownerPubkeyHex) {
  * This is a pure function that computes the next registry state based on the current state
  * and an event. Implements the state machine for role management.
  *
- * @param {import('./types').RoleRegistry|null} registry - Current registry state, or null if uninitialized
+ * @param {Object|null} registry - Current registry state, or null if uninitialized
  * @param {Object} event - The role event to apply
- * @returns {import('./types').RoleRegistry} The next registry state
+ * @returns {Object} The next registry state
  * @throws {Error} If the event type is invalid or required fields are missing
  */
 function applyRoleEvent (registry, event) {
@@ -94,7 +94,7 @@ function applyRoleEvent (registry, event) {
 /**
  * Check if a public key has permission to perform an action.
  *
- * @param {import('./types').RoleRegistry} registry - The role registry state
+ * @param {Object} registry - The role registry state
  * @param {string} pubkeyHex - The public key to check (hex string)
  * @param {string} action - The action to check permission for
  * @returns {boolean} True if the key has permission (either directly or via wildcard '*')

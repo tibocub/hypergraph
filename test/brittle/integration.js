@@ -5,6 +5,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('hypercore-crypto')
+const b4a = require('b4a')
 
 async function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -21,6 +22,25 @@ function replicatePair (peerA, peerB) {
   }
 
   return { close }
+}
+
+// Helper function to sign tag events (matches hypergraph's #stableTagHash)
+function signTagEvent (event, keyPair) {
+  const payload = {
+    entityId: event.entityId,
+    tag: event.tag
+  }
+
+  const msg = {
+    op: event.type,
+    payload,
+    author: event.author,
+    timestamp: event.timestamp
+  }
+
+  const digest = require('crypto').createHash('sha256').update(JSON.stringify(msg)).digest()
+  const sig = crypto.sign(digest, keyPair.secretKey)
+  return sig.toString('hex')
 }
 
 async function pumpUntil (fn, timeoutMs = 20000, intervalMs = 50) {
@@ -144,23 +164,27 @@ test('hypergraph: context writeMode T-open (auto writers)', async (t) => {
     if (!bCtx.writable) throw new Error('peer not writable yet')
   }, 30000)
 
-  await aCtx.append({
+  const aKeyPair = a.graph.identity.deviceKeyPair
+  const aTagEvent = {
     type: 'tag/add',
     entityId: 'post/a',
     tag: 'a',
     author: a.graph.key.toString('hex'),
-    timestamp: Date.now(),
-    signature: null
-  })
+    timestamp: Date.now()
+  }
+  aTagEvent.signature = signTagEvent(aTagEvent, aKeyPair)
+  await aCtx.append(aTagEvent)
 
-  await bCtx.append({
+  const bKeyPair = b.graph.identity.deviceKeyPair
+  const bTagEvent = {
     type: 'tag/add',
     entityId: 'post/b',
     tag: 'b',
     author: b.graph.key.toString('hex'),
-    timestamp: Date.now(),
-    signature: null
-  })
+    timestamp: Date.now()
+  }
+  bTagEvent.signature = signTagEvent(bTagEvent, bKeyPair)
+  await bCtx.append(bTagEvent)
 
   const aAuthor = a.graph.key.toString('hex')
   const bAuthor = b.graph.key.toString('hex')
@@ -175,6 +199,11 @@ test('hypergraph: context writeMode T-open (auto writers)', async (t) => {
 })
 
 test.skip('hypergraph: context writeMode T-closed-authorized', async (t) => {
+  // NOTE: This test is fundamentally flawed for Autobase's model.
+  // In Autobase, you need to be a writer BEFORE opening an existing context.
+  // The test tries to open in closed mode before adding as writer, which fails.
+  // Closed mode enforcement should be at application level via role checks,
+  // not at Autobase level. This test needs to be redesigned.
   const a = await createPeer('write-closed-owner')
   const b = await createPeer('write-closed-peer')
   t.teardown(async () => cleanup([a, b]))
@@ -196,8 +225,8 @@ test.skip('hypergraph: context writeMode T-closed-authorized', async (t) => {
   await a.graph.update()
 
   const ctxKey = await a.graph.createContext({ writeMode: 'closed' })
-  const aCtx = await a.graph.openContext(ctxKey, { writeMode: 'closed', keyPair: ownerKeyPair })
-  const bCtx = await b.graph.openContext(ctxKey, { writeMode: 'closed', keyPair: peerBKeyPair })
+  const aCtx = await a.graph.openContext(ctxKey, { writeMode: 'closed' })
+  const bCtx = await b.graph.openContext(ctxKey, { writeMode: 'closed' })
 
   await aCtx.addWriter(bCtx.localKey, { author: owner })
 
@@ -206,13 +235,15 @@ test.skip('hypergraph: context writeMode T-closed-authorized', async (t) => {
     if (!bCtx.writable) throw new Error('peer not writable yet')
   }, 30000)
 
-  await bCtx.append({
+  const bTagEvent = {
     type: 'tag/add',
     entityId: 'post/x',
     tag: 'x',
     author: peerB,
     timestamp: Date.now()
-  })
+  }
+  bTagEvent.signature = signTagEvent(bTagEvent, peerBKeyPair)
+  await bCtx.append(bTagEvent)
 
   await pumpUntil(async () => {
     await a.graph.update()
@@ -241,13 +272,15 @@ test.skip('hypergraph: context writeMode T-closed-unauthorized', async (t) => {
   const bCtx = await b.graph.openContext(ctxKey, { writeMode: 'closed' })
 
   try {
-    await bCtx.append({
+    const bTagEvent = {
       type: 'tag/add',
       entityId: 'post/y',
       tag: 'y',
       author: b.graph.key.toString('hex'),
       timestamp: Date.now()
-    })
+    }
+    bTagEvent.signature = signTagEvent(bTagEvent, b.graph.identity.deviceKeyPair)
+    await bCtx.append(bTagEvent)
   } catch {}
 
   await a.graph.update()

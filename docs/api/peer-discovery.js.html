@@ -1,0 +1,230 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> peer-discovery.js</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    Documentation
+                </a>
+                
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Source</p>
+                    <h1>peer-discovery.js</h1>
+                </header>
+                
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>const EventEmitter = require('events')
+
+/**
+ * PeerDiscovery manages peer announcements and discovery in the graph.
+ * 
+ * This replaces the relation hack for peer discovery with a first-class API.
+ */
+class PeerDiscovery extends EventEmitter {
+  #graph
+  #announced = false
+  #metadata = null
+
+  constructor (graph) {
+    super()
+    this.#graph = graph
+  }
+
+  /**
+   * Announce this peer's presence to the graph.
+   *
+   * @param {Object} [opts] - Announcement options
+   * @param {Object} [opts.metadata] - Optional metadata to include in the announcement
+   * @returns {Promise&lt;void>}
+   *
+   * @note NOT YET IMPLEMENTED: This method currently only emits an 'announced' event
+   * but does not persist the announcement to the graph. Future implementation will
+   * store peer announcements in a dedicated context or use the relation system.
+   */
+  async announce (opts = {}) {
+    if (this.#announced) return
+
+    this.#metadata = opts.metadata || null
+
+    // Create a peer-announce entity in the graph
+    const announcement = {
+      type: 'peer-announce',
+      userCoreKey: this.#graph.key.toString('hex'),
+      timestamp: Date.now(),
+      metadata: this.#metadata
+    }
+
+    // Store the announcement in the graph
+    // For now, we'll use a special context for peer discovery
+    // In the future, this could be integrated into the main graph
+    this.#announced = true
+    this.emit('announced', announcement)
+  }
+
+  /**
+   * Discover other peers in the graph.
+   *
+   * @param {Object} [opts] - Discovery options
+   * @returns {AsyncGenerator&lt;Array&lt;{userCoreKey: string, timestamp: number, metadata: Object|null}>>}
+   *
+   * @note NOT YET IMPLEMENTED: This method is a placeholder that returns an empty array.
+   * Future implementation will read peer-announce entities from the graph once the
+   * graph structure for storing peer announcements is defined.
+   */
+  async * discoverPeers (opts = {}) {
+    // This would read peer-announce entities from the graph
+    // For now, this is a placeholder that will be implemented
+    // once we have the graph structure for storing peer announcements
+    yield []
+  }
+
+  /**
+   * Get the list of known peers.
+   *
+   * @returns {Array&lt;{userCoreKey: string, timestamp: number, metadata: Object|null}>}
+   *
+   * @note NOT YET IMPLEMENTED: This method returns an empty array. Future implementation
+   * will return cached peer information from the graph.
+   */
+  listPeers () {
+    // This would return cached peer information
+    // For now, return empty array
+    return []
+  }
+
+  /**
+   * Handle a peer connection event.
+   * 
+   * @param {Buffer} peerKey - The peer's public key
+   * @param {Object} [opts] - Additional options
+   * @returns {Promise&lt;void>}
+   */
+  async handlePeerConnection (peerKey, opts = {}) {
+    const peerKeyHex = Buffer.isBuffer(peerKey) ? peerKey.toString('hex') : peerKey
+    this.emit('peer-join', {
+      userCoreKey: peerKeyHex,
+      timestamp: Date.now(),
+      metadata: opts.metadata || null
+    })
+  }
+
+  /**
+   * Handle a peer disconnection event.
+   * 
+   * @param {Buffer} peerKey - The peer's public key
+   * @param {Object} [opts] - Additional options
+   * @returns {Promise&lt;void>}
+   */
+  async handlePeerDisconnection (peerKey, opts = {}) {
+    const peerKeyHex = Buffer.isBuffer(peerKey) ? peerKey.toString('hex') : peerKey
+    this.emit('peer-leave', {
+      userCoreKey: peerKeyHex,
+      timestamp: Date.now(),
+      metadata: opts.metadata || null
+    })
+  }
+}
+
+module.exports = PeerDiscovery
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+
+</body>
+</html>

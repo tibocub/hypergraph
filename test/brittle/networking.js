@@ -1,7 +1,7 @@
 const test = require('brittle')
 const Corestore = require('corestore')
 const Hyperswarm = require('hyperswarm')
-const { Hypergraph, HypergraphNetworking } = require('../../index.js')
+const { Hypergraph, HypergraphNetwork } = require('../../index.js')
 const crypto = require('crypto')
 const os = require('os')
 const path = require('path')
@@ -28,7 +28,7 @@ async function cleanupPeer (store, graph, dir) {
   fs.rmSync(dir, { recursive: true, force: true })
 }
 
-test.skip('HypergraphNetworking - basic connection', async t => {
+test('HypergraphNetwork - basic connection', async t => {
   const peer1 = await createPeer('peer1')
   const peer2 = await createPeer('peer2')
 
@@ -41,15 +41,19 @@ test.skip('HypergraphNetworking - basic connection', async t => {
   const context2 = await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
   await context2.ready()
 
-  // Create networking helpers with new API (two-swarm architecture)
+  // Create Hyperswarm instances
+  const swarm1 = new Hyperswarm()
+  const swarm2 = new Hyperswarm()
+
+  // Create networking helpers with new API (dual swarm architecture)
   const topic = crypto.randomBytes(32)
-  const networking1 = new HypergraphNetworking(peer1.graph, peer1.store, {
+  const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, {
     topic,
     role: 'owner',
     contexts: { chat: contextKey1 }
   })
 
-  const networking2 = new HypergraphNetworking(peer2.graph, peer2.store, {
+  const networking2 = new HypergraphNetwork(peer2.graph, peer2.store, swarm2, {
     topic,
     role: 'peer',
     contexts: { chat: contextKey1 }
@@ -68,37 +72,37 @@ test.skip('HypergraphNetworking - basic connection', async t => {
   // Cleanup
   await networking1.destroy()
   await networking2.destroy()
+  await swarm1.destroy()
+  await swarm2.destroy()
   await cleanupPeer(peer1.store, peer1.graph, peer1.dir)
   await cleanupPeer(peer2.store, peer2.graph, peer2.dir)
 })
 
-test.skip('HypergraphNetworking - auto-create swarm', async t => {
-  const peer = await createPeer('peer-auto-swarm')
+test('HypergraphNetwork - swarm parameter required', async t => {
+  const peer = await createPeer('peer-swarm-param')
 
   // Create a context
   const contextKey = await peer.graph.createContext({ writeMode: 'open' })
   await peer.graph.openContext(contextKey, { writeMode: 'open' })
 
-  // Create networking helper without providing swarm (should auto-create)
+  // Create networking helper without providing swarm (should throw)
   const topic = crypto.randomBytes(32)
-  const networking = new HypergraphNetworking(peer.graph, peer.store, {
-    topic,
-    role: 'owner',
-    contexts: { chat: contextKey }
-  })
-
-  await networking.connect()
-
-  t.ok(networking.connected, 'Should be connected')
-  t.ok(networking.dataSwarm, 'Data swarm should be auto-created')
-  t.ok(networking.controlSwarm, 'Control swarm should be auto-created')
+  try {
+    const networking = new HypergraphNetwork(peer.graph, peer.store, null, {
+      topic,
+      role: 'owner',
+      contexts: { chat: contextKey }
+    })
+    t.fail('Should throw error when swarm is not provided')
+  } catch (err) {
+    t.ok(err.message.includes('Hyperswarm instance is required'), 'Should throw appropriate error')
+  }
 
   // Cleanup
-  await networking.destroy()
   await cleanupPeer(peer.store, peer.graph, peer.dir)
 })
 
-test.skip('HypergraphNetworking - multi-context support', async t => {
+test('HypergraphNetwork - multi-context support', async t => {
   const peer1 = await createPeer('peer1-multi')
   const peer2 = await createPeer('peer2-multi')
 
@@ -113,15 +117,19 @@ test.skip('HypergraphNetworking - multi-context support', async t => {
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
   await peer2.graph.openContext(contextKey2, { writeMode: 'open' })
 
-  // Create networking helpers with multiple contexts (using new API)
+  // Create Hyperswarm instances
+  const swarm1 = new Hyperswarm()
+  const swarm2 = new Hyperswarm()
+
+  // Create networking helpers with multiple contexts
   const topic = crypto.randomBytes(32)
-  const networking1 = new HypergraphNetworking(peer1.graph, peer1.store, {
+  const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, {
     topic,
     role: 'owner',
     contexts: { chat: contextKey1, moderation: contextKey2 }
   })
 
-  const networking2 = new HypergraphNetworking(peer2.graph, peer2.store, {
+  const networking2 = new HypergraphNetwork(peer2.graph, peer2.store, swarm2, {
     topic,
     role: 'peer',
     contexts: { chat: contextKey1, moderation: contextKey2 }
@@ -140,11 +148,13 @@ test.skip('HypergraphNetworking - multi-context support', async t => {
   // Cleanup
   await networking1.destroy()
   await networking2.destroy()
+  await swarm1.destroy()
+  await swarm2.destroy()
   await cleanupPeer(peer1.store, peer1.graph, peer1.dir)
   await cleanupPeer(peer2.store, peer2.graph, peer2.dir)
 })
 
-test.skip('HypergraphNetworking - writer authorization handshake', async t => {
+test('HypergraphNetwork - writer authorization handshake', async t => {
   const peer1 = await createPeer('peer1-handshake')
   const peer2 = await createPeer('peer2-handshake')
 
@@ -155,15 +165,19 @@ test.skip('HypergraphNetworking - writer authorization handshake', async t => {
   // Join the same context on peer 2
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
 
+  // Create Hyperswarm instances
+  const swarm1 = new Hyperswarm()
+  const swarm2 = new Hyperswarm()
+
   // Create networking helpers with owner/peer roles
   const topic = crypto.randomBytes(32)
-  const networking1 = new HypergraphNetworking(peer1.graph, peer1.store, {
+  const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, {
     topic,
     role: 'owner',
     contexts: { chat: contextKey1 }
   })
 
-  const networking2 = new HypergraphNetworking(peer2.graph, peer2.store, {
+  const networking2 = new HypergraphNetwork(peer2.graph, peer2.store, swarm2, {
     topic,
     role: 'peer',
     contexts: { chat: contextKey1 }
@@ -189,11 +203,13 @@ test.skip('HypergraphNetworking - writer authorization handshake', async t => {
   // Cleanup
   await networking1.destroy()
   await networking2.destroy()
+  await swarm1.destroy()
+  await swarm2.destroy()
   await cleanupPeer(peer1.store, peer1.graph, peer1.dir)
   await cleanupPeer(peer2.store, peer2.graph, peer2.dir)
 })
 
-test.skip('HypergraphNetworking - peer discovery via context relations', async t => {
+test('HypergraphNetwork - peer discovery via Hyperswarm events', async t => {
   const peer1 = await createPeer('peer1-discovery')
   const peer2 = await createPeer('peer2-discovery')
 
@@ -204,47 +220,73 @@ test.skip('HypergraphNetworking - peer discovery via context relations', async t
   // Join the same context on peer 2
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
 
+  // Create Hyperswarm instances
+  const swarm1 = new Hyperswarm()
+  const swarm2 = new Hyperswarm()
+
   // Create networking helpers
   const topic = crypto.randomBytes(32)
-  const networking1 = new HypergraphNetworking(peer1.graph, peer1.store, {
+  const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, {
     topic,
     role: 'owner',
     contexts: { chat: contextKey1 }
   })
 
-  const networking2 = new HypergraphNetworking(peer2.graph, peer2.store, {
+  const networking2 = new HypergraphNetwork(peer2.graph, peer2.store, swarm2, {
     topic,
     role: 'peer',
     contexts: { chat: contextKey1 }
   })
 
   // Track peer discovery events
-  let peerDiscovered = false
-  networking1.on('peer-discovered', () => {
-    peerDiscovered = true
+  let peerJoined = false
+  networking1.on('peer-join', () => {
+    peerJoined = true
   })
 
   // Connect both peers
   await networking1.connect()
   await networking2.connect()
 
-  // Announce usercores and discover peers
-  await networking1.announceUserCore(contextKey1, 'chatroom')
-  await networking2.announceUserCore(contextKey1, 'chatroom')
-
   await sleep(2000)
-
-  // Discover peers
-  const discovered1 = await networking1.discoverPeerCores(contextKey1, 'chatroom')
-  const discovered2 = await networking2.discoverPeerCores(contextKey1, 'chatroom')
 
   t.ok(networking1.connected, 'Peer 1 should be connected')
   t.ok(networking2.connected, 'Peer 2 should be connected')
-  t.ok(discovered1.length > 0 || discovered2.length > 0, 'Should discover peers')
+  t.ok(peerJoined, 'Should detect peer join via Hyperswarm events')
 
   // Cleanup
   await networking1.destroy()
   await networking2.destroy()
+  await swarm1.destroy()
+  await swarm2.destroy()
   await cleanupPeer(peer1.store, peer1.graph, peer1.dir)
   await cleanupPeer(peer2.store, peer2.graph, peer2.dir)
+})
+
+test('HypergraphNetwork - bootstrap generation', async t => {
+  const peer = await createPeer('peer-bootstrap')
+
+  // Create contexts
+  const contextKey1 = await peer.graph.createContext({ writeMode: 'open' })
+  const contextKey2 = await peer.graph.createContext({ writeMode: 'open' })
+
+  const topic = crypto.randomBytes(32)
+  const bootstrap = HypergraphNetwork.generateBootstrap(peer.graph, {
+    topic,
+    topicPrefix: 'my-app-v1',
+    contexts: { comments: contextKey1, moderation: contextKey2 },
+    metadata: { appName: 'test-app' }
+  })
+
+  t.ok(bootstrap.version, 'Bootstrap should have version')
+  t.ok(bootstrap.topic, 'Bootstrap should have topic')
+  t.ok(bootstrap.controlTopic, 'Bootstrap should have controlTopic')
+  t.ok(bootstrap.ownerCore, 'Bootstrap should have ownerCore')
+  t.ok(bootstrap.contexts, 'Bootstrap should have contexts')
+  t.ok(bootstrap.contexts.comments === contextKey1, 'Context key should match')
+  t.ok(bootstrap.contexts.moderation === contextKey2, 'Context key should match')
+  t.ok(bootstrap.metadata.appName === 'test-app', 'Metadata should be preserved')
+
+  // Cleanup
+  await cleanupPeer(peer.store, peer.graph, peer.dir)
 })

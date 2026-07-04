@@ -16,12 +16,12 @@ module.exports = class GraphQuery {
   /**
    * Create a new GraphQuery instance.
    *
-   * @param {import('./view')} view - The GraphView instance to query
+   * @param {Object} view - The GraphView instance to query
    * @param {Object} [opts] - Query options
    * @param {Function} [opts.filter] - Initial filter function
    * @param {number} [opts.limit] - Maximum number of results
    * @param {boolean} [opts.reverse] - Whether to reverse results
-   * @param {import('./types').TraverseOptions} [opts.traverse] - Traversal configuration
+   * @param {Object} [opts.traverse] - Traversal configuration
    */
   constructor (view, opts = {}) {
     this.#view = view
@@ -73,6 +73,10 @@ module.exports = class GraphQuery {
    *
    * @param {string} tag - The tag to filter by
    * @returns {GraphQuery} This query instance for chaining
+   *
+   * @note Current implementation performs a database scan for each node.
+   * Future optimization: pre-filter nodes using the tag index before applying
+   * other filters. This would require restructuring filter execution order.
    */
   tag (tag) {
     this.#filters.push(async (node) => {
@@ -267,7 +271,7 @@ module.exports = class GraphQuery {
   /**
    * Create a readable stream of query results.
    *
-   * @returns {import('streamx').Readable} A readable stream that emits query results
+   * @returns {Object} A readable stream that emits query results
    */
   createReadStream () {
     const self = this

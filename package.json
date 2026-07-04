@@ -18,7 +18,8 @@
     "forum:web:peer": "node examples/forum-web/peer.js --name=peer --role=peer --topic=hyper-bbs-forum-demo",
     "test:legacy": "node test/hypergraph.js",
     "test:legacy:integration": "node test/hypergraph-integration.js",
-    "test:legacy:hyperswarm": "node test/hypergraph-hyperswarm.js"
+    "test:legacy:hyperswarm": "node test/hypergraph-hyperswarm.js",
+    "docs": "jsdoc -c jsdoc.json"
   },
   "dependencies": {
     "autobase": "^7.28.1",
@@ -31,6 +32,7 @@
     "keet-identity-key": "^3.2.0"
   },
   "devDependencies": {
+    "better-docs": "^2.7.3",
     "brittle": "^3.0.0",
     "hyperswarm": "^4.17.0",
     "random-access-memory": "^3.0.0"

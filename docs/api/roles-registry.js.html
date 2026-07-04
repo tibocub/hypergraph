@@ -1,0 +1,238 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> roles-registry.js</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    Documentation
+                </a>
+                
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Source</p>
+                    <h1>roles-registry.js</h1>
+                </header>
+                
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// Build initial registry state
+
+/**
+ * Create an initial role registry state with an owner.
+ *
+ * @param {string} ownerPubkeyHex - The owner's hex public key
+ * @returns {Object} The initial registry state with default roles and permissions
+ * @throws {Error} If ownerPubkeyHex is not a valid non-empty string
+ */
+function initRegistry (ownerPubkeyHex) {
+  if (typeof ownerPubkeyHex !== 'string' || ownerPubkeyHex.length === 0) {
+    throw new Error('ownerPubkeyHex is required')
+  }
+
+  return {
+    version: 1,
+    roles: {
+      owner: ['*'],
+      admin: ['mod.add', 'mod.remove', 'content.remove', 'content.hide', 'content.reveal', 'context.write'],
+      mod: ['content.hide', 'content.remove', 'content.flag'],
+      member: []
+    },
+    members: {
+      [ownerPubkeyHex]: 'owner'
+    }
+  }
+}
+
+/**
+ * Apply a role event to the registry state.
+ *
+ * This is a pure function that computes the next registry state based on the current state
+ * and an event. Implements the state machine for role management.
+ *
+ * @param {Object|null} registry - Current registry state, or null if uninitialized
+ * @param {Object} event - The role event to apply
+ * @returns {Object} The next registry state
+ * @throws {Error} If the event type is invalid or required fields are missing
+ */
+function applyRoleEvent (registry, event) {
+  if (!event || typeof event.type !== 'string') throw new Error('event.type is required')
+
+  const next = registry
+    ? {
+        version: registry.version,
+        roles: { ...(registry.roles || {}) },
+        members: { ...(registry.members || {}) }
+      }
+    : { version: 1, roles: {}, members: {} }
+
+  if (next.version !== 1) throw new Error('Unsupported registry version')
+
+  switch (event.type) {
+    case 'roles/init': {
+      const membersEmpty = !next.members || Object.keys(next.members).length === 0
+      if (!membersEmpty) return next
+      if (!event.registry || typeof event.registry !== 'object') throw new Error('event.registry is required')
+
+      const r = event.registry
+      if (r.version !== 1) throw new Error('Unsupported registry version')
+
+      return {
+        version: 1,
+        roles: { ...(r.roles || {}) },
+        members: { ...(r.members || {}) }
+      }
+    }
+
+    case 'roles/setRole': {
+      if (typeof event.member !== 'string' || event.member.length === 0) throw new Error('event.member is required')
+      if (typeof event.role !== 'string' || event.role.length === 0) throw new Error('event.role is required')
+      next.members[event.member] = event.role
+      return next
+    }
+
+    case 'roles/removeMember': {
+      if (typeof event.member !== 'string' || event.member.length === 0) throw new Error('event.member is required')
+      delete next.members[event.member]
+      return next
+    }
+
+    case 'roles/setRolePermissions': {
+      if (typeof event.role !== 'string' || event.role.length === 0) throw new Error('event.role is required')
+      if (!Array.isArray(event.permissions)) throw new Error('event.permissions must be an array')
+      next.roles[event.role] = event.permissions.slice()
+      return next
+    }
+
+    default:
+      return next
+  }
+}
+
+/**
+ * Check if a public key has permission to perform an action.
+ *
+ * @param {Object} registry - The role registry state
+ * @param {string} pubkeyHex - The public key to check (hex string)
+ * @param {string} action - The action to check permission for
+ * @returns {boolean} True if the key has permission (either directly or via wildcard '*')
+ */
+function can (registry, pubkeyHex, action) {
+  if (!registry || typeof registry !== 'object') return false
+  if (!registry.members || !registry.roles) return false
+  if (typeof pubkeyHex !== 'string' || pubkeyHex.length === 0) return false
+  if (typeof action !== 'string' || action.length === 0) return false
+
+  const roleName = registry.members[pubkeyHex] || (registry.roles.member ? 'member' : null)
+  if (!roleName) return false
+
+  const perms = registry.roles[roleName]
+  if (!Array.isArray(perms)) return false
+
+  return perms.includes('*') || perms.includes(action)
+}
+
+module.exports = {
+  initRegistry,
+  applyRoleEvent,
+  can
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+
+</body>
+</html>

@@ -147,7 +147,22 @@ _open()
 
 **File**: `src/user-core.js`
 
-**Purpose**: Manages a single user's personal Hypercore for storing entities and content.
+**Purpose**: Manages a single user's personal Hypercore for storing entities and content. Implements the **external pointer pattern** to avoid data duplication in Autobase views.
+
+**Why UserCores Exist (External Pointer Pattern)**:
+- Autobase copies writer data into the view - large content would be duplicated
+- UserCores serve as external storage for actual data (entities, content)
+- ContextBases store pointers/references to entities via relations
+- This allows reading a specific peer's data without processing the entire merged view
+- Provides namespace isolation and single-writer guarantees
+
+**Evidence from code**:
+- `hypergraph.js` lines 204-212: `entity/create` events appended to UserCore
+- `hypergraph.js` lines 261-268: `entity/tombstone` events appended to UserCore
+- `hypergraph.js` lines 297-305: `content/append` events appended to UserCore
+- `view.js` lines 108-123: GraphView reads events from UserCores directly
+- `view.js` lines 127-154: GraphView reads from ContextBase Autobase views separately
+- UserCore events are NOT replicated into ContextBase - they are separate data structures
 
 **Private Fields**:
 - `#core` - Hypercore instance
@@ -169,6 +184,8 @@ seq 2: { type: 'entity/create', id: 'post/2', author, timestamp }
 - `length` - Number of events in core
 
 **Critical Detail**: UserCore is single-writer. Only the owner (with the keyPair) can append. This ensures conflict-free replication.
+
+**Implementation Note**: UserCore currently manually wraps a Hypercore. This may need refinement to align better with Autobase's patterns (e.g., using `Autobase.getLocalCore()` if appropriate).
 
 ### ContextBase (Multi-Writer Autobase)
 
@@ -317,7 +334,7 @@ decodeEvent(Buffer) → event
 
 **Supported Event Types**:
 - `entity/create` - Create entity
-- `entity/delete` - Delete entity (tombstone)
+- `entity/tombstone` - Delete entity (tombstone)
 - `content/append` - Append content
 - `relation/create` - Create relation
 - `relation/delete` - Delete relation

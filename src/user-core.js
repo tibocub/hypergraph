@@ -24,7 +24,7 @@ module.exports = class UserCore extends ReadyResource {
   /**
    * Create a new UserCore instance.
    *
-   * @param {import('corestore')} store - Corestore instance for core management
+   * @param {Object} store - Corestore instance for core management
    * @param {Object} [opts] - Configuration options
    * @param {Buffer|string} [opts.key] - Open an existing core with this key instead of creating new
    * @param {string} [opts.keyEncoding] - Codec name for keys (passed to codecs)
@@ -61,7 +61,7 @@ module.exports = class UserCore extends ReadyResource {
     if (this.#core) await this.#core.close()
   }
 
-  /** @returns {import('hypercore')} The underlying Hypercore instance */
+  /** @returns {Object} The underlying Hypercore instance */
   get core () {
     return this.#core
   }
@@ -178,7 +178,7 @@ module.exports = class UserCore extends ReadyResource {
    *
    * @param {boolean} isInitiator - Whether this side initiated the connection
    * @param {Object} [opts] - Replication options (passed to Hypercore.replicate)
-   * @returns {import('streamx').Duplex} The replication stream
+   * @returns {Object} The replication stream
    */
   replicate (isInitiator, opts) {
     return this.#core.replicate(isInitiator, opts)

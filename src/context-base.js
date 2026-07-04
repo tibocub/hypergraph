@@ -9,13 +9,13 @@ const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
-const { toSortableTs } = require('./utils')
+const { toSortableTs, stableTagHash } = require('./utils')
 
 /**
  * ContextBase manages collaborative contexts using Autobase.
  *
  * A context is an Autobase instance used to store collaborative events (relations, tags, moderation, etc).
- * Supports two write modes: 'open' (no privilege checks) and 'closed' (role-based permissions).
+ * Supports two write modes: 'open' (no read/write privilege checks) and 'closed' (role-based read/write permissions). Both can use roles and moderation.
  *
  * @extends ReadyResource
  */
@@ -37,12 +37,12 @@ module.exports = class ContextBase extends ReadyResource {
   /**
    * Create a new ContextBase instance.
    *
-   * @param {import('corestore')} store - Corestore instance for core management
+   * @param {Object} store - Corestore instance for core management
    * @param {Buffer|string|null} bootstrapKey - Autobase key to join existing context, or null to create new
    * @param {Object} [opts] - Configuration options
    * @param {string} [opts.keyEncoding] - Codec name for keys
    * @param {string} [opts.valueEncoding] - Codec name for values
-   * @param {RoleBase} [opts.roleBase] - Attached RoleBase for permission checks
+   * @param {Object} [opts.roleBase] - Attached RoleBase for permission checks
    * @param {'open'|'closed'} [opts.writeMode='open'] - Write mode for the context
    * @param {Object} [opts.keyPair] - KeyPair for the local writer (required when joining existing context in open mode)
    * @param {boolean} [opts.verifySignatures=true] - Whether to verify cryptographic signatures on relations
@@ -86,10 +86,8 @@ module.exports = class ContextBase extends ReadyResource {
       fastForward: false
     }
 
-    // Don't pass keyPair to Autobase - let it handle local writer creation automatically
-    // This matches the old hypergraph behavior and avoids "Autobase failed to open" errors
-    // Writers are managed via addWriter method after the context is ready
-
+    // Let Autobase handle local writer creation automatically
+    // Closed mode enforcement is at the application level via role checks, not at Autobase level
     this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
     await this.#base.ready()
   }
@@ -224,22 +222,6 @@ module.exports = class ContextBase extends ReadyResource {
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
-  #stableTagHash (event) {
-    const payload = {
-      entityId: event.entityId,
-      tag: event.tag
-    }
-
-    const msg = {
-      op: event.type,
-      payload,
-      author: event.author,
-      timestamp: event.timestamp
-    }
-
-    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
-  }
-
   #verifyModerationSignature (event) {
     if (!event || event.type !== 'moderation/action') return false
     if (event.version !== 1) return false
@@ -309,7 +291,7 @@ module.exports = class ContextBase extends ReadyResource {
       return false
     }
 
-    const digest = this.#stableTagHash(event)
+    const digest = stableTagHash(event)
     return hypercoreCrypto.verify(digest, signature, publicKey)
   }
 
@@ -469,9 +451,8 @@ module.exports = class ContextBase extends ReadyResource {
   }
 
   async #applyTag (view, event) {
-    // TODO: Re-enable signature verification once all tests use proper signing
     // Verify signature before applying
-    // if (!this.#verifyTagSignature(event)) return
+    if (!this.#verifyTagSignature(event)) return
 
     const key = `t:${event.tag}:${toSortableTs(event.timestamp)}:${event.entityId}:${event.author}`
     const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
@@ -510,7 +491,7 @@ module.exports = class ContextBase extends ReadyResource {
   // Properties
   // ========================================
 
-  /** @returns {import('autobase')|undefined} The underlying Autobase instance */
+  /** @returns {Object|undefined} The underlying Autobase instance */
   get base () {
     return this.#base
   }
@@ -520,7 +501,7 @@ module.exports = class ContextBase extends ReadyResource {
     return this.#base ? this.#base.writable : false
   }
 
-  /** @returns {import('hypercore')|undefined} The underlying Autobase core */
+  /** @returns {Object|undefined} The underlying Autobase core */
   get core () {
     return this.#base?.core
   }
@@ -545,14 +526,9 @@ module.exports = class ContextBase extends ReadyResource {
     return this.#base?.version ?? -1
   }
 
-  /** @returns {import('hyperbee')|undefined} The materialized view Hyperbee */
+  /** @returns {Object|undefined} The materialized view Hyperbee */
   get view () {
     return this.#base?.view
-  }
-
-  /** @returns {boolean} Whether the context is writable */
-  get writable () {
-    return this.#base?.writable
   }
 
   /** @returns {'open'|'closed'} The write mode of this context */
@@ -673,9 +649,9 @@ module.exports = class ContextBase extends ReadyResource {
   /**
    * Create a replication stream for the context.
    *
-   * @param {boolean|import('streamx').Duplex} isInitiatorOrStream - Whether this side initiated the connection, or a stream to replicate to
+   * @param {boolean|Object} isInitiatorOrStream - Whether this side initiated the connection, or a stream to replicate to
    * @param {Object} [opts] - Replication options (passed to Autobase.replicate)
-   * @returns {import('streamx').Duplex|void} The replication stream (if isInitiator is boolean)
+   * @returns {Object|void} The replication stream (if isInitiator is boolean)
    */
   replicate (isInitiatorOrStream, opts) {
     return this.#base.replicate(isInitiatorOrStream, opts)

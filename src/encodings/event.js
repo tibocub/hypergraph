@@ -264,14 +264,15 @@ const eventEncoding = {
         event.key = c.string.decode(state)
         if (state.end > state.start) {
           // Check if there are more fields (author, timestamp)
-          // This is a bit hacky but works for our use case
+          // These fields are optional for backward compatibility
+          // Try-catch handles both old format (key only) and new format (key + author + timestamp)
           try {
             event.author = c.string.decode(state)
             if (state.end > state.start) {
               event.timestamp = c.uint.decode(state)
             }
           } catch {
-            // No more fields
+            // No more fields - old format event
           }
         }
         break

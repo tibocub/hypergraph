@@ -1,0 +1,316 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> user-core.js</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    Documentation
+                </a>
+                
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Source</p>
+                    <h1>user-core.js</h1>
+                </header>
+                
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>const ReadyResource = require('ready-resource')
+const safetyCatch = require('safety-catch')
+const codecs = require('codecs')
+const { encodeEvent, decodeEvent } = require('./encodings/event')
+
+/**
+ * UserCore wraps a Hypercore for storing user events with compact encoding.
+ *
+ * Manages a personal Hypercore that stores graph events (entity creation, content,
+ * identity updates, etc.) using compact binary encoding. Used by Hypergraph as the
+ * primary event log for each user.
+ *
+ * @extends ReadyResource
+ */
+module.exports = class UserCore extends ReadyResource {
+  #store
+  #core
+  #keyEncoding
+  #valueEncoding
+  #length
+  #key
+  #keyPair
+
+  /**
+   * Create a new UserCore instance.
+   *
+   * @param {Object} store - Corestore instance for core management
+   * @param {Object} [opts] - Configuration options
+   * @param {Buffer|string} [opts.key] - Open an existing core with this key instead of creating new
+   * @param {string} [opts.keyEncoding] - Codec name for keys (passed to codecs)
+   * @param {string} [opts.valueEncoding] - Codec name for values
+   */
+  constructor (store, opts = {}) {
+    super()
+
+    this.#store = store
+    this.#key = opts.key || null
+    this.#keyPair = opts.keyPair || null
+    this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
+    this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
+    this.#core = null
+    this.#length = 0
+
+    this.ready().catch(safetyCatch)
+  }
+
+  async _open () {
+    // Get or create the user's personal core.
+    // If a key is provided, open that core instead (useful for remote / read-only replication).
+    // If keyPair is provided, pass it to make the core writable.
+    if (this.#key) {
+      this.#core = this.#store.get({ key: this.#key, keyPair: this.#keyPair })
+    } else {
+      this.#core = this.#store.get({ name: 'user-core', keyPair: this.#keyPair })
+    }
+    await this.#core.ready()
+    this.#length = this.#core.length
+  }
+
+  async _close () {
+    if (this.#core) await this.#core.close()
+  }
+
+  /** @returns {Object} The underlying Hypercore instance */
+  get core () {
+    return this.#core
+  }
+
+  /** @returns {Buffer|undefined} The core's public key */
+  get key () {
+    return this.#core?.key
+  }
+
+  /** @returns {Buffer|undefined} The core's discovery key */
+  get discoveryKey () {
+    return this.#core?.discoveryKey
+  }
+
+  /** @returns {number} The number of events in the core */
+  get length () {
+    return this.#length
+  }
+
+  /** @returns {boolean} Whether the core is writable */
+  get writable () {
+    return this.#core?.writable
+  }
+
+  // ========================================
+  // Append Operations
+  // ========================================
+
+  /**
+   * Append a single event to the user core.
+   *
+   * @param {Object} event - The event to append
+   * @returns {Promise&lt;number>} The sequence number of the appended event
+   */
+  async append (event) {
+    if (!this.opened) await this.ready()
+
+    const encoded = encodeEvent(event)
+    await this.#core.append(encoded)
+    this.#length = this.#core.length
+
+    return this.#length - 1
+  }
+
+  /**
+   * Append multiple events to the user core in a batch.
+   *
+   * @param {Object[]} events - Array of events to append
+   * @returns {Promise&lt;number>} The sequence number of the last appended event
+   */
+  async appendBatch (events) {
+    if (!this.opened) await this.ready()
+
+    const encoded = events.map(encodeEvent)
+    await this.#core.append(encoded)
+    this.#length = this.#core.length
+
+    return this.#length - events.length
+  }
+
+  // ========================================
+  // Read Operations
+  // ========================================
+
+  /**
+   * Get a single event by sequence number.
+   *
+   * @param {number} seq - The sequence number of the event
+   * @returns {Promise&lt;Object|null>} The decoded event, or null if not found
+   */
+  async get (seq) {
+    if (!this.opened) await this.ready()
+
+    const block = await this.#core.get(seq)
+    return decodeEvent(block)
+  }
+
+  /**
+   * Create a readable stream of events.
+   *
+   * @param {Object} [opts] - Stream options (passed to Hypercore.createReadStream)
+   * @returns {AsyncIterable&lt;Object|null>} Async iterator of decoded events
+   */
+  async * createReadStream (opts = {}) {
+    if (!this.opened) await this.ready()
+
+    const stream = this.#core.createReadStream(opts)
+    for await (const block of stream) {
+      yield decodeEvent(block)
+    }
+  }
+
+  /**
+   * Create a readable stream of events including historical snapshots.
+   *
+   * @param {Object} [opts] - Stream options (passed to Hypercore.createHistoryStream)
+   * @returns {AsyncIterable&lt;Object|null>} Async iterator of decoded events
+   */
+  async * createHistoryStream (opts = {}) {
+    if (!this.opened) await this.ready()
+
+    const stream = this.#core.createHistoryStream(opts)
+    for await (const block of stream) {
+      yield decodeEvent(block)
+    }
+  }
+
+  // ========================================
+  // Replication
+  // ========================================
+
+  /**
+   * Create a replication stream for the core.
+   *
+   * @param {boolean} isInitiator - Whether this side initiated the connection
+   * @param {Object} [opts] - Replication options (passed to Hypercore.replicate)
+   * @returns {Object} The replication stream
+   */
+  replicate (isInitiator, opts) {
+    return this.#core.replicate(isInitiator, opts)
+  }
+
+  /**
+   * Update the core from remote peers.
+   *
+   * @returns {Promise&lt;boolean>} True if the core was updated, false otherwise
+   */
+  update () {
+    if (!this.#core) return Promise.resolve(false)
+    return this.#core.update().then((changed) => {
+      this.#length = this.#core.length
+      return changed
+    })
+  }
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+
+</body>
+</html>
