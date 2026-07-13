@@ -7,6 +7,503 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Test suite refactor, round 14: fixed a real double-destroy hang in HypergraphNetwork.destroy()
+
+Good news first: every test up through peer-connection.js's local guard test reported "ok"
+in the last run (including the writer-authorization handshake), meaning round 13's retry
+fix appears to have worked. The new problem was the whole test process never exiting
+afterward — a real, separate bug, not a leftover networking flakiness issue.
+
+**Root cause, confirmed by reading both Hyperswarm's and HyperDHT's own source, then
+reproduced with a mock:** `HypergraphNetwork` creates its control swarm by sharing the data
+swarm's DHT instance (`new Hyperswarm({ dht: dataSwarm.dht })`) — a deliberate, documented
+part of the dual-swarm design. But `Hyperswarm`'s constructor never records whether its
+`dht` was externally provided or created internally (`this.dht = opts.dht || new DHT(...)`,
+no ownership flag at all), and `Hyperswarm.destroy()` unconditionally calls
+`this.dht.destroy()` regardless. `HypergraphNetwork.destroy()` was already calling the
+control swarm's full `destroy()` — which cascades to destroying the *shared* DHT. Every
+test's teardown then separately calls the data swarm's own `destroy()` (correctly, per
+`HypergraphNetwork`'s own comment: "don't destroy data swarm, passed by user, caller's
+responsibility") — which destroys that *same* shared DHT a second time.
+`HyperDHT.destroy()` has no idempotency guard of its own either, so the second call doesn't
+error, it hangs — reproduced exactly with a mock DHT whose `destroy()` never resolves on a
+second call, confirming this is precisely the observed symptom (the process never exiting)
+and not a coincidence.
+
+**Fixed:** `HypergraphNetwork.destroy()` no longer calls the control swarm's full
+`destroy()`. It now tears down only the control swarm's own resources — leaving all its
+topics (`clear()`), closing its server, and destroying its own connections — without ever
+touching the DHT. The shared DHT is destroyed exactly once, when the caller destroys the
+data swarm they own, exactly as the existing "don't destroy data swarm" comment already
+intended for that side of the pair. Verified the fix directly with a mock DHT that hangs on
+a second `destroy()` call: the old pattern reproduces the hang, the new pattern does not.
+
+### Test suite refactor, round 13: HypergraphNetwork.connect() had no retry — a real product fix, matched against the project's own history
+
+**Context correction, at the project owner's prompt:** `HypergraphNetwork` was built
+specifically to replace `forum-web`'s hand-written `ForumNetwork` with a friendlier,
+reusable API — confirmed directly in this repo's own commit history (`8616546`:
+"HypergraphNetworking (network helper to avoid all the manual hyperswarm boilerplate) ...
+to test HypergraphNetworking ease of use and reliability compared to forum-web's
+handwritten hyperswarm networking and writer authorization handshake"). The most recent
+commit before this test suite existed (`1da90ad`) says outright: "improved HyperswarmNetwork's
+API but still untested." So this is exactly what that commit predicted — a genuinely
+previously-unverified piece of the networking code, not a subtle regression.
+
+**New evidence that reframed the investigation:** the round-12 diagnostics showed the *data*
+swarm at `peers=0, connections=0` for the entire 80s wait too, not just control — despite
+`connected: true` on both sides and no `flush-timeout` fired (i.e. `flushed()`/`flush()`
+both genuinely resolved, just with zero peers ever found). This matches, symptom for
+symptom, what the raw-Hyperswarm replication tests hit in earlier rounds before they had a
+retry mechanism (`waitForConnections()` in `test/brittle/helpers.js`) — and `connect()` had
+no equivalent at all.
+
+**Fixed, in `src/networking.js`:** added `_ensureConnectionWithRetry()`, called for both the
+data and control swarm after the existing flush steps. If a swarm has zero connections after
+an initial wait window, it leaves and rejoins the topic (up to 2 extra attempts) before
+giving up — the same proven pattern already used in the test suite's own
+`waitForConnections()`, now applied to the actual product code so any consumer of
+`HypergraphNetwork` benefits, not just this test suite. Emits `'connection-retry'` and
+`'connection-retry-exhausted'` (with the swarm label and attempt count) so this is
+observable rather than silent, matching the visibility principle established in round 11's
+`flush-timeout` fix. Verified the retry/leave/rejoin control-flow logic in isolation with a
+fake swarm (no network needed): confirmed it returns immediately when already connected,
+retries exactly the configured number of times before reporting exhaustion when a
+connection never appears, and stops retrying the moment a connection does appear.
+
+**Also fixed:** every test using `connect()`/`connectToSwarm()` now listens for
+`'connection-retry'`/`'connection-retry-exhausted'` for visibility, and declared timeouts
+were raised again to keep real margin over the new (larger, but more honest and more likely
+to actually succeed) worst case.
+
+**Ruled out this round, with evidence, before landing on the retry fix:** role-based join
+asymmetry, control-topic derivation mismatch, and the `setEncoding('utf8')` difference from
+`ForumNetwork` (none explained a connection that never fires at the raw swarm level in the
+first place). Attempted a local loopback-only DHT reproduction to test the shared-DHT
+two-topic pattern without real network access; inconclusive, since even the data channel
+didn't connect in that minimal setup, so it wasn't presented as a finding either way.
+
+### Test suite refactor, round 12: control channel still not connecting — ruled out several theories, root cause still open
+
+The round-11 fix (longer timeout, visible `flush-timeout` event) did not surface a timeout —
+no `flush-timeout` fired in the next run, meaning all four of `connect()`'s internal steps
+genuinely resolved within 60s. So the control channel isn't failing because of the
+timeout-swallowing bug; it's failing to establish an actual connection for a different
+reason that hasn't been identified yet.
+
+**Compared directly against `examples/forum/network/hyperswarm.js`** (the actual reference
+implementation `forum-web` uses — note `forum-web` does not use `HypergraphNetwork` from
+`src/networking.js` at all, it has its own, separate `ForumNetwork` class). Checked and
+ruled out, with evidence, three specific hypotheses for why `HypergraphNetwork`'s control
+swarm might differ from the reference implementation's:
+- Role-based join asymmetry — ruled out; both use identical `{ server: true, client: true }`
+  for both roles.
+- Control-topic derivation mismatch — ruled out; deterministic, both peers compute the
+  identical topic from the identical shared input.
+- Message-encoding difference (`conn.setEncoding('utf8')` vs manual `.toString()` per chunk)
+  — noted but doesn't explain the symptom, since the raw swarm `'connection'` event itself
+  never fires on either side; encoding only matters after a connection exists.
+
+**Attempted to verify empirically with a local (loopback-only) DHT bootstrap node**, to test
+the two-swarms-sharing-one-DHT-on-two-topics pattern without needing real network access.
+This was inconclusive: even the data channel — proven reliable in real testing — never
+connected in that minimal local reproduction, meaning the reproduction itself isn't
+realistic enough to trust for testing the control channel either. Not presenting this as a
+finding one way or the other.
+
+**Real, separate finding worth acting on regardless of the above:** `_handleWriterRequest`
+has no role check — confirmed any connected peer can currently respond to a writer-request
+and grant writer status, matching the requirement that write-grants shouldn't require the
+owner specifically to be online. Confirmed further at the Autobase apply layer: a
+`roles/addWriter` event is honored unconditionally, with no check on who appended it. This
+correctly means any existing writer can add another peer — but it also means there is
+currently no authorization gate at all, even in closed write mode, consistent with the
+closed-mode gap already noted in this changelog, now with concrete evidence of exactly where
+in the code that gap lives.
+
+**Added, not a fix:** significantly richer diagnostics in the writer-authorization test —
+logs both `swarm.peers.size` (DHT-discovered candidates, regardless of connection) and
+`swarm.connections.size` (actual live connections) for both the data and control swarm on
+both peers, side by side, every 10s. This will show directly whether a future run's control
+swarm ever discovers the other peer at all (a DHT lookup problem) or discovers it but never
+completes a connection (a hole-punch/connection-establishment problem) — a distinction the
+previous logging couldn't make.
+
+**Open question for the project owner:** whether `forum-web`'s own writer-grant flow has
+ever been confirmed working end-to-end with two real peer processes. If it hasn't, this may
+be a previously-unverified gap in the dual-swarm control-channel design generally, not
+something specific to `HypergraphNetwork` or this test suite.
+
+### Test suite refactor, round 11: HypergraphNetwork.connect() silently lied about success
+A real, significant product bug — not a test bug, not network variance — found while
+investigating why the writer-authorization handshake test showed `connected: true` on both
+sides for over 60 seconds while the control channel had, provably, never connected
+(`controlConnected1`/`controlConnected2` both stayed `false`, listening for the real
+`'control-connection'` event, which does exist and is correctly named — confirmed by
+reading the emit call directly rather than assuming a naming mistake).
+
+**Root cause, read directly from `src/networking.js`:** `connect()` wraps its four
+discovery/flush steps (data discovery flush, control discovery flush, data swarm flush,
+control swarm flush) in a `withTimeout()` helper defined as
+`Promise.race([promise, sleep(ms).then(() => null)])`. If the timeout wins, this silently
+returns `null` — the caller has no way to distinguish "the operation actually completed" from
+"we gave up after 10 seconds and moved on anyway." `connect()` then unconditionally sets
+`this.#connected = true` and emits `'connected'` after all four steps, regardless of whether
+any of them actually succeeded. This is how `connected` could report `true` on both peers
+while the control channel had never connected at all: the control-related steps hit their
+10-second cap, returned `null` silently, and `connect()` proceeded as if nothing had
+happened.
+
+10 seconds was also simply too short: DHT connection times observed empirically across this
+project's own test runs have ranged from a few seconds up to ~90 seconds even for the
+already-proven-reliable data channel.
+
+**Fixed, in the product code, not just the tests:**
+- Replaced the silently-swallowing `withTimeout()` with `withTimeoutWarn()`, which still
+  doesn't throw (a caller may reasonably want to proceed and let application code decide
+  what to do) but now emits a `'flush-timeout'` event — with the step name and timeout
+  duration — whenever a step actually times out, instead of hiding it. `connected: true` can
+  still be reported optimistically, but a caller now has a way to detect a partial failure
+  they previously had no visibility into at all.
+- Raised the timeout for all four steps from 10s to 60s, matching what's actually been
+  observed to be necessary in this project's own DHT tests, rather than an arbitrary
+  shorter value that was routinely too tight for the control channel specifically.
+- Verified the fix's control-flow logic directly (no network needed): a local test confirms
+  `withTimeoutWarn` returns the real value and stays silent when the promise wins, and
+  returns `null` while emitting a correctly-populated `'flush-timeout'` event when the
+  timeout wins.
+
+**Test changes:** every DHT test that calls `connect()`/`connectToSwarm()` now listens for
+`'flush-timeout'` and logs it, so a future failure shows directly which step silently gave
+up rather than requiring another investigation like this one. Declared brittle timeouts were
+raised across `hypergraph-network.js` and `connect-to-swarm.js`'s DHT tests to comfortably
+cover the new, larger (but now honest) worst case; `hypergraph-network-integration.js` had
+no explicit timeout at all before this round (relying on brittle's 30s default), which was a
+real latent crash risk of the same kind fixed for other files in round 7 — given an explicit
+timeout now too.
+
+### Test suite refactor, round 10: what "partial replication" actually means, and a real bug (not addWriter, not DHT timing)
+
+This round answers a direct question raised about `partial-replication.js`: does "partial
+replication" even make sense as a concept here, given Hyperswarm doesn't do selective
+replication and hypergraph is generally described as replicating whole graphs? The answer,
+verified against source and an empirical local test (not assumed):
+
+**What replicates, and at what granularity (fact, not assumption):**
+- A user core (one per device, containing all of that device's entities/content) replicates
+  as a whole. There is no way to fetch only some entities out of a device's user core — it's
+  all-or-nothing per core, confirmed by `partial-replication.js`'s own passing assertion that
+  the peer got *both* postA and postB (from different contexts) via the single, fully
+  replicated owner user core.
+- A context (relations/tags/moderation — a separate Autobase per context) replicates as a
+  whole too, once opened.
+- The only thing that's actually "partial" is *which* cores/contexts a peer chooses to open
+  and track at all. Never call `openContext(Y)` and you have zero knowledge of Y's data,
+  forever. Open it, and you eventually get everything in it — not a filtered subset.
+- This matches the definition already encoded in the pre-existing, passing
+  `test/brittle/forum/scenarios/partial-replication.js` (a peer that opens the moderation
+  context but never opens the owner's user core sees moderation facts about a post without
+  ever seeing the post itself) — this round's rewritten test now matches that same,
+  already-established, correct definition instead of testing something vaguer.
+
+**Real root cause of the observed failure, verified from source, not guessed:**
+`getByTag()`'s implementation (`src/view.js`) cross-references every tagged entity via
+`this.getNode(entityId)`, which only reads from the graph's own top-level view. That view is
+only populated by user cores registered through `openUserCore()` — confirmed by reading
+`openUserCore()`'s implementation, which explicitly calls `view.addUserCore()`. A raw
+`store.get({ key })` (what the previous version of this test used to watch the owner's user
+core) creates a Hypercore reference for replication only; it never calls `addUserCore()`.
+So `getByTag()`'s cross-reference could never resolve, no matter how long the test waited —
+this had nothing to do with the network, connection quality, or writer permissions.
+
+**Retracted: the theory (from the previous round) that `addWriter()` might be required for
+a peer to passively read context data.** Verified false with a local (non-DHT) probe: a peer
+that opens a context and is *never* added as a writer, but *does* use `openUserCore()` for
+the referenced entity's core, correctly sees tagged data — `bCtx.writable` was confirmed
+`false` while the tag was still visible. The forum scenario's `addWriter()` call exists so
+the peer can *write* its own moderation event, not so it can read.
+
+**Fixed:** `partial-replication.js` rewritten to use `openUserCore()`. Also audited every
+other replication test for the same class of mistake and fixed the ones that had it:
+`multi-peer.js` (both tests), `peer-reconnection.js`, and `hypergraph-network-integration.js`
+all used to watch remote cores via raw `store.get()`.
+
+**Broader audit requested and completed: exact content verification, not just "something
+replicated."** Every replication test previously asserted only `.length > 0` or that an
+object was merely truthy — which proves *some* bytes arrived, not that the *correct* data
+did. Every DHT-based replication test now fetches the actual replicated entity/content via
+`graph.get()`/`graph.getContent()` and asserts the exact body text matches what was written,
+byte for byte, not just presence:
+- `concurrent-writes.js`, `late-joiner.js`: already fixed in an earlier pass this round.
+- `peer-reconnection.js`: now verifies both messages' exact content after reconnection.
+- `hypergraph-network-integration.js`: now verifies exact content, and also fixes a
+  previously-missed instance of the sequential-`connect()` bug (fixed elsewhere in round 5,
+  but this file was overlooked at the time).
+- `multi-peer.js`: now verifies exact content on every peer, for both the 1-writer/2-reader
+  scenario and the 3-way mutual-write scenario (6 cross-checks: every peer's copy of every
+  other peer's message, compared byte for byte).
+- `out-of-order.js`: now also verifies the comment's exact content body, and checks the
+  specific relation's `from`/`to`/`type` fields match exactly rather than just checking that
+  "some" edge exists.
+
+### Test suite refactor, round 9: a real test bug (openUserCore) + connection retry
+Round 8's `swarm.flush()` fix clearly helped — `multi-peer.js`'s second test and
+`out-of-order.js` both got real connections this time, where they'd gotten none before.
+Two things remained, and they turned out to be unrelated to each other.
+
+**Real bug found in `out-of-order.js` (not a network issue at all):** the test used a raw
+`a.store.get({ key: b.graph.key })` to watch peer B's user core, then tried to read peer
+B's comment via `a.graph.get(comment.id)`. A raw `store.get()` only creates a Hypercore
+reference for replication — it never registers the core with the graph's *view*, so
+`graph.get()`/`graph.update()` could never see B's data no matter how long the test waited
+or how good the connection was (confirmed by reading `openUserCore()`'s implementation: it
+explicitly calls `view.addUserCore()`, which a raw `store.get()` never does). This is
+exactly why the connection succeeded (`A=1, B=1`) but the data never converged even after
+100+ seconds — it had nothing to do with networking. **Fixed** by using
+`a.graph.openUserCore(b.graph.key)` instead, matching the real Hypergraph API contract.
+
+**Remaining connectivity gap (`multi-peer.js` test 1, `partial-replication.js`):** even with
+`swarm.flush()`, some runs still saw zero connections after a full timeout window, while
+sibling tests using the identical pattern connected instantly. Rather than just extending
+the timeout further (round 7's mistake), added a genuine retry mechanism to
+`waitForConnections()`: on timeout, it now leaves and rejoins the topic on every swarm (up
+to 2 extra attempts) before giving up — a real resilience pattern, not just more patience,
+since a stale initial DHT lookup can return candidate peers that never pan out and a fresh
+join/flush cycle can succeed where the first one didn't. Declared test timeouts were raised
+to comfortably cover the new worst-case (up to 3 connection attempts × 60s, plus the pump
+loop) so this doesn't reintroduce round 7's timeout-overflow crash.
+
+**Suggestion, not a code change:** if `multi-peer.js`/`partial-replication.js` still show
+occasional connection difficulty, try running the replication suite in smaller batches
+(`npm run test:concurrent-writes`, then separately `npm run test:multi-peer`, etc.) rather
+than one long `npx brittle test/brittle/replication/*.js` invocation — each separate
+`npx brittle` call gets a fresh Node process and fresh DHT bootstrap state, which may help
+if cumulative resource pressure across ~6 back-to-back DHT-heavy tests in one process turns
+out to be a factor.
+
+### Test suite refactor, round 8: missing swarm.flush() — a real bug, not NAT variance
+Correction to round 7's framing. All 8 replication tests were re-run and the same 3 files
+failed consistently, every time, with **zero** connections on every peer — not intermittent
+partial failures as in round 6/7. That consistency, plus first-hand confirmation that the
+test environment's Hyperswarm/DHT setup is fast and reliable, ruled out "NAT traversal
+variance" as the explanation. It was a real, structural bug in how those 3 files used
+Hyperswarm, not the network.
+
+**Root cause:** `discovery.flushed()` (returned by `swarm.join()`) only confirms the local
+side's DHT announce/lookup round finished. `swarm.flush()` is a separate, necessary call
+that drains the actual connection queue and waits for the resulting connection attempts to
+complete (confirmed directly in `node_modules/hyperswarm/index.js`: `flush()` awaits every
+topic's `flushed()` *and then* waits on `this._queue`/pending connections). Every working
+pattern in this codebase already called `swarm.flush()`: `late-joiner.js`,
+`concurrent-writes.js`'s extra `sleep(10000)` gave it time to happen incidentally in the
+background, `peer-connection.js` calls it explicitly, and `HypergraphNetwork.connect()`
+calls it internally for both its data and control swarms — which is exactly why
+`hypergraph-network-integration.js` never needed this fix. `multi-peer.js`, `out-of-order.js`,
+and `partial-replication.js` were the only three places in the whole suite that joined a
+topic and moved on without ever calling `swarm.flush()`.
+
+**Fixed:** added `await swarm.flush()` (in parallel across all peers via `Promise.all`)
+immediately after `discovery.flushed()` in all three files, matching the exact working
+pattern from `late-joiner.js`.
+
+**Retracted:** round 7's suggestion that `multi-peer.js`'s connection failures reflected
+"real DHT/NAT variance ... not something to keep chasing with longer timeouts" was wrong.
+It was a straightforward missing-API-call bug. The diagnostic tooling from round 6
+(`waitForConnections()`) was still the right approach — it just needed the underlying
+connection code fixed rather than more patience.
+
+### Test suite refactor, round 7: two different problems, one code bug and one real network condition
+Follow-up after round 6, which added explicit connection verification. Running it surfaced
+useful, clean diagnostics for the first time: `multi-peer.js`'s first test showed peer A
+with **zero** connections after 60s while B and C connected to *each other* (`A=0, B=1,
+C=1`). Its second test, moments later with fresh peer instances, connected fully within the
+first second (`A=2, B=1, C=1`) and passed cleanly.
+
+**This is very likely genuine DHT/NAT connectivity variance on the test machine's network,
+not a code bug.** The diagnostic system built in round 6 did its job: it correctly detected
+and reported "peer A never got a connection" instead of silently hanging or reporting a
+misleading pass. No test code or Corestore/Hyperswarm configuration change can guarantee a
+specific NAT traversal succeeds within a fixed time budget — that's an inherent property of
+P2P networking, not something to keep chasing with longer timeouts indefinitely.
+
+**A separate, real bug did turn up alongside it:** `out-of-order.js` crashed the entire
+`npx brittle` process with an uncaught "Test timed out after 150000ms" instead of failing
+that one test gracefully. Cause: its own sub-steps' worst-case durations
+(`waitForConnections()`'s 60s timeout + a 110-iteration, 1s-interval pump loop) summed to
+~170s, but the test only declared `{ timeout: 150000 }` (150s) — since `t.ok()` records a
+failure without throwing, the test kept running past the failed connection check into the
+full pump loop, blowing through its own declared ceiling and triggering brittle's hard
+per-test timeout, which kills the whole process rather than just that test.
+
+**Fixed:**
+- `out-of-order.js`: raised the declared timeout to comfortably exceed the worst-case sum
+  of its sub-steps, and — more importantly — added a fail-fast return when
+  `waitForConnections()` finds no connection at all, instead of burning the rest of the
+  budget on a pump loop that has no path to converge.
+- `partial-replication.js`: had the same class of overflow risk (60s connection wait + 3
+  sequential pump loops up to 240s = 300s worst case vs. only 180s declared) even though it
+  hadn't been observed crashing yet. Fixed the same way: raised timeout, added fail-fast.
+- `multi-peer.js`: added the same fail-fast pattern to both tests for consistency and
+  faster, clearer failures (its declared timeout already had enough margin, so this was a
+  quality-of-life fix rather than a crash fix).
+
+**Not changed:** did not add more retries or longer waits purely to try to "outlast" the
+DHT/NAT variance in `multi-peer.js`'s first test. If it recurs on rerun, that's expected —
+it demonstrates real-world network conditions, and the fail-fast + diagnostic logging is
+the correct behavior (fail clearly and quickly) rather than a bug to keep patching.
+
+### Test suite refactor, round 6: connection verification for raw-Hyperswarm tests
+Follow-up after round 5: peer C in `multi-peer.js` stayed at 0 replicated events for 80+
+seconds while peer B (same test) fully caught up immediately.
+
+A plausible-looking theory going in was a Hyperswarm mesh-topology/relay problem — i.e.
+each peer only replicating its own store, so peer C (only indirectly connected via B)
+never gets peer A's data relayed through B. That theory was checked against Corestore's
+actual source before acting on it: `store.replicate(conn)` already loops over **every**
+core the store knows about (not just ones it "owns") and auto-attaches any core marked
+`active` — the default for a normal, non-weak session — to any stream, specifically to
+support exactly this kind of relay. So the fix suggested for that theory (manually calling
+`.replicate(conn)` on each individually-tracked remote core) would likely have been
+redundant, and risked masking the actual problem instead of fixing it.
+
+**Actual root cause:** the same lesson learned three times already in this refactor —
+`discovery.flushed()` proves the local side's own DHT announce/lookup round finished, not
+that an actual peer-to-peer connection exists. `multi-peer.js`, `out-of-order.js`, and
+`partial-replication.js` all use raw Hyperswarm directly (no `HypergraphNetwork`, so no
+`waitForPeer()` equivalent), and none of them verified a real connection existed before
+writing data and starting to poll for it. If peer C's swarm never actually connected to
+anyone, no replication or relay logic — correct or not — could have helped.
+
+**Fixed:** added `waitForConnections()` to `test/brittle/helpers.js`, which polls
+`swarm.connections` (a real `Set` of live connections, not a discovery-completion flag)
+before any test proceeds to write/check data. Applied to `multi-peer.js` (both tests),
+`out-of-order.js`, and `partial-replication.js`, each with an explicit assertion and
+diagnostic logging so a future failure clearly shows whether the problem is "no connection
+was ever established" vs "connected fine, but data didn't converge."
+
+### Test suite refactor, round 5: waitForPeer() fast-path bug
+Follow-up after round 4: 11/12 networking tests passed; only the peer-join test failed,
+again with `connected` true but the event itself never firing within the test's window.
+
+**Root cause, this time a real product bug, not just test timing:** `HypergraphNetwork`
+already ships a purpose-built `waitForPeer(timeoutMs)` for exactly this situation — wait
+for an actual peer connection rather than trusting `connected`. But its fast path checked
+`this.#connections > 0`, and `#connections` is incremented by **both** the data swarm
+(which is what actually fires `'peer-join'`) and the control swarm (which doesn't). So
+`waitForPeer()` could resolve immediately based on a control-only connection, before any
+`'peer-join'` had fired — exactly backwards from what a caller asking "has a peer joined"
+would expect.
+
+**Fixed:** added a dedicated `#hasPeerJoined` flag, set only inside the data swarm's
+connection handler (the same place `'peer-join'` is emitted), and pointed `waitForPeer()`'s
+fast path at that flag instead of the shared `#connections` counter.
+
+**Test fixed:** `test/brittle/networking/hypergraph-network.js`'s peer-join test now uses
+`waitForPeer()` (the correct, intended API for this) instead of ad-hoc polling, plus keeps
+the direct `peerJoined` flag assertion as a belt-and-suspenders check on top.
+
+### Test suite refactor, round 4: connected vs. actually-connected
+Follow-up after round 3: 10/11 networking tests passed; only the writer-grant handshake
+test failed, with both `connected` checks green but the handshake itself never completing
+within 30s.
+
+**Root cause:** `HypergraphNetwork#connected` is set once the DHT discovery/flush calls
+resolve (`dataDiscovery.flushed()`, `controlDiscovery.flushed()`, plus both swarms'
+`.flush()`) — this reflects that the *local* side finished its own announce/lookup round,
+not that an actual peer-to-peer connection has been established yet. The data swarm and
+control swarm do independent NAT traversal, and the control swarm's connection — which the
+writer-request/writer-granted handshake rides on — can complete meaningfully later than
+`connected` flips true. The test's fixed 30s handshake window started counting from the
+wrong reference point.
+
+**Fixed:** `test/brittle/networking/hypergraph-network.js`'s writer-authorization test now
+listens for the real `'control-connection'` event on both sides and waits for that before
+it starts expecting the handshake to be done, instead of treating `connected` as proof the
+control channel is live. Also bumped the handshake window and added progress logging.
+
+**Note for later:** `connected`'s current semantics (discovery-flushed, not
+peer-actually-connected) is a slightly surprising name for what it measures. Not changed
+here since it's a behavior/naming decision rather than a bug, but worth considering if it
+causes confusion for consumers of the public API beyond this test suite.
+
+### Test suite refactor, round 3: DHT timing fixes
+Follow-up after running the round-2 replication tests on real hardware. 4/8 tests passed
+(all the 2-peer, raw-user-core-only ones); the 4 failures were all either 3-peer or
+context/Autobase-based, which turned out to be a timing problem, not a correctness one.
+
+**Root cause:** context/Autobase-based sync (system core → writer registry → individual
+writer cores → view materialization) needs more round trips than plain raw-hypercore
+replication, which itself was already observed taking 9–26s for a simple 2-peer case.
+`multi-peer.js`, `out-of-order.js`, and `partial-replication.js` only budgeted ~20–25s
+total, cutting things off right as convergence was starting (`partial-replication.js`'s own
+log showed the raw entity data had already replicated by the time the context-level tag
+check failed — it just hadn't converged yet at that exact moment, because that check ran
+once instead of in its own retry loop).
+
+**Also found:** `networking1.connect()` / `networking2.connect()` (and the two
+`connectToSwarm()` calls in `connect-to-swarm.js`'s end-to-end test) were awaited
+*sequentially* instead of in parallel. Since a single `connect()` can internally take up to
+~20s (two sequential 10s flush timeouts), awaiting two of them one after another could
+approach 40s before either side finishes — on top of brittle's 30s default test timeout,
+which was silently truncating some of these runs before they had a fair chance to converge.
+
+**Fixed:**
+- `multi-peer.js`, `out-of-order.js`, `partial-replication.js`: increased pump budgets to
+  90–110 iterations at 1s each (up from 40 at 500ms), added explicit `{ timeout: 150000-
+  180000 }` per test so brittle's 30s default doesn't cut them off, and added periodic
+  progress logging so a future failure is diagnosable at a glance (e.g. "entity replicated
+  at ~12s, still waiting on the relation" vs "nothing replicated after 60s" point at very
+  different problems).
+- `partial-replication.js`: gave the context-level tag check its own retry loop instead of
+  a single snapshot check immediately after the (separate, faster-converging) raw-entity
+  pump loop exited.
+- `hypergraph-network.js` (all 4 DHT tests) and `connect-to-swarm.js`'s end-to-end test:
+  changed sequential `connect()`/`connectToSwarm()` awaits to `Promise.all()`, added
+  explicit `{ timeout: 90000 }`, and converted the writer-grant/peer-join event checks from
+  a fixed sleep to a retry loop.
+
+### Test suite refactor, round 2: teardown-ordering fix + coverage gaps closed
+Follow-up to the test suite refactor below, after real-network testing surfaced a
+deterministic hang and a coverage review identified gaps against the original plan.
+
+**Fixed:** every test file that opens a real Hyperswarm connection
+(`test/brittle/networking/hypergraph-network.js`, `connect-to-swarm.js`, `peer-connection.js`,
+and all of `test/brittle/replication/`) was destroying its swarm *before* closing the
+graph/store that used it. Since brittle's `t.teardown()` runs LIFO and `createGraph()`
+registers its own graph/store-close teardown as soon as it's called (before the swarm even
+exists), the swarm was always torn down first — yanking the raw socket out from under an
+in-flight replication stream mid-shutdown. `store.close()` then hung forever waiting for a
+clean close event that could never arrive, freezing the whole test run with no error,
+deterministically, every time. Fixed by consolidating each test's cleanup into one teardown
+that always closes graph, then store, then destroys the swarm last. `test/brittle/helpers.js`'s
+`createGraph()` now also returns an explicit `close()` so tests can control this ordering
+themselves instead of relying on implicit registration-order LIFO behavior.
+
+**Added**, closing gaps from the original test plan:
+- `test/brittle/core/view.js` — direct `GraphView` tests: `update()`, `getNode()`,
+  `getContent()`, `getEdges()`, `getByTag()`/`hasTag()`, device-identity mapping, `getIdentity()`.
+- `test/brittle/core/user-core.js` — direct `UserCore` tests (`append`, `appendBatch`, `get`,
+  `createReadStream`, initial state) plus `graph.openUserCore()` integration, including
+  idempotency and invalid-key rejection.
+- `test/brittle/core/error-cases.js` — malformed/missing key rejection for `openContext()`
+  and `openRoleBase()`, plus `tag()`/`unrelate()` rejecting unknown entities/relations.
+  Also documents two *intentional* non-errors so they don't get "fixed" into regressions
+  later: `openContext()`/`openRoleBase()` accept a well-formed key nobody has created data
+  for yet (legitimate — the context may still be replicating), and `relate()` does not
+  validate that `from`/`to` entities exist locally (required for out-of-order replication;
+  the forum suite's `reply-before-parent.js` scenario depends on relating to an entity that
+  hasn't synced yet).
+- `test/brittle/replication/multi-peer.js` — 3-peer broadcast and 3-peer mutual convergence.
+- `test/brittle/replication/out-of-order.js` — relation referencing a not-yet-replicated
+  entity, over a real DHT connection (complements the local-pipe version already covered in
+  `test/brittle/forum/scenarios/out-of-order-replication.js` and `reply-before-parent.js`).
+- `test/brittle/replication/partial-replication.js` — a peer that only opens one of two
+  contexts only receives that context's data, and catches up on the second once it opens it
+  (complements the local-pipe version in `test/brittle/forum/scenarios/partial-replication.js`).
+- Per-file npm scripts for every new test file, plus the previously-missing per-file scripts
+  for the existing replication tests (`test:late-joiner`, `test:concurrent-writes`,
+  `test:peer-reconnection`, `test:hypergraph-network-integration`).
+
 ### Test suite refactor (from-scratch rewrite, no backward compatibility)
 Rewrote the entire test suite from scratch to test the intended, current API rather than
 legacy/historical behavior. Old ad-hoc test files (`basic.js`, `identity.js`, `ordering.js`,

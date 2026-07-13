@@ -7,11 +7,23 @@ function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function withTimeout (promise, ms) {
-  return await Promise.race([
-    promise,
-    sleep(ms).then(() => null)
+/**
+ * Like a timeout-capped await, but emits a 'flush-timeout' event on
+ * `emitter` if the timeout wins the race, instead of silently swallowing
+ * it. Still doesn't throw (connect() callers may reasonably want to
+ * proceed and let application code decide what to do), but a caller can
+ * now listen for 'flush-timeout' to detect a partial/failed connect
+ * instead of only ever seeing an unconditional `connected: true`.
+ */
+async function withTimeoutWarn (emitter, label, promise, ms) {
+  const result = await Promise.race([
+    promise.then((value) => ({ timedOut: false, value })),
+    sleep(ms).then(() => ({ timedOut: true, value: null }))
   ])
+  if (result.timedOut) {
+    emitter.emit('flush-timeout', { step: label, timeoutMs: ms })
+  }
+  return result.value
 }
 
 /**
@@ -55,6 +67,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   #contextInstances = new Map() // name -> contextInstance
   #role = 'peer'
   #connections = 0
+  #hasPeerJoined = false
 
   /**
    * @param {Object} graph - Hypergraph instance
@@ -287,6 +300,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     // Set up data swarm connection handler
     this.#dataSwarm.on('connection', (conn, info) => {
       this.#connections++
+      this.#hasPeerJoined = true
       this._handleDataConnection(conn, info)
 
       const peerKey = info && info.publicKey ? info.publicKey.toString('hex') : 'unknown'
@@ -326,16 +340,102 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     // Join control topic
     const controlDiscovery = this.#controlSwarm.join(this.#controlTopic, { server: true, client: true })
 
-    // Wait for discovery and swarms to be ready with timeout
-    await withTimeout(dataDiscovery.flushed(), 10000)
-    await withTimeout(controlDiscovery.flushed(), 10000)
-    await withTimeout(this.#dataSwarm.flush(), 10000)
-    await withTimeout(this.#controlSwarm.flush(), 10000)
+    // Wait for discovery and swarms to be ready with timeout.
+    //
+    // BUG FIX: withTimeout() silently swallows a timeout and returns null,
+    // so connect() previously reported success (`connected = true`)
+    // unconditionally after these four steps, regardless of whether any of
+    // them actually completed. That's how a caller could see `connected:
+    // true` on both sides while the control channel had never actually
+    // connected at all — there was no way to tell the difference between
+    // "flushed fine" and "gave up after 10s, silently, and moved on
+    // anyway". 10s was also too short: DHT connections in real-world
+    // testing on this project have been observed taking anywhere from a
+    // few seconds up to ~90s. Both are fixed here: a much more realistic
+    // timeout, and a warning emitted (not swallowed) if a step actually
+    // times out, so a partial/failed connect is at least observable
+    // instead of silently reported as success.
+    await withTimeoutWarn(this, 'data discovery flush', dataDiscovery.flushed(), 60000)
+    await withTimeoutWarn(this, 'control discovery flush', controlDiscovery.flushed(), 60000)
+    await withTimeoutWarn(this, 'data swarm flush', this.#dataSwarm.flush(), 60000)
+    await withTimeoutWarn(this, 'control swarm flush', this.#controlSwarm.flush(), 60000)
+
+    // BUG FIX: flushed()/flush() resolving successfully does NOT mean any
+    // peer was actually found or connected — it can resolve with zero
+    // peers discovered at all (this is a real Hyperswarm/DHT behavior, not
+    // a bug in flushed()/flush() themselves). connect() previously took
+    // that resolution as proof of success and moved on regardless, the
+    // same way the raw-Hyperswarm replication tests in this project's test
+    // suite once did — and the fix that reliably worked there was a real
+    // retry: leave and rejoin the topic, rather than just waiting longer
+    // for the same attempt. That fix is applied here too, to the actual
+    // product code rather than only ever inside tests, since any consumer
+    // of connect() can hit this.
+    await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data')
+    await this._ensureConnectionWithRetry(this.#controlSwarm, this.#controlTopic, 'control')
 
     this.#connected = true
     this.emit('connected')
   }
 
+  /**
+   * Wait for a swarm to report at least one live connection, retrying by
+   * leaving and rejoining the topic if none appears within the wait
+   * window. `flushed()`/`flush()` resolving successfully does not mean any
+   * peer was found — this actually confirms it, and gives a genuine second
+   * (and third) chance via a fresh join rather than just waiting longer on
+   * the same attempt.
+   *
+   * Emits 'connection-retry' (with the label and attempt number) each time
+   * a rejoin is attempted, and 'connection-retry-exhausted' if no
+   * connection ever appears after all attempts — both observable by a
+   * caller, neither thrown, matching connect()'s existing "report what
+   * happened, don't block the caller on it" behavior.
+   *
+   * @private
+   * @param {import('hyperswarm')} swarm
+   * @param {Buffer} topic
+   * @param {string} label - 'data' or 'control', for event/log purposes
+   */
+  async _ensureConnectionWithRetry (swarm, topic, label) {
+    const retries = 2
+    const waitMs = 15000
+    const joinOpts = { server: true, client: true }
+
+    for (let attempt = 0; ; attempt++) {
+      const start = Date.now()
+      while (swarm.connections.size === 0 && Date.now() - start < waitMs) {
+        await sleep(1000)
+      }
+
+      if (swarm.connections.size > 0) return
+
+      if (attempt >= retries) {
+        this.emit('connection-retry-exhausted', { label, attempts: attempt + 1 })
+        return
+      }
+
+      this.emit('connection-retry', { label, attempt: attempt + 1 })
+      try {
+        await swarm.leave(topic)
+      } catch (err) {
+        safetyCatch(err)
+      }
+      await sleep(1000)
+
+      const discovery = swarm.join(topic, joinOpts)
+      try {
+        await discovery.flushed()
+      } catch (err) {
+        safetyCatch(err)
+      }
+      try {
+        await swarm.flush()
+      } catch (err) {
+        safetyCatch(err)
+      }
+    }
+  }
 
   /**
    * Disconnect from the Hyperswarm topics
@@ -403,7 +503,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * @param {number} timeoutMs - Timeout in milliseconds (default: 10000)
    */
   async waitForPeer (timeoutMs = 10000) {
-    if (this.#connections > 0) return true
+    if (this.#hasPeerJoined) return true
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -428,16 +528,47 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   async destroy () {
     await this.disconnect()
 
-    // Destroy control swarm (we created it)
-    if (this.#ownsControlSwarm) {
+    // Destroy control swarm's own resources (we created it), but WITHOUT
+    // destroying its DHT.
+    //
+    // BUG FIX: the control swarm's DHT is a *shared* reference borrowed
+    // from the externally-provided data swarm
+    // (`new Hyperswarm({ dht: dataSwarm.dht })`), not something this class
+    // owns. Hyperswarm's own destroy() unconditionally calls
+    // `this.dht.destroy()`, with no way to opt out and no tracking of
+    // whether the dht was externally provided or created internally
+    // (confirmed by reading Hyperswarm's constructor:
+    // `this.dht = opts.dht || new DHT(...)` never records which case
+    // applied). Since this class explicitly leaves the data swarm for the
+    // caller to destroy separately (see below), calling the control
+    // swarm's full destroy() here destroyed the *same* shared DHT a second
+    // time once the caller destroyed their data swarm afterward.
+    // HyperDHT.destroy() has no idempotency guard of its own either, so a
+    // second destroy on already-torn-down internals can hang rather than
+    // error — exactly the symptom observed (the whole test process never
+    // exiting). Fixed by tearing down only the control swarm's own
+    // resources (topics, server, connections) and leaving the shared DHT
+    // alone; it's the data swarm owner's job to destroy that, exactly
+    // once.
+    if (this.#ownsControlSwarm && this.#controlSwarm) {
       try {
-        if (this.#controlSwarm) await this.#controlSwarm.destroy()
+        await this.#controlSwarm.clear()
+        await this.#controlSwarm.server.close()
+        for (const conn of [...this.#controlSwarm.connections]) {
+          try {
+            conn.destroy()
+          } catch (err) {
+            safetyCatch(err)
+          }
+        }
       } catch (err) {
         safetyCatch(err)
       }
     }
 
-    // Don't destroy data swarm (passed by user)
+    // Don't destroy data swarm (passed by user), and don't destroy the
+    // shared DHT via the control swarm either (see above) — the caller
+    // owns both and is responsible for destroying the data swarm once.
 
     this.removeAllListeners()
   }

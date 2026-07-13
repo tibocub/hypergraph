@@ -6,23 +6,29 @@
 // hangs store.close() forever waiting for a clean stream-close event that
 // never comes, since the socket underneath it was already killed. Fixed by
 // consolidating teardown to always close graph/store before the swarms.
+//
+// BUG FIX: this used to watch remote user cores via a raw `store.get()`,
+// which only creates a Hypercore reference for replication — it never
+// registers the core with the graph's view, so graph.get()/getContent()
+// could never see the remote peer's data (confirmed: openUserCore()
+// explicitly calls view.addUserCore(); a raw store.get() never does).
+// This only mattered once we started checking actual content instead of
+// just raw core length — length alone doesn't prove the *right* data
+// replicated, only that *some* bytes did.
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
 const { createGraph, sleep } = require('../helpers')
 
-test('concurrent-writes: two peers each write and both replicate to each other (needs real network)', async (t) => {
+test('concurrent-writes: two peers each write, both replicate, and content matches exactly (needs real network)', async (t) => {
   console.log('TEST: sequential writes, both peers write - starting (requires DHT access)')
 
   const a = await createGraph(t, 'concurrent-writes-a')
   const b = await createGraph(t, 'concurrent-writes-b')
 
-  console.log('  Step 1: preload both local and remote user cores before replicating')
-  const localA = a.store.get({ key: a.graph.key })
-  const remoteBOnA = a.store.get({ key: b.graph.key })
-  const localB = b.store.get({ key: b.graph.key })
-  const remoteAOnB = b.store.get({ key: a.graph.key })
-  await Promise.all([localA.ready(), remoteBOnA.ready(), localB.ready(), remoteAOnB.ready()])
+  console.log('  Step 1: preload both remote user cores before replicating (via openUserCore, not raw store.get)')
+  const bUserCoreOnA = await a.graph.openUserCore(b.graph.key)
+  const aUserCoreOnB = await b.graph.openUserCore(a.graph.key)
 
   const topic = a.graph.discoveryKey
   const swarmA = new Hyperswarm()
@@ -57,15 +63,26 @@ test('concurrent-writes: two peers each write and both replicate to each other (
   const msg2 = await b.graph.put({ type: 'message' })
   await b.graph.putContent(msg2.id, 'Message from Peer B', 'text')
 
-  console.log('  Step 5: wait for both writes to replicate, then verify both cores advanced')
-  await sleep(5000)
-  await remoteBOnA.update()
-  await remoteAOnB.update()
+  console.log('  Step 5: wait for both writes to replicate, then verify exact content matches on both sides')
+  let msg2OnA = null
+  let msg1OnB = null
+  for (let i = 0; i < 20; i++) {
+    await sleep(1000)
+    await bUserCoreOnA.update()
+    await aUserCoreOnB.update()
+    await a.graph.update()
+    await b.graph.update()
+    msg2OnA = await a.graph.get(msg2.id)
+    msg1OnB = await b.graph.get(msg1.id)
+    if (msg2OnA && msg1OnB) break
+  }
 
-  const coreLength1 = remoteBOnA.length
-  const coreLength2 = remoteAOnB.length
+  t.ok(msg2OnA, `peer A received peer B's message entity`)
+  t.ok(msg1OnB, `peer B received peer A's message entity`)
 
-  t.ok(coreLength1 > 0, `peer A received peer B's data (remote core length: ${coreLength1})`)
-  t.ok(coreLength2 > 0, `peer B received peer A's data (remote core length: ${coreLength2})`)
+  const msg2ContentOnA = msg2OnA ? await a.graph.getContent(msg2.id) : null
+  const msg1ContentOnB = msg1OnB ? await b.graph.getContent(msg1.id) : null
+  t.is(msg2ContentOnA && msg2ContentOnA.body, 'Message from Peer B', "peer A's copy of peer B's message matches exactly")
+  t.is(msg1ContentOnB && msg1ContentOnB.body, 'Message from Peer A', "peer B's copy of peer A's message matches exactly")
   console.log('TEST: sequential writes, both peers write - passed')
 })

@@ -94,7 +94,7 @@ test('connect-to-swarm: auto-creates a Hyperswarm when opts.swarm is omitted (no
   console.log('TEST: connectToSwarm auto-create swarm - passed')
 })
 
-test('connect-to-swarm: two peers connect end-to-end via connectToSwarm/disconnectFromSwarm (needs real network)', async (t) => {
+test('connect-to-swarm: two peers connect end-to-end via connectToSwarm/disconnectFromSwarm (needs real network)', { timeout: 240000 }, async (t) => {
   console.log('TEST: connectToSwarm end-to-end - starting (requires DHT access)')
   const a = await createGraph(t, 'connect-to-swarm-e2e-a')
   const b = await createGraph(t, 'connect-to-swarm-e2e-b')
@@ -103,9 +103,13 @@ test('connect-to-swarm: two peers connect end-to-end via connectToSwarm/disconne
   const swarmA = new Hyperswarm()
   const swarmB = new Hyperswarm()
 
-  console.log('  Step 1: connect both peers to the same topic')
-  const networkingA = await a.graph.connectToSwarm(topic, { swarm: swarmA, role: 'owner' })
-  const networkingB = await b.graph.connectToSwarm(topic, { swarm: swarmB, role: 'peer' })
+  console.log('  Step 1: connect both peers to the same topic in parallel')
+  const [networkingA, networkingB] = await Promise.all([
+    a.graph.connectToSwarm(topic, { swarm: swarmA, role: 'owner' }),
+    b.graph.connectToSwarm(topic, { swarm: swarmB, role: 'peer' })
+  ])
+  networkingA.on('flush-timeout', (info) => console.log(`    [A] flush-timeout: ${info.step} exceeded ${info.timeoutMs}ms`))
+  networkingB.on('flush-timeout', (info) => console.log(`    [B] flush-timeout: ${info.step} exceeded ${info.timeoutMs}ms`))
 
   t.teardown(async () => {
     try { await a.graph.disconnectFromSwarm(networkingA) } catch (err) { /* already closed */ }
