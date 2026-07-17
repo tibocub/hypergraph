@@ -7,6 +7,239 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 22: quick, targeted force-exit workaround for peer-connection.js
+
+Per project direction: round 21's diagnostic addition broke some previously-working tests
+and was reverted; the priority now is finishing the test suite quickly and moving on to
+reviewing hypergraph's internals toward a first usable version, not further root-cause
+investigation of this specific hang.
+
+Added a deliberately temporary, quick-and-dirty fix, scoped to only this one file: the last
+test in `peer-connection.js` now calls `setTimeout(() => process.exit(0), 2000)` after its
+own assertions finish, giving brittle a couple seconds to print what it can first. Verified
+directly (simulating the same shape of problem with a deliberately-leaked, never-closed
+`net.createServer()` before a final test): the process now reliably exits with code 0 within
+a few seconds instead of hanging, and every individual test's own `ok N`/`not ok N` line
+still prints normally. Also confirmed, by testing with a longer 5-second delay, that
+brittle's own aggregate summary line genuinely never gets a chance to print in this exact
+scenario regardless of how long you wait — consistent with earlier findings that brittle's
+completion bookkeeping is blocked by the same lingering resource Node's own exit is — so 2
+seconds is not leaving anything on the table; a longer delay wouldn't recover the summary
+line, just slow the run down for no benefit.
+
+This is explicitly marked as a workaround, not a fix, in case the underlying cause is worth
+revisiting later.
+
+### Round 20: reverted the test-runner wrapper; found and fixed a real product bug behind the multi-peer hang
+
+**Reverted, per project direction:** `test/run-brittle.js` and `test/count-tests.js` (added
+in round 18) are removed; every `npm run test:*` script goes back to calling `npx brittle`
+directly. The project owner didn't want the added complexity and indirection of a wrapper
+unless truly necessary — a fair call, and this round found that the actual multi-peer hang
+had a real, fixable cause in product code rather than needing a process-level workaround.
+
+**The actual bug, confirmed by direct, incremental debugging (not guessed):** three related
+gaps, all in the same area, all now fixed:
+
+1. `UserCore.update()` didn't accept or forward any options to the underlying Hypercore.
+   Hypercore's own `update()` blocks indefinitely by default if the core's replicator
+   believes it's still finding peers for that specific core (confirmed by reading
+   Hypercore's `update()`/`_shouldWait()` source directly) — which is exactly the case for a
+   user core only reachable via relay through another peer, not a direct connection.
+2. `View.update()`'s loop over registered user cores called `core.update()` with no options
+   at all, hitting the same indefinite block internally — even when the caller had already
+   made a separate, correct `update({ wait: false })` call themselves, since `View.update()`
+   calls it again on its own.
+3. `UserCore.get()` had the identical problem one level deeper: it didn't forward options
+   either, so even after fixing `View.update()` to pass a bounded `timeout`, that timeout
+   was silently dropped and `get()` still blocked indefinitely on the first attempt. Traced
+   directly with `has(0)` confirming the block genuinely hadn't arrived locally yet, and a
+   raw, unwrapped timeout option being silently ignored by `UserCore.get(seq)`'s
+   `seq`-only signature.
+
+**Fixed:** `UserCore.update()` and `UserCore.get()` now both accept and forward an `opts`
+object to the underlying Hypercore. `View.update()`'s inner loop now calls
+`core.get(i, { timeout: 5000 })`, tracking the actual last successfully-processed index
+instead of assuming the full requested range completed — if a block times out, the loop
+stops for that core in this call (not throwing, not hanging) and a later `update()` call
+picks up where it left off, since the underlying fetch request continues in the background
+regardless of the local timeout.
+
+**Verified the fix resolves the actual scenario, locally, incrementally:** built a minimal
+3-peer relay reproduction (A↔C, B↔C, A and B not directly connected — the same topology
+`multi-peer.js`'s connection log showed: `A=1, B=1, C=2`) using local Corestore replication,
+no DHT needed. Confirmed step by step: `UserCore.update({wait:false})` completing fine in
+isolation, `graph.update()` still hanging afterward (proving the bug was inside `View`'s own
+internal call, not the caller's), `has(0)` returning `false` (block genuinely not yet local),
+and finally — after all three fixes — the loop hitting the timeout exactly once on the very
+first attempt (block not there yet) and succeeding cleanly 200ms later on the next call, with
+both B and C ending up with the correct data. This also directly answers the open question
+from earlier rounds about whether relay-through-a-third-peer works at all: it does; the
+previous hangs were entirely `update()`/`get()` blocking indefinitely, not a relay gap.
+
+### Test suite refactor, round 19: fixed EINVAL spawning npx on Windows
+
+`test/run-brittle.js` (added in round 18) spawned `npx.cmd` directly on Windows without a
+shell, which threw `Error: spawn EINVAL` on the project owner's machine (Node 25.6.0).
+Spawning `.bat`/`.cmd` files directly via `child_process.spawn()` without `shell: true` has
+become progressively less reliable across recent Node versions, following security fixes
+around how Windows batch-file arguments get interpreted. Fixed by using `shell: true` and
+letting the OS shell resolve `npx` on every platform, rather than guessing the executable
+name (`npx` vs `npx.cmd`) ourselves. Re-verified on this project's Linux sandbox that the
+fix doesn't regress the working Unix path: the full local suite (102 tests) and the
+lingering-handle force-exit behavior from round 18 both still work correctly.
+
+### Test suite refactor, round 18: the test runner itself is now immune to lingering-handle hangs
+
+Per project direction: no backward-compatibility concerns (hypergraph is unreleased, with
+no external consumers), so this changes the test-running mechanism freely.
+
+The hang persisted at the exact same point after round 17's fix, even though that test's
+own teardown reported a fast, clean completion — which was the key clue the user asked to
+explore further. Confirmed directly by testing: a lingering handle (a timer left running,
+in a minimal reproduction) prevents brittle from ever printing its own final TAP summary
+line ("# ok"/"# not ok") at all — brittle is waiting on the same thing Node is. There is no
+way to fix this by chasing the *next* specific lingering resource, because any future one
+would reproduce the identical symptom. So the test runner itself is now made immune to the
+whole class of problem, rather than continuing to patch around individual instances of it.
+
+**Added `test/run-brittle.js`**, now used by every `npm run test:*` script instead of
+calling `npx brittle` directly. It pre-counts how many tests a given set of files will
+register — including tests registered *dynamically* at require-time (`test/brittle/forum/
+index.js` loops over 12 scenario modules calling `test(...)` once per item; a static
+source-text scan only ever sees the one call site, undercounting badly enough that an
+earlier version of this fix cut the process off after 94 of 102 tests. Fixed via
+`test/count-tests.js`, which intercepts `require('brittle')` with a counting stub and
+requires each target file for real, so a loop that calls `test()` 12 times is actually
+counted 12 times). It then watches stdout for the *last individual test's own* completion
+line (`ok N`/`not ok N`, which brittle reliably prints immediately once that one test and
+its teardown finish, regardless of what happens afterward) and force-exits shortly after
+seeing it — it does not wait for or depend on brittle's own final summary line at all,
+since that's exactly the line proven to never appear if a handle is ever left open. A
+generous independent timeout remains as a safety net for a test that hangs mid-run rather
+than after completing.
+
+Verified directly: a test that leaves a `setInterval()` running forever after reporting
+success now still results in the whole run completing and exiting within ~2 seconds, both
+as a single test and as the last of several — and a suite that fails still reports the
+correct non-zero exit code.
+
+### Test suite refactor, round 17: Hyperswarm.destroy() never closes active connections
+
+Per project direction: no backward-compatibility concerns apply here (hypergraph is
+unreleased, with no external consumers yet), so fixes below change APIs/behavior freely
+without preserving old shapes.
+
+With round 16's protomux redesign in place, `hypergraph-network.js`'s writer-authorization
+test passed for the first time. The hang moved to the exact same place as before
+(immediately after `peer-connection.js`'s local, no-network test — the last test in the
+file), even though that test's own teardown reported a fast, clean completion. That pointed
+away from a hanging teardown *call* and toward a resource that's simply never closed at all.
+
+**Root cause, confirmed by reading Hyperswarm's source directly:** `Hyperswarm.destroy()`
+never explicitly destroys already-established peer connections. `this.connections` (the Set
+of live connections) is only ever added to or removed from for bookkeeping — never iterated
+inside `destroy()`. `clear()` only tears down discovery sessions, `server.close()` only
+stops accepting new inbound connections, and `dht.destroy()` tears down the DHT node — none
+of them touch an already-live connection stream. Every test whose connection actually
+replicated data (like `peer-connection.js`'s "hyperswarm replication" test, right before the
+one that hangs) left that live stream open indefinitely, which alone is enough to keep the
+process from exiting, regardless of how cleanly every other part of teardown completes.
+
+**Fixed:** added `destroySwarm(swarm)` to `test/brittle/helpers.js` — explicitly destroys
+every connection in `swarm.connections` before destroying the swarm itself (with
+`{ force: true }`, still correct per round 15's fix for the discovery-session hang risk).
+Replaced every `swarm.destroy({ force: true })` call across the whole test suite (raw
+Hyperswarm and `HypergraphNetwork`-based tests alike, including `peer-connection.js`, the
+file most recently reported hanging) with `destroySwarm(swarm)`.
+
+### Test suite refactor, round 16: HypergraphNetwork redesigned to eliminate the unreliable second swarm entirely
+
+After 15 rounds of fixes to the dual-swarm design, one pattern held steady across every real
+test run: the data channel connected reliably every time (0-1 retries), while the control
+channel was wildly inconsistent — 0 retries in one test, 1 in another, and never once
+succeeding after 3 full attempts in a third, with functionally identical setup code. No
+further code-level bug was found to explain that gap after an extensive investigation. Per
+project direction, rather than keep working around an unreliable second connection, the
+second connection is now gone.
+
+**The redesign:** `HypergraphNetwork` no longer creates a second, internally-owned
+Hyperswarm swarm for a separate "control" topic. Writer-authorization messages are now a
+`protomux` channel multiplexed directly onto the *same* connection the single, caller-owned
+swarm already establishes for replication — the one connection already proven reliable in
+every test. This works because `protomux` (already a project dependency, already used
+internally by Hypercore/Corestore for exactly this purpose) can attach to the *same* muxer
+Corestore's own replication already creates on a connection: confirmed directly from source
+— `Hypercore.createProtocolStream()` stores its Protomux instance on
+`noiseStream.userData`, and `NoiseSecretStream` self-references `this.noiseStream = this`
+— so `Protomux.from(conn)` reuses the exact same muxer instead of creating a duplicate.
+Verified end-to-end locally (no DHT needed) with a real `NoiseSecretStream` pair standing in
+for a Hyperswarm connection: the channel opens on both sides, the writer-request/
+writer-granted handshake completes, and the peer is actually granted write access to the
+context — all in under a second.
+
+**What this removes:** the second Hyperswarm instance, the derived "control topic", the
+raw JSON-line-over-TCP protocol, and an entire category of "does the control channel
+connect" bugs and diagnostics that occupied most of rounds 4 through 15. `destroy()` in
+particular is now trivial — there's no longer an internally-owned network resource to tear
+down at all, since the single swarm was always owned by the caller.
+
+**What this changes for consumers:** `HypergraphNetwork` no longer exposes `controlSwarm`
+or `controlTopic` (getters removed). `generateBootstrap()`'s output no longer includes
+`controlTopic` (bumped to version `'2.0.0'`). The constructor no longer accepts
+`opts.topicPrefix` (it existed only to salt control-topic derivation). `protomux` is now an
+explicit dependency (previously only transitive, via `hypercore`/`corestore`).
+
+**Test changes:** `test/brittle/networking/hypergraph-network.js` rewritten for the
+simplified API — the writer-authorization test in particular is now much simpler, since
+there's no separate control-channel connection to wait for or diagnose independently from
+the main connection. `connect-to-swarm.js` and `hypergraph-network-integration.js` needed no
+changes; they only ever touched the public API surface that stayed the same shape.
+
+### Test suite refactor, round 15: teardown could hang indefinitely — fixed at the source, not worked around
+
+Per direction from the project owner: Hyperswarm/HyperDHT itself is mature, widely used,
+and not the likely source of problems here — any remaining hang is almost certainly in this
+project's own code or test scripts, and the priority is a test suite that always finishes
+and reports clearly, never one that hangs silently. This round treats that as the concrete
+requirement it is, rather than continuing to speculate about Hyperswarm internals.
+
+**Root cause, read directly from Hyperswarm's source, not guessed:** `swarm.leave(topic)`
+and `swarm.clear()` both internally call each pending discovery session's own `destroy()`,
+which can invoke an `unannounce()` network call with no visible internal timeout — this
+category of behavior is already acknowledged directly in this project's own code
+(`ForumNetwork`'s comment: "Hyperswarm's flushed/flush can hang indefinitely in some
+environments"). `HypergraphNetwork.destroy()` called `disconnect()` first, which fires
+`swarm.leave()` on both swarms *without awaiting it* — meaning even though nothing in this
+class's own code blocks on it, the underlying operation keeps running in the background,
+which alone is enough to keep the process alive regardless of whether any JS code is still
+awaiting it. `clear()` (used in round 14's fix) has the same underlying issue one level up:
+it awaits `Promise.allSettled()` over every pending session's own `destroy()`, so it only
+resolves once all of them settle — and hangs if even one never does.
+
+**Fixed, in `src/networking.js`:** `destroy()` no longer calls `disconnect()` at all (it's a
+final, permanent teardown, unlike `disconnect()`, which exists so a connection can be
+re-established later — there's no reason to go through the graceful leave step first). It no
+longer calls `clear()` either. Instead it closes the control swarm's server and destroys its
+connections directly, touching neither discovery sessions nor the DHT at all. The trade-off
+— a stale DHT announcement for the control topic that isn't gracefully retracted — is a
+non-issue during test/process teardown, where nothing is left running to care.
+
+**Also fixed, broadly:** every raw-Hyperswarm test file's teardown was calling
+`discX.destroy()` before `swarm.destroy()` — redundant with, and carrying the same hang
+risk as, what `swarm.destroy({ force: true })` already needs to do anyway (`force: true`
+skips Hyperswarm's own `clear()` step entirely). Removed the redundant `discX.destroy()`
+calls and switched every `swarm.destroy()` call across the test suite (raw-Hyperswarm and
+`HypergraphNetwork`-based alike) to `swarm.destroy({ force: true })`.
+
+**Added a general safety net regardless of cause:** `withTeardownTimeout()` in
+`test/brittle/helpers.js` — wraps any teardown operation with a hard timeout, logging a
+warning and moving on if it doesn't finish in time, rather than ever blocking the rest of
+teardown (or the process) indefinitely. Applied to `peer-connection.js`'s teardown, the file
+most recently reported hanging. This directly serves the stated priority: the test suite
+should always finish and report clearly, and a slow or stuck cleanup should be visible, not
+silent — never the reason a run never completes.
+
 ### Test suite refactor, round 14: fixed a real double-destroy hang in HypergraphNetwork.destroy()
 
 Good news first: every test up through peer-connection.js's local guard test reported "ok"

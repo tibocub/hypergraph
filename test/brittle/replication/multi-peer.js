@@ -1,6 +1,14 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
 // Cannot be verified without real network access.
 //
+// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
+// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
+// Hyperswarm's graceful discovery-session cleanup, which is what would
+// otherwise call discX.destroy() internally anyway — and that path can
+// invoke an unannounce() network call with no visible internal timeout.
+// See test/brittle/networking/peer-connection.js for the fuller
+// investigation.
+//
 // Teardown always closes graph/store before destroying swarms (see
 // late-joiner.js for the full explanation of why order matters here).
 //
@@ -33,7 +41,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, waitForConnections } = require('../helpers')
+const { createGraph, sleep, waitForConnections, destroySwarm } = require('../helpers')
 
 test('multi-peer: data written by one peer replicates to two others, with content verified (needs real network)', { timeout: 320000 }, async (t) => {
   console.log('TEST: 3-peer replication - starting (requires DHT access)')
@@ -65,15 +73,12 @@ test('multi-peer: data written by one peer replicates to two others, with conten
   await Promise.all([swarmA.flush(), swarmB.flush(), swarmC.flush()])
 
   t.teardown(async () => {
-    try { await discA.destroy() } catch (err) { /* already closed */ }
-    try { await discB.destroy() } catch (err) { /* already closed */ }
-    try { await discC.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
     await c.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
-    try { await swarmC.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
+    await destroySwarm(swarmC)
   })
 
   console.log('  Step 2b: verify every peer actually has at least one live connection (not just flushed discovery)')
@@ -152,15 +157,12 @@ test('multi-peer: three peers each write, and all three converge on all writes w
   await Promise.all([swarmA.flush(), swarmB.flush(), swarmC.flush()])
 
   t.teardown(async () => {
-    try { await discA.destroy() } catch (err) { /* already closed */ }
-    try { await discB.destroy() } catch (err) { /* already closed */ }
-    try { await discC.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
     await c.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
-    try { await swarmC.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
+    await destroySwarm(swarmC)
   })
 
   console.log('  Step 1b: verify every peer actually has at least one live connection (not just flushed discovery)')

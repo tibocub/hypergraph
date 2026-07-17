@@ -1,6 +1,14 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
 // Cannot be verified without real network access.
 //
+// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
+// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
+// Hyperswarm's graceful discovery-session cleanup, which is what would
+// otherwise call discX.destroy() internally anyway — and that path can
+// invoke an unannounce() network call with no visible internal timeout.
+// See test/brittle/networking/peer-connection.js for the fuller
+// investigation.
+//
 // TEARDOWN ORDERING BUG FOUND & FIXED: see late-joiner.js for the full
 // explanation. Destroying a swarm before its peer's graph/store are closed
 // hangs store.close() forever waiting for a clean stream-close event that
@@ -22,7 +30,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep } = require('../helpers')
+const { createGraph, sleep, destroySwarm } = require('../helpers')
 
 test('peer-reconnection: a disconnected peer catches up on data created while it was offline, with content verified (needs real network)', async (t) => {
   console.log('TEST: peer reconnection - starting (requires DHT access)')
@@ -54,7 +62,7 @@ test('peer-reconnection: a disconnected peer catches up on data created while it
   await sleep(3000)
 
   console.log('  Step 3: peer B disconnects (intentional mid-test disconnect, not teardown)')
-  await swarmB.destroy()
+  await destroySwarm(swarmB)
 
   console.log('  Step 4: peer A writes a second message while B is offline')
   const msg2 = await a.graph.put({ type: 'message' })
@@ -69,12 +77,10 @@ test('peer-reconnection: a disconnected peer catches up on data created while it
   await Promise.race([swarmB.flush(), sleep(5000)])
 
   t.teardown(async () => {
-    try { await discA.destroy() } catch (err) { /* already closed */ }
-    try { await discBReconnect.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
   })
 
   console.log('  Step 6: wait for both messages to sync after reconnection, then verify exact content')

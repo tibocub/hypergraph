@@ -2,6 +2,14 @@
 // Hyperswarm to connect two peers. It cannot be verified without real
 // network access — run it on a machine with internet access.
 //
+// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
+// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
+// Hyperswarm's graceful discovery-session cleanup, which is what would
+// otherwise call discX.destroy() internally anyway — and that path can
+// invoke an unannounce() network call with no visible internal timeout.
+// See test/brittle/networking/peer-connection.js for the fuller
+// investigation.
+//
 // Ported from the old ad-hoc `replication-scenarios.js` script (a custom
 // main()-based runner that never actually integrated with brittle) into a
 // real brittle test.
@@ -25,7 +33,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep } = require('../helpers')
+const { createGraph, sleep, destroySwarm } = require('../helpers')
 
 test('late-joiner: a peer that joins after data was created still catches up, with content verified (needs real network)', async (t) => {
   console.log('TEST: catch-up replication - starting (requires DHT access)')
@@ -56,12 +64,10 @@ test('late-joiner: a peer that joins after data was created still catches up, wi
   await Promise.race([Promise.all([discB.flushed(), swarmB.flush()]), sleep(15000)])
 
   t.teardown(async () => {
-    try { await discA.destroy() } catch (err) { /* already closed */ }
-    try { await discB.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
   })
 
   console.log('  Step 4: pump peer B until it catches up, then verify the exact content matches')

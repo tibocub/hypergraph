@@ -1,6 +1,14 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
 // Cannot be verified without real network access.
 //
+// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
+// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
+// Hyperswarm's graceful discovery-session cleanup, which is what would
+// otherwise call discX.destroy() internally anyway — and that path can
+// invoke an unannounce() network call with no visible internal timeout.
+// See test/brittle/networking/peer-connection.js for the fuller
+// investigation.
+//
 // TEARDOWN ORDERING BUG FOUND & FIXED: see late-joiner.js for the full
 // explanation. Destroying a swarm before its peer's graph/store are closed
 // hangs store.close() forever waiting for a clean stream-close event that
@@ -18,7 +26,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep } = require('../helpers')
+const { createGraph, sleep, destroySwarm } = require('../helpers')
 
 test('concurrent-writes: two peers each write, both replicate, and content matches exactly (needs real network)', async (t) => {
   console.log('TEST: sequential writes, both peers write - starting (requires DHT access)')
@@ -48,12 +56,10 @@ test('concurrent-writes: two peers each write, both replicate, and content match
   await discB.flushed()
 
   t.teardown(async () => {
-    try { await discA.destroy() } catch (err) { /* already closed */ }
-    try { await discB.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
   })
 
   console.log('  Step 3: wait for peer B to connect and replicate peer A data')

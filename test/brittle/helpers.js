@@ -128,4 +128,51 @@ async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
   }
 }
 
-module.exports = { createGraph, removeDirWithRetry, sleep, waitForConnections }
+/**
+ * Run a teardown operation (destroying a swarm, a discovery session, a
+ * HypergraphNetwork instance, etc.) with a hard timeout, so a single stuck
+ * operation can never hang the whole test process. If it times out, this
+ * logs a warning and moves on rather than blocking indefinitely — teardown
+ * should never be the reason a test suite hangs forever; a slow or stuck
+ * cleanup should be visible, not silent, and should never prevent the rest
+ * of teardown (or the process) from completing.
+ *
+ * @param {Promise<any>} promise
+ * @param {number} ms
+ * @param {string} label - what's being torn down, for the log line
+ */
+async function withTeardownTimeout (promise, ms, label) {
+  const result = await Promise.race([
+    Promise.resolve(promise).then((value) => ({ timedOut: false, value, error: null })).catch((error) => ({ timedOut: false, value: null, error })),
+    sleep(ms).then(() => ({ timedOut: true, value: null, error: null }))
+  ])
+  if (result.timedOut) {
+    console.log(`    [teardown] ${label} did not finish within ${ms}ms — abandoning it so the rest of teardown can proceed`)
+  } else if (result.error) {
+    console.log(`    [teardown] ${label} threw during cleanup: ${result.error.message}`)
+  }
+  return result.value
+}
+
+/**
+ * Properly destroy a Hyperswarm instance: Hyperswarm.destroy() never
+ * explicitly closes already-established peer connections (confirmed by
+ * reading its source — `this.connections` is only ever added to/removed
+ * from for bookkeeping, never iterated or destroyed inside destroy()).
+ * `clear()` only handles discovery sessions, `server.close()` only stops
+ * accepting new inbound connections, and `dht.destroy()` tears down the
+ * DHT node — none of them touch an already-live connection stream. If a
+ * test actually replicated data over a connection, that stream can be left
+ * open indefinitely, which is enough on its own to keep a process from
+ * exiting. Destroy every active connection explicitly first.
+ *
+ * @param {import('hyperswarm')} swarm
+ */
+async function destroySwarm (swarm) {
+  for (const conn of [...swarm.connections]) {
+    try { conn.destroy() } catch (err) { /* already closed */ }
+  }
+  try { await swarm.destroy({ force: true }) } catch (err) { /* already closed */ }
+}
+
+module.exports = { createGraph, removeDirWithRetry, sleep, waitForConnections, withTeardownTimeout, destroySwarm }

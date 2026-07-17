@@ -32,7 +32,7 @@
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
 const { HypergraphNetwork } = require('../../../index.js')
-const { createGraph, sleep } = require('../helpers')
+const { createGraph, sleep, destroySwarm } = require('../helpers')
 
 test('hypergraph-network-integration: data written by one peer replicates to the other via HypergraphNetwork, with content verified (needs real network)', { timeout: 240000 }, async (t) => {
   console.log('TEST: HypergraphNetworking integration - starting (requires DHT access)')
@@ -59,8 +59,8 @@ test('hypergraph-network-integration: data written by one peer replicates to the
     try { await networkingB.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
   })
 
   await Promise.all([networkingA.connect(), networkingB.connect()])

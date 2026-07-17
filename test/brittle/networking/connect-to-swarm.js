@@ -24,7 +24,7 @@
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
 const crypto = require('crypto')
-const { createGraph, sleep } = require('../helpers')
+const { createGraph, sleep, destroySwarm } = require('../helpers')
 
 test('connect-to-swarm: connectToSwarm no longer throws "Topic is required" (no network needed)', async (t) => {
   console.log('TEST: connectToSwarm argument fix - starting')
@@ -56,7 +56,7 @@ test('connect-to-swarm: connectToSwarm no longer throws "Topic is required" (no 
       try { await settled.networking.destroy() } catch (err) { /* already closed */ }
     }
     await peer.close()
-    try { await swarm.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarm)
   })
   console.log('TEST: connectToSwarm argument fix - passed')
 })
@@ -116,8 +116,8 @@ test('connect-to-swarm: two peers connect end-to-end via connectToSwarm/disconne
     try { await b.graph.disconnectFromSwarm(networkingB) } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
   })
 
   console.log('  Step 2: verify both report connected')

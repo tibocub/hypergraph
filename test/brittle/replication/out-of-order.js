@@ -1,6 +1,14 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
 // Cannot be verified without real network access.
 //
+// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
+// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
+// Hyperswarm's graceful discovery-session cleanup, which is what would
+// otherwise call discX.destroy() internally anyway — and that path can
+// invoke an unannounce() network call with no visible internal timeout.
+// See test/brittle/networking/peer-connection.js for the fuller
+// investigation.
+//
 // This complements test/brittle/forum/scenarios/out-of-order-replication.js
 // and reply-before-parent.js, which already cover out-of-order moderation
 // and relation events over *local* (non-network) replication pipes. This
@@ -13,7 +21,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, waitForConnections } = require('../helpers')
+const { createGraph, sleep, waitForConnections, destroySwarm } = require('../helpers')
 
 test('out-of-order: a relation referencing a not-yet-replicated entity still converges correctly (needs real network)', { timeout: 340000 }, async (t) => {
   console.log('TEST: out-of-order replication over real network - starting (requires DHT access)')
@@ -59,12 +67,10 @@ test('out-of-order: a relation referencing a not-yet-replicated entity still con
   await Promise.all([swarmA.flush(), swarmB.flush()])
 
   t.teardown(async () => {
-    try { await discA.destroy() } catch (err) { /* already closed */ }
-    try { await discB.destroy() } catch (err) { /* already closed */ }
     await a.close()
     await b.close()
-    try { await swarmA.destroy() } catch (err) { /* already closed */ }
-    try { await swarmB.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmA)
+    await destroySwarm(swarmB)
   })
 
   console.log('  Step 3b: verify a real connection exists (not just flushed discovery) before pumping')

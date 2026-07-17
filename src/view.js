@@ -104,20 +104,49 @@ module.exports = class GraphView extends ReadyResource {
   async update () {
     if (!this.opened) await this.ready()
 
-    // Ensure replicated data is pulled in before indexing
+    // Ensure replicated data is pulled in before indexing.
+    // wait:false: core.update() with no options blocks indefinitely if the
+    // core's replicator believes it's still finding peers (confirmed by
+    // reading Hypercore's own update()/_shouldWait() implementation) — for
+    // example a user core only reachable via relay through another peer,
+    // not a direct connection. That would hang this entire view update
+    // waiting on one specific core, even when other cores/contexts here
+    // have data ready to process right now. This should be a "check what's
+    // available" operation, not a "block until something arrives" one.
     for (const [keyHex, core] of this.#userCores) {
-      await core.update()
+      await core.update({ wait: false })
 
       const lastSeq = this.#lastProcessedSeq.get(keyHex) ?? -1
       const currentLength = core.length
       if (currentLength <= lastSeq + 1) continue
 
+      let lastProcessed = lastSeq
       for (let i = lastSeq + 1; i < currentLength; i++) {
-        const event = await core.get(i)
+        // core.get(i) with no options blocks indefinitely if the block
+        // hasn't actually arrived yet, even though the core's length
+        // metadata has already synced (confirmed by reading Hypercore's
+        // own get()/_get() implementation: with no timeout, the block
+        // request has no bound at all). A timeout still issues the
+        // request — so the block can still arrive later in the
+        // background — without blocking this whole view update forever.
+        // If it times out, stop processing further events for this core
+        // in this call; a later update() call will pick up where this one
+        // left off once the block has arrived.
+        let event
+        try {
+          event = await core.get(i, { timeout: 5000 })
+        } catch (err) {
+          safetyCatch(err)
+          break
+        }
+        if (event === null) break
         await this.#applyEvent(event, i, keyHex)
+        lastProcessed = i
       }
 
-      const nextSeq = currentLength - 1
+      if (lastProcessed === lastSeq) continue
+
+      const nextSeq = lastProcessed
       this.#lastProcessedSeq.set(keyHex, nextSeq)
       await this.#bee.put(`meta:user:${keyHex}:lastSeq`, { seq: nextSeq })
     }

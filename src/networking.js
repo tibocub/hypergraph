@@ -1,7 +1,6 @@
 const EventEmitter = require('events')
 const safetyCatch = require('safety-catch')
-const crypto = require('crypto')
-const b4a = require('b4a')
+const c = require('compact-encoding')
 
 function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -28,17 +27,33 @@ async function withTimeoutWarn (emitter, label, promise, ms) {
 
 /**
  * HypergraphNetwork - Helper class for Hypergraph + Hyperswarm integration
- * 
+ *
  * This class provides a simple networking solution for Hypergraph applications by:
- * - Using dual Hyperswarm swarms (data + control) for separation of concerns
- * - Automatically calling store.replicate(conn) on data connections
- * - Handling writer authorization via JSON protocol on control swarm
+ * - Using a single Hyperswarm connection for both replication and writer-auth control
+ * - Automatically calling store.replicate(conn) on connections
+ * - Handling writer authorization via a protomux channel multiplexed onto that same connection
  * - Sensible defaults for simple use cases, options for advanced customization
- * 
+ *
  * Design decisions:
- * - Dual swarm approach for reliability (data for replication, control for protocol)
+ * - REDESIGNED (previously used a second, internally-created Hyperswarm swarm
+ *   sharing the data swarm's DHT, joining a second, derived "control" topic,
+ *   with writer-auth as a raw JSON-line protocol over that separate
+ *   connection). That design required establishing two independent DHT
+ *   rendezvous/hole-punch processes between the same two peers. In extensive
+ *   real-network testing, the data channel connected reliably every time;
+ *   the control channel was unreliable — sometimes needing retries,
+ *   sometimes never connecting at all, with no code-level bug found to
+ *   explain the difference after an extensive investigation (see
+ *   CHANGELOG.md). Rather than continue working around an unreliable second
+ *   connection, this eliminates it: writer-auth is now a protomux channel
+ *   multiplexed onto the *same* connection the data swarm already
+ *   establishes — the one connection already proven reliable — using the
+ *   same muxer Corestore's own replication already attaches to that
+ *   connection (`Protomux.from(conn)` returns the existing muxer via
+ *   `conn.userData`, confirmed by reading Hypercore.createProtocolStream()
+ *   and NoiseSecretStream's `this.noiseStream = this` self-reference
+ *   directly).
  * - Hyperswarm instance passed as parameter (follows holepunch pattern)
- * - Control swarm created internally, sharing DHT from passed swarm
  * - Context keys (not instances) to avoid timing problems
  * - Any writer can add writers (no owner required for authorization)
  *
@@ -55,29 +70,25 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   #graph
   #store
   #dataSwarm
-  #controlSwarm
   #topic
-  #controlTopic
   #maxPeers
   #connected = false
-  #ownsControlSwarm = true
   #autoReplicate = true
-  #topicPrefix = ''
   #contexts = new Map() // name -> contextKey
   #contextInstances = new Map() // name -> contextInstance
   #role = 'peer'
   #connections = 0
   #hasPeerJoined = false
+  #channelsByConn = new WeakMap() // conn -> { channel, messages }
 
   /**
    * @param {Object} graph - Hypergraph instance
    * @param {Object} store - Corestore instance
-   * @param {Object} swarm - Hyperswarm instance (used as data swarm)
+   * @param {Object} swarm - Hyperswarm instance
    * @param {Object} opts - Configuration options
-   * @param {Buffer|string} opts.topic - Hyperswarm topic for data swarm (Buffer or hex string)
-   * @param {string} [opts.topicPrefix] - Optional salt for control topic derivation
+   * @param {Buffer|string} opts.topic - Hyperswarm topic (Buffer or hex string)
    * @param {Object} [opts.contexts] - Context keys mapping: { name: contextKey }
-   * @param {boolean} [opts.autoReplicate=true] - Auto-replicate store on data connections
+   * @param {boolean} [opts.autoReplicate=true] - Auto-replicate store on connections
    * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
    */
   constructor (graph, store, swarm, opts = {}) {
@@ -86,7 +97,6 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     this.#store = store
     this.#dataSwarm = swarm
     this.#topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
-    this.#topicPrefix = opts.topicPrefix || ''
     this.#autoReplicate = opts.autoReplicate !== false
     this.#role = opts.role || 'peer'
 
@@ -103,25 +113,11 @@ module.exports = class HypergraphNetwork extends EventEmitter {
         this.#contexts.set(name, key)
       }
     }
-
-    // Derive control topic from data topic with optional salt
-    this.#controlTopic = this._deriveControlTopic(this.#topic, this.#topicPrefix)
   }
 
   /**
-   * Derive control topic from data topic with optional salt
-   * @private
-   */
-  _deriveControlTopic (dataTopic, prefix) {
-    const hash = crypto.createHash('sha256')
-    hash.update(dataTopic)
-    if (prefix) hash.update(prefix)
-    hash.update('control')
-    return hash.digest()
-  }
-
-  /**
-   * Handle data swarm connection - replicate cores
+   * Handle a swarm connection: replicate the store and wire up the
+   * writer-auth protomux channel on the same connection.
    * @private
    */
   _handleDataConnection (conn, info) {
@@ -130,16 +126,8 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       // Corestore replicates all cores loaded in memory
       this.#store.replicate(conn)
     }
+    this._wireWriterAuthChannel(conn, info)
     this.emit('data-connection', { conn, info })
-  }
-
-  /**
-   * Handle control swarm connection - wire JSON protocol
-   * @private
-   */
-  _handleControlConnection (conn, info) {
-    this._wireControlConnection(conn, info)
-    this.emit('control-connection', { conn, info })
   }
 
   /**
@@ -154,60 +142,60 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   }
 
   /**
-   * Wire control connection for JSON protocol
+   * Wire the writer-auth protocol as a protomux channel multiplexed onto
+   * the same connection the data swarm already established, instead of a
+   * separate connection/topic. Protomux.from(conn) reuses the exact muxer
+   * store.replicate(conn) already attached to this connection (via
+   * conn.userData) rather than creating a second one.
    * @private
    */
-  _wireControlConnection (conn, info) {
-    // Set up JSON message handling
-    conn.setEncoding('utf8')
+  _wireWriterAuthChannel (conn, info) {
+    const Protomux = require('protomux')
+    const mux = Protomux.from(conn)
 
-    let buffer = ''
-
-    conn.on('data', (data) => {
-      buffer += data
-      const lines = buffer.split('\n')
-      buffer = lines.pop() // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const msg = JSON.parse(line)
-          this._handleControlMessage(msg, conn, info)
-        } catch (err) {
-          safetyCatch(err)
-          this.emit('control-error', err)
+    const channel = mux.createChannel({
+      protocol: 'hypergraph-writer-auth',
+      id: this.#topic,
+      onopen: () => {
+        this.emit('control-connection', { conn, info })
+        if (this.#role === 'peer') {
+          this._sendWriterRequest(conn)
         }
+      },
+      onclose: () => {
+        this.#channelsByConn.delete(conn)
       }
     })
 
-    // If peer role, send writer-request on connection
-    if (this.#role === 'peer') {
-      this._sendWriterRequest(conn)
-    }
+    if (!channel) return // duplicate channel on this connection; shouldn't normally happen
 
-    this.emit('connection', { conn, info })
-  }
-
-  /**
-   * Handle control message
-   * @private
-   */
-  async _handleControlMessage (msg, conn, info) {
-    this.emit('control-message', msg, conn, info)
-
-    switch (msg.type) {
-      case 'writer-request':
-        await this._handleWriterRequest(msg, conn)
-        break
-      case 'writer-granted':
+    const writerRequestMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
+        this._handleWriterRequest(msg, conn).catch((err) => {
+          safetyCatch(err)
+          this.emit('control-error', err)
+        })
+      }
+    })
+    const writerGrantedMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
         this.emit('writer-granted', msg)
-        break
-      case 'writer-error':
+      }
+    })
+    const writerErrorMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
         this.emit('writer-error', msg)
-        break
-      default:
-        safetyCatch(new Error(`Unknown control message type: ${msg.type}`))
-    }
+      }
+    })
+
+    this.#channelsByConn.set(conn, { channel, writerRequestMsg, writerGrantedMsg, writerErrorMsg })
+    channel.open()
   }
 
   /**
@@ -242,14 +230,14 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       }
 
       // Send writer-granted response
-      this._sendControlMessage(conn, {
+      this._sendControlMessage(conn, 'writerGrantedMsg', {
         type: 'writer-granted',
         contexts: granted
       })
     } catch (err) {
       safetyCatch(err)
       // Send writer-error on failure
-      this._sendControlMessage(conn, {
+      this._sendControlMessage(conn, 'writerErrorMsg', {
         type: 'writer-error',
         message: err.message || String(err)
       })
@@ -272,32 +260,31 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       contexts
     }
 
-    this._sendControlMessage(conn, msg)
+    this._sendControlMessage(conn, 'writerRequestMsg', msg)
   }
 
   /**
-   * Send control message
+   * Send a message over this connection's writer-auth channel.
    * @private
+   * @param {string} slot - 'writerRequestMsg' | 'writerGrantedMsg' | 'writerErrorMsg'
    */
-  _sendControlMessage (conn, msg) {
-    conn.write(JSON.stringify(msg) + '\n')
+  _sendControlMessage (conn, slot, msg) {
+    const entry = this.#channelsByConn.get(conn)
+    if (!entry) return
+    entry[slot].send(msg)
   }
 
   /**
-   * Connect to the Hyperswarm topics
+   * Connect to the Hyperswarm topic
    */
   async connect () {
     if (this.#connected) return
 
-    const Hyperswarm = require('hyperswarm')
-
-    // Open contexts internally before joining swarms
+    // Open contexts internally before joining the swarm
     await this._openContexts()
 
-    // Create control swarm internally, sharing DHT from data swarm
-    this.#controlSwarm = new Hyperswarm({ dht: this.#dataSwarm.dht })
-
-    // Set up data swarm connection handler
+    // Set up swarm connection handler: replicate + wire the writer-auth
+    // channel onto the same connection (see _handleDataConnection).
     this.#dataSwarm.on('connection', (conn, info) => {
       this.#connections++
       this.#hasPeerJoined = true
@@ -317,48 +304,22 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       })
     })
 
-    // Set up control swarm connection handler
-    this.#controlSwarm.on('connection', (conn, info) => {
-      this.#connections++
-      this._handleControlConnection(conn, info)
+    // Join topic
+    const discovery = this.#dataSwarm.join(this.#topic, { server: true, client: true })
 
-      const peerKey = info && info.publicKey ? info.publicKey.toString('hex') : 'unknown'
-
-      conn.on('error', (err) => {
-        safetyCatch(err)
-        this.emit('control-error', err)
-      })
-
-      conn.on('close', () => {
-        this.#connections--
-      })
-    })
-
-    // Join data topic
-    const dataDiscovery = this.#dataSwarm.join(this.#topic, { server: true, client: true })
-
-    // Join control topic
-    const controlDiscovery = this.#controlSwarm.join(this.#controlTopic, { server: true, client: true })
-
-    // Wait for discovery and swarms to be ready with timeout.
+    // Wait for discovery and the swarm to be ready with timeout.
     //
     // BUG FIX: withTimeout() silently swallows a timeout and returns null,
     // so connect() previously reported success (`connected = true`)
-    // unconditionally after these four steps, regardless of whether any of
-    // them actually completed. That's how a caller could see `connected:
-    // true` on both sides while the control channel had never actually
-    // connected at all — there was no way to tell the difference between
-    // "flushed fine" and "gave up after 10s, silently, and moved on
-    // anyway". 10s was also too short: DHT connections in real-world
-    // testing on this project have been observed taking anywhere from a
-    // few seconds up to ~90s. Both are fixed here: a much more realistic
-    // timeout, and a warning emitted (not swallowed) if a step actually
-    // times out, so a partial/failed connect is at least observable
-    // instead of silently reported as success.
-    await withTimeoutWarn(this, 'data discovery flush', dataDiscovery.flushed(), 60000)
-    await withTimeoutWarn(this, 'control discovery flush', controlDiscovery.flushed(), 60000)
-    await withTimeoutWarn(this, 'data swarm flush', this.#dataSwarm.flush(), 60000)
-    await withTimeoutWarn(this, 'control swarm flush', this.#controlSwarm.flush(), 60000)
+    // unconditionally after these steps, regardless of whether any of them
+    // actually completed. 10s was also too short: DHT connections in
+    // real-world testing on this project have been observed taking
+    // anywhere from a few seconds up to ~90s. Both are fixed here: a much
+    // more realistic timeout, and a warning emitted (not swallowed) if a
+    // step actually times out, so a partial/failed connect is at least
+    // observable instead of silently reported as success.
+    await withTimeoutWarn(this, 'discovery flush', discovery.flushed(), 60000)
+    await withTimeoutWarn(this, 'swarm flush', this.#dataSwarm.flush(), 60000)
 
     // BUG FIX: flushed()/flush() resolving successfully does NOT mean any
     // peer was actually found or connected — it can resolve with zero
@@ -372,7 +333,6 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     // product code rather than only ever inside tests, since any consumer
     // of connect() can hit this.
     await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data')
-    await this._ensureConnectionWithRetry(this.#controlSwarm, this.#controlTopic, 'control')
 
     this.#connected = true
     this.emit('connected')
@@ -438,18 +398,13 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   }
 
   /**
-   * Disconnect from the Hyperswarm topics
+   * Disconnect from the Hyperswarm topic
    */
   async disconnect () {
     if (!this.#connected) return
 
-    // Leave data topic
     this.#dataSwarm.leave(this.#topic)
     await this.#dataSwarm.flush()
-
-    // Leave control topic
-    this.#controlSwarm.leave(this.#controlTopic)
-    await this.#controlSwarm.flush()
 
     this.#connected = false
     this.emit('disconnected')
@@ -457,31 +412,17 @@ module.exports = class HypergraphNetwork extends EventEmitter {
 
 
   /**
-   * Get the data swarm instance
+   * Get the swarm instance
    */
   get dataSwarm () {
     return this.#dataSwarm
   }
 
   /**
-   * Get the control swarm instance
-   */
-  get controlSwarm () {
-    return this.#controlSwarm
-  }
-
-  /**
-   * Get the data topic
+   * Get the topic
    */
   get topic () {
     return this.#topic
-  }
-
-  /**
-   * Get the control topic
-   */
-  get controlTopic () {
-    return this.#controlTopic
   }
 
   /**
@@ -492,7 +433,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   }
 
   /**
-   * Get the number of active connections (data + control)
+   * Get the number of active connections
    */
   get connections () {
     return this.#connections
@@ -522,54 +463,23 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   }
 
   /**
-   * Destroy the networking helper
-   * Disconnects and cleans up resources
+   * Destroy the networking helper.
+   *
+   * Since the redesign removed the internally-created control swarm
+   * entirely (see class doc comment), there is no longer any
+   * internally-owned network resource for this method to tear down — the
+   * single swarm was always owned by the caller. This just marks the
+   * instance disconnected and removes its own listeners; the caller is
+   * still responsible for destroying their own swarm (with
+   * `{ force: true }` recommended, to skip Hyperswarm's own
+   * discovery-session cleanup, which can invoke an unannounce() network
+   * call with no visible internal timeout).
    */
   async destroy () {
-    await this.disconnect()
-
-    // Destroy control swarm's own resources (we created it), but WITHOUT
-    // destroying its DHT.
-    //
-    // BUG FIX: the control swarm's DHT is a *shared* reference borrowed
-    // from the externally-provided data swarm
-    // (`new Hyperswarm({ dht: dataSwarm.dht })`), not something this class
-    // owns. Hyperswarm's own destroy() unconditionally calls
-    // `this.dht.destroy()`, with no way to opt out and no tracking of
-    // whether the dht was externally provided or created internally
-    // (confirmed by reading Hyperswarm's constructor:
-    // `this.dht = opts.dht || new DHT(...)` never records which case
-    // applied). Since this class explicitly leaves the data swarm for the
-    // caller to destroy separately (see below), calling the control
-    // swarm's full destroy() here destroyed the *same* shared DHT a second
-    // time once the caller destroyed their data swarm afterward.
-    // HyperDHT.destroy() has no idempotency guard of its own either, so a
-    // second destroy on already-torn-down internals can hang rather than
-    // error — exactly the symptom observed (the whole test process never
-    // exiting). Fixed by tearing down only the control swarm's own
-    // resources (topics, server, connections) and leaving the shared DHT
-    // alone; it's the data swarm owner's job to destroy that, exactly
-    // once.
-    if (this.#ownsControlSwarm && this.#controlSwarm) {
-      try {
-        await this.#controlSwarm.clear()
-        await this.#controlSwarm.server.close()
-        for (const conn of [...this.#controlSwarm.connections]) {
-          try {
-            conn.destroy()
-          } catch (err) {
-            safetyCatch(err)
-          }
-        }
-      } catch (err) {
-        safetyCatch(err)
-      }
+    if (this.#connected) {
+      this.#connected = false
+      this.emit('disconnected')
     }
-
-    // Don't destroy data swarm (passed by user), and don't destroy the
-    // shared DHT via the control swarm either (see above) — the caller
-    // owns both and is responsible for destroying the data swarm once.
-
     this.removeAllListeners()
   }
 
@@ -579,8 +489,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    *
    * @param {Object} graph - Hypergraph instance
    * @param {Object} opts - Bootstrap options
-   * @param {Buffer|string} opts.topic - Data swarm topic
-   * @param {string} [opts.topicPrefix] - Optional salt for control topic derivation
+   * @param {Buffer|string} opts.topic - Swarm topic
    * @param {Object} opts.contexts - Context keys mapping: { name: contextKey }
    * @param {Object} [opts.metadata] - Optional app-specific metadata
    * @returns {Object} Bootstrap object
@@ -598,17 +507,9 @@ module.exports = class HypergraphNetwork extends EventEmitter {
 
     const topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
 
-    // Derive control topic
-    const hash = crypto.createHash('sha256')
-    hash.update(topic)
-    if (opts.topicPrefix) hash.update(opts.topicPrefix)
-    hash.update('control')
-    const controlTopic = hash.digest()
-
     return {
-      version: '1.0.0',
+      version: '2.0.0',
       topic: topic.toString('hex'),
-      controlTopic: controlTopic.toString('hex'),
       ownerCore: graph.key.toString('hex'),
       contexts: opts.contexts,
       metadata: opts.metadata || null

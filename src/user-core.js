@@ -132,10 +132,19 @@ module.exports = class UserCore extends ReadyResource {
    * @param {number} seq - The sequence number of the event
    * @returns {Promise<Object|null>} The decoded event, or null if not found
    */
-  async get (seq) {
+  /**
+   * @param {number} seq
+   * @param {Object} [opts] - Forwarded to the underlying Hypercore's get().
+   *   Notably opts.timeout: by default, get() with no options blocks
+   *   indefinitely if the block hasn't arrived yet, even if the core's
+   *   length has already synced (confirmed by reading Hypercore's own
+   *   get()/_get() implementation — with no timeout, the block request has
+   *   no bound at all).
+   */
+  async get (seq, opts) {
     if (!this.opened) await this.ready()
 
-    const block = await this.#core.get(seq)
+    const block = await this.#core.get(seq, opts)
     return decodeEvent(block)
   }
 
@@ -187,11 +196,17 @@ module.exports = class UserCore extends ReadyResource {
   /**
    * Update the core from remote peers.
    *
+   * @param {Object} [opts] - Forwarded to the underlying Hypercore's
+   *   update(). Notably opts.wait: by default, update() blocks
+   *   indefinitely if the core's replicator believes it's still finding
+   *   peers for this specific core (confirmed by reading Hypercore's own
+   *   update()/_shouldWait() implementation) — pass { wait: false } to
+   *   just check for an update that's already available without blocking.
    * @returns {Promise<boolean>} True if the core was updated, false otherwise
    */
-  update () {
+  update (opts) {
     if (!this.#core) return Promise.resolve(false)
-    return this.#core.update().then((changed) => {
+    return this.#core.update(opts).then((changed) => {
       this.#length = this.#core.length
       return changed
     })

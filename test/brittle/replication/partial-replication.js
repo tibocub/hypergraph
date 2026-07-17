@@ -1,6 +1,14 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
 // Cannot be verified without real network access.
 //
+// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
+// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
+// Hyperswarm's graceful discovery-session cleanup, which is what would
+// otherwise call discX.destroy() internally anyway — and that path can
+// invoke an unannounce() network call with no visible internal timeout.
+// See test/brittle/networking/peer-connection.js for the fuller
+// investigation.
+//
 // WHAT "PARTIAL REPLICATION" ACTUALLY MEANS HERE (verified against source,
 // not assumed):
 //
@@ -31,7 +39,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, waitForConnections } = require('../helpers')
+const { createGraph, sleep, waitForConnections, destroySwarm } = require('../helpers')
 
 test('partial-replication: a peer only receives data for contexts it has opened (needs real network)', { timeout: 480000 }, async (t) => {
   console.log('TEST: partial replication over real network - starting (requires DHT access)')
@@ -75,12 +83,10 @@ test('partial-replication: a peer only receives data for contexts it has opened 
   await Promise.all([swarmOwner.flush(), swarmPeer.flush()])
 
   t.teardown(async () => {
-    try { await discOwner.destroy() } catch (err) { /* already closed */ }
-    try { await discPeer.destroy() } catch (err) { /* already closed */ }
     await owner.close()
     await peer.close()
-    try { await swarmOwner.destroy() } catch (err) { /* already closed */ }
-    try { await swarmPeer.destroy() } catch (err) { /* already closed */ }
+    await destroySwarm(swarmOwner)
+    await destroySwarm(swarmPeer)
   })
 
   console.log('  Step 2b: verify a real connection exists (not just flushed discovery) before pumping')
