@@ -111,6 +111,40 @@ test('hypergraph-network: connectFromBootstrap actually consumes a bootstrap to 
   console.log('TEST: connectFromBootstrap - passed')
 })
 
+test('hypergraph-network: connectFromBootstrap rejects a bootstrap version mismatch (no network needed)', async (t) => {
+  // No version migration logic exists yet — a mismatch should fail loudly
+  // and immediately rather than silently misinterpreting an incompatible
+  // descriptor (e.g. a future shape change adding/renaming fields this
+  // version of the code doesn't know about).
+  const owner = await createGraph(t, 'hn-bootstrap-version-owner')
+  const peer = await createGraph(t, 'hn-bootstrap-version-peer')
+
+  const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+  const topic = crypto.randomBytes(32)
+  const bootstrap = HypergraphNetwork.generateBootstrap(owner.graph, { topic, contexts: { chat: contextKey } })
+
+  t.is(bootstrap.version, '2.0.0', 'sanity check: generateBootstrap still produces the current version')
+
+  const mismatched = { ...bootstrap, version: '1.0.0' }
+  await t.exception(
+    HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, mismatched, { role: 'peer' }),
+    /Unsupported bootstrap version/,
+    'rejects a bootstrap with an older/different version'
+  )
+
+  const missingVersion = { ...bootstrap, version: undefined }
+  await t.exception(
+    HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, missingVersion, { role: 'peer' }),
+    /Unsupported bootstrap version/,
+    'rejects a bootstrap with a missing version entirely'
+  )
+
+  await t.execution(
+    HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, bootstrap, { role: 'peer' }),
+    'a matching version is accepted normally'
+  )
+})
+
 function registerTeardown (t, { peer1, peer2, swarm1, swarm2, networking1, networking2 }) {
   t.teardown(async () => {
     try { await networking1.destroy() } catch (err) { /* already closed */ }

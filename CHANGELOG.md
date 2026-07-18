@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 28: writer-grant handshake timeout, and bootstrap version validation
+
+**Writer-grant timeout, addressing a real gap:** previously, if the protomux channel opened
+but the owner never responded (offline, a bug, a lost message), a peer had no way to detect
+it and would wait indefinitely. Added:
+- `writer-request-timeout` event, fired if neither `writer-granted` nor `writer-error`
+  arrives within `writerRequestTimeoutMs` (default 30000, configurable via a new constructor
+  option) after a peer sends its request.
+- `waitForWriterGrant(timeoutMs)`, a promise-based waiter mirroring the existing
+  `waitForPeer()` pattern, for callers who want to explicitly await the outcome.
+- A real bug caught and fixed while implementing this: the pending timeout was only
+  reachable through `#channelsByConn`, a `WeakMap`, which can't be iterated — meaning
+  `destroy()` had no way to clear a still-pending timeout, which would otherwise keep the
+  process alive for up to `writerRequestTimeoutMs` after teardown. This is exactly the class
+  of lingering-handle bug that took many rounds to track down elsewhere in this project.
+  Fixed by also tracking pending timeouts in a regular `Set`, which `destroy()` now clears.
+
+Verified with two new tests in `writer-authorization.js`: one simulating a hung/buggy owner
+(overriding `_handleWriterRequest` with a no-op, since simulating "never connects" wouldn't
+exercise this — the timeout only starts once the channel actually opens and the request is
+actually sent) and confirming the event fires with the correct duration; one confirming
+`waitForWriterGrant()` both resolves on a real grant and rejects on a genuine timeout.
+
+**Bootstrap version validation:** per project direction — no version migration logic is
+needed yet (nothing runs this in production), but a mismatch should fail loudly rather than
+silently misinterpreting an incompatible descriptor once shape changes do happen later.
+Extracted the version string into a shared `BOOTSTRAP_VERSION` constant (previously
+duplicated as a literal in `generateBootstrap()`, with no corresponding check anywhere), and
+`connectFromBootstrap()` now rejects any bootstrap whose `version` doesn't match exactly —
+including a missing version field entirely. New test covers a mismatched version, a missing
+version, and confirms a correctly-matching version still passes through normally.
+
+Full local suite: 110/110.
+
 ### Round 27: added missing diagnostics to the flaky peer-join test, rather than guess at a fix
 
 Investigated the "emits peer-join" test's intermittent failure (`waitForPeer(90000)` timing

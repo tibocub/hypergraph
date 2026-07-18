@@ -331,3 +331,102 @@ test('writer-authorization: a single request can grant some contexts while denyi
   t.absent(closedCtx.writable, 'peer cannot actually write to the closed context')
   console.log('TEST: selective per-context authorization - passed')
 })
+
+test('writer-authorization: emits writer-request-timeout if the owner never responds', async (t) => {
+  // Addresses the gap: previously, if the channel opened but the owner
+  // never responded (offline, a bug, a lost message), the peer had no way
+  // to detect it and would wait indefinitely. Simulates "receives but never
+  // responds" by overriding _handleWriterRequest on the owner instance
+  // with a no-op, rather than simulating "never connects" (which wouldn't
+  // exercise this at all, since the timeout only starts once the channel
+  // actually opens and the request is actually sent).
+  console.log('TEST: writer-request-timeout - starting (no network needed)')
+  const owner = await createGraph(t, 'writer-auth-timeout-owner')
+  const peer = await createGraph(t, 'writer-auth-timeout-peer')
+
+  const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+  await owner.graph.openContext(contextKey, { writeMode: 'open' })
+  await peer.graph.openContext(contextKey, { writeMode: 'open' })
+
+  const topic = crypto.randomBytes(32)
+  const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { chat: contextKey } })
+  // Short timeout for a fast test; the default (30000ms) is for production use.
+  const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: { chat: contextKey }, writerRequestTimeoutMs: 500 })
+  await networkingOwner._openContexts()
+  await networkingPeer._openContexts()
+
+  // Simulate a hung/buggy owner: the channel opens and the request
+  // arrives, but nothing is ever sent back.
+  networkingOwner._handleWriterRequest = async () => {}
+
+  let timeoutInfo = null
+  let granted = false
+  networkingPeer.on('writer-request-timeout', (info) => { timeoutInfo = info })
+  networkingPeer.on('writer-granted', () => { granted = true })
+
+  const link = connectPair(networkingOwner, networkingPeer)
+  t.teardown(() => link.close())
+
+  let ok = false
+  for (let i = 0; i < 20; i++) {
+    await sleep(100)
+    if (timeoutInfo) { ok = true; break }
+  }
+
+  t.ok(ok, 'writer-request-timeout fired since the owner never responded')
+  t.is(timeoutInfo.timeoutMs, 500, 'the event reports the configured timeout duration')
+  t.absent(granted, 'writer-granted never fired, confirming this is genuinely a non-response, not a slow response')
+  console.log('TEST: writer-request-timeout - passed')
+})
+
+test('writer-authorization: waitForWriterGrant() resolves on a real grant and rejects on timeout', async (t) => {
+  console.log('TEST: waitForWriterGrant - starting (no network needed)')
+
+  console.log('  Case 1: resolves when a real grant arrives')
+  {
+    const owner = await createGraph(t, 'writer-auth-waitfor-ok-owner')
+    const peer = await createGraph(t, 'writer-auth-waitfor-ok-peer')
+    const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+    await owner.graph.openContext(contextKey, { writeMode: 'open' })
+    await peer.graph.openContext(contextKey, { writeMode: 'open' })
+
+    const topic = crypto.randomBytes(32)
+    const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { chat: contextKey } })
+    const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: { chat: contextKey } })
+    await networkingOwner._openContexts()
+    await networkingPeer._openContexts()
+
+    const link = connectPair(networkingOwner, networkingPeer)
+    t.teardown(() => link.close())
+
+    await t.execution(networkingPeer.waitForWriterGrant(5000), 'waitForWriterGrant() resolves once a real writer-granted arrives')
+  }
+
+  console.log('  Case 2: rejects when nothing ever arrives')
+  {
+    const owner = await createGraph(t, 'writer-auth-waitfor-fail-owner')
+    const peer = await createGraph(t, 'writer-auth-waitfor-fail-peer')
+    const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+    await owner.graph.openContext(contextKey, { writeMode: 'open' })
+    await peer.graph.openContext(contextKey, { writeMode: 'open' })
+
+    const topic = crypto.randomBytes(32)
+    const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { chat: contextKey } })
+    const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: { chat: contextKey } })
+    await networkingOwner._openContexts()
+    await networkingPeer._openContexts()
+    networkingOwner._handleWriterRequest = async () => {}
+
+    const link = connectPair(networkingOwner, networkingPeer)
+    t.teardown(() => link.close())
+
+    let rejected = false
+    try {
+      await networkingPeer.waitForWriterGrant(500)
+    } catch (err) {
+      rejected = true
+    }
+    t.ok(rejected, 'waitForWriterGrant() rejects if nothing arrives within the timeout')
+  }
+  console.log('TEST: waitForWriterGrant - passed')
+})

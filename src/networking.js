@@ -2,6 +2,16 @@ const EventEmitter = require('events')
 const safetyCatch = require('safety-catch')
 const c = require('compact-encoding')
 
+// The bootstrap descriptor shape produced by generateBootstrap() and
+// consumed by connectFromBootstrap(). No version negotiation/migration
+// logic exists yet (not needed while nothing runs this in production) —
+// connectFromBootstrap() just rejects anything that doesn't match exactly,
+// so a future shape change fails loudly and immediately instead of
+// silently misinterpreting an incompatible descriptor. Bump this and add
+// real migration handling once there are real deployments to stay
+// compatible with.
+const BOOTSTRAP_VERSION = '2.0.0'
+
 function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -79,7 +89,10 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   #role = 'peer'
   #connections = 0
   #hasPeerJoined = false
-  #channelsByConn = new WeakMap() // conn -> { channel, messages }
+  #hasReceivedWriterGrant = false
+  #writerRequestTimeoutMs = 30000
+  #channelsByConn = new WeakMap() // conn -> { channel, messages, writerRequestTimeout }
+  #pendingWriterRequestTimeouts = new Set() // tracked separately since WeakMap can't be iterated for cleanup in destroy()
 
   /**
    * @param {Object} graph - Hypergraph instance
@@ -90,6 +103,10 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * @param {Object} [opts.contexts] - Context keys mapping: { name: contextKey }
    * @param {boolean} [opts.autoReplicate=true] - Auto-replicate store on connections
    * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
+   * @param {number} [opts.writerRequestTimeoutMs=30000] - How long a peer waits for a
+   *   writer-granted/writer-error response after sending a writer-request before emitting
+   *   'writer-request-timeout'. Without this, a peer whose request is never answered (owner
+   *   offline, response lost, etc.) would wait indefinitely with no way to detect it.
    */
   constructor (graph, store, swarm, opts = {}) {
     super()
@@ -99,6 +116,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     this.#topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
     this.#autoReplicate = opts.autoReplicate !== false
     this.#role = opts.role || 'peer'
+    this.#writerRequestTimeoutMs = opts.writerRequestTimeoutMs || 30000
 
     if (!this.#topic) {
       throw new Error('Topic is required')
@@ -160,9 +178,11 @@ module.exports = class HypergraphNetwork extends EventEmitter {
         this.emit('control-connection', { conn, info })
         if (this.#role === 'peer') {
           this._sendWriterRequest(conn)
+          this._startWriterRequestTimeout(conn, info)
         }
       },
       onclose: () => {
+        this._clearWriterRequestTimeout(conn)
         this.#channelsByConn.delete(conn)
       }
     })
@@ -183,6 +203,8 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       encoding: c.json,
       onmessage: (msg) => {
         this.emit('control-message', msg, conn, info)
+        this._clearWriterRequestTimeout(conn)
+        this.#hasReceivedWriterGrant = true
         this.emit('writer-granted', msg)
       }
     })
@@ -190,12 +212,45 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       encoding: c.json,
       onmessage: (msg) => {
         this.emit('control-message', msg, conn, info)
+        this._clearWriterRequestTimeout(conn)
         this.emit('writer-error', msg)
       }
     })
 
-    this.#channelsByConn.set(conn, { channel, writerRequestMsg, writerGrantedMsg, writerErrorMsg })
+    this.#channelsByConn.set(conn, { channel, writerRequestMsg, writerGrantedMsg, writerErrorMsg, writerRequestTimeout: null })
     channel.open()
+  }
+
+  /**
+   * Start a timeout after sending a writer-request: if neither
+   * writer-granted nor writer-error arrives on this connection within
+   * writerRequestTimeoutMs, emit 'writer-request-timeout' so the
+   * application can react (retry, reconnect, alert the user) instead of
+   * waiting indefinitely with no signal that anything is wrong.
+   * @private
+   */
+  _startWriterRequestTimeout (conn, info) {
+    const entry = this.#channelsByConn.get(conn)
+    if (!entry) return
+    const timeout = setTimeout(() => {
+      this.#pendingWriterRequestTimeouts.delete(timeout)
+      entry.writerRequestTimeout = null
+      this.emit('writer-request-timeout', { conn, info, timeoutMs: this.#writerRequestTimeoutMs })
+    }, this.#writerRequestTimeoutMs)
+    entry.writerRequestTimeout = timeout
+    this.#pendingWriterRequestTimeouts.add(timeout)
+  }
+
+  /**
+   * @private
+   */
+  _clearWriterRequestTimeout (conn) {
+    const entry = this.#channelsByConn.get(conn)
+    if (entry && entry.writerRequestTimeout) {
+      clearTimeout(entry.writerRequestTimeout)
+      this.#pendingWriterRequestTimeouts.delete(entry.writerRequestTimeout)
+      entry.writerRequestTimeout = null
+    }
   }
 
   /**
@@ -474,6 +529,40 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   }
 
   /**
+   * Wait for a writer-granted (or writer-error) response, so a caller can
+   * explicitly await the outcome instead of only ever passively listening
+   * for the event or the 'writer-request-timeout' notification. Rejects if
+   * neither arrives within timeoutMs, or if a writer-error is received.
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000)
+   */
+  async waitForWriterGrant (timeoutMs = this.#writerRequestTimeoutMs) {
+    if (this.#hasReceivedWriterGrant) return true
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.off('writer-granted', onGranted)
+        this.off('writer-error', onError)
+        reject(new Error(`No writer-granted/writer-error response within ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      const onGranted = () => {
+        clearTimeout(timeout)
+        this.off('writer-error', onError)
+        resolve(true)
+      }
+
+      const onError = (msg) => {
+        clearTimeout(timeout)
+        this.off('writer-granted', onGranted)
+        reject(new Error(msg && msg.message ? msg.message : 'writer-error received'))
+      }
+
+      this.on('writer-granted', onGranted)
+      this.on('writer-error', onError)
+    })
+  }
+
+  /**
    * Destroy the networking helper.
    *
    * Since the redesign removed the internally-created control swarm
@@ -491,6 +580,19 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       this.#connected = false
       this.emit('disconnected')
     }
+
+    // Clear any pending writer-request timeouts — without this, a timer
+    // set up to fire in up to writerRequestTimeoutMs would be left running
+    // after destroy(), which is exactly the class of lingering-handle bug
+    // that took many rounds to track down and fix elsewhere in this test
+    // suite. removeAllListeners() below means the resulting emit would be
+    // a harmless no-op even if left running, but the timer handle itself
+    // would still keep the process alive until it fires.
+    for (const timeout of this.#pendingWriterRequestTimeouts) {
+      clearTimeout(timeout)
+    }
+    this.#pendingWriterRequestTimeouts.clear()
+
     this.removeAllListeners()
   }
 
@@ -519,7 +621,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     const topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
 
     return {
-      version: '2.0.0',
+      version: BOOTSTRAP_VERSION,
       topic: topic.toString('hex'),
       ownerCore: graph.key.toString('hex'),
       contexts: opts.contexts,
@@ -549,6 +651,14 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   static async connectFromBootstrap (graph, store, swarm, bootstrap, opts = {}) {
     if (!bootstrap || !bootstrap.topic) {
       throw new Error('A valid bootstrap descriptor with a topic is required')
+    }
+
+    // No version migration logic exists yet — reject anything that doesn't
+    // match exactly, so an incompatible descriptor fails loudly and
+    // immediately instead of being silently misinterpreted (e.g. a future
+    // shape change adding/renaming fields this code doesn't know about).
+    if (bootstrap.version !== BOOTSTRAP_VERSION) {
+      throw new Error(`Unsupported bootstrap version: ${bootstrap.version ?? '(missing)'} (expected ${BOOTSTRAP_VERSION})`)
     }
 
     if (bootstrap.ownerCore) {
