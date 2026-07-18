@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 27: added missing diagnostics to the flaky peer-join test, rather than guess at a fix
+
+Investigated the "emits peer-join" test's intermittent failure (`waitForPeer(90000)` timing
+out). Found this test was missing the `connection-retry`/`connection-retry-exhausted`
+listeners that every other DHT test in this file already has (an oversight from the
+round-16 rewrite) — so there was no way to tell, from the failure alone, whether `connect()`'s
+own retry mechanism (round 13) had already exhausted all 3 attempts before `waitForPeer()`
+even started waiting, which would point to genuine, occasional DHT/NAT variance (the same
+kind already documented and accepted elsewhere in this suite, e.g. `multi-peer.js`'s third
+peer occasionally failing to connect in earlier rounds) rather than a deterministic bug in
+recent changes.
+
+Added the missing listeners rather than guessing at a code fix — this test's own retry
+mechanism, timeout budget, and connection-check logic are unchanged from the other,
+reliably-passing tests in this same file, and `connect()`'s retry behavior is unchanged from
+what's already proven to work in `multi-peer.js` and the writer-authorization tests. The next
+failure will show directly whether retries were attempted and exhausted (confirming
+variance, not a bug) or not (which would point to something else worth investigating
+further). Full local suite unaffected: 108/108.
+
+### Round 26: selective context authorization (the sixth and final gap from the original analysis)
+
+Checked directly before answering rather than assuming: every existing writer-authorization
+test only ever requests a single context, so none of them could actually distinguish
+"grants are evaluated per-context" from "grants are all-or-nothing for the whole request" —
+this gap was genuinely still open.
+
+Added a test that sends one writer-request spanning two contexts with different
+`writeMode`s — one `open` (always granted) and one `closed` (requires `context.write`,
+which the responder here deliberately lacks) — and verifies the response and actual
+writability differ per-context within that single request: `granted.contexts.openCtx: true`,
+`granted.contexts.closedCtx: false`, with matching real writability on each side. This
+exercises the per-context error isolation already built into `_handleWriterRequest`'s loop
+(a denial for one context doesn't block a grant for another in the same request).
+
+This completes all six gaps from the project owner's original analysis: the three critical
+ones (permission checking, writer-error coverage, bootstrap consumption) in round 23, and
+multi-peer, reconnection, and now selective context authorization. Full local suite:
+108/108.
+
 ### Round 25: multi-peer and reconnection coverage for HypergraphNetwork (gaps #4 and #5)
 
 Before writing tests, verified two things directly rather than assuming them:

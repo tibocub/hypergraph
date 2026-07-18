@@ -238,6 +238,10 @@ test('hypergraph-network: emits peer-join via Hyperswarm connection events (need
   const networking2 = new HypergraphNetwork(peer2.graph, peer2.store, swarm2, { topic, role: 'peer', contexts: { chat: contextKey1 } })
   registerTeardown(t, { peer1, peer2, swarm1, swarm2, networking1, networking2 })
   networking1.on('flush-timeout', (info) => console.log(`    [peer1] flush-timeout: ${info.step} exceeded ${info.timeoutMs}ms`))
+  networking1.on('connection-retry', (info) => console.log(`    [peer1] connection-retry: attempt ${info.attempt}`))
+  networking2.on('connection-retry', (info) => console.log(`    [peer2] connection-retry: attempt ${info.attempt}`))
+  networking1.on('connection-retry-exhausted', (info) => console.log(`    [peer1] connection-retry-exhausted: ${info.label} after ${info.attempts} attempts`))
+  networking2.on('connection-retry-exhausted', (info) => console.log(`    [peer2] connection-retry-exhausted: ${info.label} after ${info.attempts} attempts`))
   networking2.on('flush-timeout', (info) => console.log(`    [peer2] flush-timeout: ${info.step} exceeded ${info.timeoutMs}ms`))
 
   let peerJoined = false

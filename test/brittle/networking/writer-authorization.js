@@ -268,3 +268,66 @@ test('writer-authorization: writer-grant handshake repeats correctly after a dis
   t.ok(ctxAfterReconnect.writable, 'peer write access persisted across the disconnect/reconnect cycle')
   console.log('TEST: writer-grant repeats after reconnect - passed')
 })
+
+test('writer-authorization: a single request can grant some contexts while denying others', async (t) => {
+  // Addresses the remaining gap: every other test in this file requests
+  // exactly one context, which can't distinguish "grants are evaluated
+  // per-context" from "grants are all-or-nothing for the whole request".
+  // This sends ONE writer-request spanning two contexts with different
+  // writeModes — 'open' (always granted, no permission needed) and
+  // 'closed' (requires context.write, which the responder here lacks) —
+  // and verifies the response and actual writability differ per-context
+  // within that single request, exercising the per-context error isolation
+  // in _handleWriterRequest's loop (a denial for one context must not
+  // block a grant for another in the same request).
+  console.log('TEST: selective per-context authorization - starting (no network needed)')
+  const owner = await createGraph(t, 'writer-auth-selective-owner')
+  const peer = await createGraph(t, 'writer-auth-selective-peer')
+
+  const ownGraphPubkey = owner.graph.identity.deviceKeyPair.publicKey.toString('hex')
+  const someoneElseKeyPair = crypto.keyPair()
+  await owner.graph.createRoleBase()
+  // Owner role goes to a key other than this graph's own identity, so the
+  // responding peer (owner.graph itself) ends up with no privileges of its
+  // own — matching the "unauthorized responder" test's approach.
+  await owner.graph.roleBase.init(someoneElseKeyPair.publicKey.toString('hex'))
+  await owner.graph.setRole(ownGraphPubkey, 'member', { keyPair: someoneElseKeyPair })
+  await owner.graph.update()
+  t.absent(await owner.graph.can(ownGraphPubkey, 'context.write'), 'responding peer has no context.write privilege')
+
+  const openContextKey = await owner.graph.createContext({ writeMode: 'open' })
+  const closedContextKey = await owner.graph.createContext({ writeMode: 'closed' })
+  await owner.graph.openContext(openContextKey, { writeMode: 'open' })
+  await owner.graph.openContext(closedContextKey, { writeMode: 'closed' })
+  await peer.graph.openContext(openContextKey, { writeMode: 'open' })
+  await peer.graph.openContext(closedContextKey, { writeMode: 'closed' })
+
+  const topic = crypto.randomBytes(32)
+  const contexts = { openCtx: openContextKey, closedCtx: closedContextKey }
+  const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts })
+  const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts })
+  await networkingOwner._openContexts()
+  await networkingPeer._openContexts()
+
+  let granted = null
+  networkingPeer.on('writer-granted', (msg) => { granted = msg })
+
+  const link = connectPair(networkingOwner, networkingPeer)
+  t.teardown(() => link.close())
+
+  let ok = false
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    if (granted) { ok = true; break }
+  }
+
+  t.ok(ok, 'peer received a single writer-granted response covering both contexts')
+  t.is(granted.contexts.openCtx, true, 'the open context is granted (no permission required)')
+  t.is(granted.contexts.closedCtx, false, 'the closed context is denied (responder lacks context.write) in the SAME request')
+
+  const openCtx = await peer.graph.openContext(openContextKey, { writeMode: 'open' })
+  const closedCtx = await peer.graph.openContext(closedContextKey, { writeMode: 'closed' })
+  t.ok(openCtx.writable, 'peer can actually write to the open context')
+  t.absent(closedCtx.writable, 'peer cannot actually write to the closed context')
+  console.log('TEST: selective per-context authorization - passed')
+})
