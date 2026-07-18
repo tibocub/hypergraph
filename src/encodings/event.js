@@ -242,7 +242,12 @@ const eventEncoding = {
         event.author = c.string.decode(state)
         const sig1 = c.buffer.decode(state)
         event.signature = sig1.length > 0 ? sig1.toString('hex') : null
-        event.value = c.uint.decode(state) === 1 ? c.float64.decode(state) : undefined
+        // Backward compat: events encoded before the value field existed
+        // don't have these trailing bytes at all — decoding them must not
+        // crash. Confirmed necessary in practice, not just in theory: a
+        // real deployment hit "Out of bounds" here on already-persisted
+        // data the moment this field was added.
+        event.value = (state.start < state.end && c.uint.decode(state) === 1) ? c.float64.decode(state) : undefined
         break
 
       case 'relation/delete':

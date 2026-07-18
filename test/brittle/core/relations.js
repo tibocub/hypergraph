@@ -273,3 +273,62 @@ test('relations: latestPerAuthor reduces multiple edges from the same author to 
   t.is(byAuthor[bPubkey], 1, "voterB's single vote is counted correctly")
   console.log('TEST: latestPerAuthor - passed')
 })
+
+test('relations: a relation/create event encoded before the value field existed still decodes without crashing', async (t) => {
+  // REGRESSION TEST — hit in a real deployment: existing, already-persisted
+  // relation/create events (encoded before the value field was added) have
+  // no trailing bytes for it at all. The decoder used to unconditionally
+  // try to read them, throwing "Out of bounds" the moment such an event
+  // was replayed from disk (confirmed directly: this crashed a real
+  // running app on startup). Manually constructs an old-format buffer —
+  // the same shape the encoder produced before this field existed — to
+  // verify decodeEvent() handles it gracefully rather than relying on
+  // some current app happening to have old-enough data lying around.
+  console.log('TEST: relation value backward compat - starting')
+  const c = require('compact-encoding')
+  const b4a = require('b4a')
+  const { EVENT_TYPES, decodeEvent } = require('../../../src/encodings/event.js')
+
+  const event = {
+    type: 'relation/create',
+    timestamp: Date.now(),
+    from: 'a',
+    to: 'b',
+    relationType: 'reply',
+    author: 'someauthor',
+    signature: 'ab'.repeat(32)
+  }
+
+  const state = c.state()
+  c.uint.preencode(state, EVENT_TYPES[event.type])
+  c.uint.preencode(state, event.timestamp)
+  c.string.preencode(state, event.from)
+  c.string.preencode(state, event.to)
+  c.string.preencode(state, event.relationType)
+  c.string.preencode(state, event.author)
+  c.buffer.preencode(state, b4a.from(event.signature, 'hex'))
+  // Deliberately no value bytes at all — matches the pre-value-field format.
+
+  state.buffer = b4a.allocUnsafe(state.end)
+  c.uint.encode(state, EVENT_TYPES[event.type])
+  c.uint.encode(state, event.timestamp)
+  c.string.encode(state, event.from)
+  c.string.encode(state, event.to)
+  c.string.encode(state, event.relationType)
+  c.string.encode(state, event.author)
+  c.buffer.encode(state, b4a.from(event.signature, 'hex'))
+
+  let decoded = null
+  let threw = null
+  try {
+    decoded = decodeEvent(state.buffer)
+  } catch (err) {
+    threw = err
+  }
+
+  t.absent(threw, 'decoding an old-format event (no value bytes) does not throw')
+  t.is(decoded.from, 'a', 'from field decodes correctly')
+  t.is(decoded.signature, 'ab'.repeat(32), 'signature decodes correctly')
+  t.absent(decoded.value, 'value is simply undefined for an old-format event, not a crash')
+  console.log('TEST: relation value backward compat - passed')
+})

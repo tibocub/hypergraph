@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 33: fixed a real crash — old, already-persisted relation events broke on the new value field
+
+Hit directly by running `forum-web` against real, existing local data: `Error: Out of bounds`
+thrown from `compact-encoding` while Autobase replayed already-persisted `relation/create`
+events on startup. Root cause: round 31 added an optional `value` field to the wire format,
+but the decoder unconditionally tried to read its trailing bytes — existing events, encoded
+before that field existed, simply don't have them, so the reader ran off the end of the
+buffer the moment one was replayed from disk.
+
+Fixed by checking for remaining bytes before attempting to decode the value field, matching
+the same backward-compatibility guard the `roles/addWriter`/`removeWriter` case already uses
+for its own optional trailing fields (checked that one too, proactively, given this class of
+bug had just surfaced for real — it was already correctly guarded, no fix needed there).
+
+Added a permanent regression test that manually constructs an old-format buffer (the same
+shape the encoder produced before the value field existed, rather than relying on some
+current app happening to have old-enough data lying around) and confirms it decodes without
+crashing, with `value` simply absent.
+
+Full local suite: 120/120.
+
 ### Round 32: forum-web's dead identity-registry code removed
 
 Per project direction: the old `lib/hyper-identity` module `forum-web/peer.js` depended on
