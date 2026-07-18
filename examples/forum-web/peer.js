@@ -120,54 +120,6 @@ function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function setupIdentityRegistry (store, graph, { storageDir, peerName }) {
-  const { IdentityRegistry } = await import('../../lib/hyper-identity/lib/auth/identity-registry.js')
-  const Hyperbee = (await import('hyperbee')).default
-
-  const directCore = store.get({ name: 'identity-direct' })
-  await directCore.ready()
-  const directBee = new Hyperbee(directCore, {
-    keyEncoding: 'utf-8',
-    valueEncoding: 'json'
-  })
-  await directBee.ready()
-
-  const registry = new IdentityRegistry(store, { prefix: 'forum-web:', db: directBee })
-  await registry.ready()
-
-  const userPath = path.join(storageDir, 'user.json')
-  const existing = readJson(userPath)
-
-  let userId = existing && existing.userId ? existing.userId : null
-  if (!userId) {
-    const user = await registry.createUser({ name: peerName })
-    userId = user.userId
-    writeJson(userPath, { userId })
-  }
-
-  const pubkeyHex = graph.key.toString('hex')
-  const identityId = `hypergraph:${pubkeyHex}`
-
-  const prev = await registry.getIdentityByPublicKey(pubkeyHex)
-  if (!prev) {
-    await registry.registerIdentity({
-      identityId,
-      method: 'noise-key',
-      publicKey: pubkeyHex,
-      credentials: { publicKey: pubkeyHex },
-      createdAt: Date.now(),
-      userId
-    })
-  }
-
-  const linked = await registry.getUserByIdentity(identityId)
-  if (!linked) {
-    await registry.linkIdentityToUser(identityId, userId, { verified: true })
-  }
-
-  return { registry, userId, identityId }
-}
-
 async function main () {
   const argv = process.argv.slice(2)
 
@@ -590,7 +542,6 @@ async function main () {
     }
 
     try {
-      await setupIdentityRegistry(store, graph, { storageDir, peerName: name })
       const defaultUsername = role === 'owner' ? 'owner' : name
       await graph.setIdentity({ username: defaultUsername })
 

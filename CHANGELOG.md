@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 32: forum-web's dead identity-registry code removed
+
+Per project direction: the old `lib/hyper-identity` module `forum-web/peer.js` depended on
+(`setupIdentityRegistry()`, called unconditionally at startup) was replaced by Hypergraph's
+own identity system (`graph.setIdentity()`/`getIdentity()`) some time ago, but the dead call
+was never removed — it threw `Cannot find module` immediately, caught by the surrounding
+try/catch, which silently skipped everything sequenced after it in the same block: setting
+identity, announcing to the forum, discovering peers, and the owner's initial post creation.
+The web UI would load, but the peer never did any of this.
+
+Removed `setupIdentityRegistry()` and its call entirely — `graph.setIdentity()`, already
+present right below it, is sufficient on its own. Verified directly by actually running the
+owner: `/api/state` now correctly shows the set username and the owner's initial post, where
+before it silently showed neither. `chat-web` doesn't have the equivalent code at all, so
+needed no change.
+
+Full local suite: 119/119.
+
 ### Round 31: weighted relations (relate() value field), latestPerAuthor, and p2p-reddit-clone fixed
 
 Started from a thorough review of the example apps against the current API, in preparation
