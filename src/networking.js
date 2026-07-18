@@ -271,15 +271,16 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    */
   async _handleWriterRequest (msg, conn) {
     // Permission checking: for closed-mode contexts, ContextBase.addWriter()
-    // now checks whether the author has the 'context.write' privilege (per
-    // the attached RoleBase) before granting — see context-base.js. Passing
-    // this peer's own identity as the author means the check is "does the
-    // peer receiving this request have the authority to grant it", which is
-    // the natural authorization model here (the same one already used
+    // checks whether the author has the 'context.write' privilege (per the
+    // attached RoleBase) before granting, and signs the resulting event
+    // with this peer's own identity keyPair — verified again at the apply
+    // layer, the real enforced security boundary (see context-base.js).
+    // Passing this peer's own identity means the check is "does the peer
+    // receiving this request have the authority to grant it", which is the
+    // natural authorization model here (the same one already used
     // elsewhere in this codebase for role-gated actions). Open-mode
-    // contexts are unaffected — addWriter() only performs this check when
-    // writeMode is 'closed'.
-    const author = this.#graph.identity.deviceKeyPair.publicKey.toString('hex')
+    // contexts are unaffected — no keyPair/signature is needed there.
+    const keyPair = this.#graph.identity.deviceKeyPair
 
     try {
       // Open userCore if provided
@@ -294,7 +295,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
         if (writerKeyHex) {
           try {
             const writerKey = Buffer.from(writerKeyHex, 'hex')
-            await context.addWriter(writerKey, { author })
+            await context.addWriter(writerKey, { keyPair })
             granted[name] = true
           } catch (err) {
             // A denial for one context (e.g. not authorized in closed

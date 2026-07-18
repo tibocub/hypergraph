@@ -11,6 +11,10 @@ const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const { toSortableTs, stableTagHash } = require('./utils')
 
+function sleep (ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /**
  * ContextBase manages collaborative contexts using Autobase.
  *
@@ -151,8 +155,53 @@ module.exports = class ContextBase extends ReadyResource {
       }
 
       if (event.type === 'roles/addWriter') {
+        // SECURITY: this is the real, enforced boundary — it runs
+        // identically on every peer regardless of how the event got into
+        // the log (the "nice" addWriter() method's own check, further
+        // down, is a client-side fail-fast convenience only; append()
+        // bypasses it entirely, confirmed directly). Only enforced in
+        // closed mode: open mode's whole point is that anyone can add
+        // anyone, so author-forgery protection has nothing to protect
+        // there, and requiring it would break every existing open-mode
+        // caller for no security benefit.
+        if (this.#writeMode === 'closed') {
+          if (!this.#verifyWriterChangeSignature(event)) continue
+          const allowed = await this.#isWriterChangeAllowed(event.author)
+          if (allowed === null) {
+            // RoleBase not yet synced on this peer — defer rather than
+            // permanently drop. Confirmed empirically: a peer that hasn't
+            // finished syncing its RoleBase by the time this event is
+            // first processed would otherwise lose this grant forever,
+            // since Autobase doesn't re-run apply for past entries just
+            // because unrelated data (the RoleBase) later changes.
+            await this.#queuePendingWriterChange(view, event)
+            continue
+          }
+          if (!allowed) continue
+        }
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
         await host.addWriter(key, { indexer: true })
+        continue
+      }
+
+      if (event.type === 'roles/removeWriter') {
+        if (this.#writeMode === 'closed') {
+          if (!this.#verifyWriterChangeSignature(event)) continue
+          const allowed = await this.#isWriterChangeAllowed(event.author)
+          if (allowed === null) {
+            await this.#queuePendingWriterChange(view, event)
+            continue
+          }
+          if (!allowed) continue
+        }
+        const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
+        try {
+          host.removeWriter(key)
+        } catch (err) {
+          // host.removeWriter() itself throws if this would remove the
+          // last indexer — not a reason to abort the rest of this batch.
+          safetyCatch(err)
+        }
         continue
       }
 
@@ -179,6 +228,7 @@ module.exports = class ContextBase extends ReadyResource {
     }
 
     await this.#drainPendingModeration(view)
+    await this.#drainPendingWriterChanges(view, host)
   }
 
   #stableModerationHash (event) {
@@ -293,6 +343,127 @@ module.exports = class ContextBase extends ReadyResource {
 
     const digest = stableTagHash(event)
     return hypercoreCrypto.verify(digest, signature, publicKey)
+  }
+
+  #verifyWriterChangeSignature (event) {
+    if (!event) return false
+    if (event.type !== 'roles/addWriter' && event.type !== 'roles/removeWriter') return false
+    if (typeof event.key !== 'string' || event.key.length === 0) return false
+    if (typeof event.author !== 'string' || event.author.length === 0) return false
+    if (typeof event.timestamp !== 'number') return false
+    if (typeof event.signature !== 'string' || event.signature.length === 0) return false
+
+    let publicKey = null
+    let signature = null
+    try {
+      publicKey = b4a.from(event.author, 'hex')
+      signature = b4a.from(event.signature, 'hex')
+    } catch {
+      return false
+    }
+
+    const digest = this.#stableWriterChangeHash(event)
+    return hypercoreCrypto.verify(digest, signature, publicKey)
+  }
+
+  #stableWriterChangeHash (event) {
+    const msg = {
+      op: event.type,
+      key: event.key,
+      author: event.author,
+      timestamp: event.timestamp
+    }
+    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+  }
+
+  /**
+   * Whether event.author has permission to add/remove writers on this
+   * context. Mirrors #isModerationAllowed's pattern: returns null (not
+   * false) if no RoleBase is attached at all, so open-mode contexts
+   * (which don't require one) aren't blocked by this check — closed-mode
+   * callers are expected to check for null themselves and treat it as
+   * "not authorized", since closed mode requires a RoleBase to be
+   * meaningful at all.
+   */
+  async #isWriterChangeAllowed (authorPubkeyHex) {
+    if (!this.#roleBase || typeof this.#roleBase.getRegistry !== 'function' || typeof this.#roleBase.can !== 'function') {
+      return null
+    }
+
+    // Bounded retry: the RoleBase and this context are two independent
+    // Autobase structures that replicate concurrently — the RoleBase data
+    // for a given author may simply not have arrived yet at the moment
+    // this specific event is first processed. Apply only runs when new
+    // data arrives for THIS context's own log, so if nothing else is ever
+    // appended here, a single immediate "not ready" would leave this
+    // pending forever with no way to re-check (confirmed empirically).
+    // Polling here for a few seconds covers the common case; the pending-
+    // queue fallback in the caller remains as a last resort if the
+    // RoleBase genuinely never arrives within this window.
+    let registry = null
+    for (let i = 0; i < 40; i++) {
+      try {
+        registry = await this.#roleBase.getRegistry()
+      } catch {
+        registry = null
+      }
+      if (registry) break
+      await sleep(250)
+    }
+
+    if (!registry) return null
+
+    try {
+      return await this.#roleBase.can(authorPubkeyHex, 'context.write')
+    } catch {
+      return false
+    }
+  }
+
+  async #queuePendingWriterChange (view, event) {
+    const key = `w:p:${event.type}:${event.key}:${event.timestamp}`
+    await view.put(key, { event })
+  }
+
+  async #drainPendingWriterChanges (view, host) {
+    // If registry isn't ready yet, keep pending items — mirrors
+    // #drainPendingModeration's own guard.
+    if (!this.#roleBase || typeof this.#roleBase.getRegistry !== 'function') return
+
+    let registry = null
+    try {
+      registry = await this.#roleBase.getRegistry()
+    } catch {
+      registry = null
+    }
+    if (!registry) return
+
+    const stream = view.createReadStream({ gte: 'w:p:', lt: 'w:p:' + '\uffff' })
+    for await (const entry of stream) {
+      const v = entry.value
+      if (!v || !v.event || typeof v.event !== 'object') {
+        await view.del(entry.key)
+        continue
+      }
+
+      const event = v.event
+      const allowed = await this.#isWriterChangeAllowed(event.author)
+      if (allowed === null) continue // still not ready, leave queued
+
+      await view.del(entry.key)
+      if (!allowed) continue // now resolved: explicitly denied
+
+      const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
+      if (event.type === 'roles/addWriter') {
+        await host.addWriter(key, { indexer: true })
+      } else if (event.type === 'roles/removeWriter') {
+        try {
+          host.removeWriter(key)
+        } catch (err) {
+          safetyCatch(err)
+        }
+      }
+    }
   }
 
   async #applyModerationAction (view, event, from, length) {
@@ -591,38 +762,95 @@ module.exports = class ContextBase extends ReadyResource {
   /**
    * Add a writer to the context.
    *
-   * In 'open' mode, any writer can be added. In 'closed' mode, requires the
-   * 'context.write' privilege from the attached RoleBase.
+   * In 'open' mode, any writer can be added; no keyPair/signature is
+   * needed, since there's no permission check for a forged author to
+   * threaten. In 'closed' mode, requires the 'context.write' privilege
+   * from the attached RoleBase, and the event is cryptographically signed
+   * with opts.keyPair and verified again at the apply layer (the real,
+   * enforced security boundary — this method's own check is a
+   * client-side fail-fast convenience, since a caller could otherwise
+   * bypass it entirely via the generic append() method).
    *
    * @param {Buffer|string} coreKey - The writer's core key (hex string or Buffer)
    * @param {Object} [opts] - Options object
-   * @param {string} [opts.author] - Required in 'closed' mode: the author's public key hex
+   * @param {Object} [opts.keyPair] - Required in closed mode: { publicKey, secretKey } to sign the event
    * @returns {Promise<void>}
-   * @throws {Error} If RoleBase is required but not attached, or authorization fails
+   * @throws {Error} If keyPair is missing in closed mode, RoleBase is required but not attached, or authorization fails
    */
   async addWriter (coreKey, opts = {}) {
     if (!this.opened) await this.ready()
 
-    if (this.#writeMode === 'closed') {
-      if (!opts.author) {
-        throw new Error('opts.author is required in closed mode')
-      }
-      if (!this.#roleBase || typeof this.#roleBase.can !== 'function') {
-        throw new Error('RoleBase is required for closed-mode writer authorization but is not attached')
-      }
-      const authorized = await this.#roleBase.can(opts.author, 'context.write')
-      if (!authorized) {
-        throw new Error('Not authorized to add writers to this context')
-      }
+    const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
+    const keyHex = key.toString('hex')
+
+    if (this.#writeMode !== 'closed') {
+      await this.append({ type: 'roles/addWriter', key: keyHex })
+      return
     }
+
+    if (!opts.keyPair || !opts.keyPair.publicKey || !opts.keyPair.secretKey) {
+      throw new Error('opts.keyPair (with publicKey and secretKey) is required in closed mode to sign the addWriter event')
+    }
+    const author = b4a.isBuffer(opts.keyPair.publicKey) ? opts.keyPair.publicKey.toString('hex') : String(opts.keyPair.publicKey)
+
+    if (!this.#roleBase || typeof this.#roleBase.can !== 'function') {
+      throw new Error('RoleBase is required for closed-mode writer authorization but is not attached')
+    }
+    const authorized = await this.#roleBase.can(author, 'context.write')
+    if (!authorized) {
+      throw new Error('Not authorized to add writers to this context')
+    }
+
+    const event = { type: 'roles/addWriter', key: keyHex, author, timestamp: Date.now(), signature: null }
+    const digest = this.#stableWriterChangeHash(event)
+    event.signature = hypercoreCrypto.sign(digest, opts.keyPair.secretKey).toString('hex')
+
+    await this.append(event)
+  }
+
+  /**
+   * Remove a writer from the context. Same authorization/signing model as
+   * addWriter() (unrestricted in open mode, signed + permission-checked in
+   * closed mode). The Autobase-level removal itself refuses to remove the
+   * last remaining indexer regardless of permission (host.removeWriter()
+   * throws in that case, which the apply layer catches and ignores rather
+   * than aborting the rest of the batch).
+   *
+   * @param {Buffer|string} coreKey - The writer's core key (hex string or Buffer)
+   * @param {Object} [opts] - Options object
+   * @param {Object} [opts.keyPair] - Required in closed mode: { publicKey, secretKey } to sign the event
+   * @returns {Promise<void>}
+   * @throws {Error} If keyPair is missing in closed mode, RoleBase is required but not attached, or authorization fails
+   */
+  async removeWriter (coreKey, opts = {}) {
+    if (!this.opened) await this.ready()
 
     const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
     const keyHex = key.toString('hex')
 
-    // Add the writer by appending a roles/addWriter event to the system core
-    // This is the correct way to add writers in Autobase
-    await this.#base.append({ type: 'roles/addWriter', key: keyHex })
-    await this.#base.update()
+    if (this.#writeMode !== 'closed') {
+      await this.append({ type: 'roles/removeWriter', key: keyHex })
+      return
+    }
+
+    if (!opts.keyPair || !opts.keyPair.publicKey || !opts.keyPair.secretKey) {
+      throw new Error('opts.keyPair (with publicKey and secretKey) is required in closed mode to sign the removeWriter event')
+    }
+    const author = b4a.isBuffer(opts.keyPair.publicKey) ? opts.keyPair.publicKey.toString('hex') : String(opts.keyPair.publicKey)
+
+    if (!this.#roleBase || typeof this.#roleBase.can !== 'function') {
+      throw new Error('RoleBase is required for closed-mode writer authorization but is not attached')
+    }
+    const authorized = await this.#roleBase.can(author, 'context.write')
+    if (!authorized) {
+      throw new Error('Not authorized to remove writers from this context')
+    }
+
+    const event = { type: 'roles/removeWriter', key: keyHex, author, timestamp: Date.now(), signature: null }
+    const digest = this.#stableWriterChangeHash(event)
+    event.signature = hypercoreCrypto.sign(digest, opts.keyPair.secretKey).toString('hex')
+
+    await this.append(event)
   }
 
   // ========================================
@@ -793,8 +1021,8 @@ module.exports = class ContextBase extends ReadyResource {
     this.emitContextEvent('writer-request', {
       key: keyHex,
       userCore: opts.userCore || null,
-      approve: async () => {
-        await this.addWriter(writerKey)
+      approve: async (approveOpts = {}) => {
+        await this.addWriter(writerKey, approveOpts)
         this.#pendingWriterRequests.delete(keyHex)
       },
       reject: () => {
@@ -811,10 +1039,10 @@ module.exports = class ContextBase extends ReadyResource {
    * @param {Buffer|string} writerKey - The writer's core key
    * @returns {Promise<void>}
    */
-  async approveWriter (writerKey) {
+  async approveWriter (writerKey, opts = {}) {
     if (!this.opened) await this.ready()
     const keyHex = Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey
-    await this.addWriter(writerKey)
+    await this.addWriter(writerKey, opts)
     this.#pendingWriterRequests.delete(keyHex)
     this.#emitter.emit('writer-approved', Buffer.isBuffer(writerKey) ? writerKey : Buffer.from(writerKey, 'hex'))
   }

@@ -40,6 +40,13 @@ test('writer-authorization: closed context grants a writer when the responding p
   await owner.graph.update()
   t.ok(await owner.graph.can(ownerPubkey, 'context.write'), 'owner has context.write via the owner role wildcard')
 
+  // The peer's own graph must open the SAME RoleBase — each peer's own
+  // apply function evaluates the closed-mode permission check
+  // independently, so without this the peer's own side has nothing to
+  // check against and would never agree the grant is valid on its own
+  // copy of the context, even though the owner's side already does.
+  await peer.graph.openRoleBase(owner.graph.roleBase.key)
+
   const contextKey = await owner.graph.createContext({ writeMode: 'closed' })
   await owner.graph.openContext(contextKey, { writeMode: 'closed' })
   await peer.graph.openContext(contextKey, { writeMode: 'closed' })
@@ -66,6 +73,16 @@ test('writer-authorization: closed context grants a writer when the responding p
   t.is(writerGranted.contexts.chat, true, 'the chat context was actually granted (owner has context.write)')
 
   const peerCtx = await peer.graph.openContext(contextKey, { writeMode: 'closed' })
+  // writer-granted (a control message) and the context actually replicating
+  // and applying the underlying roles/addWriter event are separate,
+  // asynchronous processes — wait for the latter too, syncing the RoleBase
+  // alongside it in case the apply-layer permission check runs before the
+  // RoleBase data itself has arrived.
+  for (let i = 0; i < 20 && !peerCtx.writable; i++) {
+    await sleep(200)
+    await peer.graph.roleBase.update()
+    await peerCtx.update()
+  }
   t.ok(peerCtx.writable, 'peer is actually able to write to the closed context now')
   console.log('TEST: closed context, authorized responder - passed')
 })

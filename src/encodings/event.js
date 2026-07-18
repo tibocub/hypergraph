@@ -21,7 +21,8 @@ const EVENT_TYPES = {
   'addWriter': 9,
   'roles/addWriter': 10,
   'moderation/action': 11,
-  'message': 12
+  'message': 12,
+  'roles/removeWriter': 13
 }
 
 // Map from code to string
@@ -37,7 +38,8 @@ const EVENT_TYPE_NAMES = {
   9: 'addWriter',
   10: 'roles/addWriter',
   11: 'moderation/action',
-  12: 'message'
+  12: 'message',
+  13: 'roles/removeWriter'
 }
 
 // Compact encoding for events
@@ -97,9 +99,11 @@ const eventEncoding = {
 
       case 'addWriter':
       case 'roles/addWriter':
+      case 'roles/removeWriter':
         c.string.preencode(state, event.key)
         if (event.author) c.string.preencode(state, event.author)
         if (event.timestamp) c.uint.preencode(state, event.timestamp)
+        if (event.signature) c.buffer.preencode(state, b4a.from(event.signature, 'hex'))
         break
 
       case 'moderation/action':
@@ -176,9 +180,11 @@ const eventEncoding = {
 
       case 'addWriter':
       case 'roles/addWriter':
+      case 'roles/removeWriter':
         c.string.encode(state, event.key)
         if (event.author) c.string.encode(state, event.author)
         if (event.timestamp) c.uint.encode(state, event.timestamp)
+        if (event.signature) c.buffer.encode(state, b4a.from(event.signature, 'hex'))
         break
 
       case 'moderation/action':
@@ -261,15 +267,21 @@ const eventEncoding = {
 
       case 'addWriter':
       case 'roles/addWriter':
+      case 'roles/removeWriter':
         event.key = c.string.decode(state)
         if (state.end > state.start) {
-          // Check if there are more fields (author, timestamp)
-          // These fields are optional for backward compatibility
-          // Try-catch handles both old format (key only) and new format (key + author + timestamp)
+          // Check if there are more fields (author, timestamp, signature)
+          // These fields are optional for backward compatibility.
+          // Try-catch handles old formats (key only, or key+author+timestamp
+          // without a signature) alongside the current format.
           try {
             event.author = c.string.decode(state)
             if (state.end > state.start) {
               event.timestamp = c.uint.decode(state)
+              if (state.end > state.start) {
+                const sig = c.buffer.decode(state)
+                event.signature = sig.length > 0 ? sig.toString('hex') : null
+              }
             }
           } catch {
             // No more fields - old format event

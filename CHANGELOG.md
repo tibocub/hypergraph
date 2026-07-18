@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 30: real defense-in-depth for writer-authorization, plus removeWriter()
+
+Addresses the two most important findings from the pre-launch review: `roles/addWriter`
+lacking the same signature-verification defense-in-depth every other event type already had,
+and no way to revoke a writer's access at all.
+
+**Signature verification for roles/addWriter and the new roles/removeWriter**, matching the
+pattern already used for relation/tag/moderation events: `ContextBase.addWriter()`/
+`removeWriter()` now sign the event with a caller-provided `keyPair` (only required in
+`closed` mode — open mode's whole point is unrestricted addition, so there's nothing for a
+signature to protect there, and requiring one would have broken every existing open-mode
+caller for no benefit), and the apply layer independently re-verifies both the signature and
+the `context.write` permission before honoring the change — the real, enforced boundary, not
+just the client-side method's own check, which `append()` can bypass entirely.
+
+**A real, separate bug found and fixed along the way:** the binary event-encoding schema for
+`addWriter`/`roles/addWriter` only ever encoded `key`, `author`, and `timestamp` — never
+`signature`. It was being silently dropped on every encode/decode round-trip. Fixed by adding
+it to the schema (as a length-prefixed buffer, matching how `moderation/action` already
+handles its own signature field).
+
+**A genuine architectural race, found empirically while testing this:** the RoleBase and a
+context are separate Autobase structures that replicate independently — a peer's own apply
+function only evaluates each writer-change event once, at the moment it first arrives. If the
+RoleBase hasn't finished syncing by then, the permission check has nothing to evaluate against.
+Confirmed this could permanently strand a legitimate grant, since apply doesn't re-run for
+past entries just because unrelated data later changes. Fixed in two layers: `#isWriterChangeAllowed`
+now polls (bounded, ~5-10s) for the RoleBase to become available before giving up, and a
+pending-writer-change queue (mirroring the existing moderation pending-queue pattern) catches
+the remaining edge case, draining whenever a later event triggers this context's own apply
+to run again.
+
+**`removeWriter()`** is new — same authorization/signing model as `addWriter()`. Autobase's
+own removal refuses to drop the last remaining indexer regardless of permission; the apply
+layer catches that and continues rather than aborting the batch.
+
+**Verified directly, not assumed:** re-tested the `append()` bypass scenario from the last
+review round (a legitimate but unprivileged writer trying to grant itself/others access by
+constructing the event directly) against the new apply-layer check specifically — confirmed
+it's now rejected for the *understood* reason (signature+permission check), not just because
+of unexplained Autobase behavior as before. This scenario is now a permanent regression test.
+
+Every existing `addWriter()` caller across the forum scenarios and elsewhere continues to
+work completely unchanged (open mode never needed a keyPair before this and still doesn't).
+Full local suite: 115/115, confirmed stable across multiple repeated runs given the
+timing-sensitive nature of this round's changes.
+
 ### Round 29: bootstrap validation gaps, plus a few more checked directly rather than assumed
 
 Following up on a review of the bootstrap/writer-auth work from rounds 26-28 (selective
