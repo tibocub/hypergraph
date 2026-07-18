@@ -371,7 +371,39 @@ module.exports = class GraphView extends ReadyResource {
    * @param {EdgeQueryOpts} [opts] - Query options
    * @returns {AsyncIterable<Edge>} Async iterator of edges
    */
+  /**
+   * @param {string} entityId
+   * @param {Object} [opts]
+   * @param {'in'|'out'} [opts.direction='out']
+   * @param {string} [opts.type]
+   * @param {number} [opts.limit]
+   * @param {'asc'|'desc'} [opts.order]
+   * @param {boolean} [opts.reverse]
+   * @param {boolean} [opts.latestPerAuthor] - Reduce results to only the
+   *   most recent edge per author (by createdAt). Useful for any "one fact
+   *   per author per target" pattern — e.g. a vote, rating, or presence
+   *   marker — where an author may have created multiple edges over time
+   *   (there is no built-in uniqueness constraint across those) but only
+   *   their latest one should count. This buffers all matching edges in
+   *   memory before yielding, unlike the normal streaming path.
+   */
   async * getEdges (entityId, opts = {}) {
+    if (!opts.latestPerAuthor) {
+      yield * this.#getEdgesRaw(entityId, opts)
+      return
+    }
+
+    const latestByAuthor = new Map()
+    for await (const edge of this.#getEdgesRaw(entityId, opts)) {
+      const existing = latestByAuthor.get(edge.author)
+      if (!existing || (edge.createdAt || 0) > (existing.createdAt || 0)) {
+        latestByAuthor.set(edge.author, edge)
+      }
+    }
+    yield * latestByAuthor.values()
+  }
+
+  async * #getEdgesRaw (entityId, opts = {}) {
     if (!this.opened) await this.ready()
 
     const direction = opts.direction || 'out'

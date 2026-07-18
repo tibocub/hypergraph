@@ -1,6 +1,7 @@
 node_modules
 examples/forum-web/.forum-web/**/*
-examples/cli-chat/*-data
+examples/chat-web/.chat-web/**/*
+examples/p2p-reddit-clone/.reddit-storage/**/*
 out
 lib
 test-*

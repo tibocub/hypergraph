@@ -145,3 +145,131 @@ test('relations: countEdgesIn/countEdgesOut reflect current edge counts', async 
   t.is(await graph.countEdgesIn(post.id, 'like'), 0, 'post has 0 incoming likes')
   console.log('TEST: edge counts - passed')
 })
+
+test('relations: relate() accepts an optional numeric value, retrievable via edges()', async (t) => {
+  console.log('TEST: relation value - starting')
+  const { graph } = await createGraph(t, 'relations-value')
+
+  const post = await graph.put({ type: 'post' })
+  const voteNode = await graph.put({ type: 'vote' })
+  const ctx = await graph.createContext()
+
+  const event = await graph.relate({ from: voteNode.id, to: post.id, type: 'vote', value: -1, context: ctx })
+  t.is(event.value, -1, 'the returned event includes the value')
+
+  const edges = []
+  for await (const e of graph.edges(post.id, { direction: 'in', type: 'vote' })) edges.push(e)
+  t.is(edges.length, 1, 'one vote edge exists')
+  t.is(edges[0].value, -1, 'value is retrievable via edges()')
+
+  console.log('  a relation with no value at all still works, value is simply absent')
+  const like = await graph.put({ type: 'like' })
+  const likeEvent = await graph.relate({ from: like.id, to: post.id, type: 'like', context: ctx })
+  t.absent('value' in likeEvent && likeEvent.value !== undefined, 'no value field when not provided')
+  console.log('TEST: relation value - passed')
+})
+
+test('relations: relate() rejects a non-numeric value', async (t) => {
+  console.log('TEST: relation value validation - starting')
+  const { graph } = await createGraph(t, 'relations-value-validation')
+
+  const post = await graph.put({ type: 'post' })
+  const voteNode = await graph.put({ type: 'vote' })
+  const ctx = await graph.createContext()
+
+  await t.exception(
+    graph.relate({ from: voteNode.id, to: post.id, type: 'vote', value: 'up', context: ctx }),
+    /opts\.value must be a finite number/,
+    'rejects a string value'
+  )
+  await t.exception(
+    graph.relate({ from: voteNode.id, to: post.id, type: 'vote', value: NaN, context: ctx }),
+    /opts\.value must be a finite number/,
+    'rejects NaN'
+  )
+  await t.exception(
+    graph.relate({ from: voteNode.id, to: post.id, type: 'vote', value: Infinity, context: ctx }),
+    /opts\.value must be a finite number/,
+    'rejects Infinity'
+  )
+  console.log('TEST: relation value validation - passed')
+})
+
+test('relations: a relation\'s value is part of its signed digest — tampering with it fails verification', async (t) => {
+  console.log('TEST: relation value signature integrity - starting')
+  const { graph } = await createGraph(t, 'relations-value-signature')
+
+  const post = await graph.put({ type: 'post' })
+  const voteNode = await graph.put({ type: 'vote' })
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+
+  const event = await graph.relate({ from: voteNode.id, to: post.id, type: 'vote', value: 1, context: ctx })
+
+  console.log('  appending a forged copy with a different value but the ORIGINAL signature')
+  const forged = { ...event, value: 1000000 }
+  await context.append(forged)
+  await graph.update()
+
+  const edges = []
+  for await (const e of graph.edges(post.id, { direction: 'in', type: 'vote' })) edges.push(e)
+  t.is(edges.length, 1, 'only the original, correctly-signed vote was indexed — the forged one was rejected')
+  t.is(edges[0].value, 1, 'the indexed value is the original, untampered one')
+  console.log('TEST: relation value signature integrity - passed')
+})
+
+test('relations: latestPerAuthor reduces multiple edges from the same author to just their most recent one', async (t) => {
+  console.log('TEST: latestPerAuthor - starting')
+  const voterA = await createGraph(t, 'relations-latest-voter-a')
+  const voterB = await createGraph(t, 'relations-latest-voter-b')
+
+  const post = await voterA.graph.put({ type: 'post' })
+  const ctx = await voterA.graph.createContext({ writeMode: 'open' })
+  const aCtx = await voterA.graph.openContext(ctx, { writeMode: 'open' })
+  const bCtx = await voterB.graph.openContext(ctx, { writeMode: 'open' })
+  await aCtx.addWriter(bCtx.localKey)
+
+  const s1 = voterA.store.replicate(true, { live: true })
+  const s2 = voterB.store.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => { try { s1.destroy() } catch {}; try { s2.destroy() } catch {} })
+
+  for (let i = 0; i < 20 && !bCtx.writable; i++) { await sleep(200); await bCtx.update() }
+  t.ok(bCtx.writable, 'voterB is confirmed writable before voting')
+
+  // voterA votes, then changes their mind and votes again — same author,
+  // two different nodes (no built-in uniqueness constraint stops this).
+  const vote1 = await voterA.graph.put({ type: 'vote' })
+  await voterA.graph.relate({ from: vote1.id, to: post.id, type: 'vote', value: 1, context: ctx })
+  await sleep(10)
+  const vote2 = await voterA.graph.put({ type: 'vote' })
+  await voterA.graph.relate({ from: vote2.id, to: post.id, type: 'vote', value: -1, context: ctx })
+
+  // voterB casts a single, separate vote.
+  const vote3 = await voterB.graph.put({ type: 'vote' })
+  await voterB.graph.relate({ from: vote3.id, to: post.id, type: 'vote', value: 1, context: ctx })
+
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    await voterA.graph.update()
+    const edges = []
+    for await (const e of voterA.graph.edges(post.id, { direction: 'in', type: 'vote' })) edges.push(e)
+    if (edges.length === 3) break
+  }
+
+  const allEdges = []
+  for await (const e of voterA.graph.edges(post.id, { direction: 'in', type: 'vote' })) allEdges.push(e)
+  t.is(allEdges.length, 3, 'sanity check: all 3 raw vote edges are visible without reduction')
+
+  const reduced = []
+  for await (const e of voterA.graph.edges(post.id, { direction: 'in', type: 'vote', latestPerAuthor: true })) reduced.push(e)
+
+  const aPubkey = voterA.graph.identity.deviceKeyPair.publicKey.toString('hex')
+  const bPubkey = voterB.graph.identity.deviceKeyPair.publicKey.toString('hex')
+  const byAuthor = Object.fromEntries(reduced.map(e => [e.author, e.value]))
+
+  t.is(reduced.length, 2, 'reduced to one edge per distinct author (2 authors voted)')
+  t.is(byAuthor[aPubkey], -1, "voterA's LATEST vote (-1, the second one) is the one that counts, not their first")
+  t.is(byAuthor[bPubkey], 1, "voterB's single vote is counted correctly")
+  console.log('TEST: latestPerAuthor - passed')
+})

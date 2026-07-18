@@ -254,7 +254,8 @@ module.exports = class ContextBase extends ReadyResource {
     const payload = {
       from: event.from,
       to: event.to,
-      relationType: event.relationType
+      relationType: event.relationType,
+      value: typeof event.value === 'number' ? event.value : null
     }
 
     const msg = {
@@ -564,7 +565,8 @@ module.exports = class ContextBase extends ReadyResource {
       type: event.relationType,
       author: event.author,
       createdAt: event.timestamp,
-      deleted: false
+      deleted: false,
+      value: typeof event.value === 'number' ? event.value : undefined
     })
 
     await view.put(edgeRefKey, { ref: key })

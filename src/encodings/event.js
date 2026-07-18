@@ -72,6 +72,8 @@ const eventEncoding = {
         c.string.preencode(state, event.relationType)
         c.string.preencode(state, event.author)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        c.uint.preencode(state, typeof event.value === 'number' ? 1 : 0)
+        if (typeof event.value === 'number') c.float64.preencode(state, event.value)
         break
 
       case 'relation/delete':
@@ -153,6 +155,8 @@ const eventEncoding = {
         c.string.encode(state, event.relationType)
         c.string.encode(state, event.author)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        c.uint.encode(state, typeof event.value === 'number' ? 1 : 0)
+        if (typeof event.value === 'number') c.float64.encode(state, event.value)
         break
 
       case 'relation/delete':
@@ -238,6 +242,7 @@ const eventEncoding = {
         event.author = c.string.decode(state)
         const sig1 = c.buffer.decode(state)
         event.signature = sig1.length > 0 ? sig1.toString('hex') : null
+        event.value = c.uint.decode(state) === 1 ? c.float64.decode(state) : undefined
         break
 
       case 'relation/delete':

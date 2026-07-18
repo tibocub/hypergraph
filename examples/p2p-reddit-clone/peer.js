@@ -1,9 +1,10 @@
 const Corestore = require('corestore')
+const Hyperswarm = require('hyperswarm')
 const path = require('path')
 const fs = require('fs')
 const http = require('http')
 const crypto = require('crypto')
-const { Hypergraph, HypergraphNetworking } = require('../../index.js')
+const { Hypergraph, HypergraphNetwork } = require('../../index.js')
 const RedditStorage = require('./storage')
 const { buildRedditState, RedditPolicy } = require('./state')
 const hypercoreCrypto = require('hypercore-crypto')
@@ -65,15 +66,6 @@ function sendJson (res, status, value) {
   res.end(body)
 }
 
-function sendText (res, status, value) {
-  const body = String(value)
-  res.writeHead(status, {
-    'content-type': 'text/plain; charset=utf-8',
-    'content-length': Buffer.byteLength(body)
-  })
-  res.end(body)
-}
-
 function parseTopic (topic) {
   return crypto.createHash('sha256').update(String(topic)).digest()
 }
@@ -122,56 +114,82 @@ async function main () {
       throw err
     }
 
-    const storage = new RedditStorage(graph, {
-      commentsContext: contextKey,
-      votesContext: contextKey,
-      moderationContext: contextKey,
-      moderationKeyPair
-    })
-
-    bootstrap = {
-      version: 1,
-      topic,
-      ownerCore: graph.key.toString('hex'),
+    // A single context is used for comments, votes, and moderation alike
+    // (matches how RedditStorage is constructed below — all three point at
+    // the same key). generateBootstrap()'s metadata field carries the
+    // app-specific moderation config alongside the standard bootstrap
+    // shape (topic/ownerCore/contexts), so a joining peer gets everything
+    // it needs from one JSON file via connectFromBootstrap().
+    bootstrap = HypergraphNetwork.generateBootstrap(graph, {
+      topic: parseTopic(topic),
       contexts: {
         comments: contextKey,
         votes: contextKey,
         moderation: contextKey
       },
-      moderation: {
-        trustedModeratorKeys: [storage.moderationKeyPair.publicKey.toString('hex')],
-        maxFlags: 3
+      metadata: {
+        moderation: {
+          trustedModeratorKeys: [moderationKeyPair.publicKey.toString('hex')],
+          maxFlags: 3
+        }
       }
-    }
+    })
 
     writeJson(bootstrapPath, bootstrap)
   }
 
-  if (!bootstrap || bootstrap.version !== 1) throw new Error('Invalid bootstrap')
-
-  const effectiveTopic = bootstrap.topic || topic
+  const effectiveTopic = bootstrap.topic
 
   if (role === 'owner' && moderationKeyPair) {
     const pub = moderationKeyPair.publicKey.toString('hex')
-    const keys = (bootstrap.moderation && bootstrap.moderation.trustedModeratorKeys)
-      ? bootstrap.moderation.trustedModeratorKeys
-      : []
+    const modMeta = (bootstrap.metadata && bootstrap.metadata.moderation) || {}
+    const keys = modMeta.trustedModeratorKeys || []
+    const hasMaxFlags = typeof modMeta.maxFlags === 'number'
 
-    const hasMaxFlags = Boolean(bootstrap.moderation && typeof bootstrap.moderation.maxFlags === 'number')
-
+    // Always ensure owner's moderation key is in the trusted list — handles
+    // the case where the bootstrap was generated with a different identity
+    // (e.g. storage was reset) than the one currently running as owner.
     if (!keys.includes(pub) || !hasMaxFlags) {
-      bootstrap.moderation = bootstrap.moderation || {}
-      if (!keys.includes(pub)) bootstrap.moderation.trustedModeratorKeys = keys.concat([pub])
-      if (!hasMaxFlags) bootstrap.moderation.maxFlags = 3
+      bootstrap.metadata = bootstrap.metadata || {}
+      bootstrap.metadata.moderation = modMeta
+      bootstrap.metadata.moderation.trustedModeratorKeys = keys.includes(pub) ? keys : keys.concat([pub])
+      if (!hasMaxFlags) bootstrap.metadata.moderation.maxFlags = 3
       writeJson(bootstrapPath, bootstrap)
+      console.log(`[${name}] updated bootstrap with owner's moderation key: ${pub.slice(0, 8)}`)
     }
   }
 
-  // Contexts are automatically available - no need to explicitly open them
+  const swarm = new Hyperswarm()
 
-  if (bootstrap.ownerCore && bootstrap.ownerCore !== graph.key.toString('hex')) {
-    await graph.openUserCore(bootstrap.ownerCore)
-  }
+  // HypergraphNetwork replaces the manual writer-request/grant protocol
+  // this app previously had to hand-roll (see forum-web/chat-web's
+  // control-connection/control-message wiring for comparison) — the
+  // handshake, permission checking, and signing all happen automatically
+  // once connect() is called. The owner constructs it directly (it already
+  // has the graph/context); a peer consumes the bootstrap descriptor
+  // instead, which also opens the owner's user core automatically.
+  const networking = role === 'owner'
+    ? new HypergraphNetwork(graph, store, swarm, {
+        topic: effectiveTopic,
+        contexts: bootstrap.contexts,
+        role: 'owner'
+      })
+    : await HypergraphNetwork.connectFromBootstrap(graph, store, swarm, bootstrap, { role: 'peer' })
+
+  networking.on('peer-join', () => {
+    console.log(`[${name}] peer joined`)
+  })
+
+  networking.on('writer-granted', (msg) => {
+    console.log(`[${name}] writer granted for:`, Object.keys(msg.contexts || {}).filter(k => msg.contexts[k]))
+  })
+
+  networking.on('writer-error', (msg) => {
+    console.log(`[${name}] writer error: ${msg && msg.message}`)
+  })
+
+  await networking.connect()
+  console.log(`[${name}] connected to swarm`)
 
   const storage = new RedditStorage(graph, {
     commentsContext: bootstrap.contexts.comments,
@@ -180,40 +198,11 @@ async function main () {
     moderationKeyPair: moderationKeyPair || undefined
   })
 
+  const modMeta = (bootstrap.metadata && bootstrap.metadata.moderation) || {}
   const policy = new RedditPolicy({
-    trustedModeratorKeys: (bootstrap.moderation && bootstrap.moderation.trustedModeratorKeys) || [],
-    maxFlags: (bootstrap.moderation && typeof bootstrap.moderation.maxFlags === 'number') ? bootstrap.moderation.maxFlags : 3
+    trustedModeratorKeys: modMeta.trustedModeratorKeys || [],
+    maxFlags: typeof modMeta.maxFlags === 'number' ? modMeta.maxFlags : 3
   })
-
-  // Use HypergraphNetworking instead of custom ForumNetwork
-  const networking = new HypergraphNetworking(graph, store, {
-    topic: parseTopic(effectiveTopic),
-    contexts: {
-      comments: bootstrap.contexts.comments,
-      votes: bootstrap.contexts.votes,
-      moderation: bootstrap.contexts.moderation
-    },
-    autoAddWriters: true
-  })
-
-  networking.on('peer-join', async ({ peerKey }) => {
-    const pk = peerKey ? peerKey.toString('hex').slice(0, 8) : 'unknown'
-    console.log(`[${name}] peer joined: ${pk}`)
-
-    // Open peer's user core to see their posts/comments
-    const keyHex = peerKey ? peerKey.toString('hex') : null
-    if (keyHex) {
-      try {
-        await graph.openUserCore(keyHex)
-        console.log(`[${name}] opened user core for peer: ${pk}`)
-      } catch (err) {
-        console.error(`[${name}] failed to open user core for peer ${pk}:`, err)
-      }
-    }
-  })
-
-  await networking.connect()
-  console.log(`[${name}] connected to swarm`)
 
   const uiHtmlPath = path.join(__dirname, 'ui', 'index.html')
   console.log('Reading UI HTML from:', uiHtmlPath)
@@ -251,9 +240,7 @@ async function main () {
   }
 
   const server = http.createServer(async (req, res) => {
-    console.log('Request:', req.method, req.url)
     if (req.method === 'GET' && req.url === '/') {
-      console.log('Serving UI HTML, length:', uiHtml.length)
       res.writeHead(200, { 'content-type': 'text/html' })
       res.end(uiHtml)
       return
@@ -263,7 +250,7 @@ async function main () {
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
-        'connection': 'keep-alive'
+        connection: 'keep-alive'
       })
       clients.add(res)
       res.on('close', () => clients.delete(res))
@@ -272,13 +259,11 @@ async function main () {
     }
 
     if (req.method === 'GET' && req.url === '/api/state') {
-      console.log('GET /api/state - building state...')
       const state = await buildRedditState(storage, {
         comments: bootstrap.contexts.comments,
         votes: bootstrap.contexts.votes,
         moderation: bootstrap.contexts.moderation
       }, policy)
-      console.log('GET /api/state - state built, sending response')
       sendJson(res, 200, state)
       return
     }
@@ -320,11 +305,8 @@ async function main () {
     }
 
     if (req.method === 'POST' && req.url.startsWith('/api/vote/')) {
-      console.log('Vote endpoint hit, URL:', req.url)
       const targetId = req.url.slice('/api/vote/'.length)
-      console.log('Extracted targetId:', targetId)
       const body = await readBody(req)
-      console.log('Vote body:', body)
       if (!body || typeof body.value !== 'number') {
         sendJson(res, 400, { error: 'Missing value' })
         return
@@ -375,7 +357,13 @@ async function main () {
     console.log(`[${name}] listening on http://localhost:${port}`)
   })
 
-  // Announce usercore periodically
+  // Announce this peer's user core to the graph, and discover other peers'
+  // user cores the same way. This is unrelated to HypergraphNetwork's own
+  // 'peer-join' event, whose peerKey is the Hyperswarm/Noise connection
+  // identity — a different keypair entirely from a peer's Hypergraph
+  // user-core key, so it can't be used to open their data directly. This
+  // announce/discover-via-edges pattern is the correct way to find the
+  // actual user-core keys to open.
   const announceToReddit = async () => {
     try {
       const author = graph.key.toString('hex')
@@ -389,7 +377,6 @@ async function main () {
     } catch {}
   }
 
-  // Discover peer usercores periodically
   const discoverPeerCores = async () => {
     try {
       await graph.update()
@@ -407,12 +394,10 @@ async function main () {
     } catch {}
   }
 
-  // Periodic tasks
   setInterval(() => announceToReddit().catch(() => {}), 5000)
   setInterval(() => discoverPeerCores().catch(() => {}), 5000)
   setInterval(() => pushState().catch(() => {}), 1000)
 
-  // Initial tasks
   await announceToReddit()
   await discoverPeerCores()
   pushState()

@@ -384,6 +384,9 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!opts.to) throw new Error('opts.to is required')
     if (!opts.context) throw new Error('opts.context is required')
     if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
+    if (opts.value !== undefined && (typeof opts.value !== 'number' || !Number.isFinite(opts.value))) {
+      throw new Error('opts.value must be a finite number if provided')
+    }
 
     const deviceKeyPair = this.identity.deviceKeyPair
     const author = b4a.isBuffer(deviceKeyPair.publicKey)
@@ -401,6 +404,7 @@ module.exports = class Hypergraph extends ReadyResource {
       timestamp: Date.now(),
       signature: null
     }
+    if (typeof opts.value === 'number') event.value = opts.value
 
     const digest = this.#stableRelationHash(event)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
@@ -415,6 +419,7 @@ module.exports = class Hypergraph extends ReadyResource {
       from: opts.from,
       to: opts.to,
       relationType: opts.type || opts.relationType,
+      value: typeof opts.value === 'number' ? opts.value : undefined,
       context: opts.context,
       author,
       timestamp: Date.now()
@@ -862,7 +867,8 @@ module.exports = class Hypergraph extends ReadyResource {
     const payload = {
       from: event.from,
       to: event.to,
-      relationType: event.relationType
+      relationType: event.relationType,
+      value: typeof event.value === 'number' ? event.value : null
     }
 
     const msg = {

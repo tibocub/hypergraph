@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 31: weighted relations (relate() value field), latestPerAuthor, and p2p-reddit-clone fixed
+
+Started from a thorough review of the example apps against the current API, in preparation
+for building real prototypes on top of Hypergraph.
+
+**Found and fixed: `p2p-reddit-clone` — completely broken, crashed on startup.** It imported
+`HypergraphNetworking`, but `index.js` exports `HypergraphNetwork` (no "ing") — confirmed
+directly: `new HypergraphNetworking(...)` threw `TypeError: HypergraphNetworking is not a
+constructor` immediately. It also passed a nonexistent `autoAddWriters` option and never set
+`role: 'owner'`/`'peer'`. This was the one example meant to validate `HypergraphNetwork`'s
+API, and it had never actually been run against the current version. Rewrote its networking
+to use `HypergraphNetwork` correctly (`generateBootstrap()`/`connectFromBootstrap()` for the
+owner/peer split, with app-specific moderation config carried in `metadata`), verified
+end-to-end with a local two-peer simulation: bootstrap generation, automatic writer-granting,
+and post/comment replication all confirmed working.
+
+**A second, more subtle bug found in the same file:** the `peer-join` event handler was
+calling `graph.openUserCore(peerKey)`, but `peerKey` there is the Hyperswarm/Noise connection
+identity — a completely different keypair from a peer's actual Hypergraph user-core key. This
+would never throw, just silently open the wrong (nonexistent) core — exactly the kind of
+"corrupted key succeeds silently" issue found in the bootstrap-validation review two rounds
+ago. Removed it; the existing `relate`/`edges`-based "announce your user core" pattern
+elsewhere in the same file is the actually-correct way to discover peers' real user-core keys.
+
+**A third, genuine core-API gap found while fixing the vote flow:** `relate()` had no way to
+attach a value (e.g. a vote's weight) to an edge — any extra field passed to it was silently
+dropped, and `opts.keyPair` was silently ignored too (`relate()` always signs with the
+caller's own identity, which is the correct, secure behavior — a separate keyPair option
+there was actively misleading, not just unused).
+
+Discussed the right fix directly rather than assuming: a generic metadata blob was rejected
+early in favor of a deliberately narrow, typed `value` (number) field — the realistic range
+of "a number attached to an edge" cases (votes, weights, ratings, ordering) without the
+sprawl of an anything-goes payload. Implemented:
+- `relate()` now accepts an optional `opts.value` (must be a finite number if provided).
+- `value` is part of the signed digest in both `hypergraph.js` (signing) and `context-base.js`
+  (verification) — added correctly from the start this time, not patched in afterward as
+  happened previously with `roles/addWriter`'s signature field. New test confirms a forged
+  value with the original signature is rejected at the apply layer.
+- Encoded in the binary event schema (`src/encodings/event.js`) as an optional float64.
+- Indexed and returned by `edges()`.
+
+**Also discussed and resolved: does a `value` field alone give "one vote per user"?** No —
+confirmed empirically that each vote is a fresh node with no built-in uniqueness constraint
+across authors, so nothing prevents someone voting twice. Added `latestPerAuthor` as a new
+option to `edges()` (`GraphView.getEdges`), deliberately designed as a general "one fact per
+author per target" reduction — not vote-specific — buffering matching edges and keeping only
+the most recent one per author. New test confirms a user's changed-mind second vote correctly
+supersedes their first when reduced this way.
+
+Fixed `p2p-reddit-clone/storage.js`'s vote flow end-to-end using both: `vote()` now validates
+input is `1`, `-1`, or `0`; `getVoteCount()`/`getUserVote()` use `latestPerAuthor` and clamp to
+the valid range when tallying (since a permissionless relate() can't be prevented from
+carrying an out-of-range value at write time — that has to be a read-time check). Also removed
+the dead `keyPair` option from `RedditStorage`'s constructor/calls to `relate()`, and the large
+block of exploratory debug logging in `vote()`. Verified end-to-end via local simulation:
+a peer votes, changes their mind, and the owner also votes — final tally and per-user vote
+lookup both come out correct.
+
+**Housekeeping:** `p2p-reddit-clone/.reddit-storage`'s runtime Corestore/LevelDB data had been
+accidentally committed (21 files) — removed from tracking and added to `.gitignore`, alongside
+a missing entry for `chat-web`'s equivalent runtime directory. Also removed a stale `.gitignore`
+line referencing `examples/cli-chat`, which doesn't exist in the repo.
+
+Full local suite: 119/119.
+
 ### Round 30: real defense-in-depth for writer-authorization, plus removeWriter()
 
 Addresses the two most important findings from the pre-launch review: `roles/addWriter`
