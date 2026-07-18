@@ -105,22 +105,16 @@ async function projectThread (storage, policy, postId) {
 }
 
 async function buildRedditState (storage, contexts, policy, opts = {}) {
-  console.log('buildRedditState: starting')
   await storage.graph.update()
-  console.log('buildRedditState: graph updated')
 
   const threadId = opts.thread || null
 
-  console.log('buildRedditState: listing posts...')
   const posts = await storage.listPosts()
-  console.log('buildRedditState: found', posts.length, 'posts')
-  
+
   const projectedPosts = []
   for (const p of posts) {
-    console.log('buildRedditState: projecting post', p.id)
     projectedPosts.push(await projectPost(storage, policy, p))
   }
-  console.log('buildRedditState: projected all posts')
 
   projectedPosts.sort((a, b) => b.voteCount - a.voteCount)
 
@@ -133,7 +127,6 @@ async function buildRedditState (storage, contexts, policy, opts = {}) {
 
   const thread = threadId ? await projectThread(storage, policy, threadId) : null
 
-  console.log('buildRedditState: returning state')
   return {
     me: {
       pubkey: mePubkey,

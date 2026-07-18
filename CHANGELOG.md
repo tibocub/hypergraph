@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 34: p2p-reddit-clone unusable for up to ~3 minutes when run solo — fixed
+
+Hit directly: running the owner alone (no peer) hung after "Context created" for what turned
+out to be a bounded but very long time. Traced precisely: `HypergraphNetwork.connect()`
+sequences a 60s `discovery.flushed()` timeout, a 60s `swarm.flush()` timeout, then up to 45s
+of connection retries (`_ensureConnectionWithRetry`) — a real worst case of ~165 seconds
+before `connect()` resolves at all, confirmed by actually waiting out the full window. The
+peer.js rewrite from a few rounds ago had `server.listen()` sequenced *after* `await
+networking.connect()`, so the entire app — including the HTTP server itself — was unreachable
+for that whole window. This is a real regression this project introduced: checked
+`forum-web`/`chat-web` (the original, custom-networking examples) and confirmed they already
+start their HTTP server *before* attempting to join the network, so they never had this
+problem.
+
+Fixed by no longer awaiting `networking.connect()` before anything else — it now runs in the
+background (logging its own outcome when it resolves), while the HTTP server, storage, and
+UI start immediately. None of the local app functionality actually depends on a peer being
+connected. Verified directly: the owner now listens and responds to `/api/state` within
+~5 seconds solo, and post creation/state retrieval work correctly with zero peers connected
+at all — running solo (e.g. the first person setting up a community before anyone else has
+joined) is a normal, supported case, not an error state.
+
+Also cleaned up `state.js`'s `buildRedditState()` — it was logging half a dozen debug lines
+on every call, and it's called on a 1-second interval for the SSE push loop, so the console
+was being flooded continuously even when nothing had changed.
+
+No changes to `src/` in this round — full local suite unaffected: 120/120.
+
 ### Round 33: fixed a real crash — old, already-persisted relation events broke on the new value field
 
 Hit directly by running `forum-web` against real, existing local data: `Error: Out of bounds`

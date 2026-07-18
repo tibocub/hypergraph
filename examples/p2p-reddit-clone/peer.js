@@ -188,8 +188,18 @@ async function main () {
     console.log(`[${name}] writer error: ${msg && msg.message}`)
   })
 
-  await networking.connect()
-  console.log(`[${name}] connected to swarm`)
+  // Deliberately NOT awaited here: connect() waits for an actual peer
+  // connection (with retries), which can legitimately take a couple of
+  // minutes — or never resolve at all if no peer ever joins, which is a
+  // completely normal case (e.g. the first person setting up a community
+  // before anyone else has joined yet). None of the app's local
+  // functionality below actually depends on a peer being connected, so it
+  // shouldn't be blocked on this. Confirmed directly: without this fix,
+  // the HTTP server (and the entire UI) was unreachable for however long
+  // connect() took to resolve or give up.
+  networking.connect()
+    .then(() => console.log(`[${name}] connected to swarm`))
+    .catch((err) => console.error(`[${name}] connect error: ${err && err.message ? err.message : String(err)}`))
 
   const storage = new RedditStorage(graph, {
     commentsContext: bootstrap.contexts.comments,
@@ -205,9 +215,7 @@ async function main () {
   })
 
   const uiHtmlPath = path.join(__dirname, 'ui', 'index.html')
-  console.log('Reading UI HTML from:', uiHtmlPath)
   const uiHtml = fs.readFileSync(uiHtmlPath)
-  console.log('UI HTML read successfully, length:', uiHtml.length)
 
   const clients = new Set()
   let lastSig = null
