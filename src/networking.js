@@ -203,9 +203,16 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * @private
    */
   async _handleWriterRequest (msg, conn) {
-    // Only writers (owner or peer with writer status) respond to writer-requests
-    // For now, we'll allow any connected peer to respond
-    // TODO: Add proper permission checking in Phase 2
+    // Permission checking: for closed-mode contexts, ContextBase.addWriter()
+    // now checks whether the author has the 'context.write' privilege (per
+    // the attached RoleBase) before granting — see context-base.js. Passing
+    // this peer's own identity as the author means the check is "does the
+    // peer receiving this request have the authority to grant it", which is
+    // the natural authorization model here (the same one already used
+    // elsewhere in this codebase for role-gated actions). Open-mode
+    // contexts are unaffected — addWriter() only performs this check when
+    // writeMode is 'closed'.
+    const author = this.#graph.identity.deviceKeyPair.publicKey.toString('hex')
 
     try {
       // Open userCore if provided
@@ -220,9 +227,13 @@ module.exports = class HypergraphNetwork extends EventEmitter {
         if (writerKeyHex) {
           try {
             const writerKey = Buffer.from(writerKeyHex, 'hex')
-            await context.addWriter(writerKey)
+            await context.addWriter(writerKey, { author })
             granted[name] = true
           } catch (err) {
+            // A denial for one context (e.g. not authorized in closed
+            // mode) shouldn't block grants for other contexts in the same
+            // request that the requester IS authorized for — reported via
+            // granted[name] = false, not escalated to the outer catch.
             safetyCatch(err)
             granted[name] = false
           }
@@ -514,5 +525,41 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       contexts: opts.contexts,
       metadata: opts.metadata || null
     }
+  }
+
+  /**
+   * Create a HypergraphNetwork instance configured to join from a bootstrap
+   * descriptor (as produced by generateBootstrap()) — the consumption-side
+   * counterpart, mirroring how Hypergraph.join() consumes its own export()
+   * bootstrap shape. Also opens the owner's user core on the joining graph
+   * (via bootstrap.ownerCore), so the owner's data becomes visible to the
+   * view once connected, without the caller needing to do that step
+   * themselves.
+   *
+   * The returned instance is not yet connected — call .connect() on it as
+   * usual.
+   *
+   * @param {Object} graph - Hypergraph instance (the joining peer's own graph)
+   * @param {Object} store - Corestore instance
+   * @param {Object} swarm - Hyperswarm instance
+   * @param {Object} bootstrap - A bootstrap descriptor from generateBootstrap()
+   * @param {Object} [opts] - Additional constructor options (e.g. role, autoReplicate)
+   * @returns {Promise<HypergraphNetwork>}
+   */
+  static async connectFromBootstrap (graph, store, swarm, bootstrap, opts = {}) {
+    if (!bootstrap || !bootstrap.topic) {
+      throw new Error('A valid bootstrap descriptor with a topic is required')
+    }
+
+    if (bootstrap.ownerCore) {
+      await graph.openUserCore(bootstrap.ownerCore)
+    }
+
+    return new this(graph, store, swarm, {
+      topic: bootstrap.topic,
+      contexts: bootstrap.contexts || {},
+      role: opts.role || 'peer',
+      autoReplicate: opts.autoReplicate
+    })
   }
 }

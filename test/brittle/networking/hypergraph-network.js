@@ -53,6 +53,64 @@ test('hypergraph-network: generateBootstrap produces a joinable descriptor', asy
   t.is(bootstrap.metadata.appName, 'test-app', 'metadata is preserved')
 })
 
+test('hypergraph-network: connectFromBootstrap actually consumes a bootstrap to join a peer (no network needed)', async (t) => {
+  // Unlike the test above, which only checks the shape of generateBootstrap()'s
+  // output, this verifies the OTHER half actually works: a second peer
+  // consuming that descriptor via connectFromBootstrap(), connecting, and
+  // receiving the owner's data — mirroring the coverage
+  // Hypergraph.export()/join() already has, which generateBootstrap() never
+  // had until now. Uses a local NoiseSecretStream pair instead of a real
+  // DHT connection, since this is testing bootstrap consumption, not
+  // connectivity.
+  console.log('TEST: connectFromBootstrap - starting (no network needed)')
+  const NoiseSecretStream = require('@hyperswarm/secret-stream')
+  const owner = await createGraph(t, 'hn-bootstrap-consume-owner')
+  const peer = await createGraph(t, 'hn-bootstrap-consume-peer')
+
+  console.log('  Step 1: owner writes some data and generates a bootstrap')
+  const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+  await owner.graph.openContext(contextKey, { writeMode: 'open' })
+  const post = await owner.graph.put({ type: 'post' })
+  await owner.graph.putContent(post.id, 'hello from the bootstrap owner', 'text')
+
+  const topic = crypto.randomBytes(32)
+  const bootstrap = HypergraphNetwork.generateBootstrap(owner.graph, {
+    topic,
+    contexts: { chat: contextKey }
+  })
+
+  console.log('  Step 2: owner sets up its own networking side normally')
+  const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { chat: contextKey } })
+  await networkingOwner._openContexts()
+
+  console.log('  Step 3: peer joins using ONLY the bootstrap descriptor, via connectFromBootstrap()')
+  const networkingPeer = await HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, bootstrap, { role: 'peer' })
+  await networkingPeer._openContexts()
+
+  const connOwner = new NoiseSecretStream(true)
+  const connPeer = new NoiseSecretStream(false)
+  connOwner.rawStream.pipe(connPeer.rawStream).pipe(connOwner.rawStream)
+  t.teardown(() => { connOwner.destroy(); connPeer.destroy() })
+
+  networkingOwner._handleDataConnection(connOwner, {})
+  networkingPeer._handleDataConnection(connPeer, {})
+
+  console.log('  Step 4: verify the peer actually receives the owner\'s data')
+  let postOnPeer = null
+  let contentOnPeer = null
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    await peer.graph.update()
+    postOnPeer = await peer.graph.get(post.id)
+    contentOnPeer = await peer.graph.getContent(post.id)
+    if (postOnPeer && contentOnPeer) break
+  }
+
+  t.ok(postOnPeer, 'peer, joined purely from the bootstrap, received the owner\'s post')
+  t.is(contentOnPeer && contentOnPeer.body, 'hello from the bootstrap owner', "the content matches exactly what the owner wrote")
+  console.log('TEST: connectFromBootstrap - passed')
+})
+
 function registerTeardown (t, { peer1, peer2, swarm1, swarm2, networking1, networking2 }) {
   t.teardown(async () => {
     try { await networking1.destroy() } catch (err) { /* already closed */ }

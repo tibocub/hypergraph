@@ -603,6 +603,19 @@ module.exports = class ContextBase extends ReadyResource {
   async addWriter (coreKey, opts = {}) {
     if (!this.opened) await this.ready()
 
+    if (this.#writeMode === 'closed') {
+      if (!opts.author) {
+        throw new Error('opts.author is required in closed mode')
+      }
+      if (!this.#roleBase || typeof this.#roleBase.can !== 'function') {
+        throw new Error('RoleBase is required for closed-mode writer authorization but is not attached')
+      }
+      const authorized = await this.#roleBase.can(opts.author, 'context.write')
+      if (!authorized) {
+        throw new Error('Not authorized to add writers to this context')
+      }
+    }
+
     const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
     const keyHex = key.toString('hex')
 

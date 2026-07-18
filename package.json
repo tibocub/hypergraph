@@ -25,6 +25,7 @@
     "test:connect-to-swarm": "npx brittle test/brittle/networking/connect-to-swarm.js",
     "test:peer-connection": "npx brittle test/brittle/networking/peer-connection.js",
     "test:bootstrap-export": "npx brittle test/brittle/networking/bootstrap-export.js",
+    "test:writer-authorization": "npx brittle test/brittle/networking/writer-authorization.js",
     "test:networking": "npx brittle test/brittle/networking/*.js",
     "test:late-joiner": "npx brittle test/brittle/replication/late-joiner.js",
     "test:concurrent-writes": "npx brittle test/brittle/replication/concurrent-writes.js",

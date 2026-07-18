@@ -126,16 +126,66 @@ test('contexts: open write mode auto-authorizes a peer added as a writer', async
   console.log('TEST: writeMode open (auto writers) - passed')
 })
 
-test.skip('contexts: closed write mode authorizes a role-approved writer', async (t) => {
-  // Deferred: closed-mode authorization currently requires a peer to already
-  // be a writer BEFORE opening an existing context, which conflicts with
-  // Autobase's join model (open-then-authorize). Closed-mode enforcement
-  // needs an application-level redesign (role check gating addWriter/append)
-  // rather than relying on Autobase-level write access. Tracked as a
-  // follow-up; see docs/contexts-and-roles.md.
+test('contexts: closed write mode authorizes a role-approved writer', async (t) => {
+  console.log('TEST: closed mode authorized writer - starting')
+  const { graph } = await createGraph(t, 'contexts-closed-authorized')
+
+  const ownerKeyPair = crypto.keyPair()
+  const ownerPubkey = ownerKeyPair.publicKey.toString('hex')
+  const adminKeyPair = crypto.keyPair()
+  const adminPubkey = adminKeyPair.publicKey.toString('hex')
+
+  console.log('  Step 1: set up roles — owner, and an admin (has context.write by default)')
+  await graph.createRoleBase()
+  await graph.roleBase.init(ownerPubkey)
+  await graph.setRole(adminPubkey, 'admin', { keyPair: ownerKeyPair })
+  await graph.update()
+  t.ok(await graph.can(adminPubkey, 'context.write'), 'admin role has context.write by default')
+
+  console.log('  Step 2: create a closed context and add a writer as the admin')
+  const contextKey = await graph.createContext({ writeMode: 'closed' })
+  const context = await graph.openContext(contextKey, { writeMode: 'closed' })
+  const newWriterKey = crypto.keyPair().publicKey.toString('hex')
+
+  await t.execution(
+    context.addWriter(newWriterKey, { author: adminPubkey }),
+    'admin (context.write privilege) can add a writer to a closed context'
+  )
+  console.log('TEST: closed mode authorized writer - passed')
 })
 
-test.skip('contexts: closed write mode rejects an unauthorized writer', async (t) => {
-  // Deferred alongside the test above until closed-mode authorization is
-  // redesigned.
+test('contexts: closed write mode rejects an unauthorized writer', async (t) => {
+  console.log('TEST: closed mode unauthorized writer - starting')
+  const { graph } = await createGraph(t, 'contexts-closed-unauthorized')
+
+  const ownerKeyPair = crypto.keyPair()
+  const ownerPubkey = ownerKeyPair.publicKey.toString('hex')
+  const memberKeyPair = crypto.keyPair()
+  const memberPubkey = memberKeyPair.publicKey.toString('hex')
+
+  console.log('  Step 1: set up roles — owner, and a plain member (no permissions by default)')
+  await graph.createRoleBase()
+  await graph.roleBase.init(ownerPubkey)
+  await graph.setRole(memberPubkey, 'member', { keyPair: ownerKeyPair })
+  await graph.update()
+  t.absent(await graph.can(memberPubkey, 'context.write'), 'member role does not have context.write')
+
+  console.log('  Step 2: create a closed context and attempt to add a writer as the unauthorized member')
+  const contextKey = await graph.createContext({ writeMode: 'closed' })
+  const context = await graph.openContext(contextKey, { writeMode: 'closed' })
+  const newWriterKey = crypto.keyPair().publicKey.toString('hex')
+
+  await t.exception(
+    context.addWriter(newWriterKey, { author: memberPubkey }),
+    /Not authorized/,
+    'member (no context.write privilege) cannot add a writer to a closed context'
+  )
+
+  console.log('  Step 3: also reject when opts.author is missing entirely')
+  await t.exception(
+    context.addWriter(newWriterKey, {}),
+    /opts.author is required/,
+    'closed mode requires opts.author to be provided at all'
+  )
+  console.log('TEST: closed mode unauthorized writer - passed')
 })

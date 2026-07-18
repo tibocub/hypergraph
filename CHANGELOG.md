@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 25: multi-peer and reconnection coverage for HypergraphNetwork (gaps #4 and #5)
+
+Before writing tests, verified two things directly rather than assuming them:
+- `addWriter()` is idempotent — calling it twice for the same key doesn't throw (checked
+  with a local probe), which matters because a reconnecting peer always re-sends a
+  writer-request regardless of whether it was already granted before.
+- Channel wiring is entirely event-driven per-connection (`_handleDataConnection` fires on
+  every `'connection'` event from the swarm, wiring a fresh writer-auth channel each time),
+  so reconnection naturally re-triggers the handshake without needing any special-casing.
+
+**Gap #4 (multi-peer):** added a test connecting 3 `HypergraphNetwork` instances in a star
+topology (owner is the hub; the two peers aren't directly connected to each other) and
+verifying both peers receive `writer-granted` and actually gain write access to the shared
+context — the first `HypergraphNetwork`-specific test with more than 2 peers.
+
+**Gap #5 (reconnection):** added a test that connects, waits for the first
+`writer-granted`, disconnects, reconnects with a fresh connection, and verifies the
+handshake fires again on the new connection (not silently skipped) and that write access —
+a permanent Autobase-level grant, not tied to any specific connection — persists correctly
+across the cycle.
+
+Both new tests run entirely locally (same `NoiseSecretStream` pattern as the existing
+writer-authorization tests, no DHT needed), in `test/brittle/networking/
+writer-authorization.js`. Full local suite: 107/107.
+
+### Round 24: same force-exit workaround applied to peer-reconnection.js
+
+The full suite hung again after `peer-reconnection.js`'s test completed successfully (all
+assertions passed, teardown finished in under a second) — the identical class of issue as
+`peer-connection.js` in round 22: `peer-reconnection.js` is the last file alphabetically in
+`test/brittle/replication/*.js`, the other group (besides `test:networking`) that involves
+real DHT connections.
+
+Applied the same temporary workaround: `setTimeout(() => process.exit(0), 2000)` after the
+test's own assertions finish. Checked the rest of the `npm test` chain for the same risk:
+`test:core`, `test:forum`, and `test:integration` are all purely local (no real Hyperswarm/
+DHT connections anywhere in those files), so they aren't exposed to this class of issue —
+`test:networking` and `test:replication` were the only two groups that needed this fix, and
+both now have it on their respective last file.
+
+Marked as a workaround, not a fix, same as round 22.
+
+### Round 23: implemented writer-authorization permission checking, using an existing design that was documented but never built
+
+Responding to a gap analysis from the project owner identifying three critical gaps
+(permission checking for writer authorization, missing writer-error test coverage, and
+missing bootstrap-consumption coverage) and three lower-priority ones (multi-peer,
+reconnection, and context-specific authorization scenarios).
+
+**The permission-checking design question turned out to already be answered in the
+codebase.** `ContextBase.addWriter()`'s own JSDoc already documented the intended design —
+*"In 'closed' mode, requires the 'context.write' privilege from the attached RoleBase"*,
+with `@throws` if RoleBase is missing or authorization fails — but the implementation never
+actually did any of this. The existing `roles-registry.js`/`RoleBase` system (owner/admin/
+mod/member roles, a `can(registry, pubkeyHex, action)` permission check) already supports
+both of the project owner's proposed models as configurations of the same mechanism, not
+separate designs: "closed, owner-only" falls out of the `owner` role's `'*'` wildcard, and
+"closed, custom roles" is exactly what `admin`/custom roles with `context.write` already
+provide.
+
+**A related pre-existing bug found and fixed on the way:** `RoleBase` had no `can()` method
+at all, despite `ContextBase` already calling `this.#roleBase.can(...)` for moderation
+permission checks — meaning that check silently no-op'd (always treated as `null`, queuing
+moderation events as pending rather than actually evaluating them), even when a RoleBase was
+properly attached. Added the missing method (a thin wrapper around the standalone `can()`
+function already imported and used internally in `role-base.js`, just never exposed).
+
+**Fixed:**
+- `ContextBase.addWriter()` now performs the documented check for `writeMode: 'closed'`
+  contexts: requires `opts.author`, requires an attached RoleBase, and requires the
+  `'context.write'` privilege — throwing otherwise. `writeMode: 'open'` contexts are
+  completely unaffected.
+- `HypergraphNetwork._handleWriterRequest()` now passes this peer's own identity as
+  `opts.author` — checking whether the peer *receiving* the request has authority to grant
+  it, the natural model here. Per-context error isolation is preserved: one context's denial
+  (reported via `granted[name] = false`) doesn't block grants for other contexts in the same
+  request that the requester is authorized for.
+- Implemented the two previously-empty `test.skip()` placeholders in `core/contexts.js`
+  ("closed write mode authorizes a role-approved writer" / "...rejects an unauthorized
+  writer"), whose own comments already described exactly this redesign as the blocker.
+
+**New test coverage, addressing gaps #1 and #2 together:** `test/brittle/networking/
+writer-authorization.js` — three tests, all running entirely locally via a real
+`NoiseSecretStream` pair (no DHT needed, same pattern proven for the protomux redesign):
+authorized grant (with the peer actually becoming writable), unauthorized denial (reported
+via `writer-granted` with `contexts.chat: false`, not an error — a denial is a normal
+protocol outcome), and a genuine `writer-error` response for an unexpected failure (a
+malformed userCore key).
+
+**Gap #3 (bootstrap consumption) also addressed:** added
+`HypergraphNetwork.connectFromBootstrap(graph, store, swarm, bootstrap, opts)`, the
+consumption-side counterpart to `generateBootstrap()` that was missing entirely — mirroring
+`Hypergraph.join()`'s existing pattern for its own export/join bootstrap shape. Opens the
+owner's user core automatically (from `bootstrap.ownerCore`) so the caller doesn't have to.
+Added a new test verifying the *other* half of the existing "generateBootstrap produces a
+joinable descriptor" test (which only checked the output's shape): a second peer actually
+consumes that descriptor via `connectFromBootstrap()`, connects, and receives the owner's
+exact data — the coverage gap the project owner specifically flagged as missing relative to
+`Hypergraph.export()/join()`.
+
+Gaps #4-6 (multi-peer via `HypergraphNetwork` specifically, reconnection behavior, and
+selective per-context authorization scenarios) remain open, prioritized as agreed for a
+follow-up round.
+
 ### Round 22: quick, targeted force-exit workaround for peer-connection.js
 
 Per project direction: round 21's diagnostic addition broke some previously-working tests

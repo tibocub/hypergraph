@@ -176,6 +176,29 @@ module.exports = class RoleBase extends ReadyResource {
   }
 
   /**
+   * Check if a public key has permission to perform an action.
+   *
+   * BUG FIX: this method was expected to exist by ContextBase (which already
+   * checked `typeof this.#roleBase.can === 'function'` and called it for
+   * moderation permission checks), but was never actually added — meaning
+   * that check always silently failed and moderation events were always
+   * queued as pending rather than actually evaluated against the registry,
+   * even when a RoleBase was properly attached. The standalone `can()`
+   * function this wraps was already imported and used internally in this
+   * file for role-modification checks; it just wasn't exposed for external
+   * callers.
+   *
+   * @param {string} pubkeyHex - The public key to check (hex string)
+   * @param {string} action - The action to check permission for
+   * @returns {Promise<boolean>} True if the key has permission
+   */
+  async can (pubkeyHex, action) {
+    if (!this.opened) await this.ready()
+    const registry = await this.getRegistry()
+    return can(registry, pubkeyHex, action)
+  }
+
+  /**
    * Append a role management event to the RoleBase.
    *
    * Performs authorization checks for role modification events.
