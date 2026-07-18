@@ -430,3 +430,52 @@ test('writer-authorization: waitForWriterGrant() resolves on a real grant and re
   }
   console.log('TEST: waitForWriterGrant - passed')
 })
+
+test('writer-authorization: autoReplicate:false actually skips Corestore replication', async (t) => {
+  // The option existed but was never verified to actually do anything.
+  // Also confirms autoReplicate only affects store.replicate(conn) — the
+  // writer-auth channel is wired unconditionally in _handleDataConnection,
+  // so the handshake should still work normally even with replication
+  // disabled.
+  console.log('TEST: autoReplicate:false - starting (no network needed)')
+  const owner = await createGraph(t, 'writer-auth-noreplicate-owner')
+  const peer = await createGraph(t, 'writer-auth-noreplicate-peer')
+
+  const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+  await owner.graph.openContext(contextKey, { writeMode: 'open' })
+  await peer.graph.openContext(contextKey, { writeMode: 'open' })
+  const ownerUserCoreOnPeer = await peer.graph.openUserCore(owner.graph.key)
+
+  const msg = await owner.graph.put({ type: 'message' })
+  await owner.graph.putContent(msg.id, 'should never arrive', 'text')
+
+  const topic = crypto.randomBytes(32)
+  const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { chat: contextKey }, autoReplicate: false })
+  const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: { chat: contextKey }, autoReplicate: false })
+  await networkingOwner._openContexts()
+  await networkingPeer._openContexts()
+
+  let granted = false
+  networkingPeer.on('writer-granted', () => { granted = true })
+
+  const link = connectPair(networkingOwner, networkingPeer)
+  t.teardown(() => link.close())
+
+  let grantOk = false
+  for (let i = 0; i < 15; i++) {
+    await sleep(200)
+    if (granted) { grantOk = true; break }
+  }
+  t.ok(grantOk, 'writer-auth channel still works normally with autoReplicate:false (it is unaffected by this option)')
+
+  // Give replication every chance it would normally have to happen, then
+  // confirm it genuinely did not.
+  for (let i = 0; i < 10; i++) {
+    await sleep(200)
+    await ownerUserCoreOnPeer.update({ wait: false })
+  }
+  t.is(ownerUserCoreOnPeer.length, 0, "peer's reference to the owner's user core never advanced — no replication happened at all")
+  const msgOnPeer = await peer.graph.get(msg.id)
+  t.absent(msgOnPeer, "the owner's message never reached the peer, confirming autoReplicate:false actually skips replication")
+  console.log('TEST: autoReplicate:false - passed')
+})

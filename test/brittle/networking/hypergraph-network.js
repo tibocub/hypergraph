@@ -145,6 +145,71 @@ test('hypergraph-network: connectFromBootstrap rejects a bootstrap version misma
   )
 })
 
+test('hypergraph-network: connectFromBootstrap rejects a corrupted (wrong-shaped) key anywhere in the bootstrap', async (t) => {
+  // Verified directly first: a correctly-shaped but wrong key (e.g. all
+  // zeros) can't be caught here — openUserCore() silently succeeds with a
+  // permanently-empty, dead core reference, since there's no way to tell
+  // "wrong key" from "owner hasn't sent anything yet" without actually
+  // trying to connect. What CAN be caught, and wasn't before: a
+  // corrupted/truncated/mistyped key that isn't even the right shape.
+  const owner = await createGraph(t, 'hn-bootstrap-shape-owner')
+  const peer = await createGraph(t, 'hn-bootstrap-shape-peer')
+
+  const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+  const topic = crypto.randomBytes(32)
+  const bootstrap = HypergraphNetwork.generateBootstrap(owner.graph, { topic, contexts: { chat: contextKey } })
+
+  await t.exception(
+    HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, { ...bootstrap, topic: 'deadbeef' }, { role: 'peer' }),
+    /bootstrap\.topic must be a 64-character hex string/,
+    'rejects a truncated topic'
+  )
+
+  await t.exception(
+    HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, { ...bootstrap, ownerCore: 'not-valid-hex-at-all' }, { role: 'peer' }),
+    /bootstrap\.ownerCore must be a 64-character hex string/,
+    'rejects a non-hex ownerCore'
+  )
+
+  await t.exception(
+    HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, { ...bootstrap, contexts: { chat: 'short' } }, { role: 'peer' }),
+    /bootstrap\.contexts\.chat must be a 64-character hex string/,
+    'rejects a wrong-length context key, naming which context failed'
+  )
+})
+
+test('hypergraph-network: connectFromBootstrap works with an empty contexts map', async (t) => {
+  // generateBootstrap() requires opts.contexts to be present, but an empty
+  // object passes that check (truthy) — this confirms the resulting
+  // bootstrap (an owner sharing only its user core, no contexts/relations
+  // at all) is consumed without error.
+  const owner = await createGraph(t, 'hn-bootstrap-empty-owner')
+  const peer = await createGraph(t, 'hn-bootstrap-empty-peer')
+
+  const topic = crypto.randomBytes(32)
+  const bootstrap = HypergraphNetwork.generateBootstrap(owner.graph, { topic, contexts: {} })
+  t.alike(bootstrap.contexts, {}, 'generateBootstrap accepts an empty contexts map')
+
+  const networkingPeer = await HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, bootstrap, { role: 'peer' })
+  t.ok(networkingPeer, 'connectFromBootstrap accepts a bootstrap with no contexts')
+  await t.execution(networkingPeer._openContexts(), '_openContexts() is a no-op with nothing to open')
+})
+
+test('hypergraph-network: connectFromBootstrap always uses bootstrap.topic, ignoring a conflicting opts.topic', async (t) => {
+  const owner = await createGraph(t, 'hn-bootstrap-topic-owner')
+  const peer = await createGraph(t, 'hn-bootstrap-topic-peer')
+
+  const contextKey = await owner.graph.createContext({ writeMode: 'open' })
+  const bootstrapTopic = crypto.randomBytes(32)
+  const conflictingTopic = crypto.randomBytes(32)
+  const bootstrap = HypergraphNetwork.generateBootstrap(owner.graph, { topic: bootstrapTopic, contexts: { chat: contextKey } })
+
+  const networkingPeer = await HypergraphNetwork.connectFromBootstrap(peer.graph, peer.store, {}, bootstrap, { role: 'peer', topic: conflictingTopic })
+
+  t.is(networkingPeer.topic.toString('hex'), bootstrapTopic.toString('hex'), "bootstrap.topic wins; a conflicting opts.topic has no effect")
+  t.not(networkingPeer.topic.toString('hex'), conflictingTopic.toString('hex'), 'the conflicting topic passed via opts is not used')
+})
+
 function registerTeardown (t, { peer1, peer2, swarm1, swarm2, networking1, networking2 }) {
   t.teardown(async () => {
     try { await networking1.destroy() } catch (err) { /* already closed */ }

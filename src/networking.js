@@ -12,6 +12,18 @@ const c = require('compact-encoding')
 // compatible with.
 const BOOTSTRAP_VERSION = '2.0.0'
 
+// A valid Hypercore key is exactly 32 bytes (64 hex characters).
+const HEX_KEY_PATTERN = /^[0-9a-f]{64}$/i
+
+function isValidHexKey (value) {
+  return typeof value === 'string' && HEX_KEY_PATTERN.test(value)
+}
+
+function describeForError (value) {
+  if (typeof value !== 'string') return `${typeof value} (${JSON.stringify(value)})`
+  return value.length > 40 ? `"${value.slice(0, 40)}..." (length ${value.length})` : `"${value}" (length ${value.length})`
+}
+
 function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -659,6 +671,30 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     // shape change adding/renaming fields this code doesn't know about).
     if (bootstrap.version !== BOOTSTRAP_VERSION) {
       throw new Error(`Unsupported bootstrap version: ${bootstrap.version ?? '(missing)'} (expected ${BOOTSTRAP_VERSION})`)
+    }
+
+    // Shape-validate every key in the bootstrap before using any of them.
+    // Without this, a corrupted bootstrap with a correctly-shaped but wrong
+    // key (confirmed directly: e.g. all zeros) doesn't throw anywhere —
+    // openUserCore() silently succeeds with a permanently-empty, dead core
+    // reference, since there's no way to distinguish "wrong key" from "key
+    // whose owner just hasn't sent anything yet" without actually trying to
+    // connect. This can't catch a wrong-but-plausible key either (the same
+    // fundamental limit applies), but it does catch a corrupted/truncated/
+    // mistyped one immediately instead of leaving a caller to debug a
+    // silent non-sync with no error at all.
+    if (!isValidHexKey(bootstrap.topic)) {
+      throw new Error(`bootstrap.topic must be a 64-character hex string (32 bytes), got: ${describeForError(bootstrap.topic)}`)
+    }
+    if (bootstrap.ownerCore && !isValidHexKey(bootstrap.ownerCore)) {
+      throw new Error(`bootstrap.ownerCore must be a 64-character hex string (32 bytes), got: ${describeForError(bootstrap.ownerCore)}`)
+    }
+    if (bootstrap.contexts) {
+      for (const [name, key] of Object.entries(bootstrap.contexts)) {
+        if (!isValidHexKey(key)) {
+          throw new Error(`bootstrap.contexts.${name} must be a 64-character hex string (32 bytes), got: ${describeForError(key)}`)
+        }
+      }
     }
 
     if (bootstrap.ownerCore) {

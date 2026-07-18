@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 29: bootstrap validation gaps, plus a few more checked directly rather than assumed
+
+Following up on a review of the bootstrap/writer-auth work from rounds 26-28 (selective
+context authorization, the flaky peer-join diagnostic fix, writer-grant timeout, and
+bootstrap version validation).
+
+**#1 — missing ownerCore validation, confirmed empirically before fixing:** tested directly
+what `openUserCore()` does with various malformed keys. A too-short or non-hex key already
+throws ("ID must be 32-bytes long") via existing lower-level validation — not silent. But a
+correctly-shaped, wrong key (confirmed with all-zeros) silently succeeds, creating a
+permanently-empty, dead core reference with zero indication anything is wrong — this is the
+real, actionable gap, since there's no way to distinguish "wrong key" from "owner hasn't sent
+anything yet" without actually trying to connect (an inherent limit, not fixable by more
+validation). Added explicit shape validation (`isValidHexKey`) in `connectFromBootstrap()`
+for `topic`, `ownerCore`, and every key in `contexts` — a corrupted/truncated/mistyped key
+now fails immediately with a clear, bootstrap-specific error naming which field is wrong,
+instead of either a confusing generic error or (for the all-zeros case) total silence.
+
+**#2 — topic mismatch:** confirmed `connectFromBootstrap()` already hardcodes
+`topic: bootstrap.topic` rather than spreading `opts` — so a conflicting `opts.topic` was
+already safely ignored, not a bug. Added a test making this explicit and permanent rather
+than leaving it as an unverified implementation detail.
+
+**#3 — autoReplicate:false untested:** added a test confirming it actually skips Corestore
+replication (the owner's message never reaches the peer, and the peer's reference to the
+owner's user core never advances), while confirming the writer-auth channel — a separate
+concern, wired unconditionally in `_handleDataConnection` — still works normally regardless.
+
+**#4 — empty contexts:** confirmed `generateBootstrap()` accepts `{}` (empty object is
+truthy, passes the existing "contexts required" check) and added a test that
+`connectFromBootstrap()` and `_openContexts()` handle a contexts-free bootstrap as a clean
+no-op, not a bug.
+
+**#5 — clarified, not a bug:** `{}` is truthy in JS, so it passes the constructor's
+`if (!this.#dataSwarm) throw ...` check. The writer-authorization tests intentionally bypass
+`connect()` entirely (calling `_handleDataConnection()`/`_openContexts()` directly to test
+channel logic without a real swarm/DHT), so the swarm object's actual methods are never
+invoked — `{}` is a deliberate, valid placeholder for exactly that reason, not a copy-paste
+error.
+
+Full local suite: 111/111 (plus 4 additional local-only bootstrap tests in
+`hypergraph-network.js`, verified separately since most of that file needs real network).
+
 ### Round 28: writer-grant handshake timeout, and bootstrap version validation
 
 **Writer-grant timeout, addressing a real gap:** previously, if the protomux channel opened
