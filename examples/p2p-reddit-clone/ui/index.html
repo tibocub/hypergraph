@@ -238,8 +238,8 @@
           setRightMode('thread')
           currentThread = postId
 
-          const state = await api('/api/state', 'GET')
-          renderThread({ ...state, thread: state.posts.find(p => p.id === postId) || null })
+          const state = await api(`/api/state?thread=${encodeURIComponent(postId)}`, 'GET')
+          renderThread(state)
         } catch (err) {
           console.error(err)
         } finally {
@@ -341,7 +341,11 @@
             el('status').textContent = `${data.state.posts.length} posts`
             renderPosts(data.state)
             if (currentThread) {
-              renderThread(data.state)
+              // The broadcast payload's thread field is always null (SSE
+              // has no per-client context, so the server can't know which
+              // thread each client is viewing) — re-fetch this specific
+              // thread instead, which does return the full comments array.
+              loadThread(currentThread)
             }
           }
         } catch (err) {

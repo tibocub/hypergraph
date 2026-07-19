@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 36: the real reason comments never displayed — the thread view never actually requested comment data
+
+Round 35 fixed a real bug (comments dropped when their author's user core hadn't been
+discovered yet), but that wasn't the whole story — the user reported comments still never
+displayed anywhere, even for the commenter's own post.
+
+Traced to the UI's `loadThread()`: it fetched `/api/state` (the posts *list*) and just
+searched that list for the matching post, rather than requesting the thread specifically.
+The list projection (`projectPost()`) only ever computes `commentCount` — it never includes
+the actual comments array at all. The full comments array only exists via a *different*
+function, `projectThread()`, which `buildRedditState()` only calls when given `opts.thread`.
+Compounding this, the backend route itself did an exact match on `req.url === '/api/state'`,
+so it would never have recognized a `?thread=` query parameter even if one had been sent —
+this bug meant no client could ever have received comment data for any post, from any
+author, regardless of cross-peer replication.
+
+Fixed in three places:
+- `/api/state` now parses a `thread` query parameter and passes it through to
+  `buildRedditState()`.
+- The UI's `loadThread()` now actually requests `/api/state?thread=<id>` and renders the
+  real response, instead of reconstructing a fake "thread" object from the list projection.
+- The SSE live-update handler previously tried to re-render the currently-viewed thread from
+  the broadcast payload, whose `thread` field is hardcoded to `null` server-side (SSE is a
+  one-way broadcast to all clients, so the server has no per-client context on which thread
+  each one is viewing) — it now re-fetches the specific thread instead when a live update
+  arrives while one is open.
+
+Verified via the actual HTTP API (not just the underlying library code): `/api/state`
+correctly returns only `commentCount` for the list, while `/api/state?thread=<id>` returns
+the full comment body. Also re-verified cross-peer: a peer's comment appears as a pending
+placeholder for another peer before user-core discovery catches up, then resolves to full
+content — combining this round's fix with round 35's.
+
+No changes to `src/` — full local suite: 120/120.
+
 ### Round 35: comments-not-showing bug fixed, votes bug not yet reproduced
 
 Investigated two bugs reported from real multi-peer usage: comments increasing the count but

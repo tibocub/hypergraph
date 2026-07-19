@@ -266,12 +266,19 @@ async function main () {
       return
     }
 
-    if (req.method === 'GET' && req.url === '/api/state') {
+    if (req.method === 'GET' && req.url.startsWith('/api/state')) {
+      // buildRedditState() only includes the full comments array (via
+      // projectThread()) when opts.thread is set — the posts list
+      // projection (projectPost()) only ever has commentCount, never the
+      // actual comments. Without parsing this, the UI's thread view had
+      // no way to ever receive comment data at all, for anyone's
+      // comments, regardless of cross-peer replication.
+      const threadId = new URL(req.url, 'http://localhost').searchParams.get('thread')
       const state = await buildRedditState(storage, {
         comments: bootstrap.contexts.comments,
         votes: bootstrap.contexts.votes,
         moderation: bootstrap.contexts.moderation
-      }, policy)
+      }, policy, { thread: threadId || null })
       sendJson(res, 200, state)
       return
     }
