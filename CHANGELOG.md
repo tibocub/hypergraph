@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 35: comments-not-showing bug fixed, votes bug not yet reproduced
+
+Investigated two bugs reported from real multi-peer usage: comments increasing the count but
+not showing, and a peer's votes only being visible locally (not to other peers), while the
+owner's votes replicate fine.
+
+**Comments — reproduced and fixed.** Confirmed with a star-topology test (peer↔owner↔peer,
+no direct peer-to-peer connection, matching how independent `peer.js` processes actually
+connect): `getComments()` calls `graph.get(e.from)` to resolve the comment's own entity, which
+lives in its author's user core — discovered only via the existing `announceToReddit()`/
+`discoverPeerCores()` loop, previously on a slow 5-second interval. Until that catches up,
+`graph.get()` returns nothing and the comment was silently dropped from the list entirely —
+while the count (which only reads the edge, not the entity) was already correct, producing
+exactly the "count right, list wrong" symptom reported.
+
+Fixed in three places: `discoverPeerCores()` now runs on a 1.5s interval instead of 5s;
+`getComments()` no longer drops an unresolved comment, instead including it as
+`{ pending: true }` so the list stays consistent with the count instead of silently showing
+fewer items; `state.js` and the UI now render a "Comment syncing from another peer..."
+placeholder for a pending comment instead of crashing on the now-`null` entity fields (which
+they previously accessed unconditionally). Verified directly: immediately after a peer
+comments, another peer sees the pending placeholder (count and list both correctly show 1);
+once discovery catches up, it resolves to the full comment content automatically.
+
+**Votes — not yet reproduced.** Tried multiple scenarios directly: a 3-peer star topology
+(the same topology as the comments bug), and a tighter-timing variant where a peer votes
+immediately after their own writer-grant confirmation rather than waiting for things to
+settle. In both, a non-owner peer's vote was visible to another non-owner peer within
+one update cycle — no reproduction of "only the owner's votes replicate." Votes shouldn't
+need the same user-core discovery comments do, since the vote's edge already carries its
+value and author directly (no entity dereference needed to tally it), which is consistent
+with not finding a bug on the vote side specifically. Left open pending more detail from
+real multi-peer testing (peer count, exact repro steps, and any console output from all
+processes) — did not want to guess at a fix for something not confirmed.
+
+Full local suite: 120/120 (no changes to `src/` this round).
+
 ### Round 34: p2p-reddit-clone unusable for up to ~3 minutes when run solo — fixed
 
 Hit directly: running the owner alone (no peer) hung after "Context created" for what turned

@@ -175,6 +175,14 @@
         container.appendChild(commentsDiv)
 
         for (const comment of thread.comments || []) {
+          if (comment.pending) {
+            const pendingDiv = document.createElement('div')
+            pendingDiv.className = 'comment item'
+            pendingDiv.innerHTML = `<div class="meta" style="font-style: italic">Comment syncing from another peer...</div>`
+            container.appendChild(pendingDiv)
+            continue
+          }
+
           if (!comment.visible) continue
 
           const commentDiv = document.createElement('div')

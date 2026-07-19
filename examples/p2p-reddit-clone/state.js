@@ -54,6 +54,26 @@ async function projectThread (storage, policy, postId) {
   const comments = await storage.getComments(postId)
   const projectedComments = []
   for (const c of comments) {
+    if (c.pending) {
+      // The comment's entity/content hasn't been discovered yet (its
+      // author's user core isn't open on this peer yet) — show a
+      // placeholder rather than crashing or silently omitting it, so the
+      // list stays consistent with the count elsewhere.
+      projectedComments.push({
+        id: c.relationId,
+        pending: true,
+        author: null,
+        username: null,
+        createdAt: null,
+        body: null,
+        voteCount: 0,
+        userVote: 0,
+        visible: true,
+        moderation: { action: null, flags: 0, maxFlags: policy.maxFlags }
+      })
+      continue
+    }
+
     const ident = await storage.getIdentity(c.node.author)
     const username = ident && ident.username ? ident.username : shortKey(c.node.author)
 
@@ -65,6 +85,7 @@ async function projectThread (storage, policy, postId) {
 
     projectedComments.push({
       id: c.node.id,
+      pending: false,
       author: c.node.author,
       username,
       createdAt: c.node.createdAt || null,

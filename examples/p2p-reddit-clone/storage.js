@@ -135,7 +135,17 @@ module.exports = class RedditStorage {
       const node = await this.graph.get(e.from)
       if (node) {
         const content = await this.graph.getContent(e.from)
-        comments.push({ node, content, relationId: e.id })
+        comments.push({ node, content, relationId: e.id, pending: false })
+      } else {
+        // The comment's own entity lives in its author's user core, which
+        // this peer may not have discovered/opened yet (see
+        // announceToReddit()/discoverPeerCores() in peer.js) — the edge
+        // itself (and therefore the count) is already visible, but the
+        // entity/content isn't resolvable yet. Include a pending
+        // placeholder rather than silently dropping it, so the list stays
+        // consistent with the count instead of showing fewer comments
+        // than actually exist.
+        comments.push({ node: null, content: null, relationId: e.id, pending: true })
       }
     }
     return comments

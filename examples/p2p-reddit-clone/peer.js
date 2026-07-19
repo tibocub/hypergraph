@@ -403,7 +403,7 @@ async function main () {
   }
 
   setInterval(() => announceToReddit().catch(() => {}), 5000)
-  setInterval(() => discoverPeerCores().catch(() => {}), 5000)
+  setInterval(() => discoverPeerCores().catch(() => {}), 1500)
   setInterval(() => pushState().catch(() => {}), 1000)
 
   await announceToReddit()
