@@ -238,6 +238,16 @@ module.exports = class GraphView extends ReadyResource {
     // This is a secondary index to make by-type scans efficient.
     const typeKey = `nt:${event.entityType}:${toSortableTs(event.timestamp)}:${derivedId}`
     await this.#bee.put(typeKey, { id: derivedId })
+
+    // Type-agnostic time index: nc:<createdAt>:<id>
+    // The primary n:<id> key (used by the default, unfiltered scan) is
+    // ordered by (type, authorCoreKeyHex, seq) — not chronological at all
+    // once more than one author is involved, since a core key's hex is
+    // effectively random relative to when its owner actually wrote
+    // something. This index gives a real, efficient chronological scan
+    // across all types, without needing to load-then-sort every entity.
+    const timeKey = `nc:${toSortableTs(event.timestamp)}:${derivedId}`
+    await this.#bee.put(timeKey, { id: derivedId })
   }
 
   async #applyEntityTombstone (event, coreKeyHex) {

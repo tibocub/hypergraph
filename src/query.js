@@ -12,6 +12,9 @@ module.exports = class GraphQuery {
   #limit
   #reverse
   #traverse
+  #typeFilter
+  #sortField
+  #sortDirection
 
   /**
    * Create a new GraphQuery instance.
@@ -29,6 +32,9 @@ module.exports = class GraphQuery {
     this.#limit = opts.limit || Infinity
     this.#reverse = opts.reverse || false
     this.#traverse = opts.traverse || null
+    this.#typeFilter = null
+    this.#sortField = null
+    this.#sortDirection = 'asc'
   }
 
   // ========================================
@@ -47,12 +53,15 @@ module.exports = class GraphQuery {
   }
 
   /**
-   * Filter by entity type.
+   * Filter by entity type. Also selects the type-specific, chronologically
+   * ordered index (nt:<type>:<createdAt>:<id>) for the underlying scan,
+   * instead of the generic unordered one — see #getSourceStream().
    *
    * @param {string} type - The entity type to filter by
    * @returns {GraphQuery} This query instance for chaining
    */
   type (type) {
+    this.#typeFilter = type
     this.#filters.push(node => node.type === type)
     return this
   }
@@ -134,11 +143,34 @@ module.exports = class GraphQuery {
     return this
   }
 
+  /**
+   * Sort results by an arbitrary field, in memory. Unlike the default
+   * chronological order (which uses a real index and streams lazily),
+   * this buffers all matching results before yielding — necessary since
+   * there's no way to index a field that isn't stored on the entity
+   * itself (e.g. a derived vote count computed from edges). Fine for a
+   * single page's worth of results; not meant for huge collections.
+   *
+   * @param {string} field - The field to sort by (read directly off each result)
+   * @param {'asc'|'desc'} [direction='asc'] - Sort direction
+   * @returns {GraphQuery} This query instance for chaining
+   */
+  sortBy (field, direction = 'asc') {
+    this.#sortField = field
+    this.#sortDirection = direction === 'desc' ? 'desc' : 'asc'
+    return this
+  }
+
   // ========================================
   // Execution
   // ========================================
 
   async * [Symbol.asyncIterator] () {
+    if (this.#sortField) {
+      yield * this.#collectSorted()
+      return
+    }
+
     const countRef = { value: 0 }
 
     // Determine source stream based on filters
@@ -169,20 +201,80 @@ module.exports = class GraphQuery {
     }
   }
 
+  async * #collectSorted () {
+    // The real limit is applied after sorting, via slice() below — the
+    // collection pass itself must see every matching result, so traversal
+    // (which reads this.#limit directly) is given an effectively
+    // unbounded count here.
+    const unboundedCount = { value: 0 }
+    const all = []
+
+    for await (const node of this.#getSourceStream()) {
+      let matches = true
+      for (const filter of this.#filters) {
+        const result = await filter(node)
+        if (!result) {
+          matches = false
+          break
+        }
+      }
+
+      if (!matches) continue
+
+      if (this.#traverse) {
+        const savedLimit = this.#limit
+        this.#limit = Infinity
+        try {
+          for await (const item of this.#traverseEdges(node, unboundedCount)) {
+            all.push(item)
+          }
+        } finally {
+          this.#limit = savedLimit
+        }
+      } else {
+        all.push(node)
+      }
+    }
+
+    const field = this.#sortField
+    const dir = this.#sortDirection === 'desc' ? -1 : 1
+    all.sort((a, b) => {
+      const av = a[field]
+      const bv = b[field]
+      if (av === bv) return 0
+      if (av === undefined || av === null) return 1
+      if (bv === undefined || bv === null) return -1
+      return (av < bv ? -1 : 1) * dir
+    })
+
+    const limited = this.#limit === Infinity ? all : all.slice(0, this.#limit)
+    yield * limited
+  }
+
   async * #getSourceStream () {
-    // Default: scan all nodes
-    // The filters will be applied in the main iterator
+    // Prefer an index that's actually ordered by creation time, instead of
+    // the generic n: prefix this used to scan — that one is keyed by
+    // (type, authorCoreKeyHex, seq), which is not chronological at all
+    // once more than one author is involved, since a core key's hex
+    // ordering has nothing to do with when its owner actually wrote
+    // something (confirmed directly: a newer post from one author can
+    // sort before an older post from another purely because of key
+    // ordering). nc: covers the same full set of entities as the old n:
+    // scan did, just chronologically ordered instead.
+    const prefix = this.#typeFilter ? `nt:${this.#typeFilter}:` : 'nc:'
+
     const stream = this.#view.createReadStream({
-      gte: 'n:',
-      lt: 'n:\uffff',
+      gte: prefix,
+      lt: prefix + '\uffff',
       reverse: this.#reverse
     })
 
     for await (const entry of stream) {
-      const value = /** @type {any} */ (entry).value
-      if (!value.deleted) {
-        yield value
-      }
+      const { id } = /** @type {any} */ (entry).value
+      const node = await this.#view.getNode(id)
+      // getNode() already excludes deleted entities and returns null for
+      // anything it can't resolve.
+      if (node) yield node
     }
   }
 

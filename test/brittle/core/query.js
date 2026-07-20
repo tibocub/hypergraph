@@ -1,5 +1,115 @@
 const test = require('brittle')
-const { createGraph } = require('../helpers')
+const { createGraph, sleep } = require('../helpers')
+
+test('query: default order is chronological even across multiple authors', async (t) => {
+  // REGRESSION TEST — confirmed empirically before this fix that the
+  // default order was NOT chronological once more than one author was
+  // involved: entity IDs are `type/authorCoreKeyHex/seq`, and the old
+  // default scan just followed that key's lexicographic order, meaning a
+  // newer post from one author could sort before an older post from
+  // another purely because of how their core keys happened to compare.
+  console.log('TEST: query chronological order across authors - starting')
+
+  const Corestore = require('corestore')
+  const path = require('path')
+  const os = require('os')
+  const { Hypergraph } = require('../../../index.js')
+
+  // Two separate identities sharing one Corestore — no network
+  // replication needed, since both cores physically live in the same
+  // store, so opening the other's user core is immediate.
+  const dir = path.join(os.tmpdir(), `hypergraph-query-order-${process.pid}-${Date.now()}`)
+  const store = new Corestore(dir)
+  const graphA = new Hypergraph(store)
+  await graphA.ready()
+  const graphB = new Hypergraph(store, { seed: require('hypercore-crypto').randomBytes(32) })
+  await graphB.ready()
+  t.teardown(async () => {
+    try { await graphA.close() } catch {}
+    try { await graphB.close() } catch {}
+    try { await store.close() } catch {}
+  })
+
+  await graphA.openUserCore(graphB.key)
+
+  // Create posts in a specific, known chronological order, alternating
+  // authors, regardless of how their core keys happen to sort.
+  const first = await graphA.put({ type: 'post' })
+  await sleep(10)
+  const second = await graphB.put({ type: 'post' })
+  await sleep(10)
+  const third = await graphA.put({ type: 'post' })
+
+  await graphA.update()
+
+  const ordered = await graphA.query().type('post').toArray()
+  t.alike(
+    ordered.map(p => p.id),
+    [first.id, second.id, third.id],
+    'type-filtered query returns entities in actual creation order, not key order'
+  )
+
+  const orderedNoTypeFilter = await graphA.query().toArray()
+  t.alike(
+    orderedNoTypeFilter.map(p => p.id),
+    [first.id, second.id, third.id],
+    'unfiltered query also returns entities in actual creation order'
+  )
+  console.log('TEST: query chronological order across authors - passed')
+})
+
+test('query: sortBy() sorts by an arbitrary field, including derived ones not stored on the entity', async (t) => {
+  console.log('TEST: query sortBy - starting')
+  const { graph } = await createGraph(t, 'query-sortby')
+
+  const postA = await graph.put({ type: 'post' })
+  const postB = await graph.put({ type: 'post' })
+  const postC = await graph.put({ type: 'post' })
+  const ctx = await graph.createContext()
+
+  // Simulate a derived "vote count" via relations, exactly like
+  // p2p-reddit-clone does — this field never exists on the stored entity
+  // itself, so sortBy() has to work from a value attached at query time,
+  // not an index.
+  const voteCounts = { [postA.id]: 5, [postB.id]: 1, [postC.id]: 10 }
+  for (const p of [postA, postB, postC]) {
+    for (let i = 0; i < voteCounts[p.id]; i++) {
+      const voteNode = await graph.put({ type: 'vote' })
+      await graph.relate({ from: voteNode.id, to: p.id, type: 'vote', context: ctx })
+    }
+  }
+
+  // .filter() as an enrichment step: attach the derived voteCount onto
+  // each node (always returning true, so nothing is actually excluded)
+  // before sortBy() sorts on it.
+  const results = await graph.query()
+    .type('post')
+    .filter(async (node) => {
+      let count = 0
+      for await (const _e of graph.edges(node.id, { direction: 'in', type: 'vote' })) count++
+      node.voteCount = count
+      return true
+    })
+    .sortBy('voteCount', 'desc')
+    .toArray()
+
+  t.alike(results.map(r => r.id), [postC.id, postA.id, postB.id], 'sorted by descending vote count: C (10), A (5), B (1)')
+
+  const asc = await graph.query()
+    .type('post')
+    .filter(async (node) => {
+      let count = 0
+      for await (const _e of graph.edges(node.id, { direction: 'in', type: 'vote' })) count++
+      node.voteCount = count
+      return true
+    })
+    .sortBy('voteCount', 'asc')
+    .limit(2)
+    .toArray()
+  t.alike(asc.map(r => r.id), [postB.id, postA.id], 'ascending + limit(2) applies the limit AFTER sorting, not before')
+
+  console.log('TEST: query sortBy - passed')
+})
 
 test('query: type() filters entities by type', async (t) => {
   console.log('TEST: query type filter - starting')

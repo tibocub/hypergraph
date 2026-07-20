@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 37: query() default order was effectively meaningless across multiple authors — fixed, plus sortBy()
+
+Motivated by planning HyperMD/HyperBBS's data-query compatibility: confirmed directly
+(empirically, not just from reading code) that `query()`'s default order was never actually
+chronological once more than one author was involved. Entity IDs are
+`type/authorCoreKeyHex/seq`, and the default scan just followed that key's lexicographic
+order — meaning a newer post from one author could sort before an older post from another,
+purely because their core keys happened to compare that way. Every example app happened to
+avoid this by always re-sorting manually after fetching, which is exactly why it went
+unnoticed until asked to design a declarative, no-scripting query directive for HyperMD,
+where there'd be no app code left to paper over it.
+
+Fixed properly rather than worked around: found that a `nt:<type>:<createdAt>:<id>` index
+already existed (written on every entity creation) but was never actually used by any query
+path — `GraphQuery.type()` still did a full unordered scan with a post-filter. Wired
+`GraphQuery` to use that index when a type filter is present (fixing the order *and* making
+type-filtered queries a narrower, faster scan instead of a full table scan), and added a new
+type-agnostic `nc:<createdAt>:<id>` index for the unfiltered case, replacing the old
+meaningless-order default entirely.
+
+Also added `sortBy(field, direction)` for sorting by anything else, including derived values
+that don't exist on the stored entity at all (e.g. a vote count computed from edges, exactly
+like `p2p-reddit-clone`'s post ranking) — this buffers matching results in memory before
+yielding, unlike the indexed chronological path, since there's no way to index a value that
+isn't stored. `limit()` is correctly applied after sorting, not during the initial scan, when
+`sortBy()` is used.
+
+New tests confirm: chronological order is now correct across multiple authors (using two
+identities sharing one Corestore, so no network replication was needed to prove the point),
+and `sortBy()` works correctly for a query enriched with a derived field via `.filter()` as
+an attach-and-return-true step, both ascending and descending, with `limit()` applied after
+sorting.
+
+Full local suite: 122/122.
+
 ### Round 36: the real reason comments never displayed — the thread view never actually requested comment data
 
 Round 35 fixed a real bug (comments dropped when their author's user core hadn't been
