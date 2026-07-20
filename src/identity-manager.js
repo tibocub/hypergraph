@@ -1,6 +1,15 @@
 const IdentityKey = require('keet-identity-key')
 const b4a = require('b4a')
 const hypercoreCrypto = require('hypercore-crypto')
+const sodium = require('sodium-universal')
+
+// Namespace for deriving this identity's stable encryption keypair, following
+// the same convention keet-identity-key itself uses internally (e.g.
+// getProfileDiscoveryEncryptionKey()'s NS_PROFILE_DISC_ENC): hash a
+// descriptive label to get a stable namespace buffer, then derive a
+// namespaced key from it via getEncryptionKey(). Kept distinct from any
+// namespace keet-identity-key uses internally for its own purposes.
+const NS_HYPERGRAPH_ENCRYPTION = hypercoreCrypto.hash(b4a.from('hypergraph read-scope encryption'))
 
 /**
  * IdentityManager handles keet-identity-key integration for hypergraph.
@@ -17,6 +26,7 @@ class IdentityManager {
   #identityKey
   #deviceKeyPair
   #attestationProof
+  #encryptionKeyPair
 
   /**
    * Create a new IdentityManager instance.
@@ -39,6 +49,11 @@ class IdentityManager {
 
     // Attestation will be set after identity is initialized
     this.#attestationProof = null
+
+    // Encryption keypair is derived lazily, on first access, once
+    // #identityKey is available (see the encryptionKeyPair getter) —
+    // there's no async work needed at construction time for it.
+    this.#encryptionKeyPair = null
 
     // Store initialization options for async init
     this._initOpts = { mnemonic: opts.mnemonic, seed: opts.seed }
@@ -131,6 +146,35 @@ class IdentityManager {
   }
 
   /**
+   * Get this identity's stable encryption keypair (crypto_box / X25519),
+   * used for sealing a secret (e.g. a read-scope's symmetric key) so only
+   * this identity can open it — see hypercore-crypto's encrypt()/decrypt(),
+   * which wrap libsodium's crypto_box_seal for exactly this.
+   *
+   * Deliberately derived per-*identity*, not per-device: deviceKeyPair is
+   * random and different on every device (see the constructor), but this
+   * is deterministically derived from the same underlying mnemonic/seed
+   * the rest of this identity comes from, via keet-identity-key's own
+   * namespaced key derivation (getEncryptionKey()) used as a seed for
+   * crypto_box_seed_keypair(). That means any of the identity's devices
+   * can independently derive the same keypair and open something sealed
+   * to it — a granter only needs to seal once per person, not once per
+   * device.
+   *
+   * @returns {Object} KeyPair with publicKey and secretKey
+   */
+  get encryptionKeyPair () {
+    if (!this.#encryptionKeyPair) {
+      const seed = this.#identityKey.getEncryptionKey(NS_HYPERGRAPH_ENCRYPTION)
+      const publicKey = b4a.alloc(sodium.crypto_box_PUBLICKEYBYTES)
+      const secretKey = b4a.alloc(sodium.crypto_box_SECRETKEYBYTES)
+      sodium.crypto_box_seed_keypair(publicKey, secretKey, seed)
+      this.#encryptionKeyPair = { publicKey, secretKey }
+    }
+    return this.#encryptionKeyPair
+  }
+
+  /**
    * Get the device attestation proof.
    * 
    * @returns {Buffer} Proof linking device to identity
@@ -170,6 +214,10 @@ class IdentityManager {
     this.#identityKey.clear()
     this.#deviceKeyPair = null
     this.#attestationProof = null
+    if (this.#encryptionKeyPair) {
+      this.#encryptionKeyPair.secretKey.fill(0)
+      this.#encryptionKeyPair = null
+    }
   }
 }
 

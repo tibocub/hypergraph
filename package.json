@@ -52,7 +52,8 @@
     "hyperbee": "^2.27.3",
     "hypercore-crypto": "^3.7.0",
     "keet-identity-key": "^3.2.0",
-    "protomux": "^3.11.0"
+    "protomux": "^3.11.0",
+    "sodium-universal": "^5.0.1"
   },
   "devDependencies": {
     "brittle": "^3.0.0",

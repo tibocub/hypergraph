@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 39: read-permission, stage 1 — a stable, per-identity encryption keypair
+
+First concrete step of the read-permission design discussed: content stays readable by anyone
+who replicates it today (no encryption anywhere), which is fine for write-access (already
+well-served by roles) but doesn't exist at all for controlling who can *read*. Since P2P
+replication means access control can only be encryption (there's no way to withhold bytes
+someone already has), the plan is a symmetric key per read-scope, distributed by sealing it to
+each authorized reader's public key. This round adds the one thing everything else in that
+plan depends on: a stable place to seal a secret *to*.
+
+Checked what's actually available before building anything: `hypercore-crypto.encrypt()`/
+`.decrypt()` already wrap libsodium's `crypto_box_seal` (anonymous public-key encryption —
+exactly the right primitive for "seal this so only Bob can open it"), and `sodium-universal`
+(previously only a transitive dependency, now added directly since it's used directly here)
+exposes `crypto_box_seed_keypair` for deterministic derivation from a seed.
+
+Composed these with `keet-identity-key`'s own existing namespaced key derivation
+(`getEncryptionKey(namespace)`, the same mechanism it uses internally for
+`getProfileDiscoveryEncryptionKey()`) rather than inventing a new derivation scheme: that
+namespaced, mnemonic-derived symmetric key becomes the seed for `crypto_box_seed_keypair()`,
+giving `IdentityManager.encryptionKeyPair` — a real `crypto_box`/X25519 keypair.
+
+Deliberately derived per-*identity*, not per-device: confirmed directly that `deviceKeyPair`
+is random and different on every device (not mnemonic-derived at all), while this new keypair
+is deterministic from the same mnemonic/seed the rest of the identity comes from. That means
+any of a person's devices can independently derive the same keypair and open something sealed
+to it — whoever's granting read access only needs to seal a key once per *person*, not once
+per device.
+
+Verified directly, not just unit-tested in isolation: a message sealed to one "device" (an
+`IdentityManager` instance) is openable by a second, independent instance restored from the
+same mnemonic, unopenable by an unrelated identity, and the same mnemonic always re-derives
+the same keypair after a simulated restart.
+
+Full local suite: 126/126. Next stage: the read-scope concept itself (a new, dedicated
+structure for scope creation and key-grant events, mirroring how RoleBase is a separate
+Autobase-backed structure from ContextBase) and wiring actual content encryption into
+`putContent()`/`getContent()` — notably, `putContent()` turns out to write to the caller's own
+user core, not any context, so a scope can't be tied to context boundaries the way write
+permissions are.
+
 ### Round 38: three moderation-system gaps fixed, ahead of building read-permission on top of it
 
 Reviewed the moderation system's completeness directly (not from memory) before starting on
