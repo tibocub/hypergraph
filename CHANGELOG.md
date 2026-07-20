@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 38: three moderation-system gaps fixed, ahead of building read-permission on top of it
+
+Reviewed the moderation system's completeness directly (not from memory) before starting on
+read-access design, since read-access will lean on the same permission-checking machinery.
+Found and fixed three real gaps:
+
+**1. `moderateAction()` had no client-side permission check at all**, unlike `addWriter()`.
+An unauthorized caller's call resolved successfully with no error — the action just silently
+never took effect once the apply layer rejected it. Added a client-side pre-check mirroring
+`addWriter()`'s pattern, but carefully preserving the existing, tested behavior that
+`moderateAction()` still works before any RoleBase exists at all: only a RoleBase that has a
+registry *and* explicitly denies the action throws here — "not yet determined" (no RoleBase,
+or registry not ready) still passes through to the apply layer's own pending-queue handling,
+unchanged.
+
+**2. An existing test's name didn't match what it actually proved.** "Unauthorized moderation
+facts are still recorded but excluded by a trust policy" — verified directly (both a filtered
+and an unfiltered query) that the fact is never recorded at all; the apply layer hard-rejects
+it, which is the stronger of the two possible designs. The test passed, just not for the
+reason its name claimed. Rewrote it to verify what's actually true: the client-side check now
+throws immediately, and — as defense in depth — the apply layer still hard-rejects the same
+attempt even if someone bypasses the client-side check via the generic `append()` method
+directly.
+
+**3. `#isModerationAllowed` lacked the bounded retry `#isWriterChangeAllowed` already has**
+for the RoleBase-vs-context sync race (two independent Autobase structures replicating
+concurrently — the registry may simply not have arrived yet at the exact moment a given event
+is first processed). This was already substantially mitigated in practice for moderation
+specifically, since its pending-queue can drain from any `update()` call, not only during
+apply — a real structural difference from writer-changes, since moderation is pure view-level
+data while adding/removing a writer needs the privileged apply-scoped object. Added the same
+bounded retry anyway, for consistency and faster resolution: a new test confirms a moderation
+event arriving before its author's RoleBase permissions have synced now resolves within the
+same `update()` call that first sees it (under 500ms), rather than needing a later,
+separately-timed call to happen to land after the RoleBase catches up.
+
+Confirmed while reviewing: hypergraph only provides the signed, role-gated fact log — "hide
+after 3 flags" is entirely app-level policy (`RedditPolicy`/`ForumPolicy` in the examples),
+not hypergraph's job. That boundary is staying the same for read-access: hypergraph enforces
+who can get a key, apps decide what that access actually means for their UI.
+
+Full local suite: 123/123, confirmed stable across multiple repeated runs given the
+timing-sensitive nature of the bounded-retry test.
+
 ### Round 37: query() default order was effectively meaningless across multiple authors — fixed, plus sortBy()
 
 Motivated by planning HyperMD/HyperBBS's data-query compatibility: confirmed directly

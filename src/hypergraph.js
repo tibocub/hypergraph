@@ -919,6 +919,28 @@ module.exports = class Hypergraph extends ReadyResource {
       ? opts.keyPair.publicKey.toString('hex')
       : String(opts.keyPair.publicKey)
 
+    // Client-side fail-fast check: mirrors the apply layer's own
+    // semantics (#isModerationAllowed) rather than duplicating a
+    // stricter one. "No RoleBase yet" or "registry not ready yet" means
+    // "not yet determined" — allowed through here, exactly as the apply
+    // layer queues it as pending rather than rejecting outright (see the
+    // "records a signed fact even before a RoleBase exists" test). Only
+    // a RoleBase that has a registry AND explicitly denies the action
+    // throws here — previously this method had no pre-check at all, so
+    // an unauthorized caller got no error at all; the action just
+    // silently never took effect once the apply layer rejected it.
+    if (this.#roleBase) {
+      let registry = null
+      try {
+        registry = await this.#roleBase.getRegistry()
+      } catch {
+        registry = null
+      }
+      if (registry && !canRole(registry, author, opts.action)) {
+        throw new Error('Not authorized to perform this moderation action')
+      }
+    }
+
     const event = {
       type: 'moderation/action',
       version: 1,

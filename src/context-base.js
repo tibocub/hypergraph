@@ -496,11 +496,23 @@ module.exports = class ContextBase extends ReadyResource {
       return null
     }
 
+    // Bounded retry, matching #isWriterChangeAllowed's own reasoning: the
+    // RoleBase and this context are two independent Autobase structures
+    // that replicate concurrently, so the registry may simply not have
+    // arrived yet at the moment this specific event is first processed.
+    // The pending-queue fallback in the caller remains as a last resort
+    // (and is drainable from any update() call for moderation, not just
+    // during apply, unlike writer-changes) — this just resolves the
+    // common case faster, without waiting for a later update() call.
     let registry = null
-    try {
-      registry = await this.#roleBase.getRegistry()
-    } catch {
-      registry = null
+    for (let i = 0; i < 40; i++) {
+      try {
+        registry = await this.#roleBase.getRegistry()
+      } catch {
+        registry = null
+      }
+      if (registry) break
+      await sleep(250)
     }
 
     if (!registry) return null
