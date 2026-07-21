@@ -319,3 +319,157 @@ test('scope-base: a keyGrant event that arrives before its granter\'s RoleBase p
   console.log('TEST: scope RoleBase-sync race - passed')
 })
 
+test('scope-base: rotateKey() moves a scope to a new epoch, re-granting current members while leaving old-epoch access intact', async (t) => {
+  console.log('TEST: rotateKey basic - starting')
+  const { graph } = await createGraph(t, 'scope-rotate-basic')
+  const IdentityManager = require('../../../src/identity-manager.js')
+
+  const owner = graph.identity.deviceKeyPair.publicKey.toString('hex')
+  await graph.createRoleBase()
+  await graph.roleBase.init(owner)
+  await graph.roleBase.append({
+    type: 'roles/setRolePermissions',
+    role: 'owner',
+    permissions: ['*'],
+    author: owner,
+    timestamp: Date.now()
+  })
+  await graph.update()
+  await graph.createScopeBase()
+
+  const { scopeId, key: epoch0Key } = await graph.scopeBase.createScope('private-dms')
+
+  const identityB = new IdentityManager()
+  await identityB.init()
+  const pubkeyB = identityB.deviceKeyPair.publicKey.toString('hex')
+  await graph.scopeBase.grantKey(scopeId, pubkeyB, identityB.encryptionKeyPair.publicKey)
+
+  console.log('  Step 1: rotate the key')
+  const { epoch: newEpoch, key: epoch1Key, grantedTo } = await graph.scopeBase.rotateKey(scopeId)
+  t.is(newEpoch, 1, 'rotation moves to epoch 1')
+  t.not(epoch1Key.toString('hex'), epoch0Key.toString('hex'), 'the new key is genuinely different from the old one')
+  t.alike(grantedTo.sort(), [owner, pubkeyB].sort(), 'both the owner and B were re-granted the new epoch')
+
+  console.log('  Step 2: both members can resolve the NEW epoch')
+  const ownerEpoch1 = await graph.scopeBase.resolveKey(scopeId, owner, graph.identity.encryptionKeyPair, 1)
+  t.is(ownerEpoch1.toString('hex'), epoch1Key.toString('hex'), 'owner resolves the new epoch correctly')
+  const bEpoch1 = await graph.scopeBase.resolveKey(scopeId, pubkeyB, identityB.encryptionKeyPair, 1)
+  t.is(bEpoch1.toString('hex'), epoch1Key.toString('hex'), 'B resolves the new epoch correctly too')
+
+  console.log('  Step 3: old epoch 0 content is still decryptable — rotation does not retroactively lock anyone out of the past')
+  const bEpoch0 = await graph.scopeBase.resolveKey(scopeId, pubkeyB, identityB.encryptionKeyPair, 0)
+  t.is(bEpoch0.toString('hex'), epoch0Key.toString('hex'), 'B can still resolve the OLD epoch 0 key after rotation')
+  console.log('TEST: rotateKey basic - passed')
+})
+
+test('scope-base: rotateKey() with excludePubkeys correctly cuts a member off from future epochs, while others keep access', async (t) => {
+  console.log('TEST: rotateKey exclusion - starting')
+  const { graph } = await createGraph(t, 'scope-rotate-exclude')
+  const IdentityManager = require('../../../src/identity-manager.js')
+
+  const owner = graph.identity.deviceKeyPair.publicKey.toString('hex')
+  await graph.createRoleBase()
+  await graph.roleBase.init(owner)
+  await graph.roleBase.append({
+    type: 'roles/setRolePermissions',
+    role: 'owner',
+    permissions: ['*'],
+    author: owner,
+    timestamp: Date.now()
+  })
+  await graph.update()
+  await graph.createScopeBase()
+
+  const { scopeId } = await graph.scopeBase.createScope('private-dms')
+
+  const identityB = new IdentityManager()
+  await identityB.init()
+  const pubkeyB = identityB.deviceKeyPair.publicKey.toString('hex')
+  await graph.scopeBase.grantKey(scopeId, pubkeyB, identityB.encryptionKeyPair.publicKey)
+
+  const identityC = new IdentityManager()
+  await identityC.init()
+  const pubkeyC = identityC.deviceKeyPair.publicKey.toString('hex')
+  await graph.scopeBase.grantKey(scopeId, pubkeyC, identityC.encryptionKeyPair.publicKey)
+
+  console.log('  revoke B, then rotate excluding B')
+  await graph.scopeBase.revoke(scopeId, pubkeyB)
+  const { epoch: newEpoch, grantedTo } = await graph.scopeBase.rotateKey(scopeId, { excludePubkeys: [pubkeyB] })
+
+  t.alike(grantedTo.sort(), [owner, pubkeyC].sort(), 'only the owner and C were re-granted — B was excluded')
+  t.absent(grantedTo.includes(pubkeyB), 'B specifically was not re-granted')
+
+  const bNewEpoch = await graph.scopeBase.resolveKey(scopeId, pubkeyB, identityB.encryptionKeyPair, newEpoch)
+  t.is(bNewEpoch, null, 'B cannot resolve the new epoch at all — cut off from future content')
+
+  const cNewEpoch = await graph.scopeBase.resolveKey(scopeId, pubkeyC, identityC.encryptionKeyPair, newEpoch)
+  t.ok(cNewEpoch, 'C, who was never revoked, still gets the new epoch correctly')
+  console.log('TEST: rotateKey exclusion - passed')
+})
+
+test('scope-base: rotateKey() is rejected for a caller without scope.grant permission, over a real replicated link', async (t) => {
+  console.log('TEST: rotateKey unauthorized - starting')
+  const Corestore = require('corestore')
+  const path = require('path')
+  const os = require('os')
+  const fs = require('fs')
+  const { Hypergraph } = require('../../../index.js')
+
+  const dirOwner = path.join(os.tmpdir(), `hypergraph-rotate-unauth-owner-${process.pid}-${Date.now()}`)
+  const storeOwner = new Corestore(dirOwner)
+  const graphOwner = new Hypergraph(storeOwner)
+  await graphOwner.ready()
+
+  const dirStranger = path.join(os.tmpdir(), `hypergraph-rotate-unauth-stranger-${process.pid}-${Date.now()}`)
+  const storeStranger = new Corestore(dirStranger)
+  const graphStranger = new Hypergraph(storeStranger)
+  await graphStranger.ready()
+
+  t.teardown(async () => {
+    await graphOwner.close()
+    await graphStranger.close()
+    await storeOwner.close()
+    await storeStranger.close()
+    fs.rmSync(dirOwner, { recursive: true, force: true })
+    fs.rmSync(dirStranger, { recursive: true, force: true })
+  })
+
+  const owner = graphOwner.identity.deviceKeyPair.publicKey.toString('hex')
+  const stranger = graphStranger.identity.deviceKeyPair.publicKey.toString('hex')
+
+  const roleKeyHex = await graphOwner.createRoleBase()
+  await graphOwner.roleBase.init(owner)
+  await graphOwner.update()
+
+  const scopeKeyHex = await graphOwner.createScopeBase()
+  const { scopeId } = await graphOwner.scopeBase.createScope('private-dms')
+  await graphOwner.scopeBase.grantKey(scopeId, stranger, graphStranger.identity.encryptionKeyPair.publicKey)
+
+  await graphStranger.openRoleBase(roleKeyHex)
+  await graphStranger.openScopeBase(scopeKeyHex)
+
+  const s1 = storeOwner.replicate(true, { live: true })
+  const s2 = storeStranger.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => {
+    try { s1.destroy() } catch (err) { /* already closed */ }
+    try { s2.destroy() } catch (err) { /* already closed */ }
+  })
+
+  for (let i = 0; i < 30; i++) {
+    await sleep(200)
+    await graphStranger.update()
+    const reg = await graphStranger.scopeBase.getRegistry()
+    if (reg && reg[scopeId] && reg[scopeId].grants[`${stranger}:0`]) break
+  }
+
+  console.log('  stranger holds the current key (so the crypto requirement is met) but has default "member" role, no scope.grant')
+  await t.exception(
+    graphStranger.scopeBase.rotateKey(scopeId),
+    /Not authorized/,
+    'rotateKey throws — holding the key is not enough without scope.grant permission'
+  )
+  console.log('TEST: rotateKey unauthorized - passed')
+})
+
+

@@ -199,6 +199,7 @@ module.exports = class ScopeBase extends ReadyResource {
       if (typeof event.recipient !== 'string' || event.recipient.length === 0) return false
       if (typeof event.epoch !== 'number' || event.epoch < 0) return false
       if (typeof event.sealedKey !== 'string' || event.sealedKey.length === 0) return false
+      if (typeof event.recipientEncryptionPublicKey !== 'string' || event.recipientEncryptionPublicKey.length === 0) return false
     } else if (event.type === 'scope/revoke') {
       if (typeof event.scopeId !== 'string' || event.scopeId.length === 0) return false
       if (typeof event.pubkey !== 'string' || event.pubkey.length === 0) return false
@@ -224,7 +225,7 @@ module.exports = class ScopeBase extends ReadyResource {
     if (event.type === 'scope/create') {
       payload = { scopeId: event.scopeId, creator: event.creator }
     } else if (event.type === 'scope/keyGrant') {
-      payload = { scopeId: event.scopeId, recipient: event.recipient, epoch: event.epoch, sealedKey: event.sealedKey }
+      payload = { scopeId: event.scopeId, recipient: event.recipient, epoch: event.epoch, sealedKey: event.sealedKey, recipientEncryptionPublicKey: event.recipientEncryptionPublicKey }
     } else {
       payload = { scopeId: event.scopeId, pubkey: event.pubkey }
     }
@@ -313,6 +314,7 @@ module.exports = class ScopeBase extends ReadyResource {
       recipient: author,
       epoch: 0,
       sealedKey,
+      recipientEncryptionPublicKey: this.#identity.encryptionKeyPair.publicKey.toString('hex'),
       granter: author,
       author,
       timestamp: Date.now(),
@@ -421,6 +423,7 @@ module.exports = class ScopeBase extends ReadyResource {
       recipient: recipientPubkeyHex,
       epoch,
       sealedKey,
+      recipientEncryptionPublicKey: b4a.isBuffer(recipientEncryptionPublicKey) ? recipientEncryptionPublicKey.toString('hex') : String(recipientEncryptionPublicKey),
       granter: author,
       author,
       timestamp: Date.now(),
@@ -445,6 +448,104 @@ module.exports = class ScopeBase extends ReadyResource {
    * @returns {Promise<void>}
    * @throws {Error} If the caller lacks scope.revoke permission
    */
+  /**
+   * Rotate a scope to a new key epoch, re-granting it to every current
+   * member except any explicitly excluded pubkeys. This is the actual
+   * mechanism for cutting someone off from *future* content — `revoke()`
+   * alone only marks them informationally and does not stop them from
+   * resolving already-granted epochs; this is what stops them from ever
+   * receiving the new one.
+   *
+   * "Current members" means anyone holding a grant at the scope's current
+   * epoch who isn't marked revoked and isn't in `opts.excludePubkeys`.
+   * Requires the caller to hold that current epoch's key themselves (the
+   * same inherent cryptographic requirement `grantKey()` has), and the
+   * same `scope.grant` permission check — rotation is fundamentally a
+   * mass-grant operation, not a new kind of action.
+   *
+   * @param {string} scopeId - The scope id
+   * @param {Object} [opts]
+   * @param {string[]} [opts.excludePubkeys] - Pubkeys to leave out of the re-grant (e.g. the member being cut off right now)
+   * @returns {Promise<{ epoch: number, key: Buffer, grantedTo: string[] }>} The new epoch, its raw key, and who it was granted to
+   * @throws {Error} If the scope is unknown, the caller doesn't hold the current key, lacks scope.grant permission, or there would be no one left to grant to
+   */
+  async rotateKey (scopeId, opts = {}) {
+    if (!this.opened) await this.ready()
+    if (!this.#identity) throw new Error('An identity is required to rotate a scope key')
+    if (typeof scopeId !== 'string' || scopeId.length === 0) throw new Error('scopeId is required')
+
+    const author = this.#identity.deviceKeyPair.publicKey.toString('hex')
+
+    const registry = await this.getRegistry()
+    const scope = registry ? registry[scopeId] : null
+    if (!scope) throw new Error('Unknown scope')
+
+    const currentEpoch = scope.currentEpoch
+    const myKey = await this.resolveKey(scopeId, author, this.#identity.encryptionKeyPair, currentEpoch)
+    if (!myKey) throw new Error('You do not hold the current key for this scope — cannot rotate a key you do not have')
+
+    if (this.#roleBase) {
+      let roleRegistry = null
+      try {
+        roleRegistry = await this.#roleBase.getRegistry()
+      } catch {
+        roleRegistry = null
+      }
+      if (roleRegistry && !can(roleRegistry, author, 'scope.grant')) {
+        throw new Error('Not authorized to rotate this scope\'s key')
+      }
+    }
+
+    // Current members: anyone with a grant at the current epoch, not
+    // revoked, not explicitly excluded. recipientEncryptionPublicKey is
+    // what lets us re-seal the new key to them without needing any
+    // external identity lookup.
+    const exclude = new Set((opts.excludePubkeys || []).map(String))
+    const members = new Map()
+    for (const key of Object.keys(scope.grants)) {
+      const sep = key.lastIndexOf(':')
+      const pubkey = key.slice(0, sep)
+      const epochOfGrant = Number(key.slice(sep + 1))
+      if (epochOfGrant !== currentEpoch) continue
+      if (scope.revoked[pubkey]) continue
+      if (exclude.has(pubkey)) continue
+      const grant = scope.grants[key]
+      if (!grant.recipientEncryptionPublicKey) continue
+      members.set(pubkey, grant.recipientEncryptionPublicKey)
+    }
+
+    if (members.size === 0) {
+      throw new Error('No current members to rotate the key to — rotating would leave no one with access')
+    }
+
+    const newEpoch = currentEpoch + 1
+    const newKey = hypercoreCrypto.randomBytes(32)
+
+    const events = []
+    for (const [pubkey, encryptionPublicKeyHex] of members) {
+      const sealedKey = hypercoreCrypto.encrypt(newKey, b4a.from(encryptionPublicKeyHex, 'hex')).toString('hex')
+      const grantEvent = {
+        type: 'scope/keyGrant',
+        scopeId,
+        recipient: pubkey,
+        epoch: newEpoch,
+        sealedKey,
+        recipientEncryptionPublicKey: encryptionPublicKeyHex,
+        granter: author,
+        author,
+        timestamp: Date.now(),
+        signature: null
+      }
+      this.#sign(grantEvent)
+      events.push(grantEvent)
+    }
+
+    await this.#base.append(events)
+    await this.#base.update()
+
+    return { epoch: newEpoch, key: newKey, grantedTo: [...members.keys()] }
+  }
+
   async revoke (scopeId, pubkeyHex) {
     if (!this.opened) await this.ready()
     if (!this.#identity) throw new Error('An identity is required to revoke scope access')

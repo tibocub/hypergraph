@@ -116,13 +116,29 @@ await graph.scopeBase.revoke(scopeId, revokedPubkeyHex)
 
 This is informational only — it marks a pubkey as no longer a current member going forward,
 but does not, and cannot, undo a grant they already received. Confirmed directly: a
-previously granted key remains resolvable after revocation. To actually cut someone off from
-*future* content, rotate to a new epoch and re-grant it to everyone except the revoked
-member — there's no single "rotate" convenience method yet; this currently means calling
-`grantKey()` again, at a new epoch, for each remaining member. A revoked person keeps whatever
+previously granted key remains resolvable after revocation. A revoked person keeps whatever
 they already downloaded and decrypted before revocation — a fundamental, unavoidable property
 of any offline-first/local-first system, not something worth trying to engineer around with
 complexity that wouldn't actually work.
+
+To actually cut someone off from *future* content, rotate to a new epoch and re-grant it to
+everyone except the revoked member:
+
+```js
+const { epoch, key, grantedTo } = await graph.scopeBase.rotateKey(scopeId, {
+  excludePubkeys: [revokedPubkeyHex]
+})
+```
+
+`rotateKey()` figures out "current members" itself (anyone holding a grant at the scope's
+current epoch, not marked revoked, not in `excludePubkeys`) and re-grants the new epoch's key
+to all of them in one call — no need to track membership separately or call `grantKey()` once
+per person. It has the same two requirements as `grantKey()`: the caller must hold the
+current epoch's key themselves (an inherent cryptographic requirement — you can't seal a key
+you don't have), and pass the `scope.grant` permission check. Confirmed directly: a revoked,
+excluded member simply never resolves the new epoch at all, while every other current member
+does — and everyone can still resolve whatever older epochs they already had access to,
+consistent with the "can't undo past access" property above.
 
 ## Onboarding new, not-yet-known peers
 

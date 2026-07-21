@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 44: read-permission, stage 4 — `ScopeBase.rotateKey()`
+
+The second concrete gap identified before HyperBBS integration: `revoke()` is informational
+only (documented as such), and the only way to actually cut someone off from *future* content
+was calling `grantKey()` once per remaining member by hand — no bulk convenience existed.
+
+**A real design gap surfaced building this**: re-granting a rotated key to every current
+member needs each recipient's `encryptionKeyPair.publicKey` to seal to — but `scope/keyGrant`
+events only ever stored the sealed ciphertext, nothing that could be looked up later to
+re-seal a *new* key to the same person. Fixed by extending `scope/keyGrant` to also carry
+`recipientEncryptionPublicKey` (public information, safe in the clear) in both
+`scopes-registry.js`'s stored grant record and the signed digest in `scope-base.js` — this
+required making it a required field going forward, backward-compatible in the sense that
+malformed old-shape events are simply dropped (the existing tolerant-of-unknown-events
+pattern), not a crash risk, since this is a brand-new, unreleased feature with no real
+production data to be compatible with yet.
+
+**`ScopeBase.rotateKey(scopeId, opts)`**: determines "current members" itself (anyone holding
+a grant at the scope's current epoch, not marked revoked, not in `opts.excludePubkeys`),
+generates a new key, and re-grants it to all of them in one call. Same two requirements as
+`grantKey()`: the caller must hold the current epoch's key themselves (inherent cryptographic
+requirement), and pass the `scope.grant` permission check — rotation is fundamentally a
+mass-grant operation, not a new kind of action. Throws if rotating would leave no one with
+access at all, as a safety net against an obvious foot-gun.
+
+New tests (3): basic rotation confirming the new epoch resolves correctly for all members
+while the *old* epoch remains resolvable too (rotation doesn't retroactively lock anyone out
+of the past); `excludePubkeys` confirming a revoked member specifically never resolves the
+new epoch while an untouched member does; and an unauthorized-caller rejection over a real
+replicated link (holding the key is necessary but not sufficient without the permission).
+Stable across 3 repeated runs.
+
+Documented in `docs/read-permission.md` (replacing the "no rotate method yet" note with the
+real usage) and `docs/contributors/component-details.md`.
+
+Full local suite: 149/149.
+
 ### Round 43: live queries — `GraphQuery.live()`
 
 The single biggest gap identified for HyperBBS integration: `db.query({ live: true })` is

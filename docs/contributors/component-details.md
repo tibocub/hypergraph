@@ -189,6 +189,7 @@ Permission strings are otherwise free-form — an app can call `roles/setRolePer
 **Key Methods**:
 - `createScope(scopeId)` - Create a scope and immediately grant its creator epoch 0's key
 - `grantKey(scopeId, recipientPubkeyHex, recipientEncryptionPublicKey)` - Seal the scope's current key to a new recipient (requires the granter to already hold that key themselves — an inherent cryptographic requirement, not just a permission check)
+- `rotateKey(scopeId, opts)` - Move to a new epoch, re-granting it to every current member except any in `opts.excludePubkeys` — the actual mechanism for cutting someone off from future content, since `revoke()` alone is informational only
 - `resolveKey(scopeId, pubkeyHex, encryptionKeyPair, epoch)` - Unseal a specific epoch's key for a specific recipient
 - `revoke(scopeId, pubkeyHex)` - Mark a pubkey as no longer a current member (informational — does not, and cannot, undo a grant already received)
 - `getCurrentEpoch(scopeId)` / `getRegistry()` - Read the current state

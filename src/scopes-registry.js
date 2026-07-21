@@ -75,6 +75,7 @@ function applyScopeEvent (registries, event) {
       if (typeof event.recipient !== 'string' || event.recipient.length === 0) throw new Error('event.recipient is required')
       if (typeof event.epoch !== 'number' || event.epoch < 0) throw new Error('event.epoch must be a non-negative number')
       if (typeof event.sealedKey !== 'string' || event.sealedKey.length === 0) throw new Error('event.sealedKey is required')
+      if (typeof event.recipientEncryptionPublicKey !== 'string' || event.recipientEncryptionPublicKey.length === 0) throw new Error('event.recipientEncryptionPublicKey is required')
 
       const scope = next[event.scopeId]
       if (!scope) return next // grant for an unknown scope — ignore rather than throw, matches roles-registry's tolerance for out-of-order replication
@@ -86,6 +87,7 @@ function applyScopeEvent (registries, event) {
       }
       updated.grants[`${event.recipient}:${event.epoch}`] = {
         sealedKey: event.sealedKey,
+        recipientEncryptionPublicKey: event.recipientEncryptionPublicKey || null,
         granter: event.granter || null,
         timestamp: typeof event.timestamp === 'number' ? event.timestamp : null
       }
