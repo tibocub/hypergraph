@@ -332,3 +332,217 @@ test('relations: a relation/create event encoded before the value field existed 
   t.absent(decoded.value, 'value is simply undefined for an old-format event, not a crash')
   console.log('TEST: relation value backward compat - passed')
 })
+
+test('relations: unrelate() removes an edge — it stops appearing in edges(), counts, and cannot be double-deleted', async (t) => {
+  console.log('TEST: unrelate basic - starting')
+  const { graph } = await createGraph(t, 'unrelate-basic')
+
+  const post = await graph.put({ type: 'post' })
+  const comment = await graph.put({ type: 'comment' })
+  const ctx = await graph.createContext()
+
+  await graph.relate({ from: comment.id, to: post.id, type: 'reply', context: ctx })
+
+  const before = []
+  for await (const e of graph.edges(post.id, { direction: 'in', type: 'reply' })) before.push(e)
+  t.is(before.length, 1, 'the relation exists before unrelate')
+  t.is(await graph.countEdgesIn(post.id, 'reply'), 1, 'count is 1 before unrelate')
+
+  console.log('  Step: unrelate it')
+  await graph.unrelate({ from: comment.id, to: post.id, type: 'reply', context: ctx })
+
+  const after = []
+  for await (const e of graph.edges(post.id, { direction: 'in', type: 'reply' })) after.push(e)
+  t.is(after.length, 0, 'the relation no longer appears in edges() after unrelate')
+  t.is(await graph.countEdgesIn(post.id, 'reply'), 0, 'count correctly drops to 0')
+  t.is(await graph.countEdgesOut(comment.id, 'reply'), 0, 'outgoing count correctly drops to 0 too')
+
+  console.log('  Step: calling unrelate() again on the same, already-deleted relation throws rather than silently no-op-ing')
+  await t.exception(
+    graph.unrelate({ from: comment.id, to: post.id, type: 'reply', context: ctx }),
+    /Relation not found/,
+    'double-unrelate throws — there is nothing left to delete'
+  )
+  console.log('TEST: unrelate basic - passed')
+})
+
+test('relations: unrelate() on a relation that never existed throws, not a silent no-op', async (t) => {
+  console.log('TEST: unrelate nonexistent - starting')
+  const { graph } = await createGraph(t, 'unrelate-nonexistent')
+  const post = await graph.put({ type: 'post' })
+  const comment = await graph.put({ type: 'comment' })
+  const ctx = await graph.createContext()
+
+  await t.exception(
+    graph.unrelate({ from: comment.id, to: post.id, type: 'reply', context: ctx }),
+    /Relation not found/,
+    'unrelate on a relation that was never created throws'
+  )
+  console.log('TEST: unrelate nonexistent - passed')
+})
+
+test('relations: after unrelate(), relate()-ing the exact same from/to/type again recreates the edge correctly', async (t) => {
+  console.log('TEST: unrelate then re-relate - starting')
+  const { graph } = await createGraph(t, 'unrelate-rerelate')
+  const post = await graph.put({ type: 'post' })
+  const comment = await graph.put({ type: 'comment' })
+  const ctx = await graph.createContext()
+
+  await graph.relate({ from: comment.id, to: post.id, type: 'reply', value: 1, context: ctx })
+  await graph.unrelate({ from: comment.id, to: post.id, type: 'reply', context: ctx })
+
+  console.log('  relate the same from/to/type again, with a different value this time')
+  await graph.relate({ from: comment.id, to: post.id, type: 'reply', value: 2, context: ctx })
+
+  const edges = []
+  for await (const e of graph.edges(post.id, { direction: 'in', type: 'reply' })) edges.push(e)
+  t.is(edges.length, 1, 'exactly one edge exists — the deleted one did not linger alongside the new one')
+  t.is(edges[0].value, 2, 'and it is the NEW relation (value 2), not a resurrected old one')
+  t.is(await graph.countEdgesIn(post.id, 'reply'), 1, 'count correctly reflects one active edge, not accumulated from both the deleted and recreated relation')
+  console.log('TEST: unrelate then re-relate - passed')
+})
+
+test('relations: any authorized writer can unrelate a relation, not just whoever originally created it — same permissive model as relate()', async (t) => {
+  console.log('TEST: unrelate by a different writer - starting')
+  const Corestore = require('corestore')
+  const path = require('path')
+  const os = require('os')
+  const fs = require('fs')
+  const { Hypergraph } = require('../../../index.js')
+
+  const dirA = path.join(os.tmpdir(), `hypergraph-unrelate-writer-a-${process.pid}-${Date.now()}`)
+  const storeA = new Corestore(dirA)
+  const graphA = new Hypergraph(storeA)
+  await graphA.ready()
+
+  const dirB = path.join(os.tmpdir(), `hypergraph-unrelate-writer-b-${process.pid}-${Date.now()}`)
+  const storeB = new Corestore(dirB)
+  const graphB = new Hypergraph(storeB)
+  await graphB.ready()
+
+  t.teardown(async () => {
+    await graphA.close()
+    await graphB.close()
+    await storeA.close()
+    await storeB.close()
+    fs.rmSync(dirA, { recursive: true, force: true })
+    fs.rmSync(dirB, { recursive: true, force: true })
+  })
+
+  const post = await graphA.put({ type: 'post' })
+  const comment = await graphA.put({ type: 'comment' })
+  const ctxKey = await graphA.createContext({ writeMode: 'open' })
+  const ctxA = await graphA.openContext(ctxKey, { writeMode: 'open' })
+
+  await graphB.openUserCore(graphA.key)
+  const ctxB = await graphB.openContext(ctxKey, { writeMode: 'open' })
+
+  const s1 = storeA.replicate(true, { live: true })
+  const s2 = storeB.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => {
+    try { s1.destroy() } catch (err) { /* already closed */ }
+    try { s2.destroy() } catch (err) { /* already closed */ }
+  })
+
+  await ctxA.addWriter(ctxB.localKey)
+  await graphA.relate({ from: comment.id, to: post.id, type: 'reply', context: ctxKey })
+
+  console.log('  B waits to become a writer and see the relation replicate')
+  for (let i = 0; i < 40 && !ctxB.writable; i++) { await sleep(200); await ctxB.update() }
+  t.ok(ctxB.writable, 'B is confirmed writable before attempting to unrelate')
+
+  for (let i = 0; i < 30; i++) {
+    await sleep(200)
+    await graphB.update()
+    const edges = []
+    for await (const e of graphB.edges(post.id, { direction: 'in', type: 'reply' })) edges.push(e)
+    if (edges.length > 0) break
+  }
+
+  console.log('  B (who did not create this relation) unrelates it')
+  await graphB.unrelate({ from: comment.id, to: post.id, type: 'reply', context: ctxKey })
+
+  let removed = false
+  for (let i = 0; i < 30; i++) {
+    await sleep(200)
+    await graphA.update()
+    const remaining = []
+    for await (const e of graphA.edges(post.id, { direction: 'in', type: 'reply' })) remaining.push(e)
+    if (remaining.length === 0) { removed = true; break }
+  }
+  t.ok(removed, 'B successfully removed a relation A created — same permissive, no-ownership-check model as relate() itself')
+  console.log('TEST: unrelate by a different writer - passed')
+})
+
+test('relations: an unrelate() propagates correctly to other peers over real replication', async (t) => {
+  console.log('TEST: unrelate cross-peer replication - starting')
+  const Corestore = require('corestore')
+  const path = require('path')
+  const os = require('os')
+  const fs = require('fs')
+  const { Hypergraph } = require('../../../index.js')
+
+  const dirA = path.join(os.tmpdir(), `hypergraph-unrelate-repl-a-${process.pid}-${Date.now()}`)
+  const storeA = new Corestore(dirA)
+  const graphA = new Hypergraph(storeA)
+  await graphA.ready()
+
+  const dirB = path.join(os.tmpdir(), `hypergraph-unrelate-repl-b-${process.pid}-${Date.now()}`)
+  const storeB = new Corestore(dirB)
+  const graphB = new Hypergraph(storeB)
+  await graphB.ready()
+
+  t.teardown(async () => {
+    await graphA.close()
+    await graphB.close()
+    await storeA.close()
+    await storeB.close()
+    fs.rmSync(dirA, { recursive: true, force: true })
+    fs.rmSync(dirB, { recursive: true, force: true })
+  })
+
+  const post = await graphA.put({ type: 'post' })
+  const comment = await graphA.put({ type: 'comment' })
+  const ctxKey = await graphA.createContext({ writeMode: 'open' })
+  const ctxA = await graphA.openContext(ctxKey, { writeMode: 'open' })
+  await graphA.relate({ from: comment.id, to: post.id, type: 'reply', context: ctxKey })
+
+  await graphB.openUserCore(graphA.key)
+  const ctxB = await graphB.openContext(ctxKey, { writeMode: 'open' })
+
+  const s1 = storeA.replicate(true, { live: true })
+  const s2 = storeB.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => {
+    try { s1.destroy() } catch (err) { /* already closed */ }
+    try { s2.destroy() } catch (err) { /* already closed */ }
+  })
+
+  console.log('  B waits to see the original relation replicate first')
+  for (let i = 0; i < 30; i++) {
+    await sleep(200)
+    await graphB.update()
+    const edges = []
+    for await (const e of graphB.edges(post.id, { direction: 'in', type: 'reply' })) edges.push(e)
+    if (edges.length > 0) break
+  }
+  const beforeB = []
+  for await (const e of graphB.edges(post.id, { direction: 'in', type: 'reply' })) beforeB.push(e)
+  t.is(beforeB.length, 1, 'B sees the relation before it is deleted')
+
+  console.log('  A unrelates it; B should see it disappear after replicating')
+  await graphA.unrelate({ from: comment.id, to: post.id, type: 'reply', context: ctxKey })
+
+  let sawDeleted = false
+  for (let i = 0; i < 30; i++) {
+    await sleep(200)
+    await graphB.update()
+    const edges = []
+    for await (const e of graphB.edges(post.id, { direction: 'in', type: 'reply' })) edges.push(e)
+    if (edges.length === 0) { sawDeleted = true; break }
+  }
+  t.ok(sawDeleted, 'B correctly sees the relation disappear once the delete replicates')
+  console.log('TEST: unrelate cross-peer replication - passed')
+})
+

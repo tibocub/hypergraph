@@ -175,3 +175,55 @@ test('entities: getByAuthor correctly finds a REMOTE author\'s entities once the
   t.is(seenByAForOwnAuthor[0].id, postA.id, 'and it\'s A\'s own post, not B\'s')
   console.log('TEST: getByAuthor cross-peer - passed')
 })
+
+test('entities: putContent() called twice on the same entity — getContent() returns the latest version, the previous one is superseded not merged', async (t) => {
+  console.log('TEST: content editing - starting')
+  const { graph } = await createGraph(t, 'entities-content-edit')
+  const post = await graph.put({ type: 'post' })
+
+  await graph.putContent(post.id, 'first version', 'text')
+  const first = await graph.getContent(post.id)
+  t.is(first.body, 'first version', 'first write reads back correctly')
+
+  await graph.putContent(post.id, 'second, edited version', 'text')
+  const second = await graph.getContent(post.id)
+  t.is(second.body, 'second, edited version', 'getContent returns the latest version after editing')
+  t.not(second.body, first.body, 'sanity: this is genuinely a different value, not a stale read')
+
+  console.log('  a third edit, changing contentType too')
+  await graph.putContent(post.id, JSON.stringify({ x: 1 }), 'application/json')
+  const third = await graph.getContent(post.id)
+  t.is(third.contentType, 'application/json', 'contentType is also updated by a later edit, not stuck on the original')
+  t.is(third.body, JSON.stringify({ x: 1 }), 'and the body reflects the third edit')
+  console.log('TEST: content editing - passed')
+})
+
+test('entities: editing encrypted content (putContent() twice with the same scope) works correctly, with a fresh nonce each time', async (t) => {
+  console.log('TEST: encrypted content editing - starting')
+  const { graph } = await createGraph(t, 'entities-content-edit-encrypted')
+  const owner = graph.identity.deviceKeyPair.publicKey.toString('hex')
+
+  await graph.createRoleBase()
+  await graph.roleBase.init(owner)
+  await graph.roleBase.append({
+    type: 'roles/setRolePermissions',
+    role: 'owner',
+    permissions: ['*'],
+    author: owner,
+    timestamp: Date.now()
+  })
+  await graph.update()
+  await graph.createScopeBase()
+  const { scopeId } = await graph.scopeBase.createScope('private-dms')
+
+  const post = await graph.put({ type: 'post' })
+  await graph.putContent(post.id, 'first secret', 'text', { scope: scopeId })
+  const first = await graph.getContent(post.id)
+  t.is(first.body, 'first secret', 'first encrypted write decrypts correctly')
+
+  await graph.putContent(post.id, 'second secret, edited', 'text', { scope: scopeId })
+  const second = await graph.getContent(post.id)
+  t.is(second.body, 'second secret, edited', 'editing encrypted content works — the new version decrypts correctly too')
+  t.ok(second.encrypted, 'still flagged as encrypted after the edit')
+  console.log('TEST: encrypted content editing - passed')
+})

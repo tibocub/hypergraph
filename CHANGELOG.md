@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 45: exercising never-tested primitives — `unrelate()` and content editing confirmed solid, a real gap found in dynamic context support
+
+Continuing the pre-HyperBBS-integration list: primitives that exist in code but had never
+actually been run in practice, since no example app or test ever exercised them.
+
+**`unrelate()` — confirmed solid, no bugs found.** 5 new tests: basic removal (edge
+disappears from `edges()`, both directions' counts correctly drop, and a second
+`unrelate()` on the same relation throws rather than silently no-op-ing); unrelate on a
+relation that never existed throws; unrelate-then-relate the exact same `from`/`to`/`type`
+correctly recreates a fresh edge rather than leaving a stale, deleted one lingering
+alongside it; any authorized writer can unrelate a relation someone else created (same
+permissive, no-ownership-check model `relate()` itself has — confirmed over real
+replication, not just locally); and a delete correctly propagates to another peer that
+already had the original relation replicated.
+
+**Content editing — confirmed solid, no bugs found.** `putContent()` called a second (and
+third) time on the same entity: `getContent()` correctly returns the latest version, not a
+merge or a stale read, and `contentType` updates too, not just `body`. Also tested the
+encrypted case specifically (never exercised before either): editing encrypted content
+works correctly, with a fresh nonce generated for each version.
+
+**A real, more substantial gap found while testing dynamic context creation.** At the core
+hypergraph level, creating a context mid-session (after other activity has already
+happened) and having a second peer discover, open, and write to it works correctly —
+confirmed directly, including the write propagating back. But `HypergraphNetwork`'s
+context set is fixed at construction time from `opts.contexts`, with no method to register
+a new context afterward, and no mechanism to announce a newly-created context to peers
+already connected — its writer-auth protocol is keyed entirely off that fixed map. Every
+example app avoids this today by only ever using contexts fixed at bootstrap time (e.g.
+`chat-web`'s "rooms" are entities inside one shared context, never separate contexts
+created live) — meaning this gap has simply never been hit yet, not that it's been
+worked around. Fixing this at the `HypergraphNetwork` level (dynamic registration plus an
+announce-to-connected-peers mechanism) is a real, separate feature, closer in scope to live
+queries or read-permission than a quick fix — flagging for discussion before building it,
+rather than starting without confirming the right shape first.
+
+Full local suite: 156/156.
+
 ### Round 44: read-permission, stage 4 — `ScopeBase.rotateKey()`
 
 The second concrete gap identified before HyperBBS integration: `revoke()` is informational
