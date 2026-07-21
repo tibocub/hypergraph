@@ -277,7 +277,17 @@ module.exports = class GraphView extends ReadyResource {
       entityId: event.entityId,
       contentType: event.contentType,
       body: event.body,
-      createdAt: event.timestamp
+      createdAt: event.timestamp,
+      // Encryption metadata is optional and defaults to unencrypted —
+      // existing, already-stored content (and any content written without
+      // a scope) is completely unaffected. When present, `body` holds a
+      // hex ciphertext rather than plaintext; contentType still reflects
+      // the app's original type in the clear (only the payload is
+      // encrypted, not this kind of metadata).
+      encrypted: event.encrypted === true,
+      scope: event.encrypted === true ? event.scope : null,
+      epoch: event.encrypted === true ? event.epoch : null,
+      nonce: event.encrypted === true ? event.nonce : null
     })
   }
 

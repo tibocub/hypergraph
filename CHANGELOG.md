@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 41: read-permission, stage 3 — content encryption wired into putContent()/getContent()
+
+`putContent(entityId, content, contentType, opts)` gains an optional `opts.scope`. Absent:
+completely unchanged — plaintext, zero migration cost, matching the open-graph optimization
+agreed on earlier. Present: the body is encrypted (XChaCha20-Poly1305 via `sodium-universal`'s
+`crypto_secretbox_easy`, using the same 32-byte scope keys from round 40) with the scope's
+current key; `contentType` and the encryption metadata (`scope`, `epoch`, `nonce`) stay in the
+clear alongside the ciphertext — consistent with "encrypt bodies, not metadata," and letting
+any replicating peer still see *that* content exists even without being able to read it.
+`getContent()` tries to resolve the scope's key locally and decrypt; without access, it
+returns `{ encrypted: true, body: null, scope, epoch }` rather than throwing or returning
+garbage, so an app can render "you don't have access" cleanly.
+
+**Found and fixed a second bug while testing this, in the same family as round 33's:** the
+low-level compact-encoding schema for `content/append` only ever handled
+`{ entityId, contentType, body }` — the new `encrypted`/`scope`/`epoch`/`nonce` fields were
+silently dropped during the actual encode/decode round-trip through the underlying Hypercore,
+even though `view.js`'s storage layer was already updated to handle them. First encryption
+round-trip test caught this immediately: `getContent()` came back with the raw ciphertext
+instead of decrypting it. Fixed with the same backward-compatible pattern used for
+`relation/create`'s `value` field (an optional-fields flag byte, guarded on decode against
+old, already-persisted events that don't have these trailing bytes at all).
+
+New tests (6): round-trip encryption for the key-holding creator; `contentType` genuinely
+stays in the clear; existing unencrypted content is completely unaffected; `putContent`
+rejects an unknown scope and a scope the caller doesn't hold the key for (both over a real
+replicated link, confirming the check holds even once an event has actually traveled over the
+wire); and a peer without scope access gets the clean `{ encrypted: true, body: null }` shape
+from `getContent()` rather than a crash. One test along the way needed each peer to open its
+*own* RoleBase — otherwise that peer's own independent copy of `ScopeBase`'s apply function
+has nothing to verify the replicated `scope/create`/`keyGrant` events against, and correctly
+drops them rather than applying them unchecked; a good reminder of how this system is
+designed to behave, not a bug in it.
+
+Full local suite: 138/138, confirmed stable across multiple repeated runs.
+
 ### Round 40: read-permission, stage 2 — ScopeBase, and a general Autobase-namespacing bug found along the way
 
 Built the read-scope structure itself: `src/scopes-registry.js` (a pure state machine for

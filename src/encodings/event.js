@@ -64,6 +64,12 @@ const eventEncoding = {
         c.string.preencode(state, event.entityId)
         c.string.preencode(state, event.contentType)
         c.string.preencode(state, event.body)
+        c.uint.preencode(state, event.encrypted === true ? 1 : 0)
+        if (event.encrypted === true) {
+          c.string.preencode(state, event.scope)
+          c.uint.preencode(state, event.epoch)
+          c.string.preencode(state, event.nonce)
+        }
         break
 
       case 'relation/create':
@@ -147,6 +153,12 @@ const eventEncoding = {
         c.string.encode(state, event.entityId)
         c.string.encode(state, event.contentType)
         c.string.encode(state, event.body)
+        c.uint.encode(state, event.encrypted === true ? 1 : 0)
+        if (event.encrypted === true) {
+          c.string.encode(state, event.scope)
+          c.uint.encode(state, event.epoch)
+          c.string.encode(state, event.nonce)
+        }
         break
 
       case 'relation/create':
@@ -233,6 +245,15 @@ const eventEncoding = {
         event.entityId = c.string.decode(state)
         event.contentType = c.string.decode(state)
         event.body = c.string.decode(state)
+        // Backward compat: events encoded before this field existed
+        // don't have these trailing bytes at all — decoding them must not
+        // crash (same pattern as relation/create's value field, round 33).
+        if (state.start < state.end && c.uint.decode(state) === 1) {
+          event.encrypted = true
+          event.scope = c.string.decode(state)
+          event.epoch = c.uint.decode(state)
+          event.nonce = c.string.decode(state)
+        }
         break
 
       case 'relation/create':

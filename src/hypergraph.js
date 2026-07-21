@@ -5,6 +5,7 @@ const codecs = require('codecs')
 const Hyperbee = require('hyperbee')
 const crypto = require('crypto')
 const hypercoreCrypto = require('hypercore-crypto')
+const sodium = require('sodium-universal')
 const b4a = require('b4a')
 const UserCore = require('./user-core')
 const ContextBase = require('./context-base')
@@ -289,7 +290,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {'text'|string} [contentType='text']
    * @returns {Promise<{ entityId: string, contentType: string, body: string }>}
    */
-  async putContent (entityId, content, contentType = 'text') {
+  async putContent (entityId, content, contentType = 'text', opts = {}) {
     if (!this.opened) await this.ready()
 
     if (!entityId) throw new Error('entityId is required')
@@ -305,6 +306,28 @@ module.exports = class Hypergraph extends ReadyResource {
       timestamp: Date.now()
     }
 
+    if (opts.scope) {
+      if (!this.#scopeBase) throw new Error('No ScopeBase attached — cannot encrypt content')
+
+      const author = this.identity.deviceKeyPair.publicKey.toString('hex')
+      const epoch = await this.#scopeBase.getCurrentEpoch(opts.scope)
+      if (epoch === null) throw new Error('Unknown scope')
+
+      const key = await this.#scopeBase.resolveKey(opts.scope, author, this.identity.encryptionKeyPair, epoch)
+      if (!key) throw new Error('You do not hold the current key for this scope — cannot encrypt content for it')
+
+      const nonce = hypercoreCrypto.randomBytes(sodium.crypto_secretbox_NONCEBYTES)
+      const message = Buffer.from(String(content), 'utf-8')
+      const ciphertext = Buffer.alloc(message.length + sodium.crypto_secretbox_MACBYTES)
+      sodium.crypto_secretbox_easy(ciphertext, message, nonce, key)
+
+      event.body = ciphertext.toString('hex')
+      event.encrypted = true
+      event.scope = opts.scope
+      event.epoch = epoch
+      event.nonce = nonce.toString('hex')
+    }
+
     await this.#userCore.append(event)
     await this.#view.update()
     
@@ -316,18 +339,51 @@ module.exports = class Hypergraph extends ReadyResource {
       timestamp: Date.now()
     })
     
-    return { entityId, contentType, body: content }
+    // The caller already has the plaintext they just wrote — always
+    // return that, not the ciphertext, regardless of whether this was
+    // encrypted for storage.
+    return { entityId, contentType, body: content, encrypted: !!opts.scope, scope: opts.scope || null }
   }
 
   /**
    * Read the latest content version from an entity.
    *
+   * If the stored content is encrypted (see putContent()'s opts.scope),
+   * this tries to resolve the scope's key locally and decrypt it. If the
+   * caller doesn't hold that scope's key for the relevant epoch, this
+   * returns a shape with `body: null` and `encrypted: true` rather than
+   * throwing or returning garbage — giving the caller a clean way to
+   * render "you don't have access" in their UI.
+   *
    * @param   {string} entityId
-   * @returns {Promise<{ contentType: string, body: string }|null>}
+   * @returns {Promise<{ contentType: string, body: string|null, encrypted?: boolean, scope?: string, epoch?: number }|null>}
    */
   async getContent (entityId) {
     if (!this.opened) await this.ready()
-    return this.#view.getContent(entityId)
+    const record = await this.#view.getContent(entityId)
+    if (!record) return null
+    if (!record.encrypted) return record
+
+    if (!this.#scopeBase) {
+      return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+    }
+
+    const author = this.identity.deviceKeyPair.publicKey.toString('hex')
+    const key = await this.#scopeBase.resolveKey(record.scope, author, this.identity.encryptionKeyPair, record.epoch)
+    if (!key) {
+      return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+    }
+
+    try {
+      const nonce = b4a.from(record.nonce, 'hex')
+      const ciphertext = b4a.from(record.body, 'hex')
+      const plaintext = Buffer.alloc(ciphertext.length - sodium.crypto_secretbox_MACBYTES)
+      const ok = sodium.crypto_secretbox_open_easy(plaintext, ciphertext, nonce, key)
+      if (!ok) return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+      return { contentType: record.contentType, body: plaintext.toString('utf-8'), encrypted: true, scope: record.scope, epoch: record.epoch }
+    } catch {
+      return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+    }
   }
 
 
