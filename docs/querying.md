@@ -23,6 +23,38 @@ Default order (with no `.type()` filter) is also chronological, via a separate,
 type-agnostic index (`nc:`) — not the raw, unordered entity-id keyspace. Both are real,
 efficient indexed scans, not a full table scan followed by an in-memory sort.
 
+### Live Queries
+
+```js
+const unsubscribe = graph.query()
+  .type('post')
+  .live((results) => {
+    render(results)
+  })
+
+// later, when no longer needed:
+unsubscribe()
+```
+
+`live()` runs the query immediately (the initial snapshot), then re-runs it and calls the
+callback again whenever the graph has new data — whether from a local write (`put()`,
+`relate()`, etc.) or data that arrived via replication (confirmed directly: a peer with a
+live query open, making no local writes of its own, sees its callback re-fire purely from
+another peer's data arriving over the wire, the next time `graph.update()` is called).
+
+Re-runs are debounced (default 50ms, configurable via `{ debounceMs }`) — several changes in
+quick succession (e.g. `put()` + `putContent()` + `tag()` for one logical action) coalesce
+into a single re-run rather than firing once per individual change. Each re-run re-executes
+the whole query from scratch rather than incrementally diffing results — the simpler,
+correct-first approach; revisit only if this becomes a measured bottleneck.
+
+The returned unsubscribe function stops listening and cancels any pending debounced re-run.
+A callback that throws doesn't break the subscription — later changes still trigger further
+callbacks.
+
+`live()` requires a query created via `graph.query()` (not `queryContext()`), since it needs
+a reference to the graph to subscribe to its change events.
+
 ### Sorting by Anything Else
 
 ```js

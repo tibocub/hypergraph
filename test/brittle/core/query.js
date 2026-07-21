@@ -292,3 +292,160 @@ test('queryContext: requires type "moderation", a context, and a target', async 
   )
   console.log('TEST: queryContext validation - passed')
 })
+
+test('query: live() fires immediately with the initial snapshot, then again after a local write', async (t) => {
+  console.log('TEST: live basic - starting')
+  const { graph } = await createGraph(t, 'query-live-basic')
+
+  const calls = []
+  const unsubscribe = graph.query().type('post').live((results) => {
+    calls.push(results.map(r => r.id))
+  })
+  t.teardown(() => unsubscribe())
+
+  for (let i = 0; i < 20 && calls.length < 1; i++) await sleep(50)
+  t.is(calls.length, 1, 'fires once immediately with the initial (empty) snapshot')
+  t.alike(calls[0], [], 'initial snapshot is empty — no posts yet')
+
+  const post = await graph.put({ type: 'post' })
+
+  for (let i = 0; i < 40 && calls.length < 2; i++) await sleep(50)
+  t.is(calls.length, 2, 'fires again after a local write')
+  t.alike(calls[1], [post.id], 'the second callback reflects the new post')
+  console.log('TEST: live basic - passed')
+})
+
+test('query: live() debounces a burst of changes into a single re-run', async (t) => {
+  console.log('TEST: live debounce - starting')
+  const { graph } = await createGraph(t, 'query-live-debounce')
+
+  const calls = []
+  const unsubscribe = graph.query().type('post').live((results) => {
+    calls.push(results.length)
+  }, { debounceMs: 100 })
+  t.teardown(() => unsubscribe())
+
+  for (let i = 0; i < 20 && calls.length < 1; i++) await sleep(50)
+  t.is(calls.length, 1, 'initial snapshot fired')
+
+  console.log('  three rapid writes in quick succession, well within the debounce window')
+  await graph.put({ type: 'post' })
+  await graph.put({ type: 'post' })
+  await graph.put({ type: 'post' })
+
+  // Wait well past the debounce window, then check nothing further has
+  // fired beyond one coalesced re-run.
+  await sleep(400)
+  t.is(calls.length, 2, 'three rapid changes coalesced into exactly one re-run, not three')
+  t.is(calls[1], 3, 'and that one re-run reflects all three writes')
+  console.log('TEST: live debounce - passed')
+})
+
+test('query: live()\'s unsubscribe function stops future callbacks', async (t) => {
+  console.log('TEST: live unsubscribe - starting')
+  const { graph } = await createGraph(t, 'query-live-unsub')
+
+  const calls = []
+  const unsubscribe = graph.query().type('post').live((results) => {
+    calls.push(results.length)
+  })
+
+  for (let i = 0; i < 20 && calls.length < 1; i++) await sleep(50)
+  t.is(calls.length, 1, 'initial snapshot fired')
+
+  unsubscribe()
+
+  await graph.put({ type: 'post' })
+  await sleep(300)
+  t.is(calls.length, 1, 'no further callbacks after unsubscribing, even though a matching write happened')
+  console.log('TEST: live unsubscribe - passed')
+})
+
+test('query: live()\'s callback throwing does not break the subscription for future changes', async (t) => {
+  console.log('TEST: live callback error resilience - starting')
+  const { graph } = await createGraph(t, 'query-live-error')
+
+  let callCount = 0
+  const seenLengths = []
+  const unsubscribe = graph.query().type('post').live((results) => {
+    callCount++
+    seenLengths.push(results.length)
+    if (callCount === 1) throw new Error('deliberate callback failure on the first call')
+  })
+  t.teardown(() => unsubscribe())
+
+  for (let i = 0; i < 20 && callCount < 1; i++) await sleep(50)
+  t.is(callCount, 1, 'initial call happened (and threw)')
+
+  await graph.put({ type: 'post' })
+  for (let i = 0; i < 40 && callCount < 2; i++) await sleep(50)
+  t.is(callCount, 2, 'a later change still triggers a callback despite the earlier one throwing')
+  t.is(seenLengths[1], 1, 'and it reflects the new post correctly')
+  console.log('TEST: live callback error resilience - passed')
+})
+
+test('query: live() re-runs when data arrives via REPLICATION, not just local writes — the actual point of this feature', async (t) => {
+  console.log('TEST: live cross-peer replication - starting')
+  const Corestore = require('corestore')
+  const path = require('path')
+  const os = require('os')
+  const fs = require('fs')
+  const { Hypergraph } = require('../../../index.js')
+
+  const dirA = path.join(os.tmpdir(), `hypergraph-live-a-${process.pid}-${Date.now()}`)
+  const storeA = new Corestore(dirA)
+  const graphA = new Hypergraph(storeA)
+  await graphA.ready()
+
+  const dirB = path.join(os.tmpdir(), `hypergraph-live-b-${process.pid}-${Date.now()}`)
+  const storeB = new Corestore(dirB)
+  const graphB = new Hypergraph(storeB)
+  await graphB.ready()
+
+  t.teardown(async () => {
+    await graphA.close()
+    await graphB.close()
+    await storeA.close()
+    await storeB.close()
+    fs.rmSync(dirA, { recursive: true, force: true })
+    fs.rmSync(dirB, { recursive: true, force: true })
+  })
+
+  // B watches for posts, but never writes any itself — every post B sees
+  // must have arrived via replication from A.
+  const calls = []
+  const unsubscribe = graphB.query().type('post').live((results) => {
+    calls.push(results.map(r => r.id))
+  })
+  t.teardown(() => unsubscribe())
+
+  for (let i = 0; i < 20 && calls.length < 1; i++) await sleep(50)
+  t.is(calls.length, 1, 'initial snapshot fired on B (empty)')
+
+  await graphB.openUserCore(graphA.key)
+
+  const s1 = storeA.replicate(true, { live: true })
+  const s2 = storeB.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => {
+    try { s1.destroy() } catch (err) { /* already closed */ }
+    try { s2.destroy() } catch (err) { /* already closed */ }
+  })
+
+  console.log('  A creates a post; B should see its live query re-fire from replicated data alone')
+  const post = await graphA.put({ type: 'post' })
+
+  // B's own update() loop needs to actually run for replicated data to be
+  // processed and the 'change' event to fire — a real app would be
+  // calling update() periodically (e.g. an SSE poll loop); simulate that
+  // here rather than relying on any automatic background sync.
+  let sawIt = false
+  for (let i = 0; i < 40; i++) {
+    await sleep(200)
+    await graphB.update()
+    if (calls.some(c => c.includes(post.id))) { sawIt = true; break }
+  }
+  t.ok(sawIt, 'B\'s live query re-fired with the post that arrived purely via replication, with no local write on B at all')
+  console.log('TEST: live cross-peer replication - passed')
+})
+

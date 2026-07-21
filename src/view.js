@@ -99,10 +99,16 @@ module.exports = class GraphView extends ReadyResource {
   /**
    * Update the view by processing new events from user cores and contexts.
    *
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>} True if any new user-core or context-view
+   *   data was actually processed this call, false if there was nothing
+   *   new. Used by Hypergraph.update() to know when to emit a 'change'
+   *   event for live queries — this is a coarse, "something changed"
+   *   signal, not a per-entity/per-relation one.
    */
   async update () {
     if (!this.opened) await this.ready()
+
+    let changed = false
 
     // Ensure replicated data is pulled in before indexing.
     // wait:false: core.update() with no options blocks indefinitely if the
@@ -145,6 +151,7 @@ module.exports = class GraphView extends ReadyResource {
       }
 
       if (lastProcessed === lastSeq) continue
+      changed = true
 
       const nextSeq = lastProcessed
       this.#lastProcessedSeq.set(keyHex, nextSeq)
@@ -178,9 +185,12 @@ module.exports = class GraphView extends ReadyResource {
       await context.update()
 
       const nextViewLen = viewCore.length
+      if (nextViewLen !== lastIndexedLen) changed = true
       this.#contextCheckpoints.set(viewKeyHex, nextViewLen)
       await this.#bee.put(metaKey, { length: nextViewLen })
     }
+
+    return changed
   }
 
   async #applyEvent (event, seq, coreKeyHex) {

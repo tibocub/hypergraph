@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 43: live queries — `GraphQuery.live()`
+
+The single biggest gap identified for HyperBBS integration: `db.query({ live: true })` is
+explicitly part of HyperBBS's own design ("re-fires the callback whenever new matching data
+arrives from peers, enabling chat-like real-time updates"), and hypergraph had nothing like
+it — `query()` was one-shot, and the `'change'` event only ever fired on local writes, never
+on data arriving via replication. Every example app was hand-rolling its own polling loop to
+fake this.
+
+**`Hypergraph.update()` now emits `'change'` for replicated data too, not just local
+writes.** `GraphView.update()` now returns whether it actually processed anything new this
+call (tracked via a simple boolean across both the user-core and context-view loops, no new
+per-event machinery); `Hypergraph.update()` emits `{ type: 'sync' }` when it does. This is
+deliberately coarse — "the graph has new data," not which entity/relation changed — consistent
+with re-running the whole query on any change rather than trying to diff incrementally.
+
+**`GraphQuery.live(callback, opts)`**: runs the query immediately, then re-runs it and calls
+the callback again on every subsequent `'change'`. Re-runs are debounced (default 50ms,
+configurable) so a burst of several changes for one logical action (e.g. `put()` +
+`putContent()` + `tag()`) coalesces into a single re-run rather than firing once per event.
+Returns an unsubscribe function. A throwing callback doesn't kill the subscription — later
+changes still trigger further callbacks. Requires a query created via `graph.query()`
+(`queryContext()` doesn't carry a graph reference to subscribe to).
+
+New tests (5), the most important being a real cross-peer one: a peer holding a live query
+open, making zero local writes of its own, sees its callback re-fire purely from another
+peer's data arriving via actual replication — confirming this isn't just "fires on writes I
+make," which would have missed the entire point. Also covers: initial-snapshot firing,
+debounce coalescing a 3-write burst into exactly one re-run, unsubscribe halting future
+callbacks, and callback-throws-but-subscription-survives. Confirmed stable across 3 repeated
+runs given the timing-sensitive nature of debouncing and replication.
+
+Documented in `docs/querying.md`.
+
+Full local suite: 146/146.
+
 ### Round 42: getByAuthor/getByType made real, and a full documentation accuracy pass
 
 **`getByAuthor()` redesigned per discussion**: previously a full, unindexed scan over every

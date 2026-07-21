@@ -1,4 +1,5 @@
 const { Readable } = require('streamx')
+const safetyCatch = require('safety-catch')
 
 /**
  * GraphQuery provides a fluent query builder for graph operations.
@@ -15,6 +16,7 @@ module.exports = class GraphQuery {
   #typeFilter
   #sortField
   #sortDirection
+  #graph
 
   /**
    * Create a new GraphQuery instance.
@@ -25,8 +27,11 @@ module.exports = class GraphQuery {
    * @param {number} [opts.limit] - Maximum number of results
    * @param {boolean} [opts.reverse] - Whether to reverse results
    * @param {Object} [opts.traverse] - Traversal configuration
+   * @param {Object} [graph] - The Hypergraph instance this query came from,
+   *   needed for live() to subscribe to its 'change' events. Optional —
+   *   only live() requires it; everything else works without it.
    */
-  constructor (view, opts = {}) {
+  constructor (view, opts = {}, graph = null) {
     this.#view = view
     this.#filters = opts.filter ? [opts.filter] : []
     this.#limit = opts.limit || Infinity
@@ -35,6 +40,7 @@ module.exports = class GraphQuery {
     this.#typeFilter = null
     this.#sortField = null
     this.#sortDirection = 'asc'
+    this.#graph = graph
   }
 
   // ========================================
@@ -341,6 +347,75 @@ module.exports = class GraphQuery {
       count++
     }
     return count
+  }
+
+  /**
+   * Run this query now, then re-run it and invoke callback again whenever
+   * new data arrives on the graph — whether from a local write or data
+   * that arrived via replication (see Hypergraph.update()'s 'change'
+   * event). Re-runs are debounced (coalescing a burst of several changes,
+   * e.g. a put() + putContent() + tag() in quick succession, into a
+   * single re-run) rather than firing once per individual change.
+   *
+   * This re-runs the whole query on every relevant change rather than
+   * incrementally diffing results — the simpler, correct-first approach,
+   * consistent with this being a new feature; worth revisiting only if
+   * this specific cost becomes a real bottleneck in practice.
+   *
+   * @param   {Function} callback - Called with the full result array, once immediately and again after each change
+   * @param   {Object}   [opts]
+   * @param   {number}   [opts.debounceMs=50] - How long to wait for more changes before re-running
+   * @returns {Function} Unsubscribe function — stops listening and cancels any pending debounced re-run
+   * @throws  {Error} If this query wasn't created via graph.query() (no graph reference to subscribe to)
+   */
+  live (callback, opts = {}) {
+    if (!this.#graph) throw new Error('live() requires a query created via graph.query()')
+    const debounceMs = typeof opts.debounceMs === 'number' ? opts.debounceMs : 50
+
+    let running = false
+    let rerunQueued = false
+    let debounceTimer = null
+    let stopped = false
+
+    const runOnce = async () => {
+      if (running) {
+        rerunQueued = true
+        return
+      }
+      running = true
+      try {
+        const results = await this.toArray()
+        if (!stopped) callback(results)
+      } catch (err) {
+        // A failing query or a throwing callback shouldn't kill the
+        // subscription — future changes should still trigger a retry.
+        safetyCatch(err)
+      } finally {
+        running = false
+        if (rerunQueued && !stopped) {
+          rerunQueued = false
+          runOnce()
+        }
+      }
+    }
+
+    const onChange = () => {
+      if (stopped) return
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null
+        runOnce()
+      }, debounceMs)
+    }
+
+    this.#graph.on('change', onChange)
+    runOnce() // initial snapshot, immediate — no debounce on the first run
+
+    return () => {
+      stopped = true
+      if (debounceTimer) clearTimeout(debounceTimer)
+      this.#graph.off('change', onChange)
+    }
   }
 
   // ========================================

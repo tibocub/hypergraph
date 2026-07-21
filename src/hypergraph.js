@@ -805,6 +805,12 @@ module.exports = class Hypergraph extends ReadyResource {
    * Call this after appending events to ensure indexes are up-to-date.
    * Most operations call this automatically.
    *
+   * Emits a 'change' event (`{ type: 'sync' }`) if this call actually
+   * processed new data — whether from a local write or data that arrived
+   * via replication. This is the signal live queries (see
+   * `GraphQuery.live()`) subscribe to; it's intentionally coarse (does
+   * this graph have new data at all, not which entity/relation changed).
+   *
    * @returns {Promise<void>}
    */
   async update () {
@@ -817,7 +823,10 @@ module.exports = class Hypergraph extends ReadyResource {
       await context.update()
     }
 
-    await this.#view.update()
+    const changed = await this.#view.update()
+    if (changed) {
+      this.#emitter.emit('change', { type: 'sync', timestamp: Date.now() })
+    }
   }
 
 
@@ -1144,7 +1153,7 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   query (opts = {}) {
     if (!this.opened) this.ready().then(() => {})
-    return new GraphQuery(this.#view, opts)
+    return new GraphQuery(this.#view, opts, this)
   }
 
 
