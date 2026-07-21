@@ -9,6 +9,7 @@ const b4a = require('b4a')
 const UserCore = require('./user-core')
 const ContextBase = require('./context-base')
 const RoleBase = require('./role-base')
+const ScopeBase = require('./scope-base')
 const GraphView = require('./view')
 const GraphQuery = require('./query')
 const IdentityManager = require('./identity-manager')
@@ -39,6 +40,7 @@ module.exports = class Hypergraph extends ReadyResource {
   #valueEncoding
   #userCoreKey
   #roleBase
+  #scopeBase
   #emitter
   identity
 
@@ -67,6 +69,7 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#contexts = new Map()
     this.#view = null
     this.#roleBase = null
+    this.#scopeBase = null
     this.#emitter = new EventEmitter()
 
     this.ready().catch(safetyCatch)
@@ -121,6 +124,7 @@ module.exports = class Hypergraph extends ReadyResource {
     if (this.#userCore) await this.#userCore.close()
 
     if (this.#roleBase) await this.#roleBase.close()
+    if (this.#scopeBase) await this.#scopeBase.close()
 
     for (const context of this.#contexts.values()) {
       await context.close()
@@ -158,6 +162,11 @@ module.exports = class Hypergraph extends ReadyResource {
 	/** @returns {RoleBase|null} */
   get roleBase () {
     return this.#roleBase
+  }
+
+	/** @returns {ScopeBase|null} */
+  get scopeBase () {
+    return this.#scopeBase
   }
 
 	/** @returns {Array<PubKeyHex>} UserCore's keys as an array */
@@ -693,6 +702,7 @@ module.exports = class Hypergraph extends ReadyResource {
   async update () {
     if (!this.opened) await this.ready()
     if (this.#roleBase) await this.#roleBase.update()
+    if (this.#scopeBase) await this.#scopeBase.update()
 
     for (const [, context] of this.#contexts) {
       if (!context || !context.opened) continue
@@ -741,6 +751,48 @@ module.exports = class Hypergraph extends ReadyResource {
     await roles.ready()
     this.#roleBase = roles
     return roles
+  }
+
+// ── ScopeBase ─────────────────────────────────────────────────────────────
+
+  /**
+   * Create a fresh ScopeBase and attach it to this graph instance.
+   * Closes any previously attached ScopeBase. Permission checks on scope
+   * actions (scope.create/scope.grant/scope.revoke) are evaluated against
+   * whichever RoleBase is currently attached to this graph, if any.
+   *
+   * @returns {Promise<string>} The new ScopeBase key as a hex string.
+   */
+  async createScopeBase () {
+    if (!this.opened) await this.ready()
+
+    if (this.#scopeBase) await this.#scopeBase.close()
+
+    const scopes = new ScopeBase(this.#store, null, { identity: this.identity, roleBase: this.#roleBase })
+    await scopes.ready()
+    this.#scopeBase = scopes
+    return scopes.key.toString('hex')
+  }
+
+  /**
+   * Open an existing ScopeBase by key and attach it to this graph instance.
+   *
+   * @param   {Buffer|string} keyOrHex
+   * @returns {Promise<ScopeBase>}
+   */
+  async openScopeBase (keyOrHex) {
+    if (!this.opened) await this.ready()
+    if (!keyOrHex) throw new Error('ScopeBase key is required')
+
+    const keyHex = Buffer.isBuffer(keyOrHex) ? keyOrHex.toString('hex') : keyOrHex
+    if (typeof keyHex !== 'string' || keyHex.length === 0) throw new Error('Invalid ScopeBase key')
+
+    if (this.#scopeBase) await this.#scopeBase.close()
+
+    const scopes = new ScopeBase(this.#store, Buffer.from(keyHex, 'hex'), { identity: this.identity, roleBase: this.#roleBase })
+    await scopes.ready()
+    this.#scopeBase = scopes
+    return scopes
   }
 
   /**

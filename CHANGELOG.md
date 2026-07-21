@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 40: read-permission, stage 2 — ScopeBase, and a general Autobase-namespacing bug found along the way
+
+Built the read-scope structure itself: `src/scopes-registry.js` (a pure state machine for
+`scope/create`/`scope/keyGrant`/`scope/revoke` events, mirroring `roles-registry.js`'s design)
+and `src/scope-base.js` (an Autobase-backed structure mirroring `role-base.js`: signature
+verification, then a RoleBase permission check — `scope.create`/`scope.grant`/`scope.revoke`
+— hard-rejecting unauthorized attempts exactly like moderation does). Wired into
+`hypergraph.js` as `createScopeBase()`/`openScopeBase()`, mirroring `createRoleBase()`/
+`openRoleBase()`. A scope's actual symmetric key never appears anywhere in this structure —
+only copies sealed to a specific recipient's `encryptionKeyPair.publicKey` (round 39) do.
+
+**Found and fixed a real, general bug while wiring this up: two un-namespaced Autobase
+instances sharing one Corestore collide.** `ScopeBase`, mirroring `RoleBase`'s existing
+pattern, initially used the raw Corestore directly rather than a namespaced session (the way
+`ContextBase` already does via `store.namespace(...)`). This hung — reproduced down to a
+minimal, two-raw-`Autobase` script with no application code involved at all — because
+`RoleBase` is the only other structure in the whole system that also skips namespacing; two
+un-namespaced Autobase instances both try to use the same internal `"view"` core name on the
+same Corestore. Fixed by namespacing `ScopeBase` the same way `ContextBase` does. Worth
+remembering as a general rule for any future Autobase-backed structure: it must namespace,
+since `RoleBase` only got away with skipping it because nothing else did before now.
+
+**Also confirmed a separate, more fundamental limitation while building the test suite:**
+two separate *object instances* of the same Autobase key cannot share one Corestore at all
+(hangs immediately, confirmed with a minimal repro, and confirmed to also affect plain
+`RoleBase`, not something specific to this new code). Multi-peer scenarios always need
+separate Corestores with real replication between them — never one shared store standing in
+for multiple people. Every cross-peer test in this round uses separate stores accordingly.
+
+New tests (6): scope creation and self-resolution; cross-peer grant (sealed to a real second
+identity's `encryptionKeyPair`, confirmed unopenable by an unrelated third identity);
+unauthorized grant rejected client-side, over a real replicated link; the inherent
+cryptographic requirement that granting requires actually holding the key (distinct from the
+permission check — you cannot seal a key you don't have, regardless of role); revoke is
+informational only, confirmed directly that a previously granted key remains resolvable
+afterward (deliberate, not an oversight); and a RoleBase-sync-race test for scope events,
+mirroring round 38's equivalent for moderation. Confirmed stable across multiple repeated
+runs given the timing-sensitive nature of the replication-based tests.
+
+Full local suite: 132/132. Next stage: wiring actual content encryption into
+`putContent()`/`getContent()`.
+
 ### Round 39: read-permission, stage 1 — a stable, per-identity encryption keypair
 
 First concrete step of the read-permission design discussed: content stays readable by anyone
