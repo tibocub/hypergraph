@@ -645,8 +645,11 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   /**
    * Create a HypergraphNetwork instance configured to join from a bootstrap
    * descriptor (as produced by generateBootstrap()) — the consumption-side
-   * counterpart, mirroring how Hypergraph.join() consumes its own export()
-   * bootstrap shape. Also opens the owner's user core on the joining graph
+   * counterpart. Note this is a different, networking-oriented bootstrap shape
+   * than graph.export()'s own — there is no Hypergraph.join() that consumes
+   * export()'s shape directly; this method and its generateBootstrap()
+   * counterpart are the actual, supported way to join over the network.
+   * Also opens the owner's user core on the joining graph
    * (via bootstrap.ownerCore), so the owner's data becomes visible to the
    * view once connected, without the caller needing to do that step
    * themselves.

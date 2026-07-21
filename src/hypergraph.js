@@ -743,6 +743,58 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.#view.getByTag(tag, opts)
   }
 
+  /**
+   * Iterate over entities of a given type, in chronological order.
+   *
+   * Backed by the same type-specific, time-sorted index `query().type()`
+   * uses internally — an efficient, indexed scan, not a full table scan.
+   *
+   * @param   {string} type
+   * @returns {AsyncGenerator<Entity>}
+   *
+   * @example
+   * for await (const node of graph.getByType('post')) {
+   *   console.log(node.id)
+   * }
+   */
+  getByType (type) {
+    if (!this.opened) {
+      return (async function * () {
+        await this.ready()
+        yield * this.#view.getByType(type)
+      }).call(this)
+    }
+    return this.#view.getByType(type)
+  }
+
+  /**
+   * Iterate over entities created by a given author, in the order they
+   * appear in that author's own UserCore.
+   *
+   * Scans that author's own UserCore directly rather than the shared
+   * view — since a UserCore already only contains that person's own
+   * entities, no separate author index is needed at all. Yields nothing
+   * if that author's core hasn't been opened/replicated locally yet (see
+   * `openUserCore()`).
+   *
+   * @param   {PubKeyHex} author
+   * @returns {AsyncGenerator<Entity>}
+   *
+   * @example
+   * for await (const node of graph.getByAuthor(authorPubkeyHex)) {
+   *   console.log(node.id)
+   * }
+   */
+  getByAuthor (author) {
+    if (!this.opened) {
+      return (async function * () {
+        await this.ready()
+        yield * this.#view.getByAuthor(author)
+      }).call(this)
+    }
+    return this.#view.getByAuthor(author)
+  }
+
   // ========================================
   // Sync
   // ========================================

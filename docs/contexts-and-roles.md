@@ -1,6 +1,8 @@
 # Contexts and Roles
 
-Contexts provide collaborative workspaces for relations, tags, and moderation. Roles provide access control for contexts.
+Contexts provide collaborative workspaces for relations, tags, and moderation. Roles provide
+write-access control for contexts. (For read-access — controlling who can decrypt content,
+a separate concern — see [Read Permission](read-permission.md).)
 
 ## Contexts
 
@@ -23,13 +25,11 @@ Contexts support two write modes:
 - Author must have `context.write` privilege
 - Suitable for private or moderated contexts
 
-> **Known limitation:** closed-mode authorization currently requires a peer to already be
-> a writer *before* opening an existing context, which conflicts with Autobase's normal
-> open-then-authorize flow. This needs an application-level redesign (a role check gating
-> `addWriter`/`append`) rather than relying on Autobase-level write access alone. See the
-> two skipped tests in `test/brittle/core/contexts.js` and the CHANGELOG's "Known gaps"
-> section. Until this is resolved, closed mode should be considered unproven in practice —
-> stick to open mode plus application-level moderation (see below) for now.
+Regardless of write mode, `moderateAction()` and writer-change events are always
+signature-verified and permission-checked against whichever RoleBase is attached — this is
+thoroughly tested (see `test/brittle/networking/writer-authorization.js`,
+`test/brittle/core/moderation.js`, `test/brittle/core/contexts.js`), including cross-peer
+scenarios and the race between a RoleBase and a context replicating concurrently.
 
 ### Context Isolation
 
@@ -54,21 +54,26 @@ const ctx = await graph.openContext(ctxKey, { writeMode: 'closed' })
 
 ### Role Registry
 
-The role registry is stored in an Autobase and includes:
+The role registry is stored in an Autobase. This is `initRegistry()`'s actual, real default
+(see `src/roles-registry.js`) — permission strings beyond these are free-form; an app can
+grant any role any subset via `roles/setRolePermissions`:
 
 ```js
 {
+  version: 1,
   roles: {
-    owner: ['*'],                    // All permissions
-    admin: ['content.delete', 'user.ban', 'mod.add'],
-    mod: ['content.delete', 'user.ban'],
-    member: ['content.create', 'content.reply']
+    owner: ['*'],                                                                    // All permissions
+    admin: ['mod.add', 'mod.remove', 'content.remove', 'content.hide', 'content.reveal', 'context.write'],
+    mod: ['content.hide', 'content.remove', 'content.flag'],
+    member: []
   },
   members: {
     '<pubkey>': 'owner'
   }
 }
 ```
+
+A pubkey not explicitly listed in `members` falls back to the `member` role if one exists.
 
 ### Authorization Checks
 
@@ -80,20 +85,28 @@ if (!can(registry, author, requiredPermission)) {
 }
 ```
 
+This happens both client-side (a fast, clear error for the caller — `addWriter()` and
+`moderateAction()` both check this before appending) and at the apply layer on every peer
+that replicates the event (the actual, enforced boundary — signature verified first, then
+permission-checked; an unauthorized action is hard-rejected and never indexed at all,
+confirmed directly via both filtered and unfiltered queries).
+
 ### Moderation
 
-Moderation actions are signed by the author's keypair:
+Moderation actions are signed by the author's keypair — `keyPair` is required:
 
 ```js
 await graph.moderateAction({
   context: moderationContext,
   action: 'content.flag',
   target: 'post/1',
-  reason: 'spam'
+  reason: 'spam',
+  keyPair: myKeyPair
 })
 ```
 
-Peers validate signatures against the role registry before applying actions.
+Peers validate signatures against the role registry before applying actions. An unauthorized
+attempt throws immediately, client-side, rather than silently never taking effect.
 
 ### Supported Moderation Actions
 
@@ -102,11 +115,27 @@ Peers validate signatures against the role registry before applying actions.
 - `content.remove` - Delete
 - `content.reveal` - Unhide
 
+Hypergraph only records these as signed, permission-gated facts — interpreting them (e.g.
+"hide after 3 flags") is entirely application-level policy, not hypergraph's job.
+
+### Writer Changes
+
+Writers can be added or removed from a context, both signed and permission-gated in closed
+mode:
+
+```js
+await context.addWriter(newWriterKey, { keyPair: myKeyPair })
+await context.removeWriter(writerKeyToRemove, { keyPair: myKeyPair })
+```
+
 ### Creating vs Opening RoleBase
 
 `createRoleBase()` creates a new RoleBase and automatically attaches it to the graph instance. Do NOT call `openRoleBase()` immediately after `createRoleBase()` - this will cause "Autobase failed to open" errors.
 
-Use `openRoleBase(key)` only when opening an existing RoleBase from another peer after replication.
+Use `openRoleBase(key)` only when opening an existing RoleBase from another peer, over its own
+separate Corestore, after replication. More generally: two separate object instances of the
+same Autobase key can never share one Corestore at all — this applies to any Autobase-backed
+structure, not just RoleBase.
 
 **Correct usage:**
 ```js
@@ -116,11 +145,12 @@ const owner = graph.key.toString('hex')
 await graph.roleBase.init(owner)
 await graph.roleBase.append(...)
 
-// Opening an existing RoleBase (from another peer)
+// Opening an existing RoleBase (from another peer, over its own Corestore)
 await graph.openRoleBase(roleKeyHex)
 ```
 
 ## See Also
 
+- [Read Permission](read-permission.md) - Read-access model: scopes, sealed key grants, content encryption
 - [Glossary](glossary.md) - Context and role terminology
 - [Storage Model](storage-model.md) - How context and role data is stored

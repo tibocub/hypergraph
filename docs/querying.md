@@ -7,7 +7,7 @@ Hypergraph provides a fluent query interface for efficient graph queries backed 
 ### Fluent Query Interface
 
 ```js
-// Query by type
+// Query by type — chronological order, using the time-sorted nt: index
 const results = await graph.query()
   .type('post')
   .toArray()
@@ -19,6 +19,33 @@ const results = await graph.query()
   .toArray()
 ```
 
+Default order (with no `.type()` filter) is also chronological, via a separate,
+type-agnostic index (`nc:`) — not the raw, unordered entity-id keyspace. Both are real,
+efficient indexed scans, not a full table scan followed by an in-memory sort.
+
+### Sorting by Anything Else
+
+```js
+// Sort by a derived value that isn't stored on the entity at all — e.g. a vote
+// count computed from edges. Attach it via .filter() as an enrichment step first.
+const results = await graph.query()
+  .type('post')
+  .filter(async (node) => {
+    let count = 0
+    for await (const _e of graph.edges(node.id, { direction: 'in', type: 'vote' })) count++
+    node.voteCount = count
+    return true // never actually excludes anything — this is enrichment, not filtering
+  })
+  .sortBy('voteCount', 'desc')
+  .limit(20)
+  .toArray()
+```
+
+Unlike the chronological default (a lazy, streaming, indexed scan), `sortBy()` buffers all
+matching results in memory before sorting — there's no way to index a value that isn't
+stored on the entity itself. `limit()` is applied *after* sorting when `sortBy()` is used, not
+during the initial scan — otherwise the "top N" could be wrong.
+
 ### Edge Traversal
 
 ```js
@@ -27,6 +54,9 @@ for await (const edge of graph.edges('post/1', { direction: 'in', type: 'reply' 
   console.log(edge.from) // comment/1
 }
 ```
+
+Relations can carry an optional numeric `value` (e.g. a vote's +1/-1), included when present
+on the edge object returned here.
 
 ### Tag Queries
 
@@ -37,10 +67,15 @@ for await (const node of graph.getByTag('important', { authors: [author] })) {
 }
 ```
 
+Note: tag lookups currently do a full scan with a per-node check — there's no dedicated tag
+index yet (unlike type/author, below). Worth revisiting if tag-heavy queries become a real
+bottleneck.
+
 ### Type Queries
 
 ```js
-// Get entities by type
+// Get entities by type, chronologically — an efficient, indexed scan (nt:), the same
+// index query().type() uses internally
 for await (const node of graph.getByType('post')) {
   console.log(node.id)
 }
@@ -49,22 +84,32 @@ for await (const node of graph.getByType('post')) {
 ### Author Queries
 
 ```js
-// Get entities by author
-for await (const node of graph.getByAuthor(author)) {
+// Get entities by a specific author
+for await (const node of graph.getByAuthor(authorPubkeyHex)) {
   console.log(node.id)
 }
 ```
+
+This scans that author's own UserCore directly rather than any shared index — a UserCore
+already only contains that person's own entities, so no separate author index is needed at
+all. Returns nothing if that author's core hasn't been opened/replicated locally yet (see
+`openUserCore()`).
 
 ## Indexes
 
 Hypergraph maintains materialized indexes for efficient queries:
 
 ### Node Indexes
-- `n:<entityId>` - Node records
-- `nt:<type>:<createdAt>:<entityId>` - Type index (time-sorted)
+- `n:<entityId>` - Node records. NOT chronologically ordered across multiple authors —
+  keyed by `<type>/<authorCoreKeyHex>/<seq>`, and a core key's hex ordering has nothing to do
+  with when its owner actually wrote something
+- `nt:<type>:<createdAt>:<entityId>` - Type index (time-sorted) — what `query().type()` and
+  `getByType()` actually use
+- `nc:<createdAt>:<entityId>` - Type-agnostic time index — what `query()`'s default,
+  unfiltered order actually uses
 
 ### Edge Indexes
-- `e:<from>:<type>:<createdAt>:<to>` - Edge records
+- `e:<from>:<type>:<createdAt>:<to>` - Edge records (includes an optional `value` field)
 - `i:in:<to>:<type>:<createdAt>:<from>` - Incoming edge index
 - `er:<from>:<type>:<to>` - Edge references
 - `cnt:in:<to>:<type>` - Edge counts (incoming)
@@ -78,7 +123,8 @@ Hypergraph maintains materialized indexes for efficient queries:
 
 Since Hypergraph is built on append-only logs, it cannot match the O(1) performance of native graph databases for complex queries (e.g., shortest path algorithms).
 
-**Query complexity is O(n)** for multi-hop traversals.
+**Query complexity is O(n)** for multi-hop traversals, and for `sortBy()` (which must buffer
+and sort every matching result — see above).
 
 However, this is acceptable for P2P social apps because:
 - Hypercore (built on RocksDB) is very fast for sequential reads

@@ -1,6 +1,6 @@
 # Storage Model
 
-Hypergraph distributes data across three main data structures to optimize for P2P collaboration and storage efficiency.
+Hypergraph distributes data across four main data structures to optimize for P2P collaboration and storage efficiency.
 
 ## Data Distribution
 
@@ -11,7 +11,8 @@ Hypergraph distributes data across three main data structures to optimize for P2
 **Events stored:**
 - `entity/create` - Entity creation metadata (type, author, timestamp)
 - `entity/tombstone` - Entity deletion marker
-- `content/append` - Actual content body (text, markdown, etc.)
+- `content/append` - Actual content body (text, markdown, etc.) — optionally encrypted (see
+  [Read Permission](read-permission.md))
 - `identity/update` - User profile (username, bio)
 
 **Key characteristic**: One UserCore per user - contains only that user's entities and content. Single-writer ensures no conflicts.
@@ -21,11 +22,14 @@ Hypergraph distributes data across three main data structures to optimize for P2
 **Purpose**: Stores collaborative metadata (relations, tags, moderation) that reference entities.
 
 **Events stored:**
-- `relation/create` - Directed edge between entities (from, to, type)
+- `relation/create` - Directed edge between entities (from, to, type, optional numeric `value`)
 - `relation/delete` - Edge removal
-- `tag/add` - Tag assignment to entity
+- `tag/add` - Tag assignment to entity (author-only)
 - `tag/remove` - Tag removal from entity
-- `moderation/action` - Content moderation (flag, hide, remove, reveal)
+- `moderation/action` - Content moderation (flag, hide, remove, reveal), signed and
+  permission-checked
+- `roles/addWriter` / `roles/removeWriter` - Context-level writer changes, signed and
+  permission-checked in closed mode
 - `message` - Generic messages
 
 **External Pointer Pattern**:
@@ -44,19 +48,38 @@ Hypergraph distributes data across three main data structures to optimize for P2
 - `roles/setRole` - Assign role to member
 - `roles/removeMember` - Remove member
 - `roles/setRolePermissions` - Define what roles can do
-- `roles/addWriter` - Add writer to RoleBase
+- `roles/addWriter` - Add writer to RoleBase itself (distinct from the context-level event of
+  the same name)
 
-**Key characteristic**: Centralized role registry that ContextBase consults for authorization. Can be shared across contexts or per-context.
+**Key characteristic**: Centralized role registry that ContextBase (and ScopeBase) consult for
+authorization. Can be shared across contexts or per-context. Unlike ContextBase and ScopeBase,
+RoleBase does not namespace its Corestore session — see
+[Corestore Namespaces](contributors/corestore-namespaces.md) for why that matters.
+
+### ScopeBase (Multi-Writer Autobase)
+
+**Purpose**: Stores sealed key grants for read-access scopes. See
+[Read Permission](read-permission.md) for the full design.
+
+**Events stored:**
+- `scope/create` - Create a new scope
+- `scope/keyGrant` - Seal a scope's key (at a given epoch) to a recipient's encryption public key
+- `scope/revoke` - Mark a pubkey as no longer a current member (informational only)
+
+**Key characteristic**: The actual symmetric key never appears here in the clear — only
+sealed copies, each readable only by its intended recipient.
 
 ### GraphView (Hyperbee Materialized View)
 
 **Purpose**: Provides fast queries by indexing data from UserCores and ContextBases.
 
 **Indexed data:**
-- `n:<id>` - Node records (entities with metadata)
-- `c:<entityId>:<seq>` - Content versions
+- `n:<id>` - Node records (entities with metadata) — NOT chronologically ordered across
+  multiple authors (keyed by `<type>/<authorCoreKeyHex>/<seq>`)
+- `c:<entityId>:<seq>` - Content versions (with optional encryption metadata)
 - `nt:<type>:<createdAt>:<id>` - Type index (time-sorted)
-- `e:<from>:<type>:<ts>:<to>` - Edge records
+- `nc:<createdAt>:<id>` - Type-agnostic time index
+- `e:<from>:<type>:<ts>:<to>` - Edge records (optional numeric `value`)
 - `er:<from>:<type>:<to>` - Edge references
 - `t:<tag>:<entityId>` - Tag references
 - `m:t:<target>:<ts>:<coreKeyHex>:<seq>` - Moderation by target
@@ -78,14 +101,14 @@ The external pointer pattern avoids data duplication in Autobase views:
 **Example:**
 ```
 User A core:
-  seq 0: { type: 'entity/create', id: 'post/1', author, timestamp }
-  seq 1: { type: 'content/append', entityId: 'post/1', body: 'Hello', contentType: 'text' }
+  seq 0: { type: 'entity/create', entityType: 'post', author, timestamp }
+  seq 1: { type: 'content/append', entityId: 'post/<authorHex>/0', body: 'Hello', contentType: 'text' }
 
 Context Autobase:
-  Writer A seq 0: { type: 'relation/create', from: 'post/2', to: 'post/1', relationType: 'reply', ... }
+  Writer A seq 0: { type: 'relation/create', from: 'post/<otherHex>/0', to: 'post/<authorHex>/0', relationType: 'reply', ... }
 ```
 
-The ContextBase only stores the entity IDs (`post/1`, `post/2`), not the full content.
+The ContextBase only stores the entity IDs, not the full content.
 
 ## Storage Efficiency
 
@@ -97,7 +120,7 @@ The ContextBase only stores the entity IDs (`post/1`, `post/2`), not the full co
    - Identity profiles duplicated
 
 2. **ContextBase → GraphView:**
-   - Relation metadata (from, to, type, author) duplicated
+   - Relation metadata (from, to, type, author, value) duplicated
    - Tag metadata (entityId, tag, author) duplicated
    - Moderation metadata (action, target, reason, author) duplicated
 
@@ -147,4 +170,5 @@ View updates are caller-driven:
 ## See Also
 
 - [Local Data Distribution](local%20data%20distribution.md) - Detailed analysis of storage efficiency and data duplication
+- [Read Permission](read-permission.md) - ScopeBase and content encryption
 - [Glossary](glossary.md) - P2P/Holepunch terminology

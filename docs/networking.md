@@ -2,9 +2,58 @@
 
 Hypergraph provides a local API and does not handle networking directly. Replication is the responsibility of the application, typically using Hyperswarm.
 
+## Recommended: HypergraphNetwork
+
+`HypergraphNetwork` (a separate class from `Hypergraph` itself, in `src/networking.js`)
+handles swarm setup, bootstrap exchange, and the writer-request/grant handshake. This is what
+every example app (`forum-web`, `chat-web`, `p2p-reddit-clone`) actually uses.
+
+**Owner side** — generate a bootstrap descriptor to share with others:
+
+```js
+const bootstrap = HypergraphNetwork.generateBootstrap(graph, {
+  topic: crypto.randomBytes(32),
+  contexts: { comments: commentsContextKey, moderation: moderationContextKey },
+  metadata: { /* app-specific, e.g. moderation policy config */ }
+})
+
+const networking = new HypergraphNetwork(graph, store, swarm, {
+  topic: bootstrap.topic,
+  contexts: bootstrap.contexts,
+  role: 'owner'
+})
+await networking.connect()
+```
+
+**Joining peer side** — consume that bootstrap descriptor:
+
+```js
+const networking = await HypergraphNetwork.connectFromBootstrap(graph, store, swarm, bootstrap, { role: 'peer' })
+// this also opens the owner's user core automatically, via bootstrap.ownerCore
+await networking.connect()
+```
+
+There is no `graph.join(bootstrap)` method on `Hypergraph` itself — joining an existing graph
+always goes through `HypergraphNetwork` as above, not through `Hypergraph` directly.
+
+### Peer Discovery Events
+
+`HypergraphNetwork` (not `Hypergraph`) emits peer lifecycle events:
+
+```js
+networking.on('peer-join', (info) => { /* ... */ })
+networking.on('writer-granted', (msg) => { /* ... */ })
+networking.on('writer-error', (msg) => { /* ... */ })
+```
+
+`Hypergraph.on()` only ever emits `'change'` — it throws for any other event name. If you
+want peer-join/leave notifications, subscribe on your `HypergraphNetwork` instance, not on
+`graph` itself.
+
 ## Manual Replication
 
-The simplest approach is to replicate the entire Corestore:
+Still valid for apps that want lower-level control (this is what `forum`/`forum-web`'s
+hand-rolled networking does instead of `HypergraphNetwork`):
 
 ```js
 const Hyperswarm = require('hyperswarm')
@@ -37,33 +86,20 @@ await d.flushed()  // Critical: wait for DHT announcement
 await graph.put({ type: 'message' })
 ```
 
-## Bootstrap/Export API
+## Bootstrap Export (for your own custom joining flow)
 
-For joining existing graphs, use the bootstrap/export API:
+If you're not using `HypergraphNetwork.generateBootstrap()`/`.connectFromBootstrap()` and want
+to build a custom flow instead, `graph.export()` gives you the graph's own state to work from:
 
 ```js
-// Export graph state from an existing peer
 const bootstrap = await graph.export()
 // Returns: { version, userCoreKey, contexts: [{key, writeMode}], timestamp, networking? }
-
-// Join a graph using bootstrap data
-const graph = new Hypergraph(store)
-await graph.join(bootstrap)
 ```
 
-## Event-Based Peer Discovery
-
-Hypergraph emits events for peer join/leave:
-
-```js
-graph.on('change', (event) => {
-  if (event.type === 'peer-join') {
-    console.log('Peer joined:', event.userCoreKey)
-  } else if (event.type === 'peer-leave') {
-    console.log('Peer left:', event.userCoreKey)
-  }
-})
-```
+There is no corresponding `graph.import()`/`graph.join()` — consuming this shape into a new
+`Hypergraph` instance (opening the right user core and contexts) is left to the application,
+or to `HypergraphNetwork.connectFromBootstrap()`'s own (differently-shaped) bootstrap
+descriptor above.
 
 ## Selective Replication
 
@@ -84,7 +120,11 @@ When a peer connects to a context:
 3. In open mode: ContextBase automatically adds peer as writer
 4. In closed mode: ContextBase emits 'writer-request' event for approval
 
+`HypergraphNetwork` handles this handshake automatically when used; the above is the
+lower-level mechanism underneath it, relevant if you're replicating manually instead.
+
 ## See Also
 
 - [Glossary](glossary.md) - P2P networking terminology
 - [Contexts and Roles](contexts-and-roles.md) - Context write modes and authorization
+- [Read Permission](read-permission.md) - Key distribution for read-access scopes (a related but separate exchange from writer authorization)

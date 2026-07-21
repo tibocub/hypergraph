@@ -1,47 +1,57 @@
 # Autobase Integration
 
-ContextBase and RoleBase use Autobase for multi-writer CRDT operations.
+ContextBase, RoleBase, and ScopeBase all use Autobase for multi-writer CRDT operations, with
+the same basic shape.
 
 ## Autobase View Opening
 
-When Autobase opens a writer's view, it calls the `open` callback:
+Autobase calls the `open` callback once, to get the Hyperbee that will become this
+structure's materialized view. All three structures use the same pattern — a fixed core name,
+not a key parameter:
 
 ```js
-async #openView (store, key) {
-  const core = store.get({ key })
-  await core.ready()
-  const bee = new Hyperbee(core, {
+#openView (store) {
+  const viewCore = store.get({ name: 'view' })
+  this.#viewBee = new Hyperbee(viewCore, {
     keyEncoding: 'utf-8',
-    valueEncoding: 'json',
-    extension: false
+    valueEncoding: 'json'
   })
-  await bee.ready()
-  return bee
+  return this.#viewBee
 }
 ```
 
+Because the core name is fixed (`'view'`) rather than derived from anything unique to the
+instance, **the Corestore session passed in here must already be namespaced** — otherwise two
+different Autobase-backed structures sharing one Corestore collide on this same core name.
+See [Corestore Namespaces](corestore-namespaces.md) for a real bug this caused.
+
 ## Autobase View Application
 
-When Autobase applies a writer's output, it calls the `apply` callback:
+Autobase calls the `apply` callback with each new batch of events. The real signature takes
+three arguments, not two — `host` is what lets the apply function call `host.addWriter()`/
+`host.removeWriter()`, which can only happen from inside `apply`:
 
 ```js
-async #applyView (batch, viewBee) {
-  for (const node of batch) {
-    const event = decodeEvent(node.value)
-    // Process event and update indexes
+async #applyView (batch, view, host) {
+  for (const { value: event } of batch) {
+    if (event.type === 'roles/addWriter') {
+      const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
+      await host.addWriter(key, { indexer: true })
+      continue
+    }
+    // ...dispatch on event.type, apply to the view
   }
 }
 ```
 
-## Autobase Checkpoints
+## Tracking Progress
 
-ContextBase uses Autobase checkpoints to track progress:
-
-```js
-const checkpoint = this.#base.linearizer.indexers.get(localWriter).clock
-this.#contextCheckpoints.set(contextKeyHex, checkpoint)
-```
+GraphView tracks how much of each context's Autobase view it has already indexed with a
+simple length counter (`context.view.length`), stored per context in
+`#contextCheckpoints` — not a linearizer/indexer clock. On each `update()`, it compares the
+current view length against the last-seen length and only processes the new range.
 
 ## See Also
 
-- [Corestore Namespaces](corestore-namespaces.md) - How ContextBase isolates cores
+- [Corestore Namespaces](corestore-namespaces.md) - How ContextBase (and any Autobase-backed
+  structure) isolates cores

@@ -595,20 +595,30 @@ module.exports = class GraphView extends ReadyResource {
    * @param {string} author - The author's hex public key
    * @returns {AsyncIterable<Entity>} Async iterator of entities by the author
    */
+  /**
+   * Get entities by author (hex public key).
+   *
+   * Scans the author's own UserCore directly, rather than the shared
+   * view — a UserCore already only contains that person's own entities,
+   * so no separate author index is needed at all. Returns nothing if this
+   * author's core hasn't been opened/replicated locally yet.
+   *
+   * @param {string} author - The author's hex public key
+   * @returns {AsyncIterable<Entity>} Async iterator of entities by the author
+   */
   async * getByAuthor (author) {
     if (!this.opened) await this.ready()
 
-    // Scan all nodes and filter by author
-    // This is O(n) - could be optimized with an author index
-    const stream = this.#bee.createReadStream({
-      gte: 'n:',
-      lt: 'n:\uffff'
-    })
+    const userCore = this.#userCores.get(author)
+    if (!userCore) return
 
-    for await (const entry of stream) {
-      if (!entry.value.deleted && entry.value.author === author) {
-        yield entry.value
-      }
+    for (let seq = 0; seq < userCore.length; seq++) {
+      const event = await userCore.get(seq)
+      if (!event || event.type !== 'entity/create') continue
+
+      const id = `${event.entityType}/${author}/${seq}`
+      const node = await this.getNode(id)
+      if (node) yield node
     }
   }
 

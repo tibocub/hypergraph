@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 42: getByAuthor/getByType made real, and a full documentation accuracy pass
+
+**`getByAuthor()` redesigned per discussion**: previously a full, unindexed scan over every
+entity checking `author === X` (the code's own comment already flagged this as O(n)). Redesigned
+to scan that author's own UserCore directly instead — a UserCore already only contains that
+person's own entities, so no separate index is needed at all, matching the insight that this
+should "come for free." Returns nothing if that author's core hasn't been opened/replicated
+locally yet.
+
+**`getByType()`/`getByAuthor()` exposed as real, public `Hypergraph` methods** (mirroring
+`getByTag()`'s existing wrapper pattern) — confirmed directly that the docs already described
+both as callable `graph.` methods, but neither actually existed there before now (only
+internally on `view.js`, unexposed); `getByType()`'s internal implementation already used the
+efficient `nt:` index, it just needed exposing.
+
+New tests (5): `getByType` chronological filtering; `getByAuthor` own-core scan with a correct
+empty result for an unopened author; a real cross-peer case (two identities sharing one
+Corestore) confirming `getByAuthor` correctly isolates one author's entities from another's.
+
+**A full pass through every documentation file**, correcting inaccuracies and clearly
+documenting features that existed in code but not in docs, rather than leaving anything
+ambiguous about what's real versus aspirational:
+
+- Restructured `docs/architecture.md` from a 613-line file duplicating all 8
+  `docs/contributors/*.md` files (confirmed near-identical, just split apart) into a short
+  index pointing at them — single source of truth instead of two copies to keep in sync.
+- Fixed concrete inaccuracies, each verified directly against the actual code before
+  correcting: a nonexistent `graph.join(bootstrap)` method (`networking.md`, and a matching
+  stale comment in `src/networking.js` itself); nonexistent `graph.getByType()`/`getByAuthor()`
+  (now fixed by actually building them, above); a fictional `PeerDiscovery`/`peer-discovery.js`
+  component and a nonexistent `#peerDiscovery` field that never existed; wrong event names
+  (`identity/profile`→`identity/update`, `roles/addMember`→`roles/setRole`); example
+  permission strings (`content.delete`/`user.ban`) that don't exist anywhere in
+  `roles-registry.js`; a `moderateAction()` example missing the required `keyPair`; a stale
+  "closed mode is unproven" warning (fixed since round 23/30); a claim that relation
+  signatures restrict relations to an entity's own author (they don't, and can't — commenting
+  on someone else's post requires relating to an entity you don't own); a claim that RoleBase
+  namespaces its Corestore session (it doesn't — confirmed directly, and this specific
+  inaccuracy could have caused the exact round-40 bug it's now documented as); and a fabricated
+  Autobase checkpoint mechanism (`linearizer.indexers...clock` — the real code just tracks a
+  view-length counter).
+- Documented what was real but missing entirely: `ScopeBase`, sortBy()/the `nc:` index,
+  `removeWriter()`, content encryption fields, in a new, dedicated `docs/read-permission.md`
+  and throughout the contributor docs.
+- Replaced fragile, already-stale line-number citations (e.g. "hypergraph.js lines 297-305"
+  for a method that has since moved and grown) with method-name references throughout.
+
+Full local suite: 141/141.
+
 ### Round 41: read-permission, stage 3 — content encryption wired into putContent()/getContent()
 
 `putContent(entityId, content, contentType, opts)` gains an optional `opts.scope`. Absent:
