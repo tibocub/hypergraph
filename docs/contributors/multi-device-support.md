@@ -38,6 +38,29 @@ Device 1: UserCore key = device1PublicKey, identity = identityPublicKey
 Device 2: UserCore key = device2PublicKey, identity = identityPublicKey
 ```
 
+## Restarting the Same Peer/Device
+
+Confirmed directly: `new Hypergraph(store)` with no explicit `deviceKeyPair` generates a
+**fresh, random one every time** — even reopening the exact same Corestore directory produces
+a completely different, unrelated identity (a different user core key), not a resumed one.
+Hypergraph does not persist or restore a device's own key automatically; that's entirely the
+application's responsibility. The correct pattern (already used by `forum-web`'s
+`loadOrCreateDeviceKeyPair()` helper) is to generate the keypair once, save it locally, and
+pass the same one back in on every subsequent launch:
+
+```js
+const deviceKeyPair = loadOrCreateDeviceKeyPair() // app-level: read from disk, or generate + save if missing
+const graph = new Hypergraph(store, { deviceKeyPair })
+```
+
+Done this way, a restart correctly resumes as the same identity: prior entities/content are
+still there, and — critically — the device remains a recognized writer in any context it had
+already joined, with no need to redo `addWriter()` or any part of the writer-auth handshake,
+since writer status is tied to the (now-unchanged) core key. Confirmed directly, including
+mid-session: a peer that "crashes" (connections destroyed, graph/store closed) and restarts
+resumes replicating correctly with a peer that stayed up the whole time, for data written
+both before and after the restart.
+
 ## Opening Remote User Cores
 
 To open another device's core:

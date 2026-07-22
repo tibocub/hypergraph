@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 47: peer restart/resume persistence — confirmed solid, with one real gotcha found and documented
+
+Continuing the pre-HyperBBS-integration list: does a peer that restarts (a real process
+exit/relaunch, not just an in-memory close/reopen) correctly resume as the same, recognized
+participant with its data intact?
+
+**A real, confirmed gotcha, not a bug**: `new Hypergraph(store)` with no explicit
+`deviceKeyPair` generates a fresh, random one on every construction — even against the exact
+same Corestore directory. Verified directly: reopening the same store twice, with no
+`deviceKeyPair` passed either time, produces two completely different, unrelated identities.
+Hypergraph does not persist or restore a device's own key automatically; that's entirely the
+application's job (already done correctly by `forum-web`'s `loadOrCreateDeviceKeyPair()`
+helper, which nothing else in this codebase had explicitly called out as *the* required
+pattern until now).
+
+**Once done correctly (persisting and reusing the same `deviceKeyPair`), everything else is
+confirmed solid.** A restart correctly resumes the same identity, all prior entities/content
+remain intact and correct, and — the part most worth confirming — the device remains a
+recognized writer in any context it had already joined, with no need to redo `addWriter()` or
+any part of the writer-auth handshake, since writer status is tied to the (unchanged) core
+key. Tested this at the most realistic level available: a peer that "crashes" (connections
+destroyed, graph and store both closed) and restarts correctly resumes replicating with a
+peer that stayed up the whole time, confirmed for both data written before the crash and new
+data written after the restart.
+
+New tests (3): the gotcha itself (naive restart loses identity), the correct pattern working
+end-to-end for a single peer, and the full crash/restart/reconnect scenario with a live peer.
+Stable across repeated runs.
+
+Documented in `docs/contributors/multi-device-support.md` (the full explanation and correct
+pattern) and cross-referenced from `docs/contributors/critical-implementation-details.md`
+(the dedicated gotchas file).
+
+Full local suite: 163/163.
+
 ### Round 46: `HypergraphNetwork.addContext()` — dynamic context support, and a subtle permission-model clarification
 
 Fixes the gap found in round 45: `HypergraphNetwork`'s context set was fixed at construction

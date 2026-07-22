@@ -41,6 +41,15 @@ This matches the old hypergraph behavior and avoids "Autobase failed to open" er
 
 The application must call `graph.update()` after replication to process new events. GraphView does not automatically update.
 
+## Restarting the Same Peer Requires the App to Persist deviceKeyPair Itself
+
+Confirmed directly: `new Hypergraph(store)` with no explicit `deviceKeyPair` generates a
+fresh, random one on every construction — even against the exact same Corestore directory.
+Hypergraph does not persist or restore this automatically. See
+[Multi-Device Support](multi-device-support.md) for the correct pattern and what's confirmed
+to work once an app does this correctly (identity, prior data, and writer status are all
+preserved across a restart).
+
 ## Windows File Locking
 
 Windows has aggressive file locking that can cause EPERM errors during cleanup when RocksDB handles are still open. Use retry logic with exponential backoff when deleting test directories.
