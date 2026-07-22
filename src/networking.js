@@ -104,6 +104,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   #hasReceivedWriterGrant = false
   #writerRequestTimeoutMs = 30000
   #channelsByConn = new WeakMap() // conn -> { channel, messages, writerRequestTimeout }
+  #activeConns = new Set() // iterable set of currently-open connections, for broadcasting (e.g. context-announce) — WeakMap above can't be iterated
   #pendingWriterRequestTimeouts = new Set() // tracked separately since WeakMap can't be iterated for cleanup in destroy()
 
   /**
@@ -172,6 +173,53 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   }
 
   /**
+   * Register a new context with this network instance after construction
+   * — for a context created mid-session (e.g. a new chatroom, a new
+   * private area), not part of the original bootstrap. Opens it locally
+   * if not already known, then broadcasts a context-announce message to
+   * every currently-connected peer, so each of them can open it too and
+   * — if they're a 'peer' — immediately request writer access for it.
+   *
+   * This reuses the existing writer-request/grant machinery rather than
+   * building a separate one: _sendWriterRequest()/_handleWriterRequest()
+   * already iterate the full, current set of contexts generically, not a
+   * fixed list from construction time — the only genuinely new piece
+   * needed here is telling an already-connected peer the new context's
+   * key at all, which they'd have no way to know otherwise.
+   *
+   * @param {string} name - A name for this context (the key used in contexts maps)
+   * @param {Buffer|string} contextKey - The context's bootstrap key
+   * @param {Object} [opts]
+   * @param {'open'|'closed'} [opts.writeMode='open']
+   * @returns {Promise<Object>} The opened ContextBase instance
+   * @throws {Error} If a context with this name is already registered
+   */
+  async addContext (name, contextKey, opts = {}) {
+    if (typeof name !== 'string' || name.length === 0) throw new Error('name is required')
+    if (!contextKey) throw new Error('contextKey is required')
+    if (this.#contexts.has(name)) throw new Error(`A context named '${name}' is already registered`)
+
+    const contextKeyBuf = Buffer.isBuffer(contextKey) ? contextKey : Buffer.from(contextKey, 'hex')
+    const contextKeyHex = contextKeyBuf.toString('hex')
+    const writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
+
+    const context = await this.#graph.openContext(contextKeyBuf, { writeMode })
+    this.#contexts.set(name, contextKeyBuf)
+    this.#contextInstances.set(name, context)
+
+    for (const conn of this.#activeConns) {
+      this._sendControlMessage(conn, 'contextAnnounceMsg', {
+        type: 'context-announce',
+        name,
+        contextKey: contextKeyHex,
+        writeMode
+      })
+    }
+
+    return context
+  }
+
+  /**
    * Wire the writer-auth protocol as a protomux channel multiplexed onto
    * the same connection the data swarm already established, instead of a
    * separate connection/topic. Protomux.from(conn) reuses the exact muxer
@@ -188,6 +236,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       id: this.#topic,
       onopen: () => {
         this.emit('control-connection', { conn, info })
+        this.#activeConns.add(conn)
         if (this.#role === 'peer') {
           this._sendWriterRequest(conn)
           this._startWriterRequestTimeout(conn, info)
@@ -196,6 +245,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       onclose: () => {
         this._clearWriterRequestTimeout(conn)
         this.#channelsByConn.delete(conn)
+        this.#activeConns.delete(conn)
       }
     })
 
@@ -228,8 +278,18 @@ module.exports = class HypergraphNetwork extends EventEmitter {
         this.emit('writer-error', msg)
       }
     })
+    const contextAnnounceMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
+        this._handleContextAnnounce(msg, conn).catch((err) => {
+          safetyCatch(err)
+          this.emit('control-error', err)
+        })
+      }
+    })
 
-    this.#channelsByConn.set(conn, { channel, writerRequestMsg, writerGrantedMsg, writerErrorMsg, writerRequestTimeout: null })
+    this.#channelsByConn.set(conn, { channel, writerRequestMsg, writerGrantedMsg, writerErrorMsg, contextAnnounceMsg, writerRequestTimeout: null })
     channel.open()
   }
 
@@ -320,6 +380,35 @@ module.exports = class HypergraphNetwork extends EventEmitter {
         type: 'writer-error',
         message: err.message || String(err)
       })
+    }
+  }
+
+  /**
+   * Handle a context-announce message: a context created after this
+   * connection was established (not part of the original bootstrap).
+   * Opens it locally if not already known, then — if this side is a
+   * 'peer' — immediately (re-)sends a writer-request over the same
+   * connection, which now covers this new context too, since
+   * _sendWriterRequest() already iterates the full, current
+   * #contextInstances rather than a fixed list from construction time.
+   * @private
+   */
+  async _handleContextAnnounce (msg, conn) {
+    if (!msg || typeof msg.name !== 'string' || msg.name.length === 0) return
+    if (typeof msg.contextKey !== 'string' || msg.contextKey.length === 0) return
+    if (this.#contexts.has(msg.name)) return // already known — idempotent, ignore a duplicate/replayed announce
+
+    const contextKeyBuf = Buffer.from(msg.contextKey, 'hex')
+    const writeMode = msg.writeMode === 'closed' ? 'closed' : 'open'
+
+    const context = await this.#graph.openContext(contextKeyBuf, { writeMode })
+    this.#contexts.set(msg.name, contextKeyBuf)
+    this.#contextInstances.set(msg.name, context)
+
+    this.emit('context-announced', { name: msg.name, contextKey: msg.contextKey, writeMode })
+
+    if (this.#role === 'peer') {
+      this._sendWriterRequest(conn)
     }
   }
 
@@ -605,6 +694,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       clearTimeout(timeout)
     }
     this.#pendingWriterRequestTimeouts.clear()
+    this.#activeConns.clear()
 
     this.removeAllListeners()
   }

@@ -123,6 +123,41 @@ When a peer connects to a context:
 `HypergraphNetwork` handles this handshake automatically when used; the above is the
 lower-level mechanism underneath it, relevant if you're replicating manually instead.
 
+**Important, easy-to-get-wrong detail**: in closed mode, the permission check that gates a
+grant is about the *responding* peer's own authority to grant it (checked against whichever
+RoleBase is attached to them), not the requesting peer's own role. `HypergraphNetwork`
+processes a `writer-request` by signing the resulting grant with its own identity — so if the
+peer responding to the request has `context.write` (e.g. because they're the site's owner,
+who usually has `'*'` permissions), *any* requester gets granted, regardless of that
+requester's own role. Confirmed directly, including for a dynamically-added context (see
+below) — this isn't a bug, it's the intentional model: `context.write` answers "can this
+identity approve someone joining as a writer," not "is this specific requester allowed to
+write."
+
+## Adding a Context Mid-Session
+
+`HypergraphNetwork`'s context set doesn't have to be fixed at construction/bootstrap time —
+`addContext()` registers a new one afterward, for something created while the app is already
+running (a new chatroom, a new private area):
+
+```js
+const newContextKey = await graph.createContext({ writeMode: 'open' })
+const context = await networking.addContext('newRoom', newContextKey, { writeMode: 'open' })
+```
+
+This opens the context locally and broadcasts a `context-announce` message to every
+currently-connected peer, over the same writer-auth channel already used for the initial
+handshake. On the receiving end, a peer opens the newly-announced context automatically and
+— if it's a `'peer'` — immediately (re-)sends a writer-request, which now covers this new
+context too (the existing request/grant machinery already iterates the full, current set of
+contexts, not a fixed list from construction time, so no separate logic was needed for the
+grant itself — only for telling an already-connected peer about a key they'd otherwise have
+no way to know). Emits `'context-announced'` on the receiving side. Throws if the given name
+is already registered.
+
+The same writer-authorization rules apply to a dynamically-added context as to a bootstrap
+one — including the "responding peer's own authority" semantics above.
+
 ## See Also
 
 - [Glossary](glossary.md) - P2P networking terminology

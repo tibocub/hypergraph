@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 46: `HypergraphNetwork.addContext()` — dynamic context support, and a subtle permission-model clarification
+
+Fixes the gap found in round 45: `HypergraphNetwork`'s context set was fixed at construction
+time, with no way to register a new context afterward or tell already-connected peers about
+one created mid-session (a new chatroom, a new private area).
+
+**`addContext(name, contextKey, opts)`**: opens the context locally, then broadcasts a
+`context-announce` message to every currently-connected peer over the existing writer-auth
+protomux channel (a fourth message type added alongside the existing writer-request/granted/
+error ones). On receipt, a peer opens the newly-announced context and — if it's a `'peer'` —
+immediately re-sends a writer-request. This turned out to need very little new grant logic:
+`_sendWriterRequest()`/`_handleWriterRequest()` already iterate the full, current set of
+contexts generically, not a fixed list from construction time — the only genuinely missing
+piece was a way to tell an already-connected peer about a context key it would otherwise have
+no way to know. Needed a new, regular `Set` of active connections (`#activeConns`) to
+broadcast to, since the existing `#channelsByConn` is a `WeakMap` and can't be iterated.
+
+**A real, subtle thing this surfaced, not a bug**: an initial test assumed closed-mode's
+permission check was about the *requesting* peer's own role — it isn't. Confirmed directly
+(and consistent with `writer-authorization.js`'s own existing, already-documented test for
+this): the check is about the *responding* peer's own authority to grant, since
+`HypergraphNetwork` signs the resulting grant with its own identity when processing a
+request. If the peer responding has `context.write` (typically the owner, who usually has
+`'*'`), any requester gets granted, regardless of their own role — `context.write` answers
+"can this identity approve someone joining as a writer," not "is this specific requester
+allowed to write." This was already true for bootstrap-time contexts; confirmed it holds
+identically for dynamically-added ones too, and documented the distinction clearly in
+`docs/networking.md`, since it's easy to get wrong (as the first draft of this round's own
+test did).
+
+New tests (4): a context created mid-session is announced to and granted for an
+already-connected peer; the peer can actually write to it afterward, with the write
+replicating back to the owner; `addContext()` rejects a name that's already registered; and
+the closed-mode permission check holds the same way for a dynamically-added context as a
+bootstrap one. Stable across 3 repeated runs.
+
+Documented in `docs/networking.md`, including the permission-semantics clarification above.
+
+Full local suite: 160/160.
+
 ### Round 45: exercising never-tested primitives — `unrelate()` and content editing confirmed solid, a real gap found in dynamic context support
 
 Continuing the pre-HyperBBS-integration list: primitives that exist in code but had never
