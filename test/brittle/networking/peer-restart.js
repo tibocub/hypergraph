@@ -10,12 +10,12 @@ const os = require('os')
 const fs = require('fs')
 const hypercoreCrypto = require('hypercore-crypto')
 const { Hypergraph } = require('../../../index.js')
-const { sleep } = require('../helpers')
+const { sleep, removeDirWithRetry } = require('../helpers')
 
 test('peer-restart: without explicitly persisting deviceKeyPair, reopening on the same store creates a DIFFERENT, unrelated identity — a real gotcha, not a bug', async (t) => {
   console.log('TEST: restart without persisted deviceKeyPair - starting')
   const dir = path.join(os.tmpdir(), `hypergraph-restart-naive-${process.pid}-${Date.now()}`)
-  t.teardown(() => fs.rmSync(dir, { recursive: true, force: true }))
+  t.teardown(() => removeDirWithRetry(dir))
 
   const store1 = new Corestore(dir)
   const graph1 = new Hypergraph(store1)
@@ -39,7 +39,7 @@ test('peer-restart: without explicitly persisting deviceKeyPair, reopening on th
 test('peer-restart: with deviceKeyPair explicitly persisted and reused, a restart correctly preserves identity, prior data, and context writability', async (t) => {
   console.log('TEST: restart with persisted deviceKeyPair - starting')
   const dir = path.join(os.tmpdir(), `hypergraph-restart-correct-${process.pid}-${Date.now()}`)
-  t.teardown(() => fs.rmSync(dir, { recursive: true, force: true }))
+  t.teardown(() => removeDirWithRetry(dir))
   const storeDir = path.join(dir, 'store')
   const keyPairFile = path.join(dir, 'device-keypair.json')
 
@@ -102,7 +102,6 @@ test('peer-restart: with deviceKeyPair explicitly persisted and reused, a restar
 test('peer-restart: a peer that restarts mid-session resumes replicating with an existing peer correctly, including data written both before and after the restart', async (t) => {
   console.log('TEST: restart and reconnect with a live peer - starting')
   const dir = path.join(os.tmpdir(), `hypergraph-restart-reconnect-${process.pid}-${Date.now()}`)
-  t.teardown(() => fs.rmSync(dir, { recursive: true, force: true }))
   const dirOwner = path.join(dir, 'owner')
   const dirPeer = path.join(dir, 'peer')
   const peerKeyPairFile = path.join(dir, 'peer-keypair.json')
@@ -121,7 +120,6 @@ test('peer-restart: a peer that restarts mid-session resumes replicating with an
   const storeOwner = new Corestore(dirOwner)
   const graphOwner = new Hypergraph(storeOwner)
   await graphOwner.ready()
-  t.teardown(async () => { await graphOwner.close(); await storeOwner.close() })
 
   let peerKeyPair = loadOrCreatePeerKeyPair()
   let storePeer = new Corestore(dirPeer)
@@ -165,7 +163,6 @@ test('peer-restart: a peer that restarts mid-session resumes replicating with an
   storePeer = new Corestore(dirPeer)
   graphPeer = new Hypergraph(storePeer, { deviceKeyPair: peerKeyPair })
   await graphPeer.ready()
-  t.teardown(async () => { await graphPeer.close(); await storePeer.close() })
   t.is(graphPeer.key.toString('hex'), peerIdentityKey, 'same identity restored after restart')
 
   await graphPeer.openUserCore(graphOwner.key)
@@ -174,7 +171,6 @@ test('peer-restart: a peer that restarts mid-session resumes replicating with an
   s1 = storeOwner.replicate(true, { live: true })
   s2 = storePeer.replicate(false, { live: true })
   s1.pipe(s2).pipe(s1)
-  t.teardown(() => { try { s1.destroy() } catch (err) { /* already closed */ }; try { s2.destroy() } catch (err) { /* already closed */ } })
 
   for (let i = 0; i < 30 && !ctxPeer.writable; i++) { await sleep(200); await ctxPeer.update() }
   t.ok(ctxPeer.writable, 'still recognized as a writer after restart, with no new addWriter() call needed')
@@ -195,5 +191,19 @@ test('peer-restart: a peer that restarts mid-session resumes replicating with an
     if (edges.length > 0) { sawIt = true; break }
   }
   t.ok(sawIt, 'the owner sees the peer\'s post-restart write correctly')
+
+  // Close all handles BEFORE attempting to remove the directory — Windows
+  // file locking means an rmSync while Corestore/Hypercore handles are
+  // still open reliably fails with EPERM (confirmed directly: this exact
+  // test hit that on a real Windows machine). removeDirWithRetry() closes
+  // first, then retries the removal with backoff for what it can't avoid.
+  try { s1.destroy() } catch (err) { /* already closed */ }
+  try { s2.destroy() } catch (err) { /* already closed */ }
+  await removeDirWithRetry(dir, async () => {
+    await graphOwner.close()
+    await graphPeer.close()
+    await storeOwner.close()
+    await storePeer.close()
+  })
   console.log('TEST: restart and reconnect with a live peer - passed')
 })
