@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Round 48: a real, serious bug found by outside review — closing `RoleBase` alone took down the entire shared Corestore
+
+Prompted by an outside observation that `RoleBase`/`ContextBase` passing a bare Corestore into
+Autobase was a sharp edge worth checking, rather than a docstring-warning-only fix. Verified
+directly before agreeing with anything: `ContextBase` already namespaces (confirmed in earlier
+rounds); `RoleBase` did not.
+
+**Confirmed with a direct, empirical test — this was a real, reproducible crash, not a
+theoretical concern.** Calling `graph.roleBase.close()` alone, with nothing else touched,
+immediately broke the entire shared Corestore: the next `graph.put()` failed with `"User core
+is read-only"`, `createContext()` failed with `"Corestore is closed"`, and even reading an
+entity created earlier failed with `SESSION_CLOSED`. For contrast, closing a `ContextBase`
+(already namespaced) the same way had zero effect on anything else — confirmed directly with
+the equivalent test.
+
+**The mechanism**: a Corestore *session* (what `.namespace()` returns) has its own, isolated
+`close()` that only tears down its own child sessions, never a sibling or the shared parent —
+confirmed by reading `corestore`'s own `_close()` implementation directly (a session with
+`root !== null` returns after closing only its own children, never touching the shared
+underlying storage). `RoleBase` was constructing its Autobase directly on the *same, shared*
+Corestore session object every other consumer of the graph also held a reference to — so when
+Autobase's own internal close (triggered by `roleBase.close()`) closed that object, it closed
+it for everyone.
+
+**Fix**: `RoleBase` now namespaces its own Corestore session before constructing its Autobase
+on it, exactly the way `ContextBase`/`ScopeBase` already do. Re-ran the exact failing scenario
+against the fix — confirmed all three previously-failing operations now succeed correctly
+after closing just the RoleBase.
+
+New tests (3, in `test/brittle/core/roles.js`): the regression itself (closing a RoleBase
+alone no longer breaks anything else), plus two comparison tests confirming ContextBase and
+ScopeBase already had this isolation property (they were already namespaced) — useful as a
+permanent guard against this specific class of bug recurring for any of the three.
+
+Updated every doc that described "RoleBase doesn't namespace" as an established, permanent
+fact rather than a historical bug — `docs/contributors/corestore-namespaces.md` (full
+rewrite explaining both the original hang this caused for ScopeBase and this newer, more
+serious close-cascading bug), `docs/contributors/critical-implementation-details.md`,
+`docs/contributors/component-details.md`, `docs/storage-model.md`, and `docs/glossary.md`.
+
+Full local suite: 166/166.
 ### Round 47: peer restart/resume persistence — confirmed solid, with one real gotcha found and documented
 
 Continuing the pre-HyperBBS-integration list: does a peer that restarts (a real process

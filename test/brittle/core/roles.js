@@ -120,3 +120,70 @@ test('roles: removeRole revokes a previously assigned role', async (t) => {
   t.is(await graph.getRole(memberPubkey), null, 'member role removed')
   console.log('TEST: removeRole - passed')
 })
+
+test('roles: closing a RoleBase does NOT take down the shared Corestore session — regression test for a real, confirmed bug', async (t) => {
+  console.log('TEST: roleBase close isolation - starting')
+  const { graph } = await createGraph(t, 'roles-close-isolation')
+
+  const owner = graph.identity.deviceKeyPair.publicKey.toString('hex')
+  await graph.createRoleBase()
+  await graph.roleBase.init(owner)
+  await graph.update()
+
+  const post1 = await graph.put({ type: 'post' })
+
+  console.log('  Step: close the RoleBase directly, nothing else')
+  // Previously, RoleBase constructed its Autobase directly on the raw,
+  // shared Corestore session it was given (not a namespaced session, like
+  // ContextBase/ScopeBase already use) — confirmed directly this meant
+  // Autobase's own close() closed that exact, shared session object out
+  // from under every other consumer of it. Closing JUST the RoleBase used
+  // to throw "Corestore is closed" on the very next unrelated operation.
+  await graph.roleBase.close()
+
+  console.log('  Step: confirm the rest of the graph is completely unaffected')
+  const post2 = await graph.put({ type: 'post' })
+  t.ok(post2, 'writing a new entity still works after closing just the RoleBase')
+
+  const ctxKey = await graph.createContext()
+  t.ok(ctxKey, 'creating a new context still works after closing just the RoleBase')
+
+  const restored = await graph.get(post1.id)
+  t.ok(restored, 'reading an entity created before the RoleBase was closed still works')
+  console.log('TEST: roleBase close isolation - passed')
+})
+
+test('roles: for comparison, ContextBase already had this isolation property (it was already namespaced)', async (t) => {
+  console.log('TEST: ContextBase close isolation - starting')
+  const { graph } = await createGraph(t, 'roles-close-isolation-context')
+
+  const ctxKey = await graph.createContext()
+  const ctx = await graph.openContext(ctxKey)
+  const post1 = await graph.put({ type: 'post' })
+  await ctx.close()
+
+  const post2 = await graph.put({ type: 'post' })
+  t.ok(post2, 'writing still works after closing just a ContextBase')
+  const restored = await graph.get(post1.id)
+  t.ok(restored, 'reading an earlier entity still works after closing just a ContextBase')
+  console.log('TEST: ContextBase close isolation - passed')
+})
+
+test('roles: for comparison, ScopeBase already had this isolation property (it was already namespaced)', async (t) => {
+  console.log('TEST: ScopeBase close isolation - starting')
+  const { graph } = await createGraph(t, 'roles-close-isolation-scope')
+
+  const owner = graph.identity.deviceKeyPair.publicKey.toString('hex')
+  await graph.createRoleBase()
+  await graph.roleBase.init(owner)
+  await graph.update()
+  await graph.createScopeBase()
+  const post1 = await graph.put({ type: 'post' })
+  await graph.scopeBase.close()
+
+  const post2 = await graph.put({ type: 'post' })
+  t.ok(post2, 'writing still works after closing just a ScopeBase')
+  const restored = await graph.get(post1.id)
+  t.ok(restored, 'reading an earlier entity still works after closing just a ScopeBase')
+  console.log('TEST: ScopeBase close isolation - passed')
+})

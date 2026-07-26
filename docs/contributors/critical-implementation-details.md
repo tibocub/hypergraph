@@ -24,12 +24,15 @@ await graph.roleBase.append(...)
 await graph.openRoleBase(roleKeyHex)
 ```
 
-## Corestore Namespacing Is Required for Any New Autobase-Backed Structure
+## Corestore Namespacing Is Required for Any Autobase-Backed Structure
 
-`RoleBase` is the one exception in the whole system that constructs its Autobase directly on
-the raw Corestore, with no namespacing. This is not a pattern to copy — it caused a real,
-reproduced hang when `ScopeBase` initially mirrored it. See
-[Corestore Namespaces](corestore-namespaces.md) for the full story.
+Every Autobase-backed structure (`ContextBase`, `RoleBase`, `ScopeBase`) namespaces its own
+Corestore session — no exceptions. `RoleBase` didn't originally, which caused two real,
+confirmed bugs: a hang when `ScopeBase` was built by mirroring that (un-namespaced) pattern,
+and — more seriously — closing a `RoleBase` alone taking down the entire shared Corestore
+session for every other consumer of it, since the un-namespaced session it held was the exact
+same object everything else was also holding a reference to. Fixed by namespacing `RoleBase`
+too. See [Corestore Namespaces](corestore-namespaces.md) for the full story and the mechanism.
 
 ## ContextBase KeyPair Handling
 

@@ -142,6 +142,8 @@ Note: regardless of write mode, `moderateAction()` and writer-change events (`ro
 
 **Private Fields**:
 - `#store` - Corestore instance
+- `#bootstrap` - Autobase key (null if creating new)
+- `#namespace` - Corestore namespace for isolation (every Autobase-backed structure namespaces its own session — see [Corestore Namespaces](corestore-namespaces.md))
 - `#base` - Autobase instance
 - `#viewBee` - Hyperbee view of Autobase
 - `#identity` - IdentityManager instance, for signing role-change events
@@ -180,7 +182,7 @@ Permission strings are otherwise free-form — an app can call `roles/setRolePer
 **Private Fields**:
 - `#store` - Corestore instance
 - `#bootstrap` - Autobase key (null if creating new)
-- `#namespace` - Corestore namespace for isolation (namespaced from the start, unlike RoleBase — see [Corestore Namespaces](corestore-namespaces.md))
+- `#namespace` - Corestore namespace for isolation (every Autobase-backed structure namespaces its own session — see [Corestore Namespaces](corestore-namespaces.md))
 - `#base` - Autobase instance
 - `#viewBee` - Hyperbee view of Autobase
 - `#identity` - IdentityManager instance, for signing and this identity's own `encryptionKeyPair`

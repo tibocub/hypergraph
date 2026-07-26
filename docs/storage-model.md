@@ -52,9 +52,10 @@ Hypergraph distributes data across four main data structures to optimize for P2P
   the same name)
 
 **Key characteristic**: Centralized role registry that ContextBase (and ScopeBase) consult for
-authorization. Can be shared across contexts or per-context. Unlike ContextBase and ScopeBase,
-RoleBase does not namespace its Corestore session — see
-[Corestore Namespaces](contributors/corestore-namespaces.md) for why that matters.
+authorization. Can be shared across contexts or per-context. Namespaces its own Corestore
+session, the same as ContextBase and ScopeBase — see
+[Corestore Namespaces](contributors/corestore-namespaces.md) for why this matters (a real bug
+was caused by RoleBase not doing this originally).
 
 ### ScopeBase (Multi-Writer Autobase)
 

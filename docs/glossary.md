@@ -8,7 +8,7 @@ This glossary explains P2P and Holepunch terminology used throughout Hypergraph'
 Append-only log data structure. Each Hypercore is a single-writer log that can be replicated between peers. Used in Hypergraph for UserCores (per-user data storage).
 
 ### Corestore
-Factory for managing Hypercore instances. Provides namespace isolation to prevent core key conflicts. Used in Hypergraph to manage UserCores, ContextBases, RoleBase, and ScopeBase — though RoleBase itself does not namespace its own session (see Namespace Isolation, below).
+Factory for managing Hypercore instances. Provides namespace isolation to prevent core key conflicts. Used in Hypergraph to manage UserCores, ContextBases, RoleBase, and ScopeBase — all of which namespace their own session (see Namespace Isolation, below).
 
 ### Autobase
 Multi-writer CRDT built on Hypercore. Merges multiple writer cores into a single deterministic view using a causal DAG. Used in Hypergraph for ContextBase (collaborative contexts), RoleBase (role registry), and ScopeBase (read-permission key grants).
@@ -37,7 +37,7 @@ Single-writer Hypercore that stores a user's personal data (entities, content, i
 Multi-writer Autobase instance for collaborative data (relations, tags, moderation). Each context is isolated and can have different write modes (open/closed).
 
 ### RoleBase
-Multi-writer Autobase instance for role-based (write) access control. Stores role registry with member→role mappings and role→permission mappings. Notably, this is the one structure in the system that does NOT namespace its Corestore session — see Namespace Isolation, below.
+Multi-writer Autobase instance for role-based (write) access control. Stores role registry with member→role mappings and role→permission mappings. Namespaces its own Corestore session, the same as every other Autobase-backed structure in the system — see Namespace Isolation, below.
 
 ### ScopeBase
 Multi-writer Autobase instance for read-permission scopes — sealed key grants that control who can decrypt a given piece of content. A separate system from RoleBase/write-access; see [Read Permission](read-permission.md).
@@ -82,7 +82,7 @@ Marker indicating that an entity has been deleted. Since Hypergraph is append-on
 Record of the last processed sequence (UserCore) or view length (ContextBase/RoleBase/ScopeBase) for a core. Used by GraphView to track progress and avoid reprocessing events.
 
 ### Namespace Isolation
-Corestore feature that prevents core key conflicts by prefixing core names with a namespace string. ContextBase and ScopeBase both namespace their Autobase's Corestore session this way. **RoleBase does not** — it's the one exception in the system, and mirroring its lack of namespacing for a new Autobase-backed structure has caused a real, reproduced bug before (see [Corestore Namespaces](contributors/corestore-namespaces.md)).
+Corestore feature that prevents core key conflicts by prefixing core names with a namespace string. Every Autobase-backed structure — ContextBase, RoleBase, and ScopeBase — namespaces its own Corestore session this way. This wasn't always true for RoleBase; mirroring its original, un-namespaced pattern for a new structure caused a real, reproduced hang, and — more seriously — closing a RoleBase alone used to take down the entire shared Corestore session for everyone else using it, since closing an un-namespaced session closes the same object everyone else holds a reference to (see [Corestore Namespaces](contributors/corestore-namespaces.md)).
 
 ### Writer Authorization
 Process of adding a peer as a writer to a ContextBase. In open mode, writers are added automatically. In closed mode, writers must be approved based on role permissions. Writers can also be removed the same way (`removeWriter()`).

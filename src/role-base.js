@@ -19,6 +19,7 @@ const { initRegistry, applyRoleEvent, can } = require('./roles-registry')
 module.exports = class RoleBase extends ReadyResource {
   #store
   #bootstrap
+  #namespace
   #base
   #viewBee
   #identity
@@ -36,6 +37,9 @@ module.exports = class RoleBase extends ReadyResource {
 
     this.#store = store
     this.#bootstrap = bootstrapKey || null
+    this.#namespace = this.#bootstrap
+      ? this.#bootstrap.toString('hex')
+      : `role-new-${crypto.randomBytes(8).toString('hex')}`
     this.#identity = opts.identity || null
 
     this.#base = null
@@ -45,7 +49,18 @@ module.exports = class RoleBase extends ReadyResource {
   }
 
   async _open () {
-    this.#base = new Autobase(this.#store, this.#bootstrap, {
+    // Namespaced the same way ContextBase/ScopeBase are — RoleBase used to
+    // construct its Autobase directly on the raw Corestore session it was
+    // given. Confirmed directly this was a real, serious bug, not just a
+    // theoretical sharp edge: closing this RoleBase alone (nothing else)
+    // closed the entire shared Corestore session out from under every
+    // other consumer of it (UserCore, other contexts, etc.), because
+    // Autobase's own close() closed the exact session object everything
+    // else was also holding a reference to. A namespaced session is a
+    // distinct object whose close() only affects its own children — see
+    // docs/contributors/corestore-namespaces.md.
+    const ns = this.#store.namespace(this.#namespace)
+    this.#base = new Autobase(ns, this.#bootstrap, {
       open: this.#openView.bind(this),
       apply: this.#applyView.bind(this),
       valueEncoding: 'json',
