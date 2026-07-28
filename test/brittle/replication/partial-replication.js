@@ -169,7 +169,7 @@ test('partial-replication: a peer only receives data for contexts it has opened 
     await sleep(1000)
     await peer.graph.update()
     taggedBAfter = []
-    for await (const n of peer.graph.getByTag('in-context-b')) taggedBAfter.push(n)
+    for await (const n of peer.graph.getByTag('in-context-b', { context: contextB })) taggedBAfter.push(n)
     if (taggedBAfter.length === 1) break
     if (i % 10 === 0) console.log(`    ...waiting (${i}s): contextB tag not visible yet`)
   }

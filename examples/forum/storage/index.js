@@ -79,7 +79,7 @@ module.exports = class ForumStorage {
 
   async getReplies (postId) {
     const edges = []
-    for await (const e of this.graph.edges(postId, { direction: 'in', type: 'reply' })) edges.push(e)
+    for await (const e of this.graph.edges(postId, { direction: 'in', type: 'reply', context: this.commentsContext })) edges.push(e)
 
     const replies = []
     for (const e of edges) {

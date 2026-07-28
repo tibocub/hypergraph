@@ -101,7 +101,7 @@ test('dynamic-context: after being granted, the peer can actually write to the n
     await sleep(150)
     await owner.graph.update()
     const edges = []
-    for await (const e of owner.graph.edges(post.id, { direction: 'in', type: 'reply' })) edges.push(e)
+    for await (const e of owner.graph.edges(post.id, { direction: 'in', type: 'reply', context: ctx2Key })) edges.push(e)
     if (edges.length > 0) { sawIt = true; break }
   }
   t.ok(sawIt, 'the owner sees the peer\'s write to the dynamically-added context')

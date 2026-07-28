@@ -17,6 +17,7 @@ module.exports = class GraphQuery {
   #sortField
   #sortDirection
   #graph
+  #context
 
   /**
    * Create a new GraphQuery instance.
@@ -27,6 +28,8 @@ module.exports = class GraphQuery {
    * @param {number} [opts.limit] - Maximum number of results
    * @param {boolean} [opts.reverse] - Whether to reverse results
    * @param {Object} [opts.traverse] - Traversal configuration
+   * @param {string|string[]} [opts.context] - Restrict `.tag()`/`.out()`/`.in()`
+   *   to this context (or these contexts) - see `.context()` below.
    * @param {Object} [graph] - The Hypergraph instance this query came from,
    *   needed for live() to subscribe to its 'change' events. Optional —
    *   only live() requires it; everything else works without it.
@@ -41,6 +44,7 @@ module.exports = class GraphQuery {
     this.#sortField = null
     this.#sortDirection = 'asc'
     this.#graph = graph
+    this.#context = opts.context !== undefined ? opts.context : null
   }
 
   // ========================================
@@ -84,6 +88,23 @@ module.exports = class GraphQuery {
   }
 
   /**
+   * Restrict `.tag()` and `.out()`/`.in()` traversal to a specific
+   * context (or contexts), instead of requiring exactly one open context
+   * to be unambiguous. Required if this graph instance has more than one
+   * context open and you use `.tag()`/`.out()`/`.in()` — see
+   * GraphView#getByTag/getEdges for the full rationale (tags/relations are
+   * per-context; silently searching every open context by default would
+   * let a query meant for one context blend in another's data).
+   *
+   * @param {string|string[]} context - A context key, or an array of them
+   * @returns {GraphQuery} This query instance for chaining
+   */
+  context (context) {
+    this.#context = context
+    return this
+  }
+
+  /**
    * Filter by tag.
    *
    * @param {string} tag - The tag to filter by
@@ -94,7 +115,7 @@ module.exports = class GraphQuery {
    * other filters. This would require restructuring filter execution order.
    */
   tag (tag) {
-    this.#filters.push((node) => this.#view.hasTag(node.id, tag))
+    this.#filters.push((node) => this.#view.hasTag(node.id, tag, this.#contextOpts()))
     return this
   }
 
@@ -284,6 +305,10 @@ module.exports = class GraphQuery {
     }
   }
 
+  #contextOpts () {
+    return this.#context !== null ? { context: this.#context } : {}
+  }
+
   async * #traverseEdges (node, countRef) {
     if (!this.#traverse) {
       yield node
@@ -292,7 +317,8 @@ module.exports = class GraphQuery {
 
     const edges = this.#view.getEdges(node.id, {
       direction: this.#traverse.direction,
-      type: this.#traverse.type
+      type: this.#traverse.type,
+      ...this.#contextOpts()
     })
 
     for await (const edge of edges) {

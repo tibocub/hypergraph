@@ -83,7 +83,7 @@ async function snapshotRaw (peer, { postIds = null, targetIds = null } = {}) {
   const replyEdgesByPost = {}
   for (const id of ids) {
     const edges = []
-    for await (const e of peer.graph.edges(id, { direction: 'in', type: 'reply' })) {
+    for await (const e of peer.graph.edges(id, { direction: 'in', type: 'reply', context: peer.storage.commentsContext })) {
       edges.push({ from: e.from, to: e.to, type: e.type, deleted: Boolean(e.deleted) })
     }
     edges.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0))

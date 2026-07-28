@@ -1,7 +1,7 @@
 const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const b4a = require('b4a')
-const { toSortableTs } = require('./utils')
+const { toSortableTs, resolveOpenContexts } = require('./utils')
 
 /**
  * GraphView manages the materialized view for graph operations.
@@ -406,6 +406,11 @@ module.exports = class GraphView extends ReadyResource {
    * @param {Object} [opts]
    * @param {'in'|'out'} [opts.direction='out']
    * @param {string} [opts.type]
+   * @param {string|string[]} [opts.context] - Restrict to this context (or
+   *   these contexts). Required if more than one context is open on this
+   *   graph instance - see #resolveContexts.
+   * @param {boolean} [opts.allContexts] - Explicitly query across every open
+   *   context instead of requiring `context` to be named.
    * @param {number} [opts.limit]
    * @param {'asc'|'desc'} [opts.order]
    * @param {boolean} [opts.reverse]
@@ -444,8 +449,7 @@ module.exports = class GraphView extends ReadyResource {
       ? opts.reverse
       : (order === 'desc')
 
-    // Query from all context views
-    for (const [name, context] of this.#contexts) {
+    for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
       if (direction === 'out') {
@@ -498,6 +502,11 @@ module.exports = class GraphView extends ReadyResource {
    * @param {Object} [opts] - Query options
    * @param {string} [opts.author] - Filter by a single author (hex public key)
    * @param {string[]} [opts.authors] - Filter by multiple authors (hex public keys)
+   * @param {string|string[]} [opts.context] - Restrict to this context (or
+   *   these contexts). Required if more than one context is open on this
+   *   graph instance - see #resolveContexts.
+   * @param {boolean} [opts.allContexts] - Explicitly query across every open
+   *   context instead of requiring `context` to be named.
    * @returns {AsyncIterable<Entity>} Async iterator of entities with the tag
    */
   async * getByTag (tag, opts = {}) {
@@ -506,8 +515,7 @@ module.exports = class GraphView extends ReadyResource {
     const authors = opts.authors || (opts.author ? [opts.author] : null)
     const allow = authors ? new Set(authors) : null
 
-    // Query from all context views
-    for (const [name, context] of this.#contexts) {
+    for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
       const prefix = `t:${tag}:`
@@ -528,21 +536,26 @@ module.exports = class GraphView extends ReadyResource {
   }
 
   /**
-   * Check whether an entity has been tagged with a given tag, in any context.
+   * Check whether an entity has been tagged with a given tag.
    *
    * Tag refs live in each ContextBase's own Hyperbee view (not the top-level
-   * graph view), so this scans across all attached contexts.
+   * graph view). By default this checks the single open context (or throws
+   * if more than one is open and neither `context` nor `allContexts` was
+   * given) - see #resolveContexts.
    *
    * @param {string} entityId - The entity id to check
    * @param {string} tag - The tag to check for
+   * @param {Object} [opts]
+   * @param {string|string[]} [opts.context]
+   * @param {boolean} [opts.allContexts]
    * @returns {Promise<boolean>}
    */
-  async hasTag (entityId, tag) {
+  async hasTag (entityId, tag, opts = {}) {
     if (!this.opened) await this.ready()
 
     const prefix = `tref:${tag}:${entityId}:`
 
-    for (const [name, context] of this.#contexts) {
+    for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
       const stream = context.view.createReadStream({

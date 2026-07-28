@@ -23,6 +23,21 @@ Default order (with no `.type()` filter) is also chronological, via a separate,
 type-agnostic index (`nc:`) — not the raw, unordered entity-id keyspace. Both are real,
 efficient indexed scans, not a full table scan followed by an in-memory sort.
 
+If this graph instance has more than one context open, `.tag()` and `.out()`/`.in()`
+traversal need to know which one to use — see "Context Scoping" below:
+
+```js
+const results = await graph.query()
+  .type('post')
+  .context(commentsCtx)
+  .tag('pinned')
+  .toArray()
+```
+
+`.context()` accepts a single context key or an array of them, same as the raw
+`edges()`/`getByTag()` methods it delegates to. Not needed at all if only one context is
+open, or if the query doesn't use `.tag()`/`.out()`/`.in()`.
+
 ### Live Queries
 
 ```js
@@ -102,6 +117,39 @@ for await (const node of graph.getByTag('important', { authors: [author] })) {
 Note: tag lookups currently do a full scan with a per-node check — there's no dedicated tag
 index yet (unlike type/author, below). Worth revisiting if tag-heavy queries become a real
 bottleneck.
+
+### Context Scoping
+
+Tags and relations are stored per-context (entities themselves are not — `get()`/
+`getContent()`/`getByType()`/`getByAuthor()` are global). `edges()`, `getByTag()`, `hasTag()`,
+and `countEdgesIn()`/`countEdgesOut()` all read from context-scoped indexes, so how they
+behave depends on how many contexts this graph instance currently has open:
+
+- **Exactly one context open**: used implicitly. No need to pass `context` — this is the
+  common case and stays exactly as simple as the examples above.
+- **Zero contexts open**: yields nothing (not an error).
+- **More than one context open**: you must say which one(s) you mean, or it throws:
+
+```js
+// Graph has both `commentsCtx` and `moderationCtx` open — this throws:
+for await (const e of graph.edges(post.id, { direction: 'in', type: 'reply' })) { /* ... */ }
+
+// Scope it explicitly instead:
+for await (const e of graph.edges(post.id, { direction: 'in', type: 'reply', context: commentsCtx })) { /* ... */ }
+
+// context can also be an array, to search a known subset of open contexts:
+for await (const n of graph.getByTag('pinned', { context: [commentsCtx, announcementsCtx] })) { /* ... */ }
+
+// Or opt in to searching every open context at once — an explicit choice,
+// not a silent default:
+for await (const n of graph.getByTag('pinned', { allContexts: true })) { /* ... */ }
+```
+
+This is deliberate: a client that belongs to more than one community/authority at once (one
+context per community being a common pattern) would otherwise have queries meant for one
+context silently blend in data from a completely unrelated one it never asked about. Passing
+`{ context }` on `.tag()` and `.out()`/`.in()` through the fluent query builder works the same
+way — see `.context()` below.
 
 ### Type Queries
 

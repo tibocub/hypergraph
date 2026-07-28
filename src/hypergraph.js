@@ -17,7 +17,7 @@ const IdentityManager = require('./identity-manager')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
-const { toSortableTs, stableTagHash } = require('./utils')
+const { toSortableTs, stableTagHash, resolveOpenContexts } = require('./utils')
 
 
 /**
@@ -571,21 +571,27 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Count edges of a given type and direction across all open contexts.
+   * Count edges of a given type and direction.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
    * @param   {'in'|'out'} direction - Edge direction
+   * @param   {Object} [opts]
+   * @param   {string|string[]} [opts.context] - Restrict to this context (or
+   *   these contexts). Required if more than one context is open on this
+   *   graph instance - see utils.resolveOpenContexts.
+   * @param   {boolean} [opts.allContexts] - Explicitly count across every
+   *   open context instead of requiring `context` to be named.
    * @returns {Promise<number>}
    */
-  async #countEdges (entityId, type, direction) {
+  async #countEdges (entityId, type, direction, opts = {}) {
     if (!this.opened) await this.ready()
     const key = `cnt:${direction}:${entityId}:${type}`
     let total = 0
 
     const seen = new Set()
 
-    for (const [, context] of this.#contexts) {
+    for (const [, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
       const viewKey = context.view && context.view.core && context.view.core.key
         ? context.view.core.key.toString('hex')
@@ -602,25 +608,27 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Count incoming edges of a given type across all open contexts.
+   * Count incoming edges of a given type.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
+   * @param   {Object} [opts] - See #countEdges for `context`/`allContexts`.
    * @returns {Promise<number>}
    */
-  async countEdgesIn (entityId, type) {
-    return this.#countEdges(entityId, type, 'in')
+  async countEdgesIn (entityId, type, opts = {}) {
+    return this.#countEdges(entityId, type, 'in', opts)
   }
 
   /**
-   * Count outgoing edges of a given type across all open contexts.
+   * Count outgoing edges of a given type.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
+   * @param   {Object} [opts] - See #countEdges for `context`/`allContexts`.
    * @returns {Promise<number>}
    */
-  async countEdgesOut (entityId, type) {
-    return this.#countEdges(entityId, type, 'out')
+  async countEdgesOut (entityId, type, opts = {}) {
+    return this.#countEdges(entityId, type, 'out', opts)
   }
 
 

@@ -327,7 +327,7 @@ async function main () {
   const discoverPeerCores = async () => {
     try {
       await graph.update()
-      for await (const e of graph.edges('forum', { direction: 'in', type: 'announce' })) {
+      for await (const e of graph.edges('forum', { direction: 'in', type: 'announce', context: bootstrap.contexts.comments })) {
         const from = e && e.from ? String(e.from) : ''
         if (!from.startsWith('usercore:')) continue
         const keyHex = from.slice('usercore:'.length)

@@ -11,7 +11,7 @@ async function projectPost (storage, policy, post) {
   const username = ident && ident.username ? ident.username : shortKey(post.author)
 
   let replyCount = 0
-  for await (const _e of storage.graph.edges(post.id, { direction: 'in', type: 'reply' })) replyCount++
+  for await (const _e of storage.graph.edges(post.id, { direction: 'in', type: 'reply', context: storage.commentsContext })) replyCount++
 
   const moderation = await storage.getModeration(post.id)
 
