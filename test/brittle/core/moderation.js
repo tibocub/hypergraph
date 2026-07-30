@@ -278,6 +278,89 @@ test('moderation: offline-created events converge once two peers replicate', asy
   t.fail('offline replication did not converge within timeout')
 })
 
+test('moderation: a validly-signed action with an extreme future timestamp is rejected, not treated as permanently authoritative', async (t) => {
+  // consumers of moderation history — including this library's own
+  // reference ForumPolicy (examples/forum/policy/index.js) — resolve a
+  // content.hide vs content.reveal conflict on the same target by picking
+  // whichever event has the larger `timestamp`. That field is part of the
+  // signed payload, so it's never independently verified against real
+  // time — without a bound, one authorized reveal signed with a forged
+  // far-future timestamp would be permanently un-overridable by any real
+  // future action from anyone, including a more-trusted role.
+  console.log('TEST: moderation future-timestamp rejection - starting')
+
+  const crypto = require('crypto')
+  const { graph } = await createGraph(t, 'moderation-future-ts')
+
+  const modKeyPair = require('hypercore-crypto').keyPair()
+  const modPubkey = modKeyPair.publicKey.toString('hex')
+
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+  const post = await graph.put({ type: 'post' })
+
+  await graph.createRoleBase()
+  await graph.roleBase.init(graph.key.toString('hex'))
+  await graph.roleBase.append({
+    type: 'roles/setRolePermissions',
+    role: 'member',
+    // Granted BOTH legitimately - this is not testing an unauthorized
+    // actor, it's testing an authorized one abusing timestamp ordering.
+    permissions: ['content.hide', 'content.reveal'],
+    author: graph.key.toString('hex'),
+    timestamp: Date.now()
+  })
+  await graph.update()
+
+  function sign (action, timestamp) {
+    const event = {
+      type: 'moderation/action',
+      version: 1,
+      action,
+      target: post.id,
+      reason: null,
+      context: null,
+      author: modPubkey,
+      timestamp,
+      signature: null
+    }
+    const payload = { version: 1, action, target: post.id, reason: null, context: null }
+    const msg = { op: 'moderation/action', payload, author: modPubkey, timestamp }
+    const digest = crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+    event.signature = require('hypercore-crypto').sign(digest, modKeyPair.secretKey).toString('hex')
+    return event
+  }
+
+  console.log('  Step 1: a legitimate content.hide at a normal timestamp')
+  await context.append(sign('content.hide', Date.now()))
+  await graph.update()
+
+  const afterHide = []
+  for await (const e of graph.queryContext({ type: 'moderation', context: ctx, target: post.id, authors: [modPubkey] })) afterHide.push(e)
+  t.is(afterHide.length, 1, 'the legitimate hide was recorded normally')
+  t.is(afterHide[0].action, 'content.hide')
+
+  console.log('  Step 2: the same authorized key attempts a reveal with a timestamp 100 years in the future')
+  const farFuture = Date.now() + (1000 * 60 * 60 * 24 * 365 * 100)
+  await context.append(sign('content.reveal', farFuture))
+  await graph.update()
+
+  const afterForgedReveal = []
+  for await (const e of graph.queryContext({ type: 'moderation', context: ctx, target: post.id, authors: [modPubkey] })) afterForgedReveal.push(e)
+  t.is(afterForgedReveal.length, 1, 'the forged far-future reveal was rejected outright - still only the original hide is recorded')
+  t.is(afterForgedReveal[0].action, 'content.hide', 'the recorded event is still the legitimate hide, not the forged reveal')
+
+  console.log('  Step 3: sanity check - a normal-timestamp reveal from the same key DOES work')
+  await context.append(sign('content.reveal', Date.now()))
+  await graph.update()
+
+  const afterRealReveal = []
+  for await (const e of graph.queryContext({ type: 'moderation', context: ctx, target: post.id, authors: [modPubkey] })) afterRealReveal.push(e)
+  t.is(afterRealReveal.length, 2, 'a normal, honestly-timestamped reveal is accepted normally - this is a rejection of forged timestamps specifically, not of reveal in general')
+
+  console.log('TEST: moderation future-timestamp rejection - passed')
+})
+
 test.skip('moderation: stress scenarios (many flags/removes, competing trust policies)', async (t) => {
   // Deferred: this is a performance/stress scenario (10+ flaggers, adversarial
   // moderator spam, competing trust sets). Per project decision, only

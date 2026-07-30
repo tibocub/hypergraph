@@ -273,6 +273,13 @@ module.exports = class ContextBase extends ReadyResource {
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
+  // How far into the future a moderation event's own claimed timestamp is
+  // allowed to be, relative to this peer's clock at the moment it's
+  // applied. See the rejection check in #verifyModerationSignature for why
+  // this exists — it is not just clock-skew tolerance, it closes a real
+  // exploit.
+  static #MODERATION_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
+
   #verifyModerationSignature (event) {
     if (!event || event.type !== 'moderation/action') return false
     if (event.version !== 1) return false
@@ -287,6 +294,29 @@ module.exports = class ContextBase extends ReadyResource {
 
     // v1 constraint: target MUST be an entityId (string); no author/context targets
     // (we only validate type here; semantics belong to apps)
+
+    // SECURITY: consumers of moderation history (including this library's
+    // own reference ForumPolicy, examples/forum/policy/index.js) resolve a
+    // conflict between a 'content.hide' and a later 'content.reveal' (or
+    // vice versa) on the same target by picking whichever event's
+    // `timestamp` is larger — a timestamp is part of the signed payload
+    // (see #stableModerationHash), so it's the signer's own honest claim,
+    // never independently verified. Without this bound, anyone holding
+    // even ONE of those two permissions (by default, content.reveal is
+    // admin/owner-only, but content.hide is also granted to plain `mod`)
+    // could sign a single event with an arbitrarily large timestamp and
+    // make it permanently un-overridable by any real action from anyone —
+    // including a more-trusted role — since no genuine future timestamp
+    // could ever exceed a forged one. This only needs to bound the future
+    // side: an old timestamp just makes an event lose comparisons, which
+    // isn't useful to an attacker trying to make their own action stick.
+    // Also robust to normal replication delay — this compares against
+    // wall-clock time at whatever moment the event is actually applied, not
+    // against when it was created, so a peer catching up long after being
+    // offline is unaffected; only a timestamp claiming to be from the
+    // future relative to whenever it's actually checked is rejected, and
+    // real time only moves forward.
+    if (event.timestamp > Date.now() + ContextBase.#MODERATION_MAX_FUTURE_SKEW_MS) return false
 
     let publicKey = null
     let signature = null

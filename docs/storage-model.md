@@ -27,7 +27,14 @@ Hypergraph distributes data across four main data structures to optimize for P2P
 - `tag/add` - Tag assignment to entity (author-only)
 - `tag/remove` - Tag removal from entity
 - `moderation/action` - Content moderation (flag, hide, remove, reveal), signed and
-  permission-checked
+  permission-checked. `hide` vs `reveal` conflicts are resolved by consumers (including this
+  library's own reference `ForumPolicy`) picking whichever event has the larger `timestamp` —
+  since that field is part of the signed payload, never independently verified against real
+  time, an event whose timestamp claims to be more than 5 minutes ahead of the applying peer's
+  own clock is rejected outright. Otherwise, one authorized reveal signed with a forged
+  far-future timestamp would be permanently un-overridable by any real future action from
+  anyone, including a more-trusted role. Only bounds the future side — an old timestamp only
+  makes an event lose comparisons, which isn't useful to an attacker.
 - `roles/addWriter` / `roles/removeWriter` - Context-level writer changes, signed and
   permission-checked in closed mode
 - `message` - Generic messages
