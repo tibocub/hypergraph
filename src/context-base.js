@@ -9,7 +9,7 @@ const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
-const { toSortableTs, stableTagHash } = require('./utils')
+const { toSortableTs, stableTagHash, authorFromEntityId } = require('./utils')
 
 function sleep (ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -558,6 +558,20 @@ module.exports = class ContextBase extends ReadyResource {
     // Verify signature before applying (if enabled)
     if (this.#verifySignatures && !this.#verifyRelationSignature(event)) return
 
+    // SECURITY: relate() cannot cheaply check that its caller actually owns
+    // `from` (legitimately, `from` is very often someone ELSE's entity —
+    // a reply, a vote). So a validly-signed relation event claiming
+    // `from: <an entity the signer doesn't own>` is not a forged
+    // signature, just an honest lie about provenance — and it runs
+    // identically on every peer regardless of how the event reached the
+    // log, the same enforcement model as roles/addWriter above. Rejected
+    // here (not just filtered at getEdges() read time in view.js) so the
+    // cnt:in/cnt:out counters — which getEdges()'s own defensive filter
+    // cannot reach, since countEdgesIn/Out() read those counters directly
+    // rather than iterating and re-checking every edge — never count a
+    // spoofed edge in the first place.
+    if (authorFromEntityId(event.from) !== event.author) return
+
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
     const existingRef = await view.get(edgeRefKey)
 
@@ -606,6 +620,14 @@ module.exports = class ContextBase extends ReadyResource {
   async #applyRelationDelete (view, event) {
     // Verify signature before applying (if enabled)
     if (this.#verifySignatures && !this.#verifyRelationSignature(event)) return
+
+    // NOTE: deliberately no from-ownership check here, unlike
+    // #applyRelation above. unrelate() is intentionally permissive — any
+    // authorized writer can remove a relation, not just whoever originally
+    // created it (see "unrelate by a different writer" in
+    // test/brittle/core/relations.js). Creating a relation asserts a new
+    // claim of origin, which is what needs the from-ownership check;
+    // removing one doesn't fabricate anything.
 
     const createdAtKey = toSortableTs(event.createdAt)
     const key = `e:${event.from}:${event.relationType}:${createdAtKey}:${event.to}`

@@ -37,6 +37,21 @@ Hypergraph distributes data across four main data structures to optimize for P2P
 - Tags reference entity IDs
 - Moderation actions reference entity IDs
 
+**`from`-ownership enforcement**: `relate()` cannot cheaply require its caller to own `to` (a
+relation legitimately points at someone else's entity all the time — a reply, a vote) but a
+`relation/create`/`relation/delete` event's signature alone only proves who signed it, not that
+they actually own the entity it claims to originate `from`. A validly-signed event can still
+lie about `from`. This is checked and rejected at apply time (identically on every peer,
+regardless of how the event reached the log — the real enforced boundary, the same model
+`roles/addWriter` uses) by comparing the event's `author` against the author segment already
+embedded in the `from` id itself (`<type>/<authorCoreKeyHex>/<seq>` — no entity lookup needed).
+Enforced for `relation/create`, not `relation/delete`: removing a relation is deliberately
+permissive (any authorized writer can remove one, not just whoever created it), so only
+creating one — which asserts a new claim of origin — needs the check. `getByTag()` has an
+analogous defensive re-check for tags (`node.author === entry.value.author`) at read time
+instead, since tags don't have a separately-maintained counter that a read-time-only fix
+couldn't reach.
+
 **Key characteristic**: Multi-writer Autobase - all authorized peers can append. Stores lightweight references to avoid data duplication.
 
 ### RoleBase (Multi-Writer Autobase)

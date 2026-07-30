@@ -218,6 +218,78 @@ test('relations: a relation\'s value is part of its signed digest — tampering 
   console.log('TEST: relation value signature integrity - passed')
 })
 
+test('relations: a validly-signed edge whose author does not actually own `from` is rejected by edges(), not just by relate()-time checks', async (t) => {
+  console.log('TEST: edge from-ownership - starting')
+  // relate() itself never checks that the caller owns `opts.from` (it can't,
+  // cheaply — from is often someone ELSE's entity, e.g. a reply or a vote).
+  // So this isn't tampering with an existing event: it's a completely
+  // ordinary, correctly-signed relate() call, made by an attacker's own
+  // identity, that simply lies about `from`. The defense has to live at
+  // read time — this proves it does.
+  const victim = await createGraph(t, 'relations-ownership-victim')
+  const attacker = await createGraph(t, 'relations-ownership-attacker')
+
+  const victimPost = await victim.graph.put({ type: 'post' })
+  const ctx = await victim.graph.createContext({ writeMode: 'open' })
+  const victimCtx = await victim.graph.openContext(ctx, { writeMode: 'open' })
+  const attackerCtx = await attacker.graph.openContext(ctx, { writeMode: 'open' })
+  await victimCtx.addWriter(attackerCtx.localKey)
+
+  const s1 = victim.store.replicate(true, { live: true })
+  const s2 = attacker.store.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => { try { s1.destroy() } catch {}; try { s2.destroy() } catch {} })
+
+  for (let i = 0; i < 20 && !attackerCtx.writable; i++) { await sleep(200); await attackerCtx.update() }
+  t.ok(attackerCtx.writable, 'attacker is confirmed writable before the forgery attempt')
+
+  // The attacker's own, genuine entity - a legitimate edge from this
+  // should still work normally (this test must not just make everything
+  // from this author disappear).
+  const attackerOwn = await attacker.graph.put({ type: 'comment' })
+  await attacker.graph.relate({ from: attackerOwn.id, to: victimPost.id, type: 'reply', context: ctx })
+
+  // The forgery: attacker signs a perfectly valid relate() event, using
+  // their own identity, claiming `from: victimPost.id` — an entity they do
+  // not own and never created.
+  await attacker.graph.relate({ from: victimPost.id, to: attackerOwn.id, type: 'endorses', context: ctx })
+
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    await victim.graph.update()
+    const replies = []
+    for await (const e of victim.graph.edges(victimPost.id, { direction: 'in', type: 'reply' })) replies.push(e)
+    if (replies.length === 1) break
+  }
+
+  const legitimateReplies = []
+  for await (const e of victim.graph.edges(victimPost.id, { direction: 'in', type: 'reply' })) legitimateReplies.push(e)
+  t.is(legitimateReplies.length, 1, "the attacker's own, genuine edge still resolves normally")
+
+  const forgedEdges = []
+  for await (const e of victim.graph.edges(victimPost.id, { direction: 'out', type: 'endorses' })) forgedEdges.push(e)
+  t.is(forgedEdges.length, 0, "the forged edge (claiming to originate FROM the victim's post) does not appear, even though it replicated and is validly signed")
+
+  // Same check from the other side (incoming, queried on the `to` node)
+  // to confirm both directions are protected, not just outgoing.
+  const forgedIncoming = []
+  for await (const e of attacker.graph.edges(attackerOwn.id, { direction: 'in', type: 'endorses' })) forgedIncoming.push(e)
+  t.is(forgedIncoming.length, 0, 'the same forged edge is also rejected when queried from the incoming side')
+
+  // countEdgesIn/Out() read a separate maintained counter, not edges()'s
+  // own query path — so this only stays correct if the forged event was
+  // rejected at apply time (context-base.js), not merely filtered when
+  // edges() happens to be called. This is the actual point of enforcing
+  // this at apply time rather than only as a read-side filter.
+  const outCount = await victim.graph.countEdgesOut(victimPost.id, 'endorses')
+  t.is(outCount, 0, 'countEdgesOut agrees with edges() — the forged edge was never counted, not just filtered on read')
+
+  const inCount = await attacker.graph.countEdgesIn(attackerOwn.id, 'endorses')
+  t.is(inCount, 0, 'countEdgesIn agrees too, on the incoming side')
+
+  console.log('TEST: edge from-ownership - passed')
+})
+
 test('relations: latestPerAuthor reduces multiple edges from the same author to just their most recent one', async (t) => {
   console.log('TEST: latestPerAuthor - starting')
   const voterA = await createGraph(t, 'relations-latest-voter-a')

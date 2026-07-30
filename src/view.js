@@ -1,7 +1,7 @@
 const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const b4a = require('b4a')
-const { toSortableTs, resolveOpenContexts } = require('./utils')
+const { toSortableTs, resolveOpenContexts, authorFromEntityId } = require('./utils')
 
 /**
  * GraphView manages the materialized view for graph operations.
@@ -449,6 +449,21 @@ module.exports = class GraphView extends ReadyResource {
       ? opts.reverse
       : (order === 'desc')
 
+    // An edge's `author` is only ever the signer of the edge event itself
+    // (verified by #verifyRelationSignature at apply time) — relate() does
+    // not, and cannot cheaply, check that the caller actually owns
+    // `opts.from`. So without this check, anyone could sign a perfectly
+    // valid edge event claiming `from: <someone else's entity>`, and it
+    // would apply and appear here as if that entity really pointed at it.
+    // This mirrors the same defensive re-check getByTag() already does for
+    // tags (`node.author === entry.value.author`) — same underlying gap,
+    // same fix, applied where edges are actually read. Checked via
+    // authorFromEntityId() (the id itself embeds its author) rather than
+    // getNode(), so it works with no dependency on having that author's
+    // UserCore open/replicated locally - e.g. tallying votes on a popular
+    // post shouldn't require opening every voter's UserCore.
+    const fromIsGenuine = (from, claimedAuthor) => authorFromEntityId(from) === claimedAuthor
+
     for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
@@ -466,9 +481,9 @@ module.exports = class GraphView extends ReadyResource {
         })
 
         for await (const entry of stream) {
-          if (!entry.value.deleted) {
-            yield entry.value
-          }
+          if (entry.value.deleted) continue
+          if (!fromIsGenuine(entry.value.from, entry.value.author)) continue
+          yield entry.value
         }
       } else {
         // Incoming edges: i:in:<to>:<type>:<from>
@@ -487,9 +502,9 @@ module.exports = class GraphView extends ReadyResource {
           // Get the actual edge data
           const edgeKey = entry.value.ref
           const edge = await context.view.get(edgeKey)
-          if (edge && !edge.value.deleted) {
-            yield edge.value
-          }
+          if (!edge || edge.value.deleted) continue
+          if (!fromIsGenuine(edge.value.from, edge.value.author)) continue
+          yield edge.value
         }
       }
     }

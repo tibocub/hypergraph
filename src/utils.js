@@ -35,7 +35,33 @@ const stableTagHash = (event) => {
   return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
 }
 
-module.exports = { toSortableTs, stableTagHash, resolveOpenContexts }
+module.exports = { toSortableTs, stableTagHash, resolveOpenContexts, authorFromEntityId }
+
+/**
+ * Extract the author (core key hex) embedded in an entity id.
+ *
+ * Entity ids are always formed as `${type}/${authorCoreKeyHex}/${seq}` (see
+ * Hypergraph#put) — the author is the entity's own UserCore key, the exact
+ * same key that appears in `event.author` on any tag/relation event that
+ * identity signs. This makes it possible to check "does this id genuinely
+ * belong to this claimed author" from the id string alone, with no entity
+ * lookup and no dependency on having that author's UserCore open/replicated
+ * locally at all.
+ *
+ * Splits from the end rather than assuming a fixed prefix, so an entity
+ * `type` that itself happens to contain a `/` doesn't break parsing — only
+ * the author (a hex string) and seq (an integer) are guaranteed slash-free.
+ *
+ * @param {string} id
+ * @returns {string|null} The author hex, or null if `id` isn't a
+ *   well-formed entity id (fewer than 2 `/`-separated segments).
+ */
+function authorFromEntityId (id) {
+  if (typeof id !== 'string') return null
+  const parts = id.split('/')
+  if (parts.length < 3) return null
+  return parts[parts.length - 2]
+}
 
 /**
  * Resolve which open context(s) a context-scoped read should query, given
