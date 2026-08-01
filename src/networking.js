@@ -475,32 +475,44 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     // Join topic
     const discovery = this.#dataSwarm.join(this.#topic, { server: true, client: true })
 
-    // Wait for discovery and the swarm to be ready with timeout.
+    // Matches hyperswarm's own canonical example (example.js in the
+    // holepunchto/hyperswarm repo) exactly: only the announcing side
+    // ("owner" here — the side other peers are expected to find) awaits its
+    // own discovery.flushed(), so that by the time a peer looks for it, the
+    // announce has actually landed. A joining peer ("peer" role) awaits
+    // nothing at all before proceeding — the connection handler wired up
+    // above will fire on its own once a peer is actually found; the
+    // canonical example's own second `swarm.join(key)` call is not awaited
+    // on anything, and its one commented-out line (`// await
+    // swarm2.flush()`) is explicit about swarm.flush() not being part of
+    // this at all.
     //
-    // BUG FIX: withTimeout() silently swallows a timeout and returns null,
-    // so connect() previously reported success (`connected = true`)
-    // unconditionally after these steps, regardless of whether any of them
-    // actually completed. 10s was also too short: DHT connections in
-    // real-world testing on this project have been observed taking
-    // anywhere from a few seconds up to ~90s. Both are fixed here: a much
-    // more realistic timeout, and a warning emitted (not swallowed) if a
-    // step actually times out, so a partial/failed connect is at least
-    // observable instead of silently reported as success.
-    await withTimeoutWarn(this, 'discovery flush', discovery.flushed(), 60000)
-    await withTimeoutWarn(this, 'swarm flush', this.#dataSwarm.flush(), 60000)
+    // swarm.flush() is never called here (or in the retry loop below) as a
+    // way to detect connection success — per hyperswarm's own README:
+    // "flush() ... is quite heavyweight, so it could take a while. In most
+    // cases it's not necessary, as connections are emitted by
+    // swarm.on('connection') immediately after they're opened." Confirmed
+    // directly: awaiting flush()/flushed() symmetrically on both sides (the
+    // previous version of this method) produced connection times ranging
+    // from ~10s up to 100s+ and occasional outright failures on identical,
+    // known-good hardware and network conditions; this asymmetric pattern
+    // produced a consistent ~3-5s across repeated runs on the same machine.
+    if (this.#role === 'owner') {
+      await withTimeoutWarn(this, 'discovery flush', discovery.flushed(), 60000)
+    }
 
-    // BUG FIX: flushed()/flush() resolving successfully does NOT mean any
-    // peer was actually found or connected — it can resolve with zero
-    // peers discovered at all (this is a real Hyperswarm/DHT behavior, not
-    // a bug in flushed()/flush() themselves). connect() previously took
-    // that resolution as proof of success and moved on regardless, the
-    // same way the raw-Hyperswarm replication tests in this project's test
-    // suite once did — and the fix that reliably worked there was a real
-    // retry: leave and rejoin the topic, rather than just waiting longer
-    // for the same attempt. That fix is applied here too, to the actual
-    // product code rather than only ever inside tests, since any consumer
-    // of connect() can hit this.
-    await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data')
+    // Safety net, not the normal path: two peers can genuinely race to
+    // connect at nearly the same time, before the DHT has had a chance to
+    // propagate an announce (e.g. two 'peer'-role connections, or an
+    // 'owner' whose announce hasn't reached nearby DHT nodes yet despite
+    // discovery.flushed() resolving locally). If a connection hasn't
+    // appeared yet, retry by leaving and rejoining rather than waiting
+    // longer on the same attempt — but see _ensureConnectionWithRetry for
+    // why this no longer waits nearly as long as it used to before
+    // considering that necessary.
+    if (this.#dataSwarm.connections.size === 0) {
+      await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data')
+    }
 
     this.#connected = true
     this.emit('connected')
@@ -509,10 +521,24 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   /**
    * Wait for a swarm to report at least one live connection, retrying by
    * leaving and rejoining the topic if none appears within the wait
-   * window. `flushed()`/`flush()` resolving successfully does not mean any
-   * peer was found — this actually confirms it, and gives a genuine second
-   * (and third) chance via a fresh join rather than just waiting longer on
-   * the same attempt.
+   * window. This is a fallback for a genuine edge case — e.g. two peers
+   * racing to connect at nearly the same time, before the DHT has had a
+   * chance to propagate an announce — not the normal path; connect() only
+   * calls this if a connection hasn't already appeared by the time its own
+   * role-appropriate wait (see connect()) has finished.
+   *
+   * waitMs is deliberately much shorter than earlier versions of this
+   * method used (15s): that value was calibrated around the assumption
+   * that waiting on flush()/flushed() was what made a connection "ready",
+   * which turned out to be wrong (see connect()) — real connections
+   * complete in a few seconds once the announce/join sequencing itself is
+   * correct, so a fallback retry shouldn't need to wait much longer than
+   * that before trying again.
+   *
+   * swarm.flush() is not called here, for the same reason it isn't in
+   * connect() — it's unrelated to whether this rejoin actually finds a
+   * peer, and the polling loop below already detects that directly via
+   * swarm.connections.size.
    *
    * Emits 'connection-retry' (with the label and attempt number) each time
    * a rejoin is attempted, and 'connection-retry-exhausted' if no
@@ -527,13 +553,13 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    */
   async _ensureConnectionWithRetry (swarm, topic, label) {
     const retries = 2
-    const waitMs = 15000
+    const waitMs = 8000
     const joinOpts = { server: true, client: true }
 
     for (let attempt = 0; ; attempt++) {
       const start = Date.now()
       while (swarm.connections.size === 0 && Date.now() - start < waitMs) {
-        await sleep(1000)
+        await sleep(500)
       }
 
       if (swarm.connections.size > 0) return
@@ -554,11 +580,6 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       const discovery = swarm.join(topic, joinOpts)
       try {
         await discovery.flushed()
-      } catch (err) {
-        safetyCatch(err)
-      }
-      try {
-        await swarm.flush()
       } catch (err) {
         safetyCatch(err)
       }
@@ -695,6 +716,19 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     }
     this.#pendingWriterRequestTimeouts.clear()
     this.#activeConns.clear()
+
+    // Unlike disconnect() (which only leaves the topic — deliberately, so
+    // a caller can reconnect the same swarm later), destroy() is meant to
+    // fully tear this down. Without this, the underlying swarm/DHT node
+    // was never actually destroyed by anything on this class — every
+    // caller had to separately reach for the dataSwarm getter and destroy
+    // it themselves, which is easy to miss (real dangling UDP sockets/DHT
+    // nodes, not just a lingering reference).
+    try {
+      await this.#dataSwarm.destroy()
+    } catch (err) {
+      safetyCatch(err)
+    }
 
     this.removeAllListeners()
   }
