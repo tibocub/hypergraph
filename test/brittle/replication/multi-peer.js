@@ -67,10 +67,12 @@ test('multi-peer: data written by one peer replicates to two others, with conten
   const discB = swarmB.join(topic, { server: true, client: true })
   const discC = swarmC.join(topic, { server: true, client: true })
   await Promise.all([discA.flushed(), discB.flushed(), discC.flushed()])
-  // discovery.flushed() only confirms the DHT announce/lookup round
-  // finished — swarm.flush() is what actually drains the connection queue
-  // and waits for the resulting connection attempts to complete.
-  await Promise.all([swarmA.flush(), swarmB.flush(), swarmC.flush()])
+  // swarm.flush() is deliberately not awaited here: per hyperswarm's own
+  // README, connections are emitted by 'connection' as soon as they happen,
+  // independent of flush() — flush() is heavyweight and unrelated to
+  // whether a specific connection has already succeeded. The actual
+  // connection check below (waitForConnections) polls swarm.connections
+  // directly rather than relying on flush() for anything.
 
   t.teardown(async () => {
     await a.close()
@@ -154,7 +156,7 @@ test('multi-peer: three peers each write, and all three converge on all writes w
   const discB = swarmB.join(topic, { server: true, client: true })
   const discC = swarmC.join(topic, { server: true, client: true })
   await Promise.all([discA.flushed(), discB.flushed(), discC.flushed()])
-  await Promise.all([swarmA.flush(), swarmB.flush(), swarmC.flush()])
+  // swarm.flush() deliberately not awaited here — see Step 2 above.
 
   t.teardown(async () => {
     await a.close()

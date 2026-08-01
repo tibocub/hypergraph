@@ -76,11 +76,20 @@ function sleep (ms) {
  * connection. `discovery.flushed()` only proves the local side's own DHT
  * announce/lookup round finished — it does NOT prove an actual peer-to-peer
  * connection exists yet. Use this before assuming any peer is reachable.
+ * swarm.flush() is never used here or in the retry below — per hyperswarm's
+ * own README it's heavyweight and unrelated to whether a connection has
+ * actually succeeded; this function's own polling loop is the real check.
  *
  * If `topic` is provided and the initial wait times out, this will leave and
  * rejoin the topic on every swarm (up to `retries` times) before giving up.
- * A stale initial DHT lookup occasionally returns candidate peers that never
- * pan out; a fresh join/flush cycle can succeed where the first one didn't.
+ * This matters most for tests where 3+ peers all join the same topic at
+ * nearly the same wall-clock moment with no single peer announcing first
+ * (unlike a simple 2-peer owner/member pattern, where the owner's own
+ * announce has time to fully land before the other side ever looks for it)
+ * — an occasional stale initial DHT lookup in that scenario is a real,
+ * inherent characteristic of genuinely simultaneous multi-way joins, not
+ * evidence of anything wrong in how the join itself is done. A fresh
+ * join/flush cycle can succeed where the first one didn't.
  *
  * @param {Array<{ name: string, swarm: import('hyperswarm') }>} swarms
  * @param {number} [timeoutMs] - How long to wait per attempt
@@ -122,8 +131,10 @@ async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
     await sleep(1000)
     for (const { swarm } of swarms) {
       const disc = swarm.join(topic, joinOpts)
+      // swarm.flush() deliberately not awaited here — per hyperswarm's own
+      // README it's unrelated to whether a connection has succeeded; the
+      // polling loop above already detects that directly.
       try { await disc.flushed() } catch (err) { /* best-effort */ }
-      try { await swarm.flush() } catch (err) { /* best-effort */ }
     }
   }
 }

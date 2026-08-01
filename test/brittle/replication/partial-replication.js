@@ -77,10 +77,12 @@ test('partial-replication: a peer only receives data for contexts it has opened 
   const discOwner = swarmOwner.join(topic, { server: true, client: true })
   const discPeer = swarmPeer.join(topic, { server: true, client: true })
   await Promise.all([discOwner.flushed(), discPeer.flushed()])
-  // discovery.flushed() only confirms the DHT announce/lookup round
-  // finished — swarm.flush() is what actually drains the connection queue
-  // and waits for the resulting connection attempts to complete.
-  await Promise.all([swarmOwner.flush(), swarmPeer.flush()])
+  // swarm.flush() is deliberately not awaited here: per hyperswarm's own
+  // README, connections are emitted by 'connection' as soon as they happen,
+  // independent of flush() — flush() is heavyweight and unrelated to
+  // whether a specific connection has already succeeded. The actual
+  // connection check below (waitForConnections) polls swarm.connections
+  // directly rather than relying on flush() for anything.
 
   t.teardown(async () => {
     await owner.close()
