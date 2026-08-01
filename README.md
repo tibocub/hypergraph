@@ -1,3 +1,5 @@
+# ! Software still in ALPHA - breaking changes expected !
+
 # Hypergraph
 
 A minimal graph database optimized for P2P social apps on the Holepunch ecosystem.
@@ -12,28 +14,12 @@ Hypergraph provides a local graph API for building decentralized applications wi
 
 Hypergraph is a thin composition over lower-level Holepunch libraries:
 
-```
-+------------------+
-|    Hypergraph    |   Main API
-+------------------+
-        |
-        +-- UserCore          per-user Hypercores (entities, content)
-        |
-        +-- ContextBase       Autobase (relations, tags, moderation)
-        |
-        +-- GraphView         Hyperbee indexes (materialized view)
-        |
-        +-- RoleBase          Autobase (role registry, permissions)
-        |
-        +-- IdentityManager   keet-identity-key (identity, devices)
-```
-
 **Dependencies:**
-- **Hypercore**: Append-only logs for data storage
-- **Corestore**: Core management and namespace isolation
-- **Autobase**: Multi-writer CRDT for collaborative contexts
-- **Hyperbee**: Materialized view and key-value indexes
-- **keet-identity-key**: Identity management with mnemonic recovery
+- [Hypercore](https://github.com/holepunchto/hypercore): Append-only logs for data storage
+- [Corestore](https://github.com/holepunchto/corestore): Hypercore management and namespace isolation
+- [Autobase](https://github.com/holepunchto/autobase): Multi-writer CRDT for collaborative contexts
+- [Hyperbee](https://github.com/holepunchto/hyperbee): Materialized view and key-value indexes
+- [Keet-identity-key](https://github.com/holepunchto/keet-identity-key): Multi-device user ID management with mnemonic recovery
 
 ## Quickstart
 
