@@ -158,6 +158,30 @@ is already registered.
 The same writer-authorization rules apply to a dynamically-added context as to a bootstrap
 one — including the "responding peer's own authority" semantics above.
 
+## Discovering an Already-Existing Context With No Prior Knowledge
+
+`addContext()` (above) and the constructor's `contexts` option cover two cases: a context
+created *after* a peer is already connected, and a context a peer already knows the key for in
+advance. Neither covers a peer connecting with **no prior knowledge at all** of a context that
+already existed before they showed up — e.g. discovering an authority purely by name, with no
+shared descriptor. Every known context (from construction time or a later `addContext()` call)
+is now announced automatically to every newly-opened connection, not just to connections that
+were already active when that context became known — **regardless of `writeMode`**. On the
+receiving end this is exactly the same `'context-announced'` event/auto-open/writer-request
+behavior as any other announce — the only thing that changed is *when* it's sent (also on
+connect, not only on `addContext()`), not what happens once it arrives.
+
+**This intentionally includes `'closed'` contexts.** `writeMode` has only ever gated who can
+become a *writer* — it has never gated who can *read* a context's replicated data, which has
+always been available to anyone who obtains its key through any channel. A closed context being
+auto-discoverable this way doesn't expose anything that wasn't already exposed to anyone who
+got the key some other way (a shared descriptor, a member relaying it, etc.) — it just extends
+the same discovery path open contexts get. Nothing about write access changes: a peer who
+discovers a closed context this way still goes through the same permission check as any other
+writer-request. Genuine confidentiality (where knowing the key isn't enough to read anything) is
+a separate, orthogonal mechanism — see `ScopeBase`'s encryption — not something `writeMode`
+does or should do double duty for.
+
 ## See Also
 
 - [Glossary](glossary.md) - P2P networking terminology

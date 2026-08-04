@@ -179,3 +179,88 @@ test('dynamic-context: a closed-mode context added dynamically still enforces th
   t.is(granted.contexts.privateRoom, false, 'the grant was correctly denied — the responding owner\'s own identity lacked context.write')
   console.log('TEST: addContext closed mode - passed')
 })
+
+test('dynamic-context: a peer connecting with NO prior knowledge of any context discovers an already-existing one automatically', async (t) => {
+  // Regression test for a real gap: a context registered before ANY peer
+  // ever connects (the completely normal case - e.g. an authority's own
+  // bootstrap context) had no way to reach a peer that connects later with
+  // zero prior knowledge of it (no descriptor, no key at all). Only two
+  // paths existed before this fix: a peer who already knew the key in
+  // advance (the constructor's `contexts` option), or a context registered
+  // AFTER a peer was already connected (addContext(), which only announces
+  // to connections active at that exact moment). Neither covers "I know
+  // nothing, and the context already existed before I showed up" - which
+  // is exactly what a peer discovering an authority purely by name, with
+  // no shared descriptor, looks like.
+  console.log('TEST: discover pre-existing context with no prior knowledge - starting')
+  const owner = await createGraph(t, 'dynctx-discover-owner')
+  const peer = await createGraph(t, 'dynctx-discover-peer')
+
+  const ctxKey = await owner.graph.createContext({ writeMode: 'open' })
+  await owner.graph.openContext(ctxKey, { writeMode: 'open' })
+  // Deliberately NOT opened on the peer's side yet - the peer doesn't even
+  // know this key exists.
+
+  const topic = crypto.randomBytes(32)
+  const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { domains: ctxKey } })
+  // The peer connects knowing about NO contexts at all.
+  const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: {} })
+  await networkingOwner._openContexts()
+  await networkingPeer._openContexts()
+
+  let announced = null
+  networkingPeer.on('context-announced', (info) => { announced = info })
+
+  const pair = connectPair(networkingOwner, networkingPeer)
+  t.teardown(() => pair.close())
+
+  let ok = false
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    if (announced) { ok = true; break }
+  }
+
+  t.ok(ok, 'the peer received a context-announced event despite never having known this context existed')
+  t.is(announced.name, 'domains', 'with the correct name')
+  t.is(announced.contextKey, ctxKey.toString('hex'), 'and the correct key')
+
+  // Confirm the peer can actually use it, not just receive the message.
+  const peerCtx = await peer.graph.openContext(ctxKey, { writeMode: 'open' })
+  t.ok(peerCtx, 'the peer can now open the discovered context locally')
+})
+
+test('dynamic-context: a CLOSED context is discovered on connect too, same as an open one — writeMode never gated read/discoverability, only who can become a writer', async (t) => {
+  // 'closed' has always meant "writer-requests are gated", never "hide
+  // this from readers" - a closed context's replicated data has always
+  // been available to anyone who obtains its key through any channel.
+  // Confirms this holds for the on-connect auto-announce too, not just the
+  // existing addContext()/constructor-time paths.
+  console.log('TEST: closed context is announced too - starting')
+  const owner = await createGraph(t, 'dynctx-closed-announce-owner')
+  const peer = await createGraph(t, 'dynctx-closed-announce-peer')
+
+  const ctxKey = await owner.graph.createContext({ writeMode: 'closed' })
+  await owner.graph.openContext(ctxKey, { writeMode: 'closed' })
+
+  const topic = crypto.randomBytes(32)
+  const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { private: ctxKey } })
+  const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: {} })
+  await networkingOwner._openContexts()
+  await networkingPeer._openContexts()
+
+  let announced = null
+  networkingPeer.on('context-announced', (info) => { announced = info })
+
+  const pair = connectPair(networkingOwner, networkingPeer)
+  t.teardown(() => pair.close())
+
+  let ok = false
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    if (announced) { ok = true; break }
+  }
+
+  t.ok(ok, 'a closed context is announced on connect just like an open one')
+  t.is(announced.name, 'private')
+  t.is(announced.writeMode, 'closed', 'the announce correctly reports it as closed - a peer discovering it this way still cannot write without going through the normal permission check')
+})

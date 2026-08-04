@@ -200,7 +200,6 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     if (this.#contexts.has(name)) throw new Error(`A context named '${name}' is already registered`)
 
     const contextKeyBuf = Buffer.isBuffer(contextKey) ? contextKey : Buffer.from(contextKey, 'hex')
-    const contextKeyHex = contextKeyBuf.toString('hex')
     const writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
 
     const context = await this.#graph.openContext(contextKeyBuf, { writeMode })
@@ -208,15 +207,28 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     this.#contextInstances.set(name, context)
 
     for (const conn of this.#activeConns) {
-      this._sendControlMessage(conn, 'contextAnnounceMsg', {
-        type: 'context-announce',
-        name,
-        contextKey: contextKeyHex,
-        writeMode
-      })
+      this._announceContextTo(conn, name, contextKeyBuf, writeMode)
     }
 
     return context
+  }
+
+  /**
+   * Send a context-announce message for one context to one connection.
+   * Shared by addContext() (a new context, told to every currently-active
+   * connection) and _wireWriterAuthChannel()'s onopen (every already-known
+   * context, told to one newly-opened connection) — the same message, the
+   * same recipient-side handling (_handleContextAnnounce), just a
+   * different "which contexts × which connections" pairing.
+   * @private
+   */
+  _announceContextTo (conn, name, contextKeyBuf, writeMode) {
+    this._sendControlMessage(conn, 'contextAnnounceMsg', {
+      type: 'context-announce',
+      name,
+      contextKey: contextKeyBuf.toString('hex'),
+      writeMode
+    })
   }
 
   /**
@@ -237,6 +249,34 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       onopen: () => {
         this.emit('control-connection', { conn, info })
         this.#activeConns.add(conn)
+
+        // Tell this newly-connected peer about every context we already
+        // know about, not just ones registered after they connected (that
+        // path already existed via addContext(), above) or ones they
+        // already knew the key for in advance (the constructor's
+        // `contexts` option). Without this, a peer connecting with no
+        // prior knowledge at all (e.g. discovering an authority purely by
+        // name, never having received a descriptor) had no way to ever
+        // learn about a context that existed before they connected -
+        // context-announce only ever reached peers who were already
+        // connected at the moment a NEW context was registered.
+        //
+        // This applies regardless of writeMode. 'closed' only ever gates
+        // who can become a WRITER - it has never gated who can READ a
+        // context's replicated data, which has always been available to
+        // anyone who obtains the key through any channel. Excluding closed
+        // contexts here would not protect anything genuinely confidential;
+        // it would just silently remove discoverability for a closed
+        // authority specifically, which is a real regression, not a
+        // privacy feature. Actual confidentiality (where knowing the topic/
+        // key isn't sufficient to read anything) is a separate, orthogonal
+        // concern - see ScopeBase's encryption, not writeMode.
+        for (const [ctxName, ctxKeyBuf] of this.#contexts) {
+          const instance = this.#contextInstances.get(ctxName)
+          const writeMode = instance && instance.writeMode ? instance.writeMode : 'open'
+          this._announceContextTo(conn, ctxName, ctxKeyBuf, writeMode)
+        }
+
         if (this.#role === 'peer') {
           this._sendWriterRequest(conn)
           this._startWriterRequestTimeout(conn, info)
