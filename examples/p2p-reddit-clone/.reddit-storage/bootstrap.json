@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "topic": "62822858d772c7d2b44777a385ce1e3bd2278f1c8c0a37287e1bdbc921c00578",
+  "ownerCore": "05b545d23429dba668d1992506d4b4513e314fca648799495327c14a37dd9eb2",
+  "contexts": {
+    "comments": "0d28dbb8de020eef0646de045a55aa911a233d083334c13f1c78494ececc0f0c",
+    "votes": "0d28dbb8de020eef0646de045a55aa911a233d083334c13f1c78494ececc0f0c",
+    "moderation": "0d28dbb8de020eef0646de045a55aa911a233d083334c13f1c78494ececc0f0c"
+  },
+  "metadata": {
+    "moderation": {
+      "trustedModeratorKeys": [
+        "a0b0b149cc60d90aec0e5590f1f4d82b469b7b52b5e12ac356873bbf9fa517f7"
+      ],
+      "maxFlags": 3
+    }
+  }
+}

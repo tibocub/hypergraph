@@ -2,6 +2,7 @@ node_modules
 examples/forum-web/.forum-web/**/*
 examples/chat-web/.chat-web/**/*
 examples/p2p-reddit-clone/.reddit-storage/**/*
+!examples/p2p-reddit-clone/.reddit-storage/bootstrap.json
 out
 lib
 test-*
