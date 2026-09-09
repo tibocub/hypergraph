@@ -31,12 +31,22 @@ again:
 
 ## Spec-kit workflow
 
-For anything new or changed (not already-stable, unchanged modules — don't retroactively spec
-those), use spec-kit in this order:
+Every `/speckit-*` skill has `disable-model-invocation: false` — that means *I* (Claude) can
+invoke these directly via the Skill tool, without the user typing the slash command. The user
+does not need to learn these commands; when they ask for a fix or a feature in plain language,
+decide myself whether to run spec-kit and which stages, rather than waiting to be told.
+
+**When to actually run it**: for anything new or changed (not already-stable, unchanged
+modules — don't retroactively spec those) that has real design decisions or multiple sub-parts,
+run the pipeline myself:
 
 `/speckit-specify` → (optional `/speckit-clarify`) → `/speckit-plan` → `/speckit-tasks` →
 (optional `/speckit-analyze`, `/speckit-checklist`) → `/speckit-implement` → `/speckit-converge`
 for periodic backlog sweeps against the codebase.
+
+**When NOT to bother**: a small, already-understood fix (e.g. a confirmed bug with a clear
+minimal patch) — just fix it directly with a regression test per the rule below. Running specify
+→ plan → tasks → implement for something already fully scoped is ceremony with no payoff.
 
 `specs/<NNN-feature>/spec.md` → `plan.md` → `tasks.md` is the source of truth for that feature's
 reasoning going forward — not a CHANGELOG narrative. `CHANGELOG.md` stays a terse, dated,
@@ -64,6 +74,29 @@ No spec-kit git extension is installed in this repo, so branch creation isn't au
 this manually: right after `/speckit-specify` creates `specs/<NNN-name>/`, run
 `git checkout -b <NNN-name>` (same name as the spec directory). Merge back to `master` once that
 feature's `/speckit-implement` is done and its tests pass.
+
+## Debugging an example app before assuming a library bug
+
+Example apps under `examples/*` persist state locally (`.forum-web/`, etc., all gitignored) across
+every manual run — device keypairs, a frozen `bootstrap.json`, old identities. That state can go
+stale relative to itself (e.g. `bootstrap.json`'s recorded owner key no longer matching the
+currently-persisted device-keypair.json, from an earlier partial reset) and produce symptoms that
+look exactly like a networking/visibility bug but aren't. Confirmed directly: a real "peer can't
+see owner's posts" + "comments don't work" report turned out to be entirely explained by exactly
+this — wiping the example's local storage and retesting fresh fixed both, with zero code changes.
+**Before treating an example app's misbehavior as a hypergraph bug, wipe its local storage
+directory and reproduce fresh first.** If it's a real library bug, write the regression test
+directly against the library (real Hyperswarm, two peers, `test/brittle/replication/` or
+`test/brittle/networking/`) — that's also what actually caught the one real gap this investigation
+found: cross-peer usercore discovery (`openUserCore()`) is the application's job, not automatic,
+and it's easy to forget one direction of it.
+
+**Real-network test files: never call `process.exit()` to work around a slow-to-exit process.**
+`test:networking`/`test:replication` glob-match and run every file in *one* brittle process — a
+force-exit in one file can kill sibling files' still-running tests before they get to report,
+silently truncating the suite (confirmed directly: this happened when tried here). If a DHT/swarm
+test leaves something alive for a while after finishing, that's an accepted, already-known
+cost — slow-but-correct, not fast-but-truncates-siblings.
 
 ## Running tests
 
