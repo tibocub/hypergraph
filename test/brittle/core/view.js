@@ -1,5 +1,5 @@
 const test = require('brittle')
-const { createGraph } = require('../helpers')
+const { createGraph, sleep } = require('../helpers')
 
 test('view: update() processes new events and materializes them into the view', async (t) => {
   console.log('TEST: view update - starting')
@@ -58,6 +58,87 @@ test('view: getContent() returns the latest content or null', async (t) => {
   const second = await graph.view.getContent(post.id)
   t.is(second.body, 'second version', 'getContent returns the most recently written content')
   console.log('TEST: view getContent - passed')
+})
+
+test('view: getContent() still returns the true latest version past 10 revisions — regression for a non-sortable index key', async (t) => {
+  console.log('TEST: view getContent sort order - starting')
+  // #applyContentAppend used to key content versions as `c:<entityId>:<seq>`
+  // with a raw, unpadded seq. Hyperbee sorts keys as strings, so "c:id:9"
+  // sorts AFTER "c:id:10" lexicographically — getContent()'s reverse-order,
+  // limit:1 scan would silently return an old version once an entity had
+  // been edited more than 10 times.
+  const { graph } = await createGraph(t, 'view-get-content-sort-order')
+
+  const post = await graph.put({ type: 'post' })
+  for (let i = 0; i <= 10; i++) {
+    await graph.putContent(post.id, `version ${i}`, 'text')
+  }
+
+  const latest = await graph.view.getContent(post.id)
+  t.is(latest.body, 'version 10', 'getContent returns the true latest version (11th write), not a lexicographically-larger earlier one')
+  console.log('TEST: view getContent sort order - passed')
+})
+
+test('view: getContent() rejects content forged by a peer who does not own the entity — regression for a missing apply-time ownership check', async (t) => {
+  console.log('TEST: content forgery rejection - starting')
+  // content/append previously had no ownership check at apply time (unlike
+  // entity/create and entity/tombstone, both of which already required
+  // event.author === coreKeyHex). Any peer whose UserCore is opened by the
+  // victim (a normal, expected situation) could forge content for any
+  // entityId once the victim's own view processed their UserCore.
+  const victim = await createGraph(t, 'content-forgery-victim')
+  const attacker = await createGraph(t, 'content-forgery-attacker')
+
+  const victimPost = await victim.graph.put({ type: 'post' })
+  await victim.graph.putContent(victimPost.id, 'legitimate content', 'text')
+
+  const s1 = victim.store.replicate(true, { live: true })
+  const s2 = attacker.store.replicate(false, { live: true })
+  s1.pipe(s2).pipe(s1)
+  t.teardown(async () => { try { s1.destroy() } catch {}; try { s2.destroy() } catch {} })
+
+  // Victim opens the attacker's UserCore — a normal operation (e.g. the
+  // attacker is a legitimate participant elsewhere) that is what makes the
+  // attacker's events reach the victim's view at all.
+  const attackerKeyHex = attacker.graph.key.toString('hex')
+  await victim.graph.openUserCore(attackerKeyHex)
+
+  // The attacker's own view must know about the victim's post before
+  // putContent() will accept a call naming it (it requires the node to
+  // already be visible locally) — the attacker opens the victim's UserCore
+  // too, exactly as they'd need to in order to see/reply to it at all.
+  const victimKeyHex = victim.graph.key.toString('hex')
+  await attacker.graph.openUserCore(victimKeyHex)
+
+  for (let i = 0; i < 20 && !(await attacker.graph.get(victimPost.id)); i++) {
+    await sleep(200)
+    await attacker.graph.update()
+  }
+  t.ok(await attacker.graph.get(victimPost.id), "attacker's view has replicated the victim's post")
+
+  // Content versions are keyed `c:<entityId>:<seq>` with the WRITING core's
+  // own seq — there's no per-core namespacing in that key. Padding the
+  // attacker's own seq comfortably past the victim's (via unrelated writes)
+  // means that, without the ownership check, the forged version's key would
+  // win getContent()'s reverse-sorted scan on its own merits — this is what
+  // makes the assertion below a genuine test of the ownership check itself,
+  // not an accident of which peer happened to write at a lower seq.
+  for (let i = 0; i < 5; i++) await attacker.graph.put({ type: 'filler' })
+
+  // The forgery: attacker appends content/append to their OWN UserCore,
+  // naming the victim's entityId.
+  await attacker.graph.putContent(victimPost.id, 'forged content', 'text')
+
+  for (let i = 0; i < 20; i++) {
+    await sleep(200)
+    await victim.graph.update()
+    const current = await victim.graph.getContent(victimPost.id)
+    if (current && current.body === 'forged content') break
+  }
+
+  const finalContent = await victim.graph.getContent(victimPost.id)
+  t.is(finalContent.body, 'legitimate content', "the victim's own content is unaffected by the forgery, even though the forged event replicated")
+  console.log('TEST: content forgery rejection - passed')
 })
 
 test('view: getEdges() supports direction and type filters directly on the view', async (t) => {

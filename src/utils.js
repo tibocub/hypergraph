@@ -4,25 +4,50 @@
 
 const crypto = require('crypto')
 
+// Matches the 16-character zero-padded width below and stays within
+// Number.MAX_SAFE_INTEGER, so a clamped value never loses precision.
+const MAX_SORTABLE_TS = Number.MAX_SAFE_INTEGER // 9007199254740991 (16 digits)
+
 /**
  * Convert a timestamp to a sortable string by padding with zeros.
+ *
+ * `ts` may come directly from a peer-controlled, self-signed event field
+ * (relation/tag/entity timestamps) — clamped to a non-negative safe integer
+ * first, since an unsanitized negative number (padStart puts the zeros
+ * BEFORE the existing string, so the sign ends up mid-string, not at the
+ * front) or an out-of-range one (renders in JS exponential notation, e.g.
+ * "1e+21") would silently corrupt lexicographic ordering for every
+ * time-sorted index without throwing.
  *
  * @param   {number} ts - Unix timestamp in milliseconds
  * @returns {string} Zero-padded 16-character string for sorting
  */
-const toSortableTs = ts => String(ts).padStart(16, '0')
+const toSortableTs = ts => {
+  const n = Number(ts)
+  const safe = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), MAX_SORTABLE_TS) : 0
+  return String(safe).padStart(16, '0')
+}
 
 /**
  * Compute a stable hash for tag events (used for signature verification).
- * This matches the hash function used in hypergraph.js for signing tag events.
+ * Shared between hypergraph.js (signing) and context-base.js (verifying) so
+ * the two can never drift apart.
+ *
+ * `contextKeyHex` binds the signature to a specific context (its Autobase
+ * key) — without this, a validly-signed tag/add or tag/remove event created
+ * for one context carries an identical signature regardless of which
+ * context it's actually appended into, so it can be replayed into any other
+ * context the signer (or anyone else) has writer access to.
  *
  * @param {Object} event - The tag event
+ * @param {string} [contextKeyHex] - Hex-encoded key of the context this event belongs to
  * @returns {Buffer} SHA-256 hash digest
  */
-const stableTagHash = (event) => {
+const stableTagHash = (event, contextKeyHex) => {
   const payload = {
     entityId: event.entityId,
-    tag: event.tag
+    tag: event.tag,
+    context: contextKeyHex || null
   }
 
   const msg = {
@@ -35,7 +60,44 @@ const stableTagHash = (event) => {
   return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
 }
 
-module.exports = { toSortableTs, stableTagHash, resolveOpenContexts, authorFromEntityId }
+/**
+ * Compute a stable hash for relation events (used for signature
+ * verification). Shared between hypergraph.js (signing) and
+ * context-base.js (verifying) so the two can never drift apart — this used
+ * to be a verbatim-duplicated private method in each file.
+ *
+ * `contextKeyHex` binds the signature to a specific context, same rationale
+ * as stableTagHash above.
+ *
+ * @param {Object} event - The relation event
+ * @param {string} [contextKeyHex] - Hex-encoded key of the context this event belongs to
+ * @returns {Buffer} SHA-256 hash digest
+ */
+const stableRelationHash = (event, contextKeyHex) => {
+  const payload = {
+    from: event.from,
+    to: event.to,
+    relationType: event.relationType,
+    value: typeof event.value === 'number' ? event.value : null,
+    context: contextKeyHex || null
+  }
+
+  const msg = {
+    op: event.type,
+    payload,
+    author: event.author,
+    timestamp: event.timestamp
+  }
+
+  // For relation/delete, include createdAt
+  if (event.createdAt) {
+    msg.createdAt = event.createdAt
+  }
+
+  return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+}
+
+module.exports = { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts, authorFromEntityId }
 
 /**
  * Extract the author (core key hex) embedded in an entity id.

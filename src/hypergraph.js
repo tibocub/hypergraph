@@ -17,7 +17,7 @@ const IdentityManager = require('./identity-manager')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
-const { toSortableTs, stableTagHash, resolveOpenContexts } = require('./utils')
+const { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts } = require('./utils')
 
 
 /**
@@ -471,7 +471,7 @@ module.exports = class Hypergraph extends ReadyResource {
     }
     if (typeof opts.value === 'number') event.value = opts.value
 
-    const digest = this.#stableRelationHash(event)
+    const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -537,7 +537,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = this.#stableRelationHash(event)
+    const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -671,7 +671,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = stableTagHash(event)
+    const digest = stableTagHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -716,7 +716,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = stableTagHash(event)
+    const digest = stableTagHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -986,16 +986,24 @@ module.exports = class Hypergraph extends ReadyResource {
    *
    * @param {PubKeyHex} memberPubkeyHex
    * @param {Object}    opts
-   * @param {PubKeyHex} opts.author
+   * @param {KeyPair}   opts.keyPair - KeyPair for signing the event
    */
   async removeRole (memberPubkeyHex, opts = {}) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     await this.#roleBase.append({
       type: 'roles/removeMember',
       member: memberPubkeyHex,
-      author: opts.author,
+      author,
+      keyPair: opts.keyPair,
       timestamp: Date.now()
     })
   }
@@ -1035,29 +1043,6 @@ module.exports = class Hypergraph extends ReadyResource {
       payload,
       author: event.author,
       timestamp: event.timestamp
-    }
-
-    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
-  }
-
-  #stableRelationHash (event) {
-    const payload = {
-      from: event.from,
-      to: event.to,
-      relationType: event.relationType,
-      value: typeof event.value === 'number' ? event.value : null
-    }
-
-    const msg = {
-      op: event.type,
-      payload,
-      author: event.author,
-      timestamp: event.timestamp
-    }
-
-    // For relation/delete, include createdAt
-    if (event.createdAt) {
-      msg.createdAt = event.createdAt
     }
 
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()

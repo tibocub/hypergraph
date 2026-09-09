@@ -407,6 +407,53 @@ test('scope-base: rotateKey() with excludePubkeys correctly cuts a member off fr
   console.log('TEST: rotateKey exclusion - passed')
 })
 
+test('scopes-registry: applyScopeEvent gates concurrent rotations of the same epoch on a single winning rotationId — regression for a race with no consensus on the new epoch key', async (t) => {
+  console.log('TEST: rotateKey concurrent race - starting')
+  // rotateKey() mints its new key purely locally with no coordination — two
+  // peers rotating the same scope concurrently each grant a DIFFERENT key
+  // for the SAME new epoch. Autobase still gives every peer the same total
+  // log order, but each (recipient, epoch) grant used to be resolved
+  // independently ("last write wins" per recipient) — so different
+  // recipients could deterministically converge on DIFFERENT rotations'
+  // keys for the same epoch, purely depending on how each rotation's
+  // per-recipient events happened to interleave.
+  //
+  // This can't be reproduced by racing two rotateKey() calls from one
+  // identity in a test (a single peer's own writer core is inherently
+  // serialized — its own two batches can never actually interleave with
+  // each other the way two DIFFERENT peers' writer cores can). Testing the
+  // actual fix — applyScopeEvent's conflict resolution — directly, with a
+  // hand-built interleaving, is the deterministic way to exercise it.
+  const { applyScopeEvent } = require('../../../src/scopes-registry')
+
+  const ownerHex = 'a'.repeat(64)
+  const bHex = 'b'.repeat(64)
+
+  let registries = applyScopeEvent(null, { type: 'scope/create', scopeId: 'dm', creator: ownerHex, timestamp: 1 })
+
+  // Two competing rotations (X and Y) both targeting epoch 1, interleaved so
+  // that WITHOUT gating, the owner's last-applied grant would be from X
+  // while B's last-applied grant would be from Y — two different peers'
+  // views of "the epoch 1 key" silently diverging.
+  const interleaved = [
+    { type: 'scope/keyGrant', scopeId: 'dm', recipient: ownerHex, epoch: 1, sealedKey: 'Y-owner-key', recipientEncryptionPublicKey: 'epk-owner', granter: ownerHex, timestamp: 2, rotationId: 'rotation-Y' },
+    { type: 'scope/keyGrant', scopeId: 'dm', recipient: bHex, epoch: 1, sealedKey: 'X-b-key', recipientEncryptionPublicKey: 'epk-b', granter: ownerHex, timestamp: 3, rotationId: 'rotation-X' },
+    { type: 'scope/keyGrant', scopeId: 'dm', recipient: ownerHex, epoch: 1, sealedKey: 'X-owner-key', recipientEncryptionPublicKey: 'epk-owner', granter: ownerHex, timestamp: 4, rotationId: 'rotation-X' },
+    { type: 'scope/keyGrant', scopeId: 'dm', recipient: bHex, epoch: 1, sealedKey: 'Y-b-key', recipientEncryptionPublicKey: 'epk-b', granter: ownerHex, timestamp: 5, rotationId: 'rotation-Y' }
+  ]
+
+  for (const event of interleaved) registries = applyScopeEvent(registries, event)
+
+  const ownerGrant = registries.dm.grants[`${ownerHex}:1`]
+  const bGrant = registries.dm.grants[`${bHex}:1`]
+
+  t.ok(ownerGrant, 'owner has a grant for epoch 1')
+  t.ok(bGrant, 'B has a grant for epoch 1')
+  t.is(ownerGrant.sealedKey, 'Y-owner-key', "owner's grant stayed on rotation Y — the first rotationId seen for epoch 1 — not overwritten by the later rotation X event")
+  t.is(bGrant.sealedKey, 'Y-b-key', "B's grant also landed on rotation Y — the SAME rotation as the owner, not the independently-interleaved rotation X")
+  console.log('TEST: rotateKey concurrent race - passed')
+})
+
 test('scope-base: rotateKey() is rejected for a caller without scope.grant permission, over a real replicated link', async (t) => {
   console.log('TEST: rotateKey unauthorized - starting')
   const Corestore = require('corestore')

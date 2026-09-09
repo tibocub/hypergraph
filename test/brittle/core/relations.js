@@ -1,6 +1,39 @@
 const test = require('brittle')
 const { createGraph, sleep } = require('../helpers')
 
+test('relations: a validly-signed relation event cannot be replayed into a different context — regression for a signature not bound to its context', async (t) => {
+  console.log('TEST: relation cross-context replay - starting')
+  // #stableRelationHash used to sign {from, to, relationType, value, author,
+  // timestamp} only — nothing tied the signature to a specific context, so
+  // an event signed for context A carried an identical, still-valid
+  // signature no matter which context it was later appended into.
+  const { graph } = await createGraph(t, 'relations-context-replay')
+
+  const post = await graph.put({ type: 'post' })
+  const comment = await graph.put({ type: 'comment' })
+  const contextA = await graph.createContext({ writeMode: 'open' })
+  const contextB = await graph.createContext({ writeMode: 'open' })
+  const ctxA = await graph.openContext(contextA, { writeMode: 'open' })
+  const ctxB = await graph.openContext(contextB, { writeMode: 'open' })
+
+  const signedEvent = await graph.relate({ from: comment.id, to: post.id, type: 'reply', context: contextA })
+  t.ok(signedEvent && signedEvent.signature, 'relate() returns the signed event')
+
+  // Replay the exact same signed event into a different, unrelated context
+  // the caller also happens to have writer access to.
+  await ctxB.append({ ...signedEvent })
+
+  await graph.update()
+  const inCtxB = []
+  for await (const e of ctxB.createReadStream({ gte: 'e:', lt: 'e:\uffff' })) inCtxB.push(e)
+  t.is(inCtxB.length, 0, 'the replayed edge was not applied in context B, even though its signature is genuinely valid')
+
+  const inCtxA = []
+  for await (const e of graph.edges(comment.id, { direction: 'out', type: 'reply', context: contextA })) inCtxA.push(e)
+  t.is(inCtxA.length, 1, "the original edge in context A is unaffected and still exists exactly once")
+  console.log('TEST: relation cross-context replay - passed')
+})
+
 test('relations: relate creates a directed edge visible in both directions', async (t) => {
   console.log('TEST: relate basic - starting')
   const { graph } = await createGraph(t, 'relations-basic')

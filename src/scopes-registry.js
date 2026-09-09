@@ -83,8 +83,36 @@ function applyScopeEvent (registries, event) {
       const updated = {
         ...scope,
         grants: { ...scope.grants },
-        revoked: { ...scope.revoked }
+        revoked: { ...scope.revoked },
+        epochRotations: { ...(scope.epochRotations || {}) }
       }
+
+      // rotateKey() mints its new key purely locally with no coordination —
+      // two peers rotating concurrently each produce a DIFFERENT key for
+      // the SAME new epoch. Autobase still gives every peer the same total
+      // log order, but without this, each (recipient, epoch) grant is an
+      // independent "last write wins" — so different recipients could
+      // deterministically converge on DIFFERENT rotations' keys for the
+      // same epoch, depending only on how each rotation's per-recipient
+      // events happened to interleave in the log. rotationId (present only
+      // on events from rotateKey(), for backward compatibility with the
+      // epoch-0 self-grant createScope() issues, which never collides with
+      // rotateKey's newEpoch = currentEpoch + 1 anyway) lets every peer
+      // agree on ONE winning rotation per epoch — first one seen in total
+      // log order — instead of resolving the race independently per
+      // recipient. A losing rotation's grants are dropped entirely: no
+      // recipient of it gets a key for this epoch, rather than some
+      // recipients silently getting a different key than others under the
+      // same epoch number.
+      if (typeof event.rotationId === 'string' && event.rotationId.length > 0) {
+        const existingRotationId = updated.epochRotations[event.epoch]
+        if (existingRotationId === undefined) {
+          updated.epochRotations[event.epoch] = event.rotationId
+        } else if (existingRotationId !== event.rotationId) {
+          return next
+        }
+      }
+
       updated.grants[`${event.recipient}:${event.epoch}`] = {
         sealedKey: event.sealedKey,
         recipientEncryptionPublicKey: event.recipientEncryptionPublicKey || null,

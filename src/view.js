@@ -202,7 +202,7 @@ module.exports = class GraphView extends ReadyResource {
         await this.#applyEntityTombstone(event, coreKeyHex)
         break
       case 'content/append':
-        await this.#applyContentAppend(event, seq)
+        await this.#applyContentAppend(event, seq, coreKeyHex)
         break
       case 'identity/update':
         await this.#applyIdentityUpdate(event, seq, coreKeyHex)
@@ -281,8 +281,18 @@ module.exports = class GraphView extends ReadyResource {
     }
   }
 
-  async #applyContentAppend (event, seq) {
-    const key = `c:${event.entityId}:${seq}`
+  async #applyContentAppend (event, seq, coreKeyHex) {
+    // Binding invariant: content can only be appended under the entity's own
+    // author's core — same rule as entity/create and entity/tombstone above.
+    // Without this, any peer could forge content for any entityId simply by
+    // appending a content/append event naming that id from their own core.
+    if (authorFromEntityId(event.entityId) !== coreKeyHex) return
+
+    // seq must be zero-padded (toSortableTs) like every other time/seq-based
+    // index key here — a raw seq sorts lexicographically ("9" > "10"),
+    // which made getContent()'s reverse-order scan return stale content
+    // once an entity passed 10 revisions.
+    const key = `c:${event.entityId}:${toSortableTs(seq)}`
     await this.#bee.put(key, {
       entityId: event.entityId,
       contentType: event.contentType,

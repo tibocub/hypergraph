@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-09-09: code-review pass — 10 findings fixed, two of them BREAKING
+
+Ran a constitution-informed code review (see the docs/code audit entry below for the
+methodology) and fixed all 10 confirmed findings, each with a regression test verified to fail
+before the fix and pass after:
+
+- **RoleBase never verified signatures or permissions at apply time** — any writer of the
+  underlying Autobase could inject an unverified `roles/setRole`/`roles/addWriter` event and
+  self-promote to owner. Fixed in `src/role-base.js`: added apply-time signature + permission
+  verification, fixed `#stableRoleHash` (it was hashing `Date.now()` instead of `event.timestamp`,
+  and omitted `member`/`permissions`/`key` from the signed payload — both would have made real
+  verification either always-fail or bypassable). **BREAKING**: `Hypergraph#removeRole()` now
+  requires `opts.keyPair` instead of `opts.author` — needed a real signing key now that
+  verification is enforced. `RoleBase#append()`/`#addOwner()` also stop persisting a
+  caller-supplied `event.keyPair` into the (replicated) log — it was previously serialized
+  in-clear into every peer's copy of the log, a separate real secret-key leak found while fixing
+  this.
+- **`content/append` had no author binding** — forgeable for any entity. Fixed in `src/view.js`:
+  `#applyContentAppend` now checks `authorFromEntityId(entityId) === coreKeyHex`, the same
+  invariant `entity/create`/`entity/tombstone` already enforced.
+- **`getContent()`'s content-version index key wasn't zero-padded** — silently reverted to a
+  stale version past 10 edits (`"c:id:9"` sorts after `"c:id:10"` lexicographically). Fixed
+  alongside the above in the same `view.js` edit.
+- **`decodeEvent` had no defensive handling for malformed/truncated bytes** — a crash reachable
+  from any peer's corrupted data, wired unguarded into Autobase's apply loop. Fixed in
+  `src/encodings/event.js`: wrapped in try/catch, returns the same safe shape already used for an
+  unrecognized type (not `null`, which means "no buffer" to callers).
+- **Unknown/mistyped `event.type` silently dropped the whole event body** with no error. Fixed in
+  `src/encodings/event.js`: `encodeEvent()` now throws immediately for an unregistered type.
+- **Relation/tag signatures weren't bound to a context** — a validly-signed event for context A
+  could be replayed into any other context the signer had writer access to. **BREAKING**: fixed
+  by moving the duplicated `#stableRelationHash` (previously copy-pasted verbatim in both
+  `hypergraph.js` and `context-base.js`, itself a drift risk) into a single shared
+  `stableRelationHash(event, contextKeyHex)` in `src/utils.js`, alongside `stableTagHash` gaining
+  the same `contextKeyHex` parameter — every previously-signed relation/tag event's signature no
+  longer verifies under the new hash.
+- **`roles/removeMember` had no protection for the sole owner** — a mere admin (`mod.remove`)
+  could de-role the owner outright. Fixed in `src/role-base.js`: removing an owner-role member now
+  requires `'*'`, the same bar as granting one.
+- **`writerKeys()` read `base.inputs`**, a property that doesn't exist on this Autobase version
+  (only `activeWriters` does) — always silently returned just the local key. Fixed in
+  `src/context-base.js` to iterate `activeWriters` instead.
+- **`toSortableTs` had no input sanitization** — a negative or out-of-range peer-controlled
+  timestamp silently corrupted every time-sorted index's ordering. Fixed in `src/utils.js`:
+  clamped to a safe non-negative integer range.
+- **`rotateKey()` had no consensus on the new epoch's key** — two peers rotating a scope
+  concurrently could each mint a different key for the same epoch, with different recipients
+  silently converging on different keys. Fixed with a `rotationId` on every grant in one rotation
+  batch (`src/scope-base.js`) and first-rotationId-per-epoch-wins gating in `applyScopeEvent`
+  (`src/scopes-registry.js`) — backward compatible (only gates events that carry the new field).
+
+### 2026-09-09: spec-kit adopted; docs/code audit; `HypergraphNetwork.connect()`/`destroy()` behavior recorded
+
+Adopted spec-kit for future work (see `.specify/memory/constitution.md`) and ran a docs-vs-code
+audit, since `API_PROBLEMS.md`/`TODO.md`/`docs/` had been a hand-rolled pre-spec-kit substitute
+with no enforcement keeping them in sync with the code. Several docs were corrected for drift
+found in that audit (see individual `docs/` diffs — not narrated here per the new terse-entry
+convention below). One gap worth recording explicitly: commit `815f014`'s `connect()`/`destroy()`
+rewrite — role-based wait behavior (owner awaits `discovery.flushed()`; peer relies on the
+`_ensureConnectionWithRetry` safety net instead of waiting upfront), removal of the heavyweight
+`swarm.flush()`, and `destroy()` now calling `dataSwarm.destroy()` — shipped with no CHANGELOG
+entry at the time. Recorded now; see `docs/networking.md`'s "Connecting, Retrying, and Tearing
+Down" section for the consumer-facing detail.
+
+Going forward, per the constitution amendment made in this same pass: entries here stay terse
+and dated like this one, linking to the relevant `specs/<feature>/` for reasoning/rationale,
+instead of the long narrative form used by the "Round N" entries below (which predate this rule
+and remain as historical record, unedited).
+
+**Follow-up same day**: switched spec-kit's script flavor from PowerShell to Python
+(`specify init --script py`) for better cross-platform reach beyond this Windows machine —
+`.specify/scripts/python/*.py` (stdlib-only) replaces the deleted `.specify/scripts/powershell/`.
+Cleaned up what the switch left behind: stale PowerShell file hashes in
+`.specify/integrations/speckit.manifest.json`, and added `__pycache__/`/`*.pyc` to `.gitignore`
+(the scripts generate these on every `/speckit-*` run).
+
 ### Round 48: a real, serious bug found by outside review — closing `RoleBase` alone took down the entire shared Corestore
 
 Prompted by an outside observation that `RoleBase`/`ContextBase` passing a bare Corestore into

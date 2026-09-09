@@ -1,6 +1,7 @@
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
 const { createGraph, sleep } = require('../helpers')
+const { stableTagHash } = require('../../../src/utils')
 
 function replicatePair (peerA, peerB) {
   const s1 = peerA.store.replicate(true, { live: true })
@@ -15,10 +16,11 @@ function replicatePair (peerA, peerB) {
   }
 }
 
-function signTagEvent (event, keyPair) {
-  const payload = { entityId: event.entityId, tag: event.tag }
-  const msg = { op: event.type, payload, author: event.author, timestamp: event.timestamp }
-  const digest = require('crypto').createHash('sha256').update(JSON.stringify(msg)).digest()
+// Uses the real stableTagHash (rather than a hand-rolled reimplementation)
+// so this test can never silently drift out of sync with what
+// context-base.js's #verifyTagSignature actually checks.
+function signTagEvent (event, keyPair, contextKeyHex) {
+  const digest = stableTagHash(event, contextKeyHex)
   return crypto.sign(digest, keyPair.secretKey).toString('hex')
 }
 
@@ -98,7 +100,7 @@ test('contexts: open write mode auto-authorizes a peer added as a writer', async
     author: a.graph.key.toString('hex'),
     timestamp: Date.now()
   }
-  aTagEvent.signature = signTagEvent(aTagEvent, aKeyPair)
+  aTagEvent.signature = signTagEvent(aTagEvent, aKeyPair, ctxKey)
   await aCtx.append(aTagEvent)
 
   const bKeyPair = b.graph.identity.deviceKeyPair
@@ -109,7 +111,7 @@ test('contexts: open write mode auto-authorizes a peer added as a writer', async
     author: b.graph.key.toString('hex'),
     timestamp: Date.now()
   }
-  bTagEvent.signature = signTagEvent(bTagEvent, bKeyPair)
+  bTagEvent.signature = signTagEvent(bTagEvent, bKeyPair, ctxKey)
   await bCtx.append(bTagEvent)
 
   console.log('  Step 5: verify both events converge on peer A')
@@ -263,6 +265,41 @@ test('contexts: a legitimate but unprivileged writer cannot bypass addWriter() v
 
   t.absent(ownerCtx.writerKeys().includes(victimKey), 'the victim key did NOT become a writer despite the attacker bypassing addWriter() via append()')
   console.log('TEST: append() bypass security regression - passed')
+})
+
+test('contexts: writerKeys() returns the full writer set, not just the local key — regression for reading a nonexistent Autobase property', async (t) => {
+  // writerKeys() used to read base.inputs, which doesn't exist on this
+  // Autobase version (only base.activeWriters does) — Array.isArray(undefined)
+  // is false, so it silently fell through to returning just the local key.
+  console.log('TEST: writerKeys full set - starting')
+  const a = await createGraph(t, 'contexts-writerkeys-a')
+  const b = await createGraph(t, 'contexts-writerkeys-b')
+
+  const repl = replicatePair(a, b)
+  t.teardown(async () => repl.close())
+
+  const ctxKey = await a.graph.createContext()
+  const aCtx = await a.graph.openContext(ctxKey)
+  const bCtx = await b.graph.openContext(ctxKey)
+
+  await aCtx.addWriter(bCtx.localKey)
+
+  await pumpUntil(async () => {
+    await b.graph.update()
+    if (!bCtx.writable) throw new Error('peer not writable yet')
+  }, 20000)
+
+  await pumpUntil(async () => {
+    await aCtx.update()
+    const keys = aCtx.writerKeys()
+    if (!keys.includes(bCtx.localKey.toString('hex'))) throw new Error('peer B not yet visible in writerKeys()')
+  }, 20000)
+
+  const keys = aCtx.writerKeys()
+  t.ok(keys.includes(aCtx.localKey.toString('hex')), "owner's own key is included")
+  t.ok(keys.includes(bCtx.localKey.toString('hex')), "peer B's key is included, not just the local one")
+  t.is(keys.length, 2, 'exactly the two real writers are reported')
+  console.log('TEST: writerKeys full set - passed')
 })
 
 test('contexts: removeWriter in open mode is unrestricted, no keyPair needed', async (t) => {

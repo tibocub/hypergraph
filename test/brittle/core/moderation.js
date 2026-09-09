@@ -53,7 +53,8 @@ test('moderation: events recorded before and after RoleBase init are both querya
     role: 'member',
     permissions: ['content.flag', 'content.hide', 'content.remove'],
     author: modPubkey,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    keyPair: modKeyPair
   })
 
   console.log('  Step 3: moderate again after the registry exists')

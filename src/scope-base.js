@@ -520,6 +520,10 @@ module.exports = class ScopeBase extends ReadyResource {
 
     const newEpoch = currentEpoch + 1
     const newKey = hypercoreCrypto.randomBytes(32)
+    // Ties every grant in this rotation together so every peer can agree on
+    // one winning rotation per epoch if two peers rotate concurrently — see
+    // the rotationId handling in scopes-registry.js's applyScopeEvent.
+    const rotationId = hypercoreCrypto.randomBytes(16).toString('hex')
 
     const events = []
     for (const [pubkey, encryptionPublicKeyHex] of members) {
@@ -534,6 +538,7 @@ module.exports = class ScopeBase extends ReadyResource {
         granter: author,
         author,
         timestamp: Date.now(),
+        rotationId,
         signature: null
       }
       this.#sign(grantEvent)

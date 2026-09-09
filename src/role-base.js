@@ -91,6 +91,13 @@ module.exports = class RoleBase extends ReadyResource {
       if (!event || typeof event.type !== 'string') continue
 
       if (event.type === 'roles/addWriter') {
+        // SECURITY: the real, enforced boundary — runs identically on every
+        // peer regardless of how the event reached the log. append()'s own
+        // check is a client-side fail-fast convenience only; a writer could
+        // otherwise append a raw { type: 'roles/addWriter', key } with no
+        // signature and no permission check at all.
+        const current = await this.#currentRegistry(view)
+        if (!this.#verifyRoleSignature(event) || !can(current, event.author, '*')) continue
         try {
           const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
           await host.addWriter(key, { indexer: true })
@@ -113,14 +120,39 @@ module.exports = class RoleBase extends ReadyResource {
     }
   }
 
-  async #applyRolesEvent (view, event) {
-    let current = null
-
+  async #currentRegistry (view) {
     try {
       const entry = await view.get('roles:registry')
-      current = entry ? entry.value : null
+      return entry ? entry.value : null
     } catch {
-      current = null
+      return null
+    }
+  }
+
+  async #applyRolesEvent (view, event) {
+    const current = await this.#currentRegistry(view)
+
+    // SECURITY: the real, enforced boundary — runs identically on every
+    // peer regardless of how the event reached the log (append()'s own
+    // check, below, is a client-side fail-fast convenience only and can be
+    // bypassed by any writer of the underlying Autobase). roles/init is the
+    // one exception: it bootstraps the registry itself, so there's nothing
+    // to verify a permission against yet — applyRoleEvent's own
+    // first-one-wins idempotency guard is that event's protection instead.
+    if (event.type !== 'roles/init') {
+      if (!this.#verifyRoleSignature(event)) return
+
+      let required = '*'
+      if (event.type === 'roles/setRole') {
+        required = event.role === 'owner' ? '*' : 'mod.add'
+      } else if (event.type === 'roles/removeMember') {
+        // Removing an owner requires the same '*' privilege as granting one
+        // — otherwise a mere admin (who only holds 'mod.remove') could
+        // de-role the owner outright.
+        const targetRole = current && current.members ? current.members[event.member] : null
+        required = targetRole === 'owner' ? '*' : 'mod.remove'
+      }
+      if (!can(current, event.author, required)) return
     }
 
     let next = null
@@ -232,31 +264,37 @@ module.exports = class RoleBase extends ReadyResource {
     if (
       event.type === 'roles/setRole' ||
       event.type === 'roles/removeMember' ||
-      event.type === 'roles/setRolePermissions'
+      event.type === 'roles/setRolePermissions' ||
+      event.type === 'roles/addWriter'
     ) {
       const registry = await this.getRegistry()
       if (!registry) throw new Error('Role registry missing')
 
-      let required = null
+      let required = '*' // roles/setRolePermissions and roles/addWriter both require '*'
       if (event.type === 'roles/setRole') {
         required = event.role === 'owner' ? '*' : 'mod.add'
       } else if (event.type === 'roles/removeMember') {
-        required = 'mod.remove'
-      } else if (event.type === 'roles/setRolePermissions') {
-        required = '*'
+        const targetRole = registry.members ? registry.members[event.member] : null
+        required = targetRole === 'owner' ? '*' : 'mod.remove'
       }
 
       if (!event.author || typeof event.author !== 'string') throw new Error('event.author is required')
       if (!can(registry, event.author, required)) throw new Error('Not authorized')
 
-      // Sign the event using identity
-      if (this.#identity) {
-        const deviceKeyPair = this.#identity.deviceKeyPair
+      // Sign with a caller-supplied keyPair when given (so an authorized
+      // caller can sign as an identity other than this RoleBase's own
+      // attached identity — see addOwner()), otherwise fall back to the
+      // attached identity.
+      const keyPair = event.keyPair || (this.#identity && this.#identity.deviceKeyPair)
+      if (keyPair) {
         const digest = this.#stableRoleHash(event)
-        const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
-        event.signature = sig.toString('hex')
+        event.signature = hypercoreCrypto.sign(digest, keyPair.secretKey).toString('hex')
       }
     }
+
+    // Never persist secret key material into the (replicated) event log —
+    // event.keyPair, when present, is only ever a local signing input.
+    delete event.keyPair
 
     await this.#base.append(event)
     await this.#base.update()
@@ -264,18 +302,33 @@ module.exports = class RoleBase extends ReadyResource {
 
   #stableRoleHash (event) {
     const payload = {
-      pubkey: event.pubkey,
-      role: event.role || null
+      member: event.member || null,
+      role: event.role || null,
+      permissions: Array.isArray(event.permissions) ? event.permissions : null,
+      key: event.key || null
     }
 
     const msg = {
       op: event.type,
       payload,
       author: event.author,
-      timestamp: Date.now()
+      timestamp: event.timestamp
     }
 
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+  }
+
+  #verifyRoleSignature (event) {
+    if (!event.author || typeof event.author !== 'string') return false
+    if (!event.signature || typeof event.signature !== 'string') return false
+    try {
+      const digest = this.#stableRoleHash(event)
+      const signature = Buffer.from(event.signature, 'hex')
+      const publicKey = Buffer.from(event.author, 'hex')
+      return hypercoreCrypto.verify(digest, signature, publicKey)
+    } catch {
+      return false
+    }
   }
 
   /**
@@ -319,21 +372,18 @@ module.exports = class RoleBase extends ReadyResource {
     if (!memberPubkeyHex || typeof memberPubkeyHex !== 'string') throw new Error('memberPubkeyHex is required')
     if (!writerCore || !writerCore.key) throw new Error('writerCore with a key is required')
 
-    const registry = await this.getRegistry()
-    if (!registry) throw new Error('Role registry missing')
-
     const author = opts.author
     if (!author || typeof author !== 'string') throw new Error('opts.author is required')
-    if (!can(registry, author, '*')) throw new Error('Not authorized')
 
     const writerKeyHex = writerCore.key.toString('hex')
+    const timestamp = Date.now()
 
-    const events = [
-      { type: 'roles/addWriter', key: writerKeyHex },
-      { type: 'roles/setRole', member: memberPubkeyHex, role: 'owner', author, timestamp: Date.now() }
-    ]
-
-    await this.#base.append(events)
-    await this.#base.update()
+    // Routed through append() so both events get the same signature and
+    // permission enforcement as any other role-changing event (see
+    // append()'s '*' requirement for roles/addWriter and an owner-role
+    // roles/setRole) — previously these were appended raw, unsigned, and
+    // unchecked at the apply layer.
+    await this.append({ type: 'roles/addWriter', key: writerKeyHex, author, timestamp, keyPair: opts.keyPair })
+    await this.append({ type: 'roles/setRole', member: memberPubkeyHex, role: 'owner', author, timestamp, keyPair: opts.keyPair })
   }
 }

@@ -65,7 +65,8 @@ test('roles: setRole assigns a role that getRole/can reflect after update', asyn
     role: 'member',
     permissions: ['content.flag'],
     author: ownerPubkey,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    keyPair: ownerKeyPair
   })
   await graph.update()
 
@@ -115,7 +116,7 @@ test('roles: removeRole revokes a previously assigned role', async (t) => {
   t.is(await graph.getRole(memberPubkey), 'member', 'member role assigned')
 
   console.log('  Step 2: remove and confirm role is gone')
-  await graph.removeRole(memberPubkey, { author: ownerPubkey })
+  await graph.removeRole(memberPubkey, { keyPair: ownerKeyPair })
   await graph.update()
   t.is(await graph.getRole(memberPubkey), null, 'member role removed')
   console.log('TEST: removeRole - passed')

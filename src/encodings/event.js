@@ -350,6 +350,16 @@ const eventEncoding = {
  * @returns {Buffer} The encoded event as a Buffer
  */
 function encodeEvent (event) {
+  // Fail fast on an unregistered/mistyped event.type here, at the one
+  // actual entry point every caller goes through — without this,
+  // preencode/encode's own `EVENT_TYPES[event.type] || 0` fallback would
+  // silently write typeCode 0 with none of the type's real fields, and
+  // decode would hand back only `{ type: undefined, timestamp }`, with
+  // every other field permanently lost and no error anywhere to say why.
+  if (!event || typeof event.type !== 'string' || !Object.prototype.hasOwnProperty.call(EVENT_TYPES, event.type)) {
+    throw new Error(`Unknown event type: ${event && typeof event.type === 'string' ? JSON.stringify(event.type) : String(event && event.type)}`)
+  }
+
   const state = { start: 0, end: 0, buffer: null }
   eventEncoding.preencode(state, event)
   state.buffer = b4a.allocUnsafe(state.end)
@@ -366,7 +376,20 @@ function encodeEvent (event) {
 function decodeEvent (buffer) {
   if (!buffer) return null
   const state = { start: 0, end: buffer.length, buffer }
-  return eventEncoding.decode(state)
+  try {
+    return eventEncoding.decode(state)
+  } catch {
+    // Malformed/truncated/adversarial bytes must never crash the caller —
+    // this is wired directly into Autobase's apply loop (context-base.js
+    // passes decodeEvent straight through as valueEncoding.decode) and
+    // UserCore's read paths, none of which wrap this call in their own
+    // try/catch. Returns the same safe shape already used for a structurally
+    // valid but unrecognized event type, NOT null — null specifically means
+    // "no buffer at all" to callers like GraphView's UserCore read loop
+    // (view.js), which stops processing on a null event; a corrupted event
+    // should be skipped, not mistaken for the end of the stream.
+    return { type: undefined, timestamp: undefined, decodeError: true }
+  }
 }
 
 /**

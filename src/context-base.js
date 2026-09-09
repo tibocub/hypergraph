@@ -9,7 +9,7 @@ const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
-const { toSortableTs, stableTagHash, authorFromEntityId } = require('./utils')
+const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId } = require('./utils')
 
 function sleep (ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -250,29 +250,6 @@ module.exports = class ContextBase extends ReadyResource {
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
-  #stableRelationHash (event) {
-    const payload = {
-      from: event.from,
-      to: event.to,
-      relationType: event.relationType,
-      value: typeof event.value === 'number' ? event.value : null
-    }
-
-    const msg = {
-      op: event.type,
-      payload,
-      author: event.author,
-      timestamp: event.timestamp
-    }
-
-    // For relation/delete, include createdAt
-    if (event.createdAt) {
-      msg.createdAt = event.createdAt
-    }
-
-    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
-  }
-
   // How far into the future a moderation event's own claimed timestamp is
   // allowed to be, relative to this peer's clock at the moment it's
   // applied. See the rejection check in #verifyModerationSignature for why
@@ -350,7 +327,7 @@ module.exports = class ContextBase extends ReadyResource {
       return false
     }
 
-    const digest = this.#stableRelationHash(event)
+    const digest = stableRelationHash(event, this.key ? this.key.toString('hex') : null)
     return hypercoreCrypto.verify(digest, signature, publicKey)
   }
 
@@ -372,7 +349,7 @@ module.exports = class ContextBase extends ReadyResource {
       return false
     }
 
-    const digest = stableTagHash(event)
+    const digest = stableTagHash(event, this.key ? this.key.toString('hex') : null)
     return hypercoreCrypto.verify(digest, signature, publicKey)
   }
 
@@ -785,11 +762,11 @@ module.exports = class ContextBase extends ReadyResource {
     const keys = []
 
     try {
-      const inputs = base.inputs
-      if (Array.isArray(inputs)) {
-        for (const input of inputs) {
-          if (input && input.key) keys.push(input.key.toString('hex'))
-        }
+      // Autobase (7.x) has no `inputs`/`writers` array — the live writer set
+      // is `activeWriters`, an iterable of Writer instances, each wrapping
+      // its own core at `.core`.
+      for (const w of base.activeWriters) {
+        if (w && w.core && w.core.key) keys.push(w.core.key.toString('hex'))
       }
     } catch {}
 
