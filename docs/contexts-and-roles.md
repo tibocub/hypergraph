@@ -25,11 +25,17 @@ Contexts support two write modes:
 - Author must have `context.write` privilege
 - Suitable for private or moderated contexts
 
-Regardless of write mode, `moderateAction()` and writer-change events are always
-signature-verified and permission-checked against whichever RoleBase is attached — this is
-thoroughly tested (see `test/brittle/networking/writer-authorization.js`,
-`test/brittle/core/moderation.js`, `test/brittle/core/contexts.js`), including cross-peer
-scenarios and the race between a RoleBase and a context replicating concurrently.
+`moderateAction()` is always signature-verified and permission-checked against whichever
+RoleBase is attached, regardless of write mode — this is thoroughly tested (see
+`test/brittle/networking/writer-authorization.js`, `test/brittle/core/moderation.js`,
+`test/brittle/core/contexts.js`), including cross-peer scenarios and the race between a
+RoleBase and a context replicating concurrently.
+
+Writer-change events (`roles/addWriter`/`roles/removeWriter` at the context level) are
+different: they're only signature-verified and permission-checked in **closed** mode. In
+**open** mode they're applied with no check at all — this is intentional, not an oversight:
+author-forgery protection has nothing to protect in a mode where anyone can already add
+themselves as a writer.
 
 ### Context Isolation
 

@@ -5,7 +5,7 @@ Hypergraph supports multiple devices per identity through the IdentityManager.
 ## Identity vs Device Keys
 
 - **Identity key**: Long-term cryptographic identity (same across all devices), derived from
-  a 12-word mnemonic
+  a 24-word mnemonic
 - **Device key**: Per-device signing keypair (Ed25519) — confirmed genuinely random and
   different on every device, NOT derived from the mnemonic at all
 - **Encryption keypair**: A *different* per-identity (not per-device) keypair (X25519 /
@@ -27,7 +27,11 @@ directly:
 view.registerDeviceIdentity(deviceKeyHex, identityKeyHex)
 ```
 
-This mapping is used for author resolution in queries.
+**This mapping is not currently used anywhere in the query path.** Grepping the codebase: it's
+called only at its own definition and directly from tests — `graph.query()`, `getByAuthor()`,
+and every other query surface report `author` as the raw device public key. Entities from two
+devices of the same identity are not grouped together in query results today; that would
+require the query layer to actually consult this mapping, which it doesn't yet.
 
 ## UserCore Per Device
 

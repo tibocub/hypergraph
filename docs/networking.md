@@ -36,6 +36,18 @@ await networking.connect()
 There is no `graph.join(bootstrap)` method on `Hypergraph` itself — joining an existing graph
 always goes through `HypergraphNetwork` as above, not through `Hypergraph` directly.
 
+### Connecting, Retrying, and Tearing Down
+
+`connect()` waits differently depending on role: `role: 'owner'` awaits the discovery session's
+own `.flushed()` (not the heavyweight, since-removed `swarm.flush()`) before proceeding; `role:
+'peer'` awaits nothing upfront and relies on a retry safety net (`_ensureConnectionWithRetry`)
+that re-attempts the connection for the genuine race where two peers connect nearly
+simultaneously, before DHT propagation has caught up. Listen for `'connection-retry'` /
+`'connection-retry-exhausted'` if you need visibility into that retry path, and
+`waitForPeer()`/`waitForWriterGrant()` if you want to await specific milestones instead of just
+resolving `connect()`. `destroy()` tears down the underlying Hyperswarm instance
+(`dataSwarm.destroy()`) — call it once, at teardown, not expecting to reuse the swarm afterward.
+
 ### Peer Discovery Events
 
 `HypergraphNetwork` (not `Hypergraph`) emits peer lifecycle events:

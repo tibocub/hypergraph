@@ -9,11 +9,22 @@ core name (they all use a fixed name, `'view'`, for their own materialized view 
 
 ```
 Root Corestore
-  ├── namespace('user:<keyHex>') → UserCore's Hypercore
-  ├── namespace('<autobaseKeyHex or fresh-random>') → ContextBase's Autobase
-  ├── namespace('scope-<autobaseKeyHex or fresh-random>') → ScopeBase's Autobase
-  └── namespace('role-<autobaseKeyHex or fresh-random>') → RoleBase's Autobase
+  ├── store.get({ key: userCoreKey }) → UserCore's Hypercore (NOT namespaced — see below)
+  ├── namespace(<bootstrap key hex, or a fresh random id if new>) → ContextBase's Autobase
+  ├── namespace('scope-' + <fresh random id>, if new)
+  │   or namespace(<bootstrap key hex>, if joining) → ScopeBase's Autobase
+  └── namespace('role-new-' + <fresh random id>, if new)
+      or namespace(<bootstrap key hex>, if joining) → RoleBase's Autobase
 ```
+
+`UserCore` is the one exception: it calls `store.get()` directly on the raw store passed into
+`Hypergraph`, with no `.namespace()` call at all — there's nothing else in the system sharing
+that exact core (each user's data lives at its own key), so nothing to collide with. Every
+Autobase-backed structure (ContextBase, ScopeBase, RoleBase), by contrast, namespaces its own
+Corestore session — and unlike UserCore, this one **is** required, for the reasons below. Note
+also that the `'scope-'`/`'role-new-'` prefixes only apply on the fresh/new branch — when
+joining an existing structure via its bootstrap key, the namespace is the bare key hex with no
+prefix (see "Namespace Usage" below for the exact code).
 
 **Every** Autobase-backed structure in the system namespaces its own Corestore session. This
 wasn't always true — `RoleBase` originally constructed its Autobase directly on the raw

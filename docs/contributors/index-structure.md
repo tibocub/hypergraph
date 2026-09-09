@@ -56,7 +56,7 @@ cnt:out:<from>:<type> → { count }
 ## Tag Indexes
 
 ```
-t:<tag>:<createdAt>:<entityId>:<author> → { createdAt }
+t:<tag>:<createdAt>:<entityId>:<author> → { entityId, tag, author, createdAt }
 
 tref:<tag>:<entityId>:<author> → { ref }
 ```
@@ -73,9 +73,9 @@ tref:<tag>:<entityId>:<author> → { ref }
 ## Moderation Indexes
 
 ```
-m:t:<targetId>:<createdAt>:<coreKeyHex>:<seq> → { eventId, action, target, author, createdAt, signature }
+m:t:<targetId>:<createdAt>:<coreKeyHex>:<seq> → { eventId, action, target, author, reason, createdAt, coreKey, seq, signature }
 
-m:a:<author>:<createdAt>:<targetId>:<coreKeyHex>:<seq> → { eventId, action, target, author, createdAt, signature }
+m:a:<author>:<createdAt>:<targetId>:<coreKeyHex>:<seq> → { eventId, action, target, author, reason, createdAt, coreKey, seq, signature }
 ```
 
 **Moderation design notes:**

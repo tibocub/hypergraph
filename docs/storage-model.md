@@ -103,8 +103,12 @@ sealed copies, each readable only by its intended recipient.
 - `nt:<type>:<createdAt>:<id>` - Type index (time-sorted)
 - `nc:<createdAt>:<id>` - Type-agnostic time index
 - `e:<from>:<type>:<ts>:<to>` - Edge records (optional numeric `value`)
-- `er:<from>:<type>:<to>` - Edge references
-- `t:<tag>:<entityId>` - Tag references
+- `i:in:<to>:<type>:<ts>:<from>` - Reverse edge lookup (incoming edges)
+- `er:<from>:<type>:<to>` - Edge references (one active edge per (from, type, to) triple)
+- `cnt:in:<to>:<type>` / `cnt:out:<from>:<type>` - Incoming/outgoing edge counts
+- `t:<tag>:<createdAt>:<entityId>:<author>` - Tag records, paired with
+  `tref:<tag>:<entityId>:<author>` for reverse lookup (see
+  [Index Structure](contributors/index-structure.md) for full key/value shapes)
 - `m:t:<target>:<ts>:<coreKeyHex>:<seq>` - Moderation by target
 - `m:a:<author>:<ts>:<target>:<coreKeyHex>:<seq>` - Moderation by author
 

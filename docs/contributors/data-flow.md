@@ -11,12 +11,15 @@
    ↓
 4. Written to user's Hypercore
    ↓
-5. graph.update() called by application
+5. put() calls view.update() internally — no separate graph.update()
+   call needed for the caller's own writes to be indexed immediately
    ↓
-6. GraphView processes new events from UserCore
+6. GraphView processes the new event from UserCore
    ↓
 7. Indexes updated in GraphView's Hyperbee (n:, nt:, nc:)
 ```
+A separate `graph.update()` call is still what picks up events from *other* peers after
+replication — it's just not required for your own local writes, which self-index synchronously.
 
 ## Write Path (Creating a Relation)
 
@@ -29,11 +32,16 @@
    ↓
 4. Written to context's Autobase (local writer core)
    ↓
-5. graph.update() called by application
+5. relate() calls view.update() internally — same as put(), no
+   separate graph.update() call needed for the caller's own write
    ↓
-6. GraphView processes new events from ContextBase
+6. ContextBase's own Autobase apply function processes the new event
+   (GraphView only tracks whether the context's view.length changed
+   and forwards to it — it never applies relation events itself)
    ↓
-7. Indexes updated in GraphView's Hyperbee
+7. Indexes updated in the CONTEXT's OWN Hyperbee (e:, i:in:, er:,
+   cnt:, t:, tref:) — NOT GraphView's Hyperbee, which never stores
+   relation/tag/moderation data
 ```
 
 ## Write Path (Encrypted Content)
@@ -47,8 +55,9 @@ See [Read Permission](../read-permission.md) for the full design.
    (ScopeBase.getCurrentEpoch() + resolveKey() — throws if
    the scope is unknown, or if the caller doesn't hold the key)
    ↓
-3. Encrypt body with that key (XChaCha20-Poly1305 /
-   crypto_secretbox_easy), generate a fresh nonce
+3. Encrypt body with that key (XSalsa20-Poly1305, i.e. libsodium's
+   standard secretbox — sodium-universal's `crypto_secretbox_easy`),
+   generate a fresh nonce
    ↓
 4. UserCore.append({ ..., body: ciphertextHex, encrypted: true,
    scope, epoch, nonce })

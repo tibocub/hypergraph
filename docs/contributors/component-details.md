@@ -7,7 +7,8 @@
 **Private Fields**:
 - `#store` - Corestore instance for core management
 - `#userCore` - Primary UserCore instance (this device's core)
-- `#userCores` - Map of remote UserCore instances (keyHex → UserCore)
+- `#userCores` - Map of UserCore instances (keyHex → UserCore), including the local device's own
+  core (registered under its own keyHex during `_open()`), not just remote ones
 - `#contexts` - Map of ContextBase instances (keyHex → ContextBase)
 - `#view` - GraphView instance (materialized view)
 - `#roleBase` - RoleBase instance (optional, for permission checks)
@@ -218,22 +219,29 @@ update()
   ↓
 1. For each UserCore:
    - Get events since lastProcessedSeq
-   - Process each event
-   - Update indexes
+   - Process each event (GraphView's own #applyEvent: entity/create,
+     entity/tombstone, content/append, identity/update)
+   - Update indexes (n:, nt:, nc:, c:, id:profile:) in GraphView's own Hyperbee (#bee)
    - Update lastProcessedSeq
   ↓
 2. For each ContextBase:
-   - Get Autobase view since last checkpoint
-   - Process each event
-   - Update indexes
-   - Update checkpoint
+   - Compare context.view.length against the stored checkpoint
+   - If changed, call context.update() — this delegates entirely to
+     ContextBase's own Autobase apply function, which processes
+     relation/tag/moderation events and writes e:/i:in:/er:/cnt:/t:/tref:/m:
+     indexes into the CONTEXT's OWN separate Hyperbee (context.view), not
+     GraphView's #bee
+   - Update the stored checkpoint
 ```
+GraphView itself never applies relation/tag/moderation events or writes their indexes — it only
+tracks *whether* each context has new data and forwards to that context's own view. Reads that
+need relation/tag data (`getEdges`, `getByTag`, etc.) go to `context.view` directly, not `#bee`.
 
 **Key Methods**:
 - `update()` - Process new events from all cores
 - `getNode(id)` - Get entity by ID
 - `getContent(entityId)` - Get latest content record (encrypted or plain — decryption happens one layer up, in `Hypergraph.getContent()`)
-- `edges(id, opts)` - Query edges
+- `getEdges(entityId, opts)` - Query edges (exposed on `Hypergraph` as `edges()` — GraphView itself has no method literally named `edges`)
 - `getByTag(tag, opts)` - Query by tag
 - `getByType(type)` - Query by type, using the time-sorted `nt:` index
 - `getByAuthor(author)` - Query by author, scanning that author's own UserCore directly rather than any shared index
