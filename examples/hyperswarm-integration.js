@@ -72,10 +72,11 @@ async function main () {
   await swarm.flush()
 
   if (seed) {
-    const localPostId = `post/hello/${localAuthor.slice(0, 8)}`
-    await graph.put({ id: localPostId, type: 'post', author: localAuthor })
-    await graph.putContent(localPostId, 'Hello from P2P!', 'text')
-    console.log('Seeded LOCAL post:', localPostId, 'author:', localAuthor)
+    // put() assigns the id and author itself — do NOT pass them in (it throws).
+    // The returned id has the form `post/<authorHex>/<seq>`.
+    const post = await graph.put({ type: 'post' })
+    await graph.putContent(post.id, 'Hello from P2P!', 'text')
+    console.log('Seeded LOCAL post:', post.id, 'author:', post.author)
   }
 
   console.log('Waiting for peers / replication...')

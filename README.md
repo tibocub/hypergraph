@@ -37,8 +37,15 @@ await graph.putContent(post.id, 'Hello world', 'text')
 
 // Create a context for relations
 const commentsContext = await graph.createContext()
+
+// `from` and `to` must be REAL entity ids returned by put() — an id like
+// 'comment/1' is not well-formed, and an edge from it is silently dropped on
+// read (the author can't be recovered from the id, so the edge can't be
+// verified as genuine). relate() will happily append it; edges() will never
+// return it.
+const comment = await graph.put({ type: 'comment' })
 await graph.relate({
-  from: 'comment/1',
+  from: comment.id,
   to: post.id,
   type: 'reply',
   context: commentsContext
@@ -78,13 +85,24 @@ Role-based access control for contexts and moderation. RoleBase stores role regi
 
 ## Installation
 
+**Not published to npm yet.** Install from the repo:
+
 ```bash
-npm install hypergraph
+npm install github:tibocub/hypergraph
+```
+
+For local development against a checkout (which is how the sibling projects consume it — see
+[ECOSYSTEM.md](ECOSYSTEM.md)), link it instead so edits are live:
+
+```bash
+npm link                  # in this checkout
+npm link hypergraph       # in the consuming project
 ```
 
 ## API Reference
 
-See the [JSDoc-generated API documentation](https://your-docs-site.com) for detailed method documentation.
+See the JSDoc-generated API documentation in [`docs/api/`](docs/api/) (open `index.html` in a
+browser) for detailed method documentation.
 
 ## Examples
 
