@@ -18,6 +18,29 @@ any non-trivial change. Its non-negotiable core: correctness under concurrency/p
 (Principle I), test-first for CRDT/replication code (Principle II) — and, project-wide, a
 regression test for every significant fix or behavior change, not just that core tier.
 
+## You are the hub — live consumers break when you change
+
+**[`ECOSYSTEM.md`](ECOSYSTEM.md) is the canonical map. Read it before any breaking change.**
+
+hypergraph is consumed by four sibling projects on this machine under `E:\Code\P2P\`:
+**HyperBBS** (browser), **hyperDNS** (naming), **HyperMD** (document format, doesn't depend on us),
+**SwarmFS** (file transfer, paused, will depend on us).
+
+`HyperBBS/node_modules/hypergraph` and `hyperDNS/node_modules/hypergraph` are **symlinks to this
+working tree**. That means:
+
+- Editing `src/` here changes both of those projects' runtime **immediately** — no publish, no
+  version bump, no lag. Principle V permits intentional breaking changes; it does not make them
+  invisible. A `CHANGELOG.md` entry is the *only* signal those consumers get.
+- After a breaking or apply-time/wire-format change, run their suites too, not just ours:
+  ```bash
+  cd E:\Code\P2P\HyperBBS && npm test
+  cd E:\Code\P2P\hyperDNS && npm test
+  ```
+- `package.json` here says version `0.0.1` and has never moved, so **git SHA is the only real
+  version identifier**. hyperDNS's lockfile still pins an older commit; a stale copy there is not a
+  safe fallback but a silently-incompatible peer that rejects events signed by a current one.
+
 ## Two rules that exist specifically to stop drift
 
 These were added after an audit found that `docs/`, `API_PROBLEMS.md`, and `TODO.md` had partly
