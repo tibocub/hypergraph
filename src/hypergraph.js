@@ -18,6 +18,7 @@ const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
 const { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts } = require('./utils')
+const { CONTENT_LINK_TYPE, formatReference, parseReference, isReferenceType } = require('./content-ref')
 
 
 /**
@@ -346,6 +347,48 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
+   * Append a reference to content held outside this graph.
+   *
+   * Stores an *address* instead of bytes, so large content can belong to a
+   * graph without every byte replicating to every participant. Hypergraph
+   * never fetches, caches, or verifies what the address points at, and never
+   * interprets a scheme's meaning — see `src/content-ref.js`.
+   *
+   * This is an ordinary content version: the entity id stays stable across
+   * updates, relations and tags pointing at it stay valid, and superseded
+   * references remain addressable.
+   *
+   * @param   {string} entityId
+   * @param   {Object} reference
+   * @param   {string|string[]} reference.src - One address, or several for the
+   *   same content in preference order (e.g. `swarmfs://<root>`).
+   * @param   {number} reference.size - Declared byte length. An unverified claim.
+   * @param   {string} reference.type - Declared media type of the referenced content.
+   * @param   {boolean} reference.mutable - Whether the content behind the address may change.
+   * @param   {string} [reference.digest] - Optional `<algo>:<hex>` content digest.
+   * @param   {Object} [opts]
+   * @param   {string} [opts.scope] - Store the reference encrypted under a read
+   *   scope, so only members learn the address.
+   * @returns {Promise<{ entityId: string, contentType: string, reference: Object }>}
+   * @throws  {Error} If the reference is malformed, the entity is unknown, or
+   *   the scope's key is unavailable.
+   */
+  async putContentRef (entityId, reference, opts = {}) {
+    // Throws on malformed input, deliberately: this is a local write, so a
+    // caller's mistake should surface here rather than as a puzzling failure
+    // in another repo later.
+    const body = formatReference(reference)
+
+    await this.putContent(entityId, body, CONTENT_LINK_TYPE, opts)
+
+    return {
+      entityId,
+      contentType: CONTENT_LINK_TYPE,
+      reference: parseReference(body)
+    }
+  }
+
+  /**
    * Read the latest content version from an entity.
    *
    * If the stored content is encrypted (see putContent()'s opts.scope),
@@ -359,6 +402,32 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Promise<{ contentType: string, body: string|null, encrypted?: boolean, scope?: string, epoch?: number }|null>}
    */
   async getContent (entityId) {
+    const record = await this.#readContent(entityId)
+    if (!record) return null
+
+    // Inline content is returned exactly as before — existing callers see no
+    // change at all.
+    if (!isReferenceType(record.contentType)) return record
+
+    // `body` is null when the record is encrypted and this reader holds no key
+    // for the scope. There is nothing to parse, and the caller can still tell
+    // referenced content exists.
+    if (typeof record.body !== 'string') return record
+
+    // parseReference never throws, so a malformed or hostile payload yields
+    // `valid: false` rather than breaking every read of this entity.
+    return { ...record, reference: parseReference(record.body) }
+  }
+
+  /**
+   * Read the latest content record, decrypting it if it is scoped and this
+   * peer holds the key. Returns the record as stored, without interpreting a
+   * reference payload.
+   *
+   * @param   {string} entityId
+   * @returns {Promise<Object|null>}
+   */
+  async #readContent (entityId) {
     if (!this.opened) await this.ready()
     const record = await this.#view.getContent(entityId)
     if (!record) return null

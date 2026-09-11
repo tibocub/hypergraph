@@ -165,6 +165,42 @@ The ContextBase only stores the entity IDs, not the full content.
 
 **Total: ~2-3x raw data size**
 
+### Escaping that cost: external content references
+
+That 2-3x multiplier is fine for a forum post and unusable for a 2GB video — every byte would
+replicate to, and be materialized by, every participant in the context.
+
+An entity's content can instead be an **address** pointing at content held outside the graph:
+
+```js
+await graph.putContentRef(video.id, {
+  src: ['swarmfs://9f2ca1b3'],   // one or more addresses, in preference order
+  size: 2147483648,              // declared — an unverified claim
+  type: 'video/mp4',
+  mutable: false
+})
+```
+
+This is an ordinary content version, not a new mechanism. It is stored exactly like inline
+content, with `contentType` set to the marker `'link'` and the address payload as the body:
+
+```text
+c:<entityId>:<seq> → { contentType: 'link', body: '{"v":1,"src":[…],"size":…}', … }
+```
+
+So the storage cost is proportional to the *address*, a few hundred bytes, regardless of how
+large the referenced content is. Nothing else changes: references version per entity, converge,
+and encrypt under a read scope exactly as inline content does.
+
+`getContent()` surfaces a parsed `reference` field on such records; inline content is unaffected
+and gains no such field. Hypergraph **never** fetches, caches, or verifies the referenced content,
+and never interprets an address scheme's meaning — obtaining the content is entirely the
+consumer's job. Storing a reference under a scope encrypts the *address*, so only scope members
+learn where the content is.
+
+See `specs/001-external-content-refs/contracts/address-grammar.md` for the address grammar and the
+integrity rules a consumer must follow.
+
 **Factors affecting storage:**
 - Number of relations per entity (more relations = more ContextBase data)
 - Number of tags per entity

@@ -198,6 +198,19 @@ exists rather than introducing new cryptography.
   relations and tags pointing at that entity.
 - **FR-012**: Concurrent references stored for one entity by different peers MUST converge
   deterministically to the same value on every peer.
+
+  > **Implementation finding (2026-09-11)**: this scenario turns out to be *impossible by
+  > construction*, which is stronger than converging. `src/view.js` enforces that content may only
+  > be appended under the entity's own author's core
+  > (`if (authorFromEntityId(event.entityId) !== coreKeyHex) return`). Every content version for an
+  > entity therefore comes from a single core, which is totally ordered — there is nothing to
+  > reconcile. A peer *can* append a competing reference to its own core, but apply ignores it on
+  > every peer including its own.
+  >
+  > The requirement is satisfied, but the interesting property underneath it is a security one:
+  > a peer cannot redirect someone else's entity at content it controls. That is what
+  > `test/brittle/replication/content-ref-replication.js` actually tests, in place of a
+  > convergence race that cannot happen.
 - **FR-013**: Superseded references MUST remain addressable rather than being overwritten
   destructively.
 - **FR-014**: A reference MUST be storable under a read scope such that only members can recover
