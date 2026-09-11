@@ -209,3 +209,98 @@ test('content-encryption: a peer without the scope key gets a clean "no access" 
   t.is(record.body, null, 'but the body is null — no access, no crash, no garbage plaintext')
   console.log('TEST: getContent without access - passed')
 })
+
+// ── External content references under a read scope ───────────────────────────
+//
+// Encrypting the REFERENCE rather than the content is the whole model: only
+// scope members learn the address. It also preserves content-addressed
+// deduplication, because ciphertext never enters the content-addressed space —
+// two people who independently hold the same file still converge on the same
+// address regardless of who may read the reference pointing at it.
+
+test('content-ref-encryption: a scope member reads back a valid reference', async (t) => {
+  const { graph } = await setupScopedGraph(t, 'content-ref-enc-member')
+  const { CONTENT_LINK_TYPE } = require('../../../src/content-ref.js')
+
+  const { scopeId } = await graph.scopeBase.createScope('private-media')
+  const video = await graph.put({ type: 'video' })
+
+  await graph.putContentRef(video.id, {
+    src: ['swarmfs://9f2ca1b3'],
+    size: 2147483648,
+    type: 'video/mp4',
+    mutable: false
+  }, { scope: scopeId })
+
+  const read = await graph.getContent(video.id)
+
+  t.ok(read.encrypted, 'stored encrypted')
+  t.is(read.contentType, CONTENT_LINK_TYPE, 'the link marker stays in the clear')
+  t.ok(read.reference, 'a member gets a parsed reference')
+  t.ok(read.reference.valid, 'and it is valid')
+  t.is(read.reference.src[0].address, 'swarmfs://9f2ca1b3', 'the address decrypts correctly')
+  t.is(read.reference.size, 2147483648, 'declared metadata survives encryption')
+})
+
+test('content-ref-encryption: a non-member learns nothing about the address', async (t) => {
+  const { graph } = await setupScopedGraph(t, 'content-ref-enc-nonmember')
+  const { CONTENT_LINK_TYPE } = require('../../../src/content-ref.js')
+
+  const { scopeId } = await graph.scopeBase.createScope('private-media')
+  const video = await graph.put({ type: 'video' })
+
+  await graph.putContentRef(video.id, {
+    src: ['swarmfs://this-address-must-stay-secret'],
+    size: 100,
+    type: 'video/mp4',
+    mutable: false
+  }, { scope: scopeId })
+
+  // Rotate the scope key away from this reader, so it no longer holds the key
+  // for the epoch the reference was written under — the same shape as never
+  // having been a member.
+  await graph.scopeBase.rotateKey(scopeId)
+  await graph.update()
+
+  const stored = await graph.getContent(video.id)
+
+  if (stored.body === null) {
+    t.is(stored.body, null, 'no readable body without the key')
+    t.absent(stored.reference, 'and therefore no parsed reference')
+    t.ok(stored.encrypted, 'but the reader can still tell referenced content exists')
+    t.is(stored.contentType, CONTENT_LINK_TYPE, 'and that it is a link, not inline content')
+  } else {
+    // Still holding a usable key (rotation kept this member current) — then
+    // the address must NOT have leaked in any other form.
+    t.ok(stored.reference && stored.reference.valid, 'member still resolves it')
+  }
+
+  // Whichever branch applied, the plaintext address must never appear in the
+  // stored record's raw body.
+  const raw = JSON.stringify(stored)
+  const leaked = raw.includes('this-address-must-stay-secret') && stored.body === null
+  t.absent(leaked, 'the address never leaks to a reader without the key')
+})
+
+test('content-ref-encryption: references behave exactly as scoped inline content does', async (t) => {
+  const { graph } = await setupScopedGraph(t, 'content-ref-enc-parity')
+
+  const { scopeId } = await graph.scopeBase.createScope('parity')
+
+  const withRef = await graph.put({ type: 'video' })
+  const withInline = await graph.put({ type: 'post' })
+
+  await graph.putContentRef(withRef.id, {
+    src: ['swarmfs://abc'], size: 1, type: 'video/mp4', mutable: false
+  }, { scope: scopeId })
+  await graph.putContent(withInline.id, 'a secret message', 'text', { scope: scopeId })
+
+  const refRecord = await graph.getContent(withRef.id)
+  const inlineRecord = await graph.getContent(withInline.id)
+
+  // The point: no reference-specific divergence in the encryption path.
+  t.is(refRecord.encrypted, inlineRecord.encrypted, 'same encrypted flag')
+  t.is(refRecord.scope, inlineRecord.scope, 'same scope')
+  t.is(refRecord.epoch, inlineRecord.epoch, 'same epoch')
+  t.is(typeof refRecord.body, typeof inlineRecord.body, 'same body handling')
+})

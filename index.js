@@ -5,6 +5,7 @@ const RoleBase = require('./src/role-base')
 const GraphView = require('./src/view')
 const GraphQuery = require('./src/query')
 const HypergraphNetwork = require('./src/networking')
+const { CONTENT_LINK_TYPE } = require('./src/content-ref')
 //const tools = require('./tools')
 
 /**
@@ -40,5 +41,6 @@ module.exports = {
   GraphView,
   GraphQuery,
   HypergraphNetwork,
+  CONTENT_LINK_TYPE,
   // tools
 }

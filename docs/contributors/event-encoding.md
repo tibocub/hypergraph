@@ -81,6 +81,34 @@ guard, not just the encode/preencode sides.
 - `scope/revoke` - Mark a pubkey as no longer a current member (informational only — does not
   undo a grant already received)
 
+## Why there is no `content/ref` event type
+
+External content references — where an entity points at content held outside the graph — add
+**no event type and no encoding change at all**. If you came here expecting one, this is why there
+isn't one.
+
+A reference is an ordinary `content/append` event. Its `contentType` carries the marker `'link'`
+and its `body` carries a JSON address payload. Both fields are already `c.string` in the
+`content/append` branch above, so a reserved value costs nothing to encode or decode.
+
+That choice was deliberate, and the alternatives were rejected for concrete reasons:
+
+- **A new `content/ref` event type** would have meant a wire-format change (Principle II's
+  non-negotiable test-first tier), a new branch in the Autobase apply path (a correctness risk
+  under Principle I), and an instant break for the symlinked consumer repos — all to express
+  something the existing primitive already expresses.
+- **A marker inside the body, with `contentType` holding the referenced content's real media
+  type**, would leave an existing consumer seeing `video/mp4` and treating a JSON body as video
+  bytes. Silently wrong, which is strictly worse than visibly unsupported. With the marker on
+  `contentType`, an unaware consumer sees a type it does not recognize and safely declines.
+
+The referenced content's real media type is not lost — it lives in the payload's `type` field,
+which a consumer needs anyway to decide whether to fetch.
+
+The practical upshot for anyone editing this file: **references are invisible to the encoding
+layer**, and should stay that way. If a change here starts needing to know about them, the design
+has drifted. See `src/content-ref.js` and `specs/001-external-content-refs/`.
+
 ## See Also
 
 - [Index Structure](index-structure.md) - How events are indexed in GraphView

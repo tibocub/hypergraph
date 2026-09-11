@@ -31,6 +31,23 @@ c:<entityId>:<seq> → { entityId, contentType, body, createdAt, encrypted, scop
 false`, the rest `null`) — see [Read Permission](../read-permission.md). When `encrypted` is
 true, `body` holds a hex ciphertext rather than plaintext; `contentType` is never encrypted.
 
+**External content references use this same key and record — there is no separate index.** A
+reference is an ordinary content record whose `contentType` is the marker `'link'` and whose
+`body` is a JSON address payload (`{ v, src, size, type, mutable, digest? }`). Consequences worth
+knowing when reading this index:
+
+- No new key prefix, no new index, no new event type, and no encoding change. Anything that scans
+  `c:` sees references without knowing they exist.
+- Because a reference is just a content version, everything content already does applies
+  unchanged: newest-wins reads, superseded versions remaining addressable at their own seq, and
+  scope encryption (which encrypts the address payload like any other body).
+- `#applyContentAppend`'s author binding applies here too — a reference can only be written under
+  the entity's own author's core, so a peer cannot redirect someone else's entity at content it
+  controls.
+
+Parsing happens on read, never in apply: a malformed payload is surfaced as invalid rather than
+rejected, so a hostile peer cannot block apply. See `src/content-ref.js`.
+
 ## Edge Indexes
 
 ```

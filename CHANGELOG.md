@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-09-11: external content references — point an entity at content held elsewhere (additive)
+
+Not a breaking change. Existing `putContent`/`getContent` calls, stored records, and the wire
+format are all unaffected; no migration is needed.
+
+Content can now be an **address** pointing at content outside the graph, instead of the bytes
+themselves. This exists because `putContent` stores `body` as a plain string in the Hyperbee view
+and every content event flows through Autobase apply — so every byte reaches every participant in
+the context. Correct for a forum post, unusable for a 2GB video.
+
+```js
+await graph.putContentRef(video.id, {
+  src: ['swarmfs://9f2ca1b3', 'https://gateway.example/9f2ca1b3'],
+  size: 2147483648,
+  type: 'video/mp4',
+  mutable: false,
+  digest: 'blake3:9f2ca1b3'   // optional
+})
+
+const record = await graph.getContent(video.id)
+record.contentType        // 'link'
+record.reference.src[0]   // { scheme: 'swarmfs', address: 'swarmfs://9f2ca1b3' }
+```
+
+**New**: `graph.putContentRef(entityId, reference, opts)`; a parsed `reference` field on
+`getContent()` results that hold one; the exported `CONTENT_LINK_TYPE` constant (`'link'`).
+`opts.scope` works exactly as on `putContent`, encrypting the *address* so only scope members
+learn where the content is.
+
+**Hypergraph never fetches, caches, or verifies referenced content, and never interprets an
+address scheme.** It stores addresses naming SwarmFS, hyperdrive, hyperblobs, the web, or another
+hypergraph, and resolves none of them — obtaining the content is the consumer's job. No new
+dependency was added.
+
+Implementation notes worth knowing:
+
+- **No new event type and no encoding change.** A reference is an ordinary `content/append` whose
+  `contentType` is the marker `'link'`. `src/encodings/event.js` and `src/view.js` are untouched,
+  so convergence, versioning, and scope encryption are inherited rather than reimplemented.
+- **Validation happens on local write, never in apply.** `putContentRef` throws on a malformed
+  reference; a malformed payload arriving from a peer is surfaced by `getContent` as
+  `reference.valid === false` with an explanation, and never throws. A hostile peer therefore
+  cannot block apply or crash a reader.
+- **An entity's own author binding still applies.** A peer cannot forge a reference for another
+  peer's entity, so it cannot redirect someone else's content at content it controls.
+
+Reasoning, alternatives rejected, and the cross-project address grammar:
+`specs/001-external-content-refs/`.
+
 ### 2026-09-09: code-review pass — 10 findings fixed, two of them BREAKING
 
 Ran a constitution-informed code review (see the docs/code audit entry below for the
