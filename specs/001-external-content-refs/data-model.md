@@ -9,7 +9,7 @@ key prefix, no encoding change.
 ```text
 content/append  (existing event, existing encoding)
 ├── entityId     "video/a3f9…c2/7"
-├── contentType  "application/vnd.hypergraph.ref+json"   ← the marker
+├── contentType  "link"   ← the marker
 ├── body         "{\"v\":1,\"src\":[…],\"size\":…}"       ← the address payload
 ├── timestamp    …
 └── encrypted / scope / epoch / nonce   (present only when stored under a read scope)

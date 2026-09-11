@@ -50,7 +50,7 @@ Unchanged for inline content. The returned record gains one field when it holds 
 // a reference
 {
   entityId,
-  contentType: 'application/vnd.hypergraph.ref+json',
+  contentType: 'link',
   body: '{"v":1,"src":[…],…}',   // the raw payload, still present
   reference: {                    // ← added
     valid: true,
@@ -80,13 +80,13 @@ surface beats two paths a caller must choose between (Principle IV).
 
 ---
 
-## `Hypergraph.CONTENT_REF_TYPE`
+## `Hypergraph.CONTENT_LINK_TYPE`
 
 The reserved media type, exported as a constant so no consumer hardcodes the string.
 
 ```js
-const { CONTENT_REF_TYPE } = require('hypergraph')
-// 'application/vnd.hypergraph.ref+json'
+const { CONTENT_LINK_TYPE } = require('hypergraph')
+// 'link'
 ```
 
 ---

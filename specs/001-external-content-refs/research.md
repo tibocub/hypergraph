@@ -7,7 +7,7 @@ Five decisions. Each is grounded in the current implementation, which was read r
 ## R1 — How a content record is marked as holding a reference (FR-006)
 
 **Decision**: A reserved `contentType` value. The record is an ordinary `content/append` event
-whose `contentType` is `application/vnd.hypergraph.ref+json` and whose `body` is the JSON address
+whose `contentType` is `link` and whose `body` is the JSON address
 payload. **No wire-format change, no new event type, no apply-path change.**
 
 **Rationale**:
@@ -20,8 +20,10 @@ payload. **No wire-format change, no new event type, no apply-path change.**
   Principle I argument trivial rather than delicate (see R4).
 - The real media type of the referenced content is not lost: it lives in the payload's `type`
   field, which FR-008 requires to be present anyway.
-- The `+json` structured suffix follows RFC 6839, and `vnd.` marks it vendor-specific, so it
-  cannot collide with a registered IANA media type.
+- The value is `link` — plainly readable, and what it means is obvious to anyone reading a record.
+  A longer standards-style media type was considered and rejected as unreadable: the theoretical
+  collision it guards against does not arise in practice, since content types in this ecosystem
+  are chosen by these projects.
 
 **Alternatives considered**:
 
