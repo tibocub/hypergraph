@@ -91,6 +91,18 @@ needed) — `python3` must resolve on PATH for whatever shell is running the com
 `python3 ...` invocation fails with "command not found," retry as `python .specify/scripts/...`
 (some Windows setups only expose `python`, not `python3`).
 
+**On Windows, prefix these scripts with `PYTHONIOENCODING=utf-8`:**
+
+```bash
+PYTHONIOENCODING=utf-8 python3 .specify/scripts/python/setup_tasks.py --json
+```
+
+Without it they crash with `UnicodeEncodeError: 'charmap' codec can't encode characters` whenever
+their output contains non-ASCII — which it does as soon as a template or spec uses an em-dash.
+Python defaults to the cp1252 console encoding here, not UTF-8. Confirmed directly: `setup_tasks.py`
+failed exactly this way. The failure looks like a broken script, but the script is fine — it's the
+output encoding.
+
 ## Git convention: branch per feature
 
 No spec-kit git extension is installed in this repo, so branch creation isn't automatic. Follow
