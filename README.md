@@ -85,19 +85,20 @@ Role-based access control for contexts and moderation. RoleBase stores role regi
 
 ## Installation
 
-**Not published to npm yet.** Install from the repo:
+**Not published to npm yet.** Clone it next to your project and depend on it by folder path:
 
-```bash
-npm install github:tibocub/hypergraph
+```json
+"dependencies": {
+  "hypergraph": "file:../hypergraph"
+}
 ```
 
-For local development against a checkout (which is how the sibling projects consume it — see
-[ECOSYSTEM.md](ECOSYSTEM.md)), link it instead so edits are live:
+`npm install` then creates a real link to the checkout, so edits to hypergraph are live in your
+project with no reinstall. This is how the sibling projects consume it — see
+[ECOSYSTEM.md](ECOSYSTEM.md).
 
-```bash
-npm link                  # in this checkout
-npm link hypergraph       # in the consuming project
-```
+Installing straight from GitHub (`npm install github:tibocub/hypergraph`) is refused by npm 12 by
+default, which blocks git dependencies unless its `allow-git` setting is changed.
 
 ## API Reference
 

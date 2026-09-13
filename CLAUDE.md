@@ -38,8 +38,10 @@ working tree**. That means:
   cd E:\Code\P2P\hyperDNS && npm test
   ```
 - `package.json` here says version `0.0.1` and has never moved, so **git SHA is the only real
-  version identifier**. hyperDNS's lockfile still pins an older commit; a stale copy there is not a
-  safe fallback but a silently-incompatible peer that rejects events signed by a current one.
+  version identifier**. The consumers declare this repo as `"hypergraph": "file:../hypergraph"`,
+  so `npm install` links them to this working tree instead of copying a snapshot. A stale copy is
+  not a safe fallback but a silently-incompatible peer that rejects events signed by a current one —
+  hyperDNS ran one for weeks before the switch; see `ECOSYSTEM.md`.
 
 ## Two rules that exist specifically to stop drift
 

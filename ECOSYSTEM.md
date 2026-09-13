@@ -79,14 +79,32 @@ Consequences that matter:
 
 1. **Edits to hypergraph are immediately live in HyperBBS and hyperDNS.** There is no publish
    step, no version bump, no lag. A breaking change lands in every consumer the instant you save.
-2. hypergraph is **not published to npm**. `package.json` declares it as
-   `"hypergraph": "github:tibocub/hypergraph"`, but day-to-day development relies on the symlink.
-   A fresh clone needs `npm link` (or `npm install` pulling the GitHub ref, which will be behind
-   your local working tree).
+2. hypergraph and HyperMD are **not published to npm**. Consumers declare them as **local folder
+   paths**: `"hypergraph": "file:../hypergraph"` and `"hypermd": "file:../HyperMD"`. On
+   `npm install` or `npm ci`, npm creates a real link (a Windows junction) to the sibling checkout
+   by itself, and the lockfile records it as `"resolved": "../hypergraph", "link": true`. The
+   sibling folder must sit next to the consumer, as it does under `E:\Code\P2P\`.
 3. SwarmFS does not have hypergraph installed at all yet — consistent with its paused status.
 
-**A stale-copy trap has bitten this ecosystem twice**: hyperDNS was running a real directory copy
-of hypergraph rather than a link, so its passing test suite said nothing about compatibility with
+**Why local paths rather than `github:` references** (switched 2026-09-13): npm 12 refuses git
+dependencies by default — its built-in `allow-git` setting is `"none"` — so
+`"github:tibocub/hypergraph"` made a fresh `npm install` fail outright. And even when git installs
+worked, they produced a *snapshot* of GitHub's copy, which went stale as soon as the local checkout
+moved on. Local paths fix both: nothing is fetched, and the link always points at the current
+working tree.
+
+Verified rather than assumed, on a throwaway project: a fresh `npm install` creates a junction,
+`npm ci` (which wipes `node_modules` first) recreates it, and — the property that matters most —
+the linked source folder survives `npm ci` intact rather than being deleted *through* the link.
+
+**The cost**: cloning HyperBBS or hyperDNS on its own, without hypergraph (and HyperMD) beside it,
+will not install. That is acceptable while everything is developed side by side and nothing is on
+npm. Revisit when publishing.
+
+### The stale-copy trap, and why `ln -s` must not be used
+
+**This trap bit twice before the switch**: hyperDNS was running a real directory copy of
+hypergraph rather than a link, so its passing test suite said nothing about compatibility with
 current hypergraph.
 
 **The second time, the copy was created by `ln -s` itself.** In Git Bash on Windows, `ln -s`
@@ -96,16 +114,14 @@ does not make a link unless the `MSYS` environment variable enables native symli
 `node_modules`, which quietly went stale the moment hypergraph changed again. Tests passed against
 it for days.
 
-**Never use `ln -s` to link sibling repos on Windows.** Use one of:
+With `file:` dependencies there is no reason to link by hand — `npm install` does it. If a link
+ever needs manual repair, **never use `ln -s` on Windows**; make a junction:
 
 ```bash
-npm link                     # in the dependency's checkout, then:
-npm link hypergraph          # in the consumer
-
-cmd //c "mklink /J node_modules\\hypergraph E:\\Code\\P2P\\hypergraph"   # direct junction
+cmd //c "mklink /J node_modules\\hypergraph E:\\Code\\P2P\\hypergraph"
 ```
 
-**Verify a link is real — don't trust the command's success message:**
+**Verify a link is real — don't trust a command's success message:**
 
 ```bash
 cmd //c "dir /AL node_modules"   # a real link shows <JUNCTION> or <SYMLINKD>; a copy shows nothing
@@ -114,26 +130,9 @@ cmd //c "dir /AL node_modules"   # a real link shows <JUNCTION> or <SYMLINKD>; a
 Checking that the files look right proves nothing, since a fresh copy looks identical to the
 original until the original changes.
 
-### ⚠ `npm ci` / `npm install` will break the symlinks
-
-The lockfiles do not describe the setup that actually works:
-
-- **hyperDNS** pins `hypergraph` to commit `c239938` (2026-08-02) — behind the local checkout by
-  apply-time signature-binding and validation changes. `npm ci` yields a peer that **rejects
-  tag/relation events signed by a current peer**, presenting as "replication silently doesn't
-  work" with nothing pointing at version skew.
-- **HyperBBS** has **no `hypergraph` entry in its lockfile at all**, so `npm ci` cannot reproduce
-  the working setup.
-- Neither lock can be corrected yet: hypergraph's current work is uncommitted and unpushed, so
-  there is no commit to pin to. Until hypergraph publishes, **the symlinks are the source of
-  truth and the lockfile entries are known-stale.**
-
-Restore a clobbered link with `npm link` in the dependency's checkout, then
-`npm link hypergraph` (and/or `npm link hypermd`) in the consumer.
-
 Note also that hypergraph's `package.json` version is `0.0.1` and has never moved across any of
-these changes — **the git SHA is the only real version identifier.** That is exactly why a stale
-pin is silent rather than loud.
+these changes — **the git SHA is the only real version identifier.** That is why a stale copy was
+silent rather than loud.
 
 ## Cross-repo working rules
 
