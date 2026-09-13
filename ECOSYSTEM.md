@@ -85,11 +85,34 @@ Consequences that matter:
    your local working tree).
 3. SwarmFS does not have hypergraph installed at all yet — consistent with its paused status.
 
-**A stale-copy trap has already bitten this ecosystem once**: hyperDNS was running a real
-directory copy of hypergraph from a month earlier rather than a symlink, so its passing test
-suite said nothing about compatibility with current hypergraph. If a consumer's tests pass
-suspiciously easily after a hypergraph change, check that `node_modules/hypergraph` is actually
-a symlink and not a snapshot.
+**A stale-copy trap has bitten this ecosystem twice**: hyperDNS was running a real directory copy
+of hypergraph rather than a link, so its passing test suite said nothing about compatibility with
+current hypergraph.
+
+**The second time, the copy was created by `ln -s` itself.** In Git Bash on Windows, `ln -s`
+does not make a link unless the `MSYS` environment variable enables native symlinks — by default it
+**silently copies the whole directory** and reports success. The "fix" for the first stale copy
+(Sep 9) therefore produced a second one: a 765 MB snapshot including hypergraph's own `.git` and
+`node_modules`, which quietly went stale the moment hypergraph changed again. Tests passed against
+it for days.
+
+**Never use `ln -s` to link sibling repos on Windows.** Use one of:
+
+```bash
+npm link                     # in the dependency's checkout, then:
+npm link hypergraph          # in the consumer
+
+cmd //c "mklink /J node_modules\\hypergraph E:\\Code\\P2P\\hypergraph"   # direct junction
+```
+
+**Verify a link is real — don't trust the command's success message:**
+
+```bash
+cmd //c "dir /AL node_modules"   # a real link shows <JUNCTION> or <SYMLINKD>; a copy shows nothing
+```
+
+Checking that the files look right proves nothing, since a fresh copy looks identical to the
+original until the original changes.
 
 ### ⚠ `npm ci` / `npm install` will break the symlinks
 
