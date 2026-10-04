@@ -6,6 +6,7 @@ examples/p2p-reddit-clone/.reddit-storage/**/*
 out
 lib
 test-*
+bench/results
 
 # Claude Code local state (may contain machine-local permissions/session data).
 # .claude/skills/ (the spec-kit workflow itself) stays tracked.
