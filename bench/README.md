@@ -52,3 +52,18 @@ context catch-up, unaffected by hypergraph's batch sizes; see
 `specs/002-scale-indexing/research.md` R10. `MEMLOG=1` prints the timeline, `FETCH_ONLY=ctx|log`
 replicates one half of the index, `HEAPSNAP=<MB>` writes a heap snapshot past that heap size,
 `HG_INDEX_BATCH` / `HG_PREFETCH_WINDOW` override the defaults.
+
+### 2026-10-04 — first 1,000,000-file run (P1 code)
+
+- **Writer**: completed in ~15.8 min (other experiments were running on the machine at the
+  same time, so this is pessimistic), memory flat at ~650–900 MB RSS throughout. Its store was
+  then deleted by the benchmark's own cleanup before the summary was saved (since fixed: each
+  phase is saved as it finishes, and stores are kept when anything fails).
+- **Fresh peer**: replayed the entire context — 2,000 Autobase batches, ~5 million context-view
+  blocks — in ~21 min with memory flat at ~650–750 MB, while streaming the author's 2-million-block
+  log alongside. Then, in the final commit of the replayed view, the JavaScript heap went from
+  ~200 MB to the 8 GB limit within seconds and the process died (`Reached heap limit`).
+
+That final commit is Autobase/Hypercore committing the whole replayed view at once
+(`specs/002-scale-indexing/research.md` R11). It cannot be avoided from hypergraph while every
+joiner rebuilds the view itself; fast-forward (research R13) is what removes it.

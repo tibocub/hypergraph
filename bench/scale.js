@@ -49,6 +49,18 @@ function memSampler () {
   let lastLog = 0
   const sample = () => {
     const m = process.memoryUsage()
+    // RSS_LIMIT_MB: stop the joining peer cleanly rather than let it swap the machine
+    // to a crawl. Reported as an aborted result, not a crash.
+    if (process.env.RSS_LIMIT_MB && process.argv[2] === 'fetch-child' && m.rss > Number(process.env.RSS_LIMIT_MB) * 1e6) {
+      process.stdout.write(JSON.stringify({
+        aborted: `rss ${Math.round(m.rss / 1e6)} MB > RSS_LIMIT_MB`,
+        afterMs: Date.now() - start,
+        heap: m.heapUsed,
+        progress: global.__benchProbe ? global.__benchProbe() : null
+      }) + '\n', () => process.exit(3))
+      clearInterval(timer)
+      return
+    }
     // MEMLOG=1: a memory timeline on stderr, one line a second.
     if (process.env.MEMLOG && Date.now() - lastLog >= 1000) {
       lastLog = Date.now()
@@ -63,8 +75,9 @@ function memSampler () {
     if (m.rss > peak.rss) peak.rss = m.rss
     if (m.heapUsed > peak.heap) peak.heap = m.heapUsed
   }
+  let timer = null
   sample()
-  const timer = setInterval(sample, 50)
+  timer = setInterval(sample, 50)
   return { peak, stop () { sample(); clearInterval(timer); return peak } }
 }
 
@@ -352,7 +365,8 @@ function child (args, onLine) {
         if (line.trim()) onLine(JSON.parse(line), p)
       }
     })
-    p.on('exit', (code) => code === 0 || code === null ? resolve(p) : reject(new Error(`${args[0]} exited ${code}`)))
+    // 3 = stopped by RSS_LIMIT_MB after reporting; anything else non-zero is a crash.
+    p.on('exit', (code) => code === 0 || code === null || code === 3 ? resolve(p) : reject(new Error(`${args[0]} exited ${code}`)))
   })
 }
 
@@ -386,36 +400,53 @@ async function main () {
   if (!n) throw new Error('usage: node bench/scale.js <N> [--api] [--sizes]')
   const api = rest.includes('--api')
   const withSizes = rest.includes('--sizes')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), `hg-scale-${n}-`))
+  const root = fs.mkdtempSync(path.join(process.env.BENCH_DIR || os.tmpdir(), `hg-scale-${n}-`)) // BENCH_DIR: where the stores go (1M needs ~15 GB)
   const aDir = path.join(root, 'a')
   const bDir = path.join(root, 'b')
   const keysFile = path.join(root, 'keys.json')
 
+  const out = path.join(__dirname, 'results')
+  fs.mkdirSync(out, { recursive: true })
+  const resultFile = path.join(out, `scale-${n}${api ? '-api' : ''}.json`)
+  const result = { n, write: null, seedReopenMs: null, fetch: null }
+  // Saved after every phase, so a crash later on (a 1M join, say) does not
+  // lose what was already measured.
+  const save = () => fs.writeFileSync(resultFile, JSON.stringify(result, null, 2))
+
+  let seeder = null
+  let ok = false
   try {
     let written
     await child(['write-child', String(n), aDir, api ? 'api' : 'batch', withSizes ? 'sizes' : ''], (r) => { written = r })
     fs.writeFileSync(keysFile, JSON.stringify(written.keys))
     delete written.keys
+    result.write = written
+    save()
 
-    let seeder
     let seedInfo
     let seedExit
     await new Promise((resolve) => {
       seedExit = child(['seed-child', aDir, keysFile], (r, p) => { seedInfo = r; seeder = p; resolve() }).catch(() => {})
     })
+    result.seedReopenMs = seedInfo.reopenMs
+    save()
 
-    let fetched
-    await child(['fetch-child', bDir, String(seedInfo.port), keysFile, String(n)], (r) => { fetched = r })
+    try {
+      await child(['fetch-child', bDir, String(seedInfo.port), keysFile, String(n)], (r) => { result.fetch = r })
+    } catch (err) {
+      result.fetch = { crashed: err.message }
+    }
     seeder.kill()
+    seeder = null
     await seedExit
+    save()
 
-    const result = { n, write: written, seedReopenMs: seedInfo.reopenMs, fetch: fetched }
     process.stdout.write(JSON.stringify(result, null, 2) + '\n')
-    const out = path.join(__dirname, 'results')
-    fs.mkdirSync(out, { recursive: true })
-    fs.writeFileSync(path.join(out, `scale-${n}${api ? '-api' : ''}.json`), JSON.stringify(result, null, 2))
+    ok = !result.fetch.crashed && !result.fetch.aborted
   } finally {
-    if (process.env.KEEP) console.error('kept', root)
+    if (seeder) seeder.kill()
+    // Stores are kept whenever something went wrong: they are the evidence.
+    if (process.env.KEEP || !ok) console.error('kept', root)
     else fs.rmSync(root, { recursive: true, force: true, maxRetries: 10 })
   }
 }

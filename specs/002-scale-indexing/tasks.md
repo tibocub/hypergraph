@@ -159,3 +159,11 @@ at first write.
 safe to merge alone. Then US3 as a second merge once its tests and the 1M run pass.
 
 Totals: 49 tasks — Setup 2, Foundational 5, US1 9, US2 11, US3 14, Polish 8.
+
+## Phase 7: Added during implementation (from measurements)
+
+- [X] T050 [US1] Coalesce edge counters per apply chunk in `src/context-base.js` (`#bumpCount`, written at chunk flush); test first in `test/brittle/core/contexts.js` (300 relations into one folder: 1,501 → 1,202 view blocks; mixed create/delete counts stay exact) — research R11
+- [X] T051 [US1] `openUserCore()` starts a following background download of another user's core in `src/hypergraph.js`; test first in `test/brittle/core/view.js` (all blocks and later appends arrive with no `update()`); partial-log test setup reworked to clear blocks instead of relying on a partial download
+- [X] T052 `bench/scale.js`: `RSS_LIMIT_MB` guard for the joining peer, `BENCH_DIR` for store location, results saved after every phase, stores kept whenever a phase fails
+- [X] T053 First 1M run recorded in `bench/README.md` (writer completes; joiner replays everything, then dies in Autobase's final view commit) — research R11
+- [ ] T054 Decide the fast-forward design (indexer topology, acks, trust model with app validation) in its own spec — research R12, R13; blocks SC-005

@@ -258,3 +258,68 @@ assumed.
 | PREFETCH_WINDOW 16,384 | 13.5 | 24.5 | 383 / 965 |
 
 Flat within noise; defaults stay at 1,000 and 4,096.
+
+## R11 — Why the joining peer's spike happens (follow-up to R10, now confirmed)
+
+A CPU profile of the spike window (context-only join, 50k) is dominated by
+`hypercore/lib/session-state.js` `_overwrite`, called from `commit`. `_overwrite` reads every
+block in the committed range plus two tree nodes per block, **all in parallel**
+(`Promise.all` over `getBlock` / `getTreeNode`), which is the ~735k concurrent reads seen in the
+heap snapshot. Autobase builds a reader's view in a batch session and commits it into the real
+core only once it holds the indexers' signature for that length (`apply-state.js`
+`_assembleMultisig` → `pendingViews` → `_flush` → `ref.commit`). A peer catching up a backlog
+drains it in one go, so its one commit covers everything it built: logged directly, a 20k-file
+join committed 76,038 view blocks in a single `_overwrite`.
+
+Not changeable from hypergraph without modifying Autobase/Hypercore. What hypergraph controls is
+how many view blocks a joiner has to build: fewer index writes per relation shrink the spike
+proportionally (counter coalescing, below), and fast-forward removes it (R13).
+
+## R12 — Multi-writer contexts never get indexed with `ackInterval: 0`
+
+`bench/multiwriter.js` (perf-experiments worktree): 3 peers, all writers — and hypergraph adds
+every writer as an **indexer** — each bulk-writing 2,000 files concurrently into one context.
+
+| `ackInterval` | converged | Autobase nodes indexed | context-view blocks signed |
+|---|---|---|---|
+| 0 (today) | 22.9 s | 9 of 23 | **0 of 24,013** |
+| 1,000 ms | 31.4 s | 27 of 31 | 24,013 of 24,013 |
+
+With several indexers, a node is only indexed once a majority of indexers have built on it, and
+indexers only do that by appending — in practice by acking. With acks off and writers idle after
+writing, nothing past the setup is ever confirmed. Consequences today, for every multi-writer
+context: the whole history stays in Autobase's unconfirmed tip (re-orderable, re-applied on
+reorder), and no signed state exists for anyone to fast-forward to. Single-writer contexts are
+unaffected (the one indexer confirms its own nodes).
+
+## R13 — Fast-forward removes the join cost (experiment)
+
+Same 20k-file, single-writer context; the joining peer replicates the context only.
+
+| | replay (`fastForward: false`, today) | `fastForward: true` |
+|---|---|---|
+| join | 17.2 s | **1.2 s** |
+| peak RSS | 826 MB | **288 MB** |
+| disk | 81 MB | 39 MB (only what it read) |
+| list a 1,000-entry folder, first / later | 331 / 262 ms | 981 / 845 ms (index blocks fetched from peers on demand) |
+
+The fast-forwarding peer adopts the view the indexers signed instead of recomputing it, so join
+cost no longer grows with context size, and reads fetch index blocks lazily — which is the "load
+indexes lazily" idea, provided by Autobase itself. The trade-off is trust: such a peer accepts
+the indexers' result rather than re-validating every event, so whatever apply enforces (signature
+checks, from-ownership, role permissions, future app validation rules) is enforced by the
+indexers on everyone's behalf. Together with R12 (indexing needs acks; which writers should be
+indexers), this is a design decision for its own spec, not a setting to flip here.
+
+## Counter coalescing (implemented after R10)
+
+`#applyView` accumulates edge counters in memory per apply chunk and writes each once, instead
+of rewriting a folder's in-count for every relation into it. 300 relations into one folder:
+1,501 → 1,202 context-view blocks (−20%), so 20% fewer blocks for every joiner to build and commit.
+
+## Follow-download of opened user cores (implemented after R10)
+
+The 50k memory timeline showed a joiner's first `update()` spending ~33 s replaying the context
+while the author's log sat untouched, then ~30 s downloading it. `openUserCore()` on another
+user's core now starts a background download that follows new appends, so logs stream in while
+contexts replay.
