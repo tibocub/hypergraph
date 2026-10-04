@@ -100,6 +100,25 @@ project with no reinstall. This is how the sibling projects consume it — see
 Installing straight from GitHub (`npm install github:tibocub/hypergraph`) is refused by npm 12 by
 default, which blocks git dependencies unless its `allow-git` setting is changed.
 
+## Bulk writes
+
+Anything bigger than a handful of writes — importing a folder, say — belongs in one batch:
+
+```js
+const batch = graph.batch()
+const dir = batch.put({ type: 'dir' })
+for (const f of files) {
+  const file = batch.put({ type: 'file' })
+  batch.putContentRef(file, { src: [`swarmwire://${f.root}`], size: f.size, type: f.mime, mutable: false })
+  batch.relate({ from: file, to: dir, type: 'in', context: ctx })
+}
+const { entities } = await batch.flush()   // two log appends, however many files
+```
+
+It is much faster for you, and for everyone else too: other peers replay a context one write
+call at a time, so the same import written item by item would stay slow for every future member.
+Contract: [`specs/002-scale-indexing/contracts/bulk-write.md`](specs/002-scale-indexing/contracts/bulk-write.md).
+
 ## API Reference
 
 See the JSDoc-generated API documentation in [`docs/api/`](docs/api/) (open `index.html` in a

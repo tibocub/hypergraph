@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-04: faster indexing and `graph.batch()` (additive; no format change)
+
+Not a breaking change: event bytes on the wire and on disk are unchanged, so peers on this and
+earlier versions still replicate with each other, and no migration is needed.
+
+- **`graph.batch()`**: write many entities, content versions and relations in one call — one
+  append to your user core and one per context. Other peers replay a context one write call at a
+  time, so this is also what keeps a bulk import cheap for every future member. Throws
+  `BulkWriteError` (exported) if a context fails after the user core was written, listing what
+  now exists.
+- **Indexing is batched**: index entries are committed in chunks together with their progress
+  record, instead of one signed disk write each. Measured at 100,000 files: writing 9.2 min →
+  71 s, a new peer's full sync 10.3 min → 132 s, memory held after sync ~400 MB → 88 MB.
+- **Progress shows up during a long sync**, chunk by chunk, instead of only at the end.
+- `ContextBase.appendBatch(events)`; `UserCore.withWriteLock(fn)` / `appendBatchUnlocked()`.
+- Fixed: closing a graph right after opening a context or user core could crash the process with
+  an unhandled `SESSION_CLOSED` rejection.
+- Known: a new peer's memory still spikes at the end of a large context catch-up (~3 GB at 100k
+  entries). It is inside Autobase, not hypergraph; see the spec's research R10.
+
+Details, measurements and reasoning: [`specs/002-scale-indexing/`](specs/002-scale-indexing/).
+
 ### 2026-09-11: external content references — point an entity at content held elsewhere (additive)
 
 Not a breaking change. Existing `putContent`/`getContent` calls, stored records, and the wire

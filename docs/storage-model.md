@@ -228,7 +228,9 @@ View updates are caller-driven:
 **Key properties:**
 - Never query raw logs directly
 - Updates are incremental (only process new events)
-- Checkpoints track the last processed sequence per core
+- Checkpoints track the last processed sequence per core, committed in the same Hyperbee batch
+  as the index entries they cover (every `tuning.INDEX_BATCH` events, default 1,000), so a long
+  pass becomes visible chunk by chunk and an interruption loses at most one uncommitted chunk
 
 ## See Also
 

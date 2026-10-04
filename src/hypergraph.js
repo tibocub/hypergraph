@@ -19,6 +19,7 @@ const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
 const { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts } = require('./utils')
 const { CONTENT_LINK_TYPE, formatReference, parseReference, isReferenceType } = require('./content-ref')
+const { Batch, EntityRef, BulkWriteError, validateRelateOpts } = require('./batch')
 
 
 /**
@@ -44,6 +45,7 @@ module.exports = class Hypergraph extends ReadyResource {
   #roleBase
   #scopeBase
   #emitter
+  #onIndexEvent
   identity
 
   /**
@@ -57,6 +59,8 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#userCoreKey = opts.userCoreKey || null
+    // Test-only (underscore): lets a test simulate a crash mid-indexing.
+    this.#onIndexEvent = opts._onIndexEvent || null
     
     // Initialize identity system
     this.identity = new IdentityManager({
@@ -111,7 +115,9 @@ module.exports = class Hypergraph extends ReadyResource {
     })
     await viewBee.ready()
 
-    this.#view = new GraphView(viewBee, this.#userCores, this.#contexts)
+    this.#view = new GraphView(viewBee, this.#userCores, this.#contexts, {
+      onIndexEvent: this.#onIndexEvent // test-only, see GraphView
+    })
     await this.#view.ready()
 
     // Register device-to-identity mapping for multi-device support
@@ -203,13 +209,7 @@ module.exports = class Hypergraph extends ReadyResource {
     // Callers must not provide IDs.
     if (entity.id) throw new Error('Entity id must NOT be provided')
 
-    const event = {
-      type: 'entity/create',
-      id: '',
-      entityType: entity.type,
-      author,
-      timestamp: Date.now()
-    }
+    const event = this.#entityCreateEvent(entity.type, author)
 
     const seq = await this.#userCore.append(event)
     const id = `${entity.type}/${author}/${seq}`
@@ -280,6 +280,217 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
 
+// ── Event builders, shared by the single-item methods and graph.batch() ──
+//
+// One place builds each kind of event, so a bulk write cannot drift from the
+// single-item path (spec 002, FR-010).
+
+  #entityCreateEvent (type, author) {
+    return { type: 'entity/create', id: '', entityType: type, author, timestamp: Date.now() }
+  }
+
+  /**
+   * Resolve the key content is encrypted with for `scope`. Throws the
+   * putContent() errors when that's impossible.
+   *
+   * @returns {Promise<{ scope: string, epoch: number, key: Buffer }>}
+   */
+  async #resolveScopeKey (scope) {
+    if (!this.#scopeBase) throw new Error('No ScopeBase attached — cannot encrypt content')
+
+    const author = this.identity.deviceKeyPair.publicKey.toString('hex')
+    const epoch = await this.#scopeBase.getCurrentEpoch(scope)
+    if (epoch === null) throw new Error('Unknown scope')
+
+    const key = await this.#scopeBase.resolveKey(scope, author, this.identity.encryptionKeyPair, epoch)
+    if (!key) throw new Error('You do not hold the current key for this scope — cannot encrypt content for it')
+
+    return { scope, epoch, key }
+  }
+
+  /**
+   * @param {Object|null} scopeKey - From #resolveScopeKey, or null for plaintext.
+   */
+  #contentEvent (entityId, content, contentType, scopeKey) {
+    const event = {
+      type: 'content/append',
+      entityId,
+      contentType,
+      body: content,
+      timestamp: Date.now()
+    }
+
+    if (scopeKey) {
+      const nonce = hypercoreCrypto.randomBytes(sodium.crypto_secretbox_NONCEBYTES)
+      const message = Buffer.from(String(content), 'utf-8')
+      const ciphertext = Buffer.alloc(message.length + sodium.crypto_secretbox_MACBYTES)
+      sodium.crypto_secretbox_easy(ciphertext, message, nonce, scopeKey.key)
+
+      event.body = ciphertext.toString('hex')
+      event.encrypted = true
+      event.scope = scopeKey.scope
+      event.epoch = scopeKey.epoch
+      event.nonce = nonce.toString('hex')
+    }
+
+    return event
+  }
+
+  /** A signed relation/create event for `context`. */
+  #relationEvent (context, from, to, relationType, value) {
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const author = b4a.isBuffer(deviceKeyPair.publicKey)
+      ? deviceKeyPair.publicKey.toString('hex')
+      : String(deviceKeyPair.publicKey)
+
+    const event = {
+      type: 'relation/create',
+      from,
+      to,
+      relationType,
+      author,
+      timestamp: Date.now(),
+      signature: null
+    }
+    if (typeof value === 'number') event.value = value
+
+    const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
+    event.signature = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey).toString('hex')
+    return event
+  }
+
+
+// ── Bulk writes ───────────────────────────────────────────────────────────
+
+  /**
+   * Start a bulk write: entities, content versions and relations collected
+   * here are written by `flush()` as one append to this user's core and one
+   * append per context — which every peer then replays in one step, instead
+   * of one step per item. Use it for anything bigger than a handful of
+   * writes (importing a folder, say).
+   *
+   * Same verbs, arguments and validation as the single-item methods;
+   * `batch.put()` returns an EntityRef usable as an id within the batch.
+   * See specs/002-scale-indexing/contracts/bulk-write.md.
+   *
+   * @returns {Batch}
+   *
+   * @example
+   * const batch = graph.batch()
+   * const dir = batch.put({ type: 'dir' })
+   * for (const f of files) {
+   *   const file = batch.put({ type: 'file' })
+   *   batch.putContentRef(file, { src: [`swarmwire://${f.root}`], size: f.size, type: f.mime, mutable: false })
+   *   batch.relate({ from: file, to: dir, type: 'in', context: ctx })
+   * }
+   * const { entities } = await batch.flush()
+   */
+  batch () {
+    return new Batch((batch) => this.#flushBatch(batch))
+  }
+
+  async #flushBatch (batch) {
+    if (!this.opened) await this.ready()
+    const ops = batch._ops
+
+    // ── 1. Validate everything; nothing is written until this passes ──
+    const hasUserCoreWrites = ops.some(o => o.op !== 'relate')
+    if (hasUserCoreWrites && !this.#userCore.writable) throw new Error('User core is read-only')
+
+    const created = new Set()
+    const scopeKeys = new Map()
+    const contexts = new Map()
+    for (let i = 0; i < ops.length; i++) {
+      const o = ops[i]
+      if (o.op === 'put') {
+        created.add(o.ref)
+      } else if (o.op === 'content') {
+        await this.#assertBatchTarget(o.target, created)
+        if (o.opts.scope && !scopeKeys.has(o.opts.scope)) scopeKeys.set(o.opts.scope, await this.#resolveScopeKey(o.opts.scope))
+      } else if (o.op === 'relate') {
+        for (const end of [o.from, o.to]) {
+          if (end instanceof EntityRef && !created.has(end)) throw new Error('An EntityRef must be put() earlier in the batch than where it is used')
+        }
+        const keyHex = Buffer.isBuffer(o.context) ? o.context.toString('hex') : o.context
+        if (!contexts.has(keyHex)) contexts.set(keyHex, await this.#getContext(keyHex))
+      }
+    }
+
+    // ── 2. One append to the user core ──
+    const author = this.#userCore.key.toString('hex')
+    const entities = []
+    const idOf = (target) => target instanceof EntityRef ? target.id : target
+
+    if (hasUserCoreWrites) {
+      await this.#userCore.withWriteLock(async (length) => {
+        const events = []
+        for (const o of ops) {
+          if (o.op === 'put') {
+            o.ref._resolve(`${o.ref.type}/${author}/${length + events.length}`)
+            events.push(this.#entityCreateEvent(o.ref.type, author))
+          } else if (o.op === 'content') {
+            const scopeKey = o.opts.scope ? scopeKeys.get(o.opts.scope) : null
+            events.push(this.#contentEvent(idOf(o.target), o.content, o.contentType, scopeKey))
+          }
+        }
+        await this.#userCore.appendBatchUnlocked(events)
+      })
+      for (const o of ops) if (o.op === 'put') entities.push({ id: o.ref.id, type: o.ref.type, author })
+    }
+
+    // ── 3. One append per context ──
+    const written = { userCore: hasUserCoreWrites, contexts: [] }
+    const byContext = new Map()
+    for (const o of ops) {
+      if (o.op !== 'relate') continue
+      const keyHex = Buffer.isBuffer(o.context) ? o.context.toString('hex') : o.context
+      const context = contexts.get(keyHex)
+      if (!byContext.has(keyHex)) byContext.set(keyHex, [])
+      byContext.get(keyHex).push(this.#relationEvent(context, idOf(o.from), idOf(o.to), o.relationType, o.value))
+    }
+
+    for (const [keyHex, events] of byContext) {
+      try {
+        await contexts.get(keyHex).appendBatch(events)
+      } catch (err) {
+        if (!written.userCore && written.contexts.length === 0) throw err
+        // What was written is real: index it, so the entities the error
+        // lists can actually be read before the caller retries.
+        await this.#view.update().catch(safetyCatch)
+        throw new BulkWriteError(`Bulk write partly failed: context ${keyHex} could not be written (${err.message})`, { written, entities, cause: err })
+      }
+      written.contexts.push(keyHex)
+    }
+
+    // ── 4. Index once, then announce each item as the single methods do ──
+    await this.#view.update()
+
+    for (const o of ops) {
+      if (o.op === 'put') {
+        this.#emitter.emit('change', { type: 'entity-create', id: o.ref.id, entityType: o.ref.type, author, timestamp: Date.now() })
+      } else if (o.op === 'content') {
+        this.#emitter.emit('change', { type: 'content-append', entityId: idOf(o.target), contentType: o.contentType, timestamp: Date.now() })
+      }
+    }
+    for (const [keyHex, events] of byContext) {
+      for (const e of events) {
+        this.#emitter.emit('change', { type: 'relation-create', from: e.from, to: e.to, relationType: e.relationType, value: e.value, context: keyHex, author: e.author, timestamp: Date.now() })
+      }
+    }
+
+    return { entities, written }
+  }
+
+  /** A content target must exist already, or be put() earlier in the batch. */
+  async #assertBatchTarget (target, created) {
+    if (target instanceof EntityRef) {
+      if (!created.has(target)) throw new Error('An EntityRef must be put() earlier in the batch than where it is used')
+      return
+    }
+    if (!(await this.#view.getNode(target))) throw new Error('Entity not found')
+  }
+
+
 // ── Content operations ────────────────────────────────────────────────────
 
   /**
@@ -299,35 +510,8 @@ module.exports = class Hypergraph extends ReadyResource {
     const node = await this.#view.getNode(entityId)
     if (!node) throw new Error('Entity not found')
 
-    const event = {
-      type: 'content/append',
-      entityId,
-      contentType,
-      body: content,
-      timestamp: Date.now()
-    }
-
-    if (opts.scope) {
-      if (!this.#scopeBase) throw new Error('No ScopeBase attached — cannot encrypt content')
-
-      const author = this.identity.deviceKeyPair.publicKey.toString('hex')
-      const epoch = await this.#scopeBase.getCurrentEpoch(opts.scope)
-      if (epoch === null) throw new Error('Unknown scope')
-
-      const key = await this.#scopeBase.resolveKey(opts.scope, author, this.identity.encryptionKeyPair, epoch)
-      if (!key) throw new Error('You do not hold the current key for this scope — cannot encrypt content for it')
-
-      const nonce = hypercoreCrypto.randomBytes(sodium.crypto_secretbox_NONCEBYTES)
-      const message = Buffer.from(String(content), 'utf-8')
-      const ciphertext = Buffer.alloc(message.length + sodium.crypto_secretbox_MACBYTES)
-      sodium.crypto_secretbox_easy(ciphertext, message, nonce, key)
-
-      event.body = ciphertext.toString('hex')
-      event.encrypted = true
-      event.scope = opts.scope
-      event.epoch = epoch
-      event.nonce = nonce.toString('hex')
-    }
+    const scopeKey = opts.scope ? await this.#resolveScopeKey(opts.scope) : null
+    const event = this.#contentEvent(entityId, content, contentType, scopeKey)
 
     await this.#userCore.append(event)
     await this.#view.update()
@@ -513,36 +697,11 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   async relate (opts) {
     if (!this.opened) await this.ready()
-    if (!opts) throw new Error('Options object is required')
-    if (!opts.from) throw new Error('opts.from is required')
-    if (!opts.to) throw new Error('opts.to is required')
-    if (!opts.context) throw new Error('opts.context is required')
-    if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
-    if (opts.value !== undefined && (typeof opts.value !== 'number' || !Number.isFinite(opts.value))) {
-      throw new Error('opts.value must be a finite number if provided')
-    }
-
-    const deviceKeyPair = this.identity.deviceKeyPair
-    const author = b4a.isBuffer(deviceKeyPair.publicKey)
-      ? deviceKeyPair.publicKey.toString('hex')
-      : String(deviceKeyPair.publicKey)
+    validateRelateOpts(opts)
 
     const context = await this.#getContext(opts.context)
-
-    const event = {
-      type: 'relation/create',
-      from: opts.from,
-      to: opts.to,
-      relationType: opts.type || opts.relationType,
-      author,
-      timestamp: Date.now(),
-      signature: null
-    }
-    if (typeof opts.value === 'number') event.value = opts.value
-
-    const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
-    const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
-    event.signature = sig.toString('hex')
+    const event = this.#relationEvent(context, opts.from, opts.to, opts.type || opts.relationType, opts.value)
+    const author = event.author
 
     await context.append(event)
     await this.#view.update()

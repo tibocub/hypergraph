@@ -415,3 +415,89 @@ test('contexts: removeWriter in closed mode — member (no context.write) cannot
   await sleep(300)
   console.log('TEST: removeWriter closed mode unauthorized - passed')
 })
+
+test('contexts: appendBatch() writes many events as ONE Autobase batch, and every event applies', async (t) => {
+  // Autobase replays a context one writer batch at a time on every peer,
+  // forever, so how a writer groups its appends sets everyone's replay cost
+  // (spec 002, research R2). 100 events in one call must land as one batch.
+  const { graph } = await createGraph(t, 'ctx-append-batch')
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+
+  const author = 'a'.repeat(64)
+  const events = []
+  for (let i = 0; i < 100; i++) {
+    events.push({ type: 'message', text: `m${i}`, username: 'alice', author, timestamp: 1791000000000 + i })
+  }
+
+  const start = context.base.local.length
+  await context.appendBatch(events)
+
+  const first = await context.base.local.get(start)
+  const last = await context.base.local.get(start + 99)
+  t.is(first.node.batch, 100, 'the first node opens a batch of 100')
+  t.is(last.node.batch, 1, 'the last node closes it')
+
+  let applied = 0
+  for await (const _ of context.createReadStream({ gte: 'msg:', lt: 'msg:￿' })) applied++
+  t.is(applied, 100, 'every event in the batch was applied')
+})
+
+test('contexts: appendBatch() of nothing is a no-op', async (t) => {
+  const { graph } = await createGraph(t, 'ctx-append-batch-empty')
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+  const before = context.base.local.length
+  await context.appendBatch([])
+  t.is(context.base.local.length, before, 'nothing appended')
+})
+
+test('contexts: one Autobase batch larger than the index batch builds the same index as single appends (spec 002, R2)', async (t) => {
+  const tuning = require('../../../src/tuning')
+  const { encodeEvent } = require('../../../src/encodings/event')
+  const { stableRelationHash } = require('../../../src/utils')
+
+  const saved = tuning.INDEX_BATCH
+  tuning.INDEX_BATCH = 100
+  t.teardown(() => { tuning.INDEX_BATCH = saved })
+
+  const { graph } = await createGraph(t, 'ctx-big-apply')
+  const author = graph.key.toString('hex')
+  const secretKey = graph.identity.deviceKeyPair.secretKey
+
+  // 3 dirs + 300 files, straight into the user core, then indexed.
+  let seq = graph.core.length
+  const blocks = []
+  const dirs = []
+  const files = []
+  for (let i = 0; i < 3; i++) { dirs.push(`dir/${author}/${seq++}`); blocks.push(encodeEvent({ type: 'entity/create', id: '', entityType: 'dir', author, timestamp: 1 })) }
+  for (let i = 0; i < 300; i++) { files.push(`file/${author}/${seq++}`); blocks.push(encodeEvent({ type: 'entity/create', id: '', entityType: 'file', author, timestamp: 1 })) }
+  await graph.core.append(blocks)
+  await graph.update()
+
+  const signed = (ctx, from, to, ts) => {
+    const ev = { type: 'relation/create', from, to, relationType: 'in', author, timestamp: ts, signature: null }
+    ev.signature = crypto.sign(stableRelationHash(ev, ctx), secretKey).toString('hex')
+    return ev
+  }
+
+  const bulkKey = await graph.createContext()
+  const singleKey = await graph.createContext()
+  const bulk = await graph.openContext(bulkKey)
+  const single = await graph.openContext(singleKey)
+
+  await bulk.appendBatch(files.map((f, i) => signed(bulkKey, f, dirs[i % 3], 1791000000000 + i)))
+  for (let i = 0; i < files.length; i++) await single.append(signed(singleKey, files[i], dirs[i % 3], 1791000000000 + i))
+  await graph.update()
+
+  for (const dir of dirs) {
+    const fromBulk = []
+    const fromSingle = []
+    for await (const e of graph.edges(dir, { direction: 'in', type: 'in', context: bulkKey })) fromBulk.push(e.from)
+    for await (const e of graph.edges(dir, { direction: 'in', type: 'in', context: singleKey })) fromSingle.push(e.from)
+    t.is(fromBulk.length, 100, `${dir.slice(0, 8)}… has its 100 files from the bulk context`)
+    t.alike(fromBulk, fromSingle, 'same edges, same order, as single appends')
+    t.is(await graph.countEdgesIn(dir, 'in', { context: bulkKey }), 100, 'in-count matches')
+  }
+  t.is(await graph.countEdgesOut(files[0], 'in', { context: bulkKey }), 1, 'out-count matches')
+})

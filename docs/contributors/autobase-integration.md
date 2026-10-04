@@ -32,8 +32,11 @@ three arguments, not two — `host` is what lets the apply function call `host.a
 `host.removeWriter()`, which can only happen from inside `apply`:
 
 ```js
-async #applyView (batch, view, host) {
-  for (const { value: event } of batch) {
+async #applyView (batch, rawView, host) {
+  let view = rawView.batch()              // index writes are batched (below)
+  for (const { value } of batch) {
+    const event = decodeEvent(value)      // values arrive as bytes (below)
+    if (!event || event.decodeError) continue
     if (event.type === 'roles/addWriter') {
       const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
       await host.addWriter(key, { indexer: true })
@@ -41,8 +44,35 @@ async #applyView (batch, view, host) {
     }
     // ...dispatch on event.type, apply to the view
   }
+  await view.flush()
 }
 ```
+
+### Values are bytes; ContextBase encodes and decodes them
+
+ContextBase gives Autobase **no `valueEncoding`**: `append()` passes `encodeEvent(event)` and
+`#applyView` runs `decodeEvent()` itself. Autobase stores node values verbatim either way, so the
+bytes in the oplog are identical to letting Autobase run the codec — pinned by a test in
+`test/brittle/core/event-encoding.js`. The reason: Autobase's `append(array)` encodes the whole
+array as one value whenever a non-binary encoding is set, which made batched appends impossible
+(`specs/002-scale-indexing/research.md` R3). RoleBase and ScopeBase still use Autobase encodings.
+
+### Batch boundaries are decided by the writer, and every peer pays for them
+
+Autobase calls `apply` once per **writer batch** — the events one `append()` call wrote — and
+flushes its system state after each one. Every peer replays every batch this way, forever. So
+1,000 relations appended one at a time cost every member 1,000 apply calls, while
+`ContextBase.appendBatch(events)` (used by `graph.batch()`) writes them as one batch that costs
+one. `appendBatch` leaves off the `optimistic` flag `append()` uses in open mode: with an array,
+Autobase splits the batch around the optimistic block and hands apply nodes with no value
+(research R3). A peer that isn't a writer yet falls back to one `append()` per event.
+
+### Index writes inside apply are batched
+
+`#applyView` writes index entries through a Hyperbee batch flushed every `tuning.INDEX_BATCH`
+(`src/tuning.js`, default 1,000) events and at the end of the call — one view append per chunk
+instead of one per entry. Chunked, not one batch per call, so a hostile writer's enormous batch
+cannot make the applying peer hold it all in memory. Autobase still owns atomicity across reorgs.
 
 ## Tracking Progress
 

@@ -124,3 +124,47 @@ test('user-core: openUserCore() rejects an invalid key', async (t) => {
   await t.exception(graph.openUserCore(undefined), /Invalid user core key/, 'undefined key is rejected')
   console.log('TEST: graph.openUserCore invalid key - passed')
 })
+
+test('user-core: concurrent append()/appendBatch() each return the seq their own events landed at', async (t) => {
+  // A returned seq is how put() derives an entity id, so a wrong one names
+  // someone else's block. Appends that overlap in time must still each get
+  // back the position of their own events, not of whichever append finished
+  // last. (spec 002, R6)
+  const userCore = await createUserCore(t, 'concurrent')
+  const author = 'a'.repeat(64)
+  const ev = (label) => ({ type: 'entity/create', id: label, entityType: 'post', author })
+
+  const pending = []
+  for (let i = 0; i < 20; i++) {
+    pending.push(userCore.append(ev(`single-${i}`)).then(seq => ({ seq, labels: [`single-${i}`] })))
+    const labels = [`batch-${i}-0`, `batch-${i}-1`, `batch-${i}-2`]
+    pending.push(userCore.appendBatch(labels.map(ev)).then(seq => ({ seq, labels })))
+  }
+  const results = await Promise.all(pending)
+
+  t.is(userCore.length, 20 + 20 * 3, 'every event was written')
+  for (const { seq, labels } of results) {
+    for (let k = 0; k < labels.length; k++) {
+      const event = await userCore.get(seq + k)
+      t.is(event.id, labels[k], `${labels[k]} is at the seq its append returned`)
+    }
+  }
+})
+
+test('user-core: withWriteLock() runs with the length the next append will start at', async (t) => {
+  const userCore = await createUserCore(t, 'write-lock')
+  const author = 'a'.repeat(64)
+  const ev = (label) => ({ type: 'entity/create', id: label, entityType: 'post', author })
+
+  await userCore.append(ev('first'))
+  const racing = userCore.append(ev('racing'))
+  const seen = await userCore.withWriteLock(async (length) => {
+    const seq = await userCore.appendBatchUnlocked([ev('locked-0'), ev('locked-1')])
+    return { length, seq }
+  })
+  await racing
+
+  t.is(seen.seq, seen.length, 'the locked batch starts exactly at the length the lock reported')
+  t.is((await userCore.get(seen.seq)).id, 'locked-0')
+  t.is((await userCore.get(seen.seq + 1)).id, 'locked-1')
+})

@@ -10,6 +10,7 @@ const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId } = require('./utils')
+const tuning = require('./tuning')
 
 function sleep (ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -84,7 +85,12 @@ module.exports = class ContextBase extends ReadyResource {
     const autobaseOpts = {
       open: this.#openView.bind(this),
       apply: this.#applyView.bind(this),
-      valueEncoding: { encode: encodeEvent, decode: decodeEvent },
+      // No valueEncoding: Autobase gets bytes we encode ourselves (append)
+      // and decode ourselves (#applyView). Autobase stores node values
+      // verbatim either way, so the oplog bytes are identical to letting it
+      // run our codec — but Autobase's batched append encodes an array as ONE
+      // value with any non-binary encoding, which made batched appends
+      // impossible. See specs/002-scale-indexing/research.md R3.
       ackInterval: 0,
       ackThreshold: 0,
       fastForward: false
@@ -145,8 +151,44 @@ module.exports = class ContextBase extends ReadyResource {
     return this.#viewBee
   }
 
-  async #applyView (batch, view, host) {
-    for (const { value: event, from, length } of batch) {
+  async #applyView (batch, rawView, host) {
+    // Index writes go through a Hyperbee batch: one view append per chunk of
+    // `tuning.INDEX_BATCH` events instead of one per entry (research R1/R2).
+    // Chunked rather than one batch per apply call, so memory stays bounded
+    // even when a writer (possibly a hostile one) appends a huge batch.
+    // Autobase still owns atomicity across reorgs: it truncates the view
+    // itself, whatever we flushed.
+    let view = rawView.batch()
+    let pending = 0
+    try {
+      await this.#applyNodes(batch, host, () => view, async () => {
+        if (++pending < tuning.INDEX_BATCH) return
+        await view.flush()
+        view = rawView.batch()
+        pending = 0
+      })
+      await view.flush()
+    } finally {
+      await view.close()
+    }
+
+    await this.#drainPendingModeration(rawView)
+    await this.#drainPendingWriterChanges(rawView, host)
+  }
+
+  async #applyNodes (batch, host, currentView, beforeEvent) {
+    for (const { value, from, length } of batch) {
+      // Count first: this may flush and open a fresh batch, which is then
+      // the one every write for this event must go to.
+      await beforeEvent()
+      const view = currentView()
+      // decodeEvent never throws (malformed bytes come back as a
+      // decodeError marker) — and a node with no value at all is skipped
+      // rather than crashing apply for every peer (Principle I).
+      if (!value) continue
+      const event = decodeEvent(value)
+      if (!event || event.decodeError) continue
+
       if (event.type === 'addWriter') {
         if (this.#writeMode !== 'open') continue
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
@@ -226,9 +268,6 @@ module.exports = class ContextBase extends ReadyResource {
           break
       }
     }
-
-    await this.#drainPendingModeration(view)
-    await this.#drainPendingWriterChanges(view, host)
   }
 
   #stableModerationHash (event) {
@@ -797,7 +836,41 @@ module.exports = class ContextBase extends ReadyResource {
     // This is required for P2P replication to work correctly
     const opts = this.#writeMode === 'open' ? { optimistic: true } : {}
     
-    await this.#base.append(event, opts)
+    await this.#base.append(encodeEvent(event), opts)
+    await this.#base.update()
+    return { length: this.#base.length }
+  }
+
+  /**
+   * Append many events as ONE Autobase batch.
+   *
+   * Every peer replays a context one writer batch at a time — each with its
+   * own apply call and system flush — so grouping a bulk write here is what
+   * keeps it cheap for every future member, not just for this writer (see
+   * specs/002-scale-indexing/research.md R2).
+   *
+   * The `optimistic` flag `append()` uses in open mode is left off here:
+   * with an array, Autobase splits the batch around the optimistic block and
+   * hands apply nodes with no value (research R3). A peer that is not yet a
+   * writer falls back to one `append()` per event, which is exactly what it
+   * would have done without this method.
+   *
+   * @param {Object[]} events
+   * @returns {Promise<{length: number}>} The length of the base after append
+   */
+  async appendBatch (events) {
+    if (!this.opened) await this.ready()
+    if (events.length === 0) return { length: this.#base.length }
+
+    // Encode everything first, so a bad event throws before anything is written.
+    const encoded = events.map(encodeEvent)
+
+    if (!this.#base.writable) {
+      for (const event of events) await this.append(event)
+      return { length: this.#base.length }
+    }
+
+    await this.#base.append(encoded)
     await this.#base.update()
     return { length: this.#base.length }
   }
