@@ -1581,6 +1581,19 @@ module.exports = class Hypergraph extends ReadyResource {
       valueEncoding: this.#valueEncoding
     })
     await core.ready()
+
+    // Download it in the background from now on, following new appends.
+    // Everything in a followed log gets indexed anyway, and on a joining
+    // peer the first update() spends its time replaying contexts — the log
+    // should be streaming in meanwhile, not wait its turn (spec 002).
+    if (!core.writable && core.core) {
+      try {
+        core.core.download({ start: 0, end: -1 }).done().catch(safetyCatch)
+      } catch (err) {
+        safetyCatch(err)
+      }
+    }
+
     this.#userCores.set(keyHex, core)
     this.#view.addUserCore(keyHex, core)
     return core

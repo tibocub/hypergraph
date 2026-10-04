@@ -92,6 +92,10 @@ seq 2: { type: 'entity/create', entityType: 'post', author, timestamp }
 - `createReadStream(opts)` / `createHistoryStream(opts)` - Stream decoded events
 - `length` - Number of events in core
 
+`Hypergraph.openUserCore()` on someone else's core starts a background `download({ start: 0,
+end: -1 })` that follows new appends, so the log streams in while `update()` is busy elsewhere
+(e.g. replaying a context).
+
 **Critical Detail**: UserCore is single-writer. Only the owner (with the keyPair) can append. This ensures conflict-free replication.
 
 ## ContextBase (Multi-Writer Autobase)

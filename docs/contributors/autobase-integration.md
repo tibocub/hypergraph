@@ -73,6 +73,24 @@ Autobase splits the batch around the optimistic block and hands apply nodes with
 (`src/tuning.js`, default 1,000) events and at the end of the call — one view append per chunk
 instead of one per entry. Chunked, not one batch per call, so a hostile writer's enormous batch
 cannot make the applying peer hold it all in memory. Autobase still owns atomicity across reorgs.
+Edge counters (`cnt:in` / `cnt:out`) are accumulated in memory for the chunk and written once
+each at the chunk's flush, so 1,000 relations into one folder write that folder's count once.
+
+### What a joining peer pays for every view block
+
+A peer catching up a context builds the view in a batch session, and Autobase commits it into
+the real view core only once it holds the indexers' signature for that length — in practice
+once, at the end of the catch-up. Hypercore's commit (`session-state.js` `_overwrite`) reads
+every committed block plus two tree nodes each, all in parallel: ~5 million blocks for a
+1M-relation context, which exhausts an 8 GB heap. Every index write apply makes is a block in
+that commit, so keep them few (`specs/002-scale-indexing/research.md` R11).
+
+### Multi-writer contexts and `ackInterval: 0`
+
+Every writer is added as an indexer, and acks are off. With more than one indexer, nodes are
+only confirmed once a majority build on them, which idle writers never do without acks: measured,
+a 3-writer context confirmed none of its 24,013 view blocks (research R12). Single-writer
+contexts are unaffected. Changing this is part of the fast-forward design, not a setting to flip.
 
 ## Tracking Progress
 

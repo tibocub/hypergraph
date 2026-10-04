@@ -323,15 +323,17 @@ test('view: a peer missing part of another user\'s log indexes what it has, then
   const ids = await appendBacklog(a.graph, 300)
   await a.graph.update()
 
-  // B downloads only the first 200 blocks (100 entities), then loses A.
+  // B ends up holding only the first 200 blocks (100 entities) while
+  // knowing the log is 600 long, with A gone. (openUserCore() downloads in
+  // the background, so get there by syncing, disconnecting, then clearing.)
   let s1 = a.store.replicate(true)
   let s2 = b.store.replicate(false)
   s1.pipe(s2).pipe(s1)
   const remote = await b.graph.openUserCore(a.graph.key)
-  await remote.core.update({ wait: true })
-  await remote.core.download({ start: 0, end: 200 }).done()
+  for (let i = 0; i < 200 && remote.core.contiguousLength < 600; i++) await sleep(50)
   s1.destroy()
   s2.destroy()
+  await remote.core.clear(200, 600)
 
   const started = Date.now()
   await b.graph.update()
@@ -372,4 +374,31 @@ test('view: closing a graph right after opening a context or user core never cra
   }
   await sleep(200)
   t.is(unhandled.length, 0, 'no unhandled rejection')
+})
+
+test('view: opening another user\'s core starts downloading it right away, without waiting for an update() (spec 002)', { timeout: 120000 }, async (t) => {
+  // A joining peer's update() spends a long time replaying contexts; the
+  // users' logs should be arriving in the background meanwhile, not only
+  // once a later update() reaches them.
+  const a = await createGraph(t, 'view-follow-a')
+  const b = await createGraph(t, 'view-follow-b')
+  await appendBacklog(a.graph, 2000)
+
+  const s1 = a.store.replicate(true)
+  const s2 = b.store.replicate(false)
+  s1.pipe(s2).pipe(s1)
+  t.teardown(() => { s1.destroy(); s2.destroy() })
+
+  const remote = await b.graph.openUserCore(a.graph.key)
+  let held = 0
+  for (let i = 0; i < 200 && (remote.core.length === 0 || held < remote.core.length); i++) {
+    await sleep(50)
+    held = remote.core.contiguousLength
+  }
+  t.is(held, 4000, 'every block arrived with no update() call')
+
+  // ...and keeps following: blocks appended later arrive too.
+  await appendBacklog(a.graph, 10)
+  for (let i = 0; i < 200 && remote.core.contiguousLength < 4020; i++) await sleep(50)
+  t.is(remote.core.contiguousLength, 4020, 'later appends follow')
 })

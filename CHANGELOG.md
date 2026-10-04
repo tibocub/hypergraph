@@ -24,8 +24,13 @@ earlier versions still replicate with each other, and no migration is needed.
 - `ContextBase.appendBatch(events)`; `UserCore.withWriteLock(fn)` / `appendBatchUnlocked()`.
 - Fixed: closing a graph right after opening a context or user core could crash the process with
   an unhandled `SESSION_CLOSED` rejection.
-- Known: a new peer's memory still spikes at the end of a large context catch-up (~3 GB at 100k
-  entries). It is inside Autobase, not hypergraph; see the spec's research R10.
+- Edge counters are written once per apply chunk instead of once per relation: 20% fewer
+  context-index blocks for every joining peer to build.
+- `openUserCore()` on another user's core now downloads it in the background (following new
+  appends), so a joining peer streams users' logs while it replays contexts instead of after.
+- Known: a new peer's memory spikes when it commits a fully replayed context (~3 GB at 100k
+  entries; at 1M it exceeds the 8 GB heap and the join fails). It is inside Autobase, not
+  hypergraph; see the spec's research R10/R11. Fast-forward (research R13) is the fix.
 
 Details, measurements and reasoning: [`specs/002-scale-indexing/`](specs/002-scale-indexing/).
 

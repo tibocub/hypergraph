@@ -30,6 +30,7 @@ module.exports = class ContextBase extends ReadyResource {
   #namespace
   #base
   #viewBee
+  #counts // edge counters pending for the current apply chunk, else null
   #keyEncoding
   #valueEncoding
   #roleBase
@@ -160,15 +161,25 @@ module.exports = class ContextBase extends ReadyResource {
     // itself, whatever we flushed.
     let view = rawView.batch()
     let pending = 0
+    // Edge counters are accumulated here and written once per chunk: 1,000
+    // relations into one folder would otherwise rewrite that folder's count
+    // 1,000 times, each a block every joining peer has to build and commit.
+    this.#counts = new Map()
+    const flush = async () => {
+      for (const [key, count] of this.#counts) await view.put(key, { count })
+      this.#counts.clear()
+      await view.flush()
+    }
     try {
       await this.#applyNodes(batch, host, () => view, async () => {
         if (++pending < tuning.INDEX_BATCH) return
-        await view.flush()
+        await flush()
         view = rawView.batch()
         pending = 0
       })
-      await view.flush()
+      await flush()
     } finally {
+      this.#counts = null
       await view.close()
     }
 
@@ -647,20 +658,21 @@ module.exports = class ContextBase extends ReadyResource {
     const inKey = `i:in:${event.to}:${event.relationType}:${createdAtKey}:${event.from}`
     await view.put(inKey, { ref: key })
 
-    const inCountKey = `cnt:in:${event.to}:${event.relationType}`
-    const outCountKey = `cnt:out:${event.from}:${event.relationType}`
-
-    const inExisting = await view.get(inCountKey)
-    const outExisting = await view.get(outCountKey)
-
-    const nextIn = Math.max(0, (inExisting && inExisting.value ? inExisting.value.count : 0) + 1)
-    const nextOut = Math.max(0, (outExisting && outExisting.value ? outExisting.value.count : 0) + 1)
-
     // In P2P delivery, a delete event may arrive before its create. The count is clamped at 0 on delete,
     // but will not self-correct when the create arrives later. Counts may read one low on recently-synced peers.
+    await this.#bumpCount(view, `cnt:in:${event.to}:${event.relationType}`, 1)
+    await this.#bumpCount(view, `cnt:out:${event.from}:${event.relationType}`, 1)
+  }
 
-    await view.put(inCountKey, { count: nextIn })
-    await view.put(outCountKey, { count: nextOut })
+  // Add `delta` to an edge counter, clamped at 0. Written at the end of the
+  // apply chunk (see #applyView), so repeated bumps cost one block.
+  async #bumpCount (view, key, delta) {
+    let count = this.#counts.get(key)
+    if (count === undefined) {
+      const existing = await view.get(key)
+      count = existing && existing.value ? existing.value.count : 0
+    }
+    this.#counts.set(key, Math.max(0, count + delta))
   }
 
   async #applyRelationDelete (view, event) {
@@ -690,17 +702,8 @@ module.exports = class ContextBase extends ReadyResource {
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
     await view.del(edgeRefKey)
 
-    const inCountKey = `cnt:in:${event.to}:${event.relationType}`
-    const outCountKey = `cnt:out:${event.from}:${event.relationType}`
-
-    const inExisting = await view.get(inCountKey)
-    const outExisting = await view.get(outCountKey)
-
-    const nextIn = Math.max(0, (inExisting && inExisting.value ? inExisting.value.count : 0) - 1)
-    const nextOut = Math.max(0, (outExisting && outExisting.value ? outExisting.value.count : 0) - 1)
-
-    await view.put(inCountKey, { count: nextIn })
-    await view.put(outCountKey, { count: nextOut })
+    await this.#bumpCount(view, `cnt:in:${event.to}:${event.relationType}`, -1)
+    await this.#bumpCount(view, `cnt:out:${event.from}:${event.relationType}`, -1)
   }
 
   async #applyTag (view, event) {

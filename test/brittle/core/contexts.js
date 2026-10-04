@@ -501,3 +501,44 @@ test('contexts: one Autobase batch larger than the index batch builds the same i
   }
   t.is(await graph.countEdgesOut(files[0], 'in', { context: bulkKey }), 1, 'out-count matches')
 })
+
+test('contexts: counters are written once per apply chunk, not once per relation (spec 002)', async (t) => {
+  // Every index write inside apply is a Hyperbee block in the context view,
+  // and a joining peer has to build and then commit every one of those
+  // blocks. 300 relations into one dir used to rewrite that dir's in-count
+  // 300 times; it should be written once.
+  const { encodeEvent } = require('../../../src/encodings/event')
+  const { stableRelationHash } = require('../../../src/utils')
+
+  const { graph } = await createGraph(t, 'ctx-counter-coalesce')
+  const author = graph.key.toString('hex')
+  const secretKey = graph.identity.deviceKeyPair.secretKey
+  let seq = graph.core.length
+  const blocks = []
+  const dir = `dir/${author}/${seq++}`
+  blocks.push(encodeEvent({ type: 'entity/create', id: '', entityType: 'dir', author, timestamp: 1 }))
+  const files = []
+  for (let i = 0; i < 300; i++) { files.push(`file/${author}/${seq++}`); blocks.push(encodeEvent({ type: 'entity/create', id: '', entityType: 'file', author, timestamp: 1 })) }
+  await graph.core.append(blocks)
+  await graph.update()
+
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+  const signed = (ev) => { ev.signature = crypto.sign(stableRelationHash(ev, ctx), secretKey).toString('hex'); return ev }
+
+  const before = context.view.core.length
+  await context.appendBatch(files.map((f, i) => signed({ type: 'relation/create', from: f, to: dir, relationType: 'in', author, timestamp: 1791000000000 + i, signature: null })))
+  const written = context.view.core.length - before
+
+  t.ok(written <= 4 * 300 + 10, `300 relations wrote ${written} view blocks (one in-count block per chunk, not per relation)`)
+  t.is(await graph.countEdgesIn(dir, 'in', { context: ctx }), 300, 'in-count is right')
+  t.is(await graph.countEdgesOut(files[7], 'in', { context: ctx }), 1, 'out-count is right')
+
+  // Creates and deletes mixed in one batch still count correctly.
+  const removals = files.slice(0, 50).map((f, i) => signed({ type: 'relation/delete', from: f, to: dir, relationType: 'in', author, createdAt: 1791000000000 + i, timestamp: 1792000000000 + i, signature: null }))
+  const readd = files.slice(0, 10).map((f, i) => signed({ type: 'relation/create', from: f, to: dir, relationType: 'in', author, timestamp: 1793000000000 + i, signature: null }))
+  await context.appendBatch([...removals, ...readd])
+  t.is(await graph.countEdgesIn(dir, 'in', { context: ctx }), 260, '300 - 50 + 10')
+  t.is(await graph.countEdgesOut(files[0], 'in', { context: ctx }), 1, 'removed then re-added: 1')
+  t.is(await graph.countEdgesOut(files[20], 'in', { context: ctx }), 0, 'removed: 0')
+})
