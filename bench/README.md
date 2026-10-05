@@ -80,3 +80,18 @@ The fresh peer fast-forwards the context (one fast-forward, 2 apply calls at 1M)
 index blocks only when reading: a 1,000-entry folder listing takes ~1.7 s on first read at 1M.
 What remains of a full join is downloading and indexing the author's whole log (2 million blocks
 at 1M) for the global view — the part a sparse user-core mode would remove.
+
+### 2026-10-05 — `specs/004-relation-data` (`--edge-data`: listing data on relations)
+
+The writer also puts `{ name, root, size }` on each file's relation; the fresh peer opens **only
+the context** and lists from edge data, never opening the author's log.
+
+| 1,000,000 files | full join (spec 003) | context only, edge data (spec 004) |
+|---|---|---|
+| first folder listable | 10.3 s | **1.2 s** |
+| join complete | 11.4 min | **1.4 s** |
+| peak memory, fresh peer | 751 MB | **329 MB** |
+| fresh peer disk (after 6 listings) | 2.58 GB | **60 MB** |
+| 1,000-entry listing with names | ~1.7 s | **~0.66 s** |
+
+Writer: 10.8 min, 913 MB peak, 5.5 GB disk (edge data adds ~0.25 GB at 1M).

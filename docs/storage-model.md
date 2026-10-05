@@ -44,6 +44,10 @@ Hypergraph distributes data across four main data structures to optimize for P2P
 - Tags reference entity IDs
 - Moderation actions reference entity IDs
 
+**Data on relations** (spec 004): a `relation/create` may carry an app string (≤ 4 KB, signed)
+stored on the edge. It is how an app keeps listing data in the context, so peers that joined by
+fast-forward can list without downloading anyone's user core.
+
 **`from`-ownership enforcement**: `relate()` cannot cheaply require its caller to own `to` (a
 relation legitimately points at someone else's entity all the time — a reply, a vote) but a
 `relation/create`/`relation/delete` event's signature alone only proves who signed it, not that

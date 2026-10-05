@@ -110,7 +110,8 @@ const dir = batch.put({ type: 'dir' })
 for (const f of files) {
   const file = batch.put({ type: 'file' })
   batch.putContentRef(file, { src: [`swarmwire://${f.root}`], size: f.size, type: f.mime, mutable: false })
-  batch.relate({ from: file, to: dir, type: 'in', context: ctx })
+  // data on the relation: a listing needs nothing else (spec 004)
+  batch.relate({ from: file, to: dir, type: 'in', context: ctx, data: JSON.stringify({ name: f.name, size: f.size }) })
 }
 const { entities } = await batch.flush()   // two log appends, however many files
 ```

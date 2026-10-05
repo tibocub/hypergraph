@@ -30,7 +30,7 @@ As `graph.putContent` / `graph.putContentRef`, including `opts.scope` encryption
 exist already or be created earlier in this batch. A malformed reference throws **here**, at the
 call, as `putContentRef` does.
 
-## `batch.relate({ from, to, type, context, value? })`
+## `batch.relate({ from, to, type, context, value?, data? })`
 
 As `graph.relate`. `from` / `to` may be ids or refs from this batch.
 

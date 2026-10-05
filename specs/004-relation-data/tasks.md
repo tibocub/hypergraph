@@ -24,6 +24,6 @@ description: "Tasks for 004-relation-data"
 
 ## Phase 3: Benchmark and polish
 
-- [ ] T010 `bench/scale.js --edge-data`: writer puts `{ name, root, size }` on "in" relations (and still writes the content reference); joiner opens only the context and lists via edge data; run 100k and 1M; record in `bench/README.md` (SC-001, SC-002)
-- [ ] T011 Docs: `docs/contributors/event-encoding.md`, `docs/contributors/index-structure.md`, `docs/querying.md`, `docs/storage-model.md`, `docs/contexts-and-roles.md`, README, `specs/002-scale-indexing/contracts/bulk-write.md` (`data` on `batch.relate`)
-- [ ] T012 CHANGELOG; `npm test`, HyperBBS, hyperDNS
+- [X] T010 `bench/scale.js --edge-data`: writer puts `{ name, root, size }` on "in" relations (and still writes the content reference); joiner opens only the context and lists via edge data; run 100k and 1M; record in `bench/README.md` (SC-001, SC-002)
+- [X] T011 Docs: `docs/contributors/event-encoding.md`, `docs/contributors/index-structure.md`, `docs/querying.md`, `docs/storage-model.md`, `docs/contexts-and-roles.md`, README, `specs/002-scale-indexing/contracts/bulk-write.md` (`data` on `batch.relate`)
+- [X] T012 CHANGELOG; `npm test`, HyperBBS, hyperDNS
