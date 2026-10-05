@@ -1,6 +1,8 @@
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
 const { createGraph, sleep } = require('../helpers')
+
+const collect = async (it) => { const out = []; for await (const x of it) out.push(x); return out }
 const { stableTagHash } = require('../../../src/utils')
 
 function replicatePair (peerA, peerB) {
@@ -119,8 +121,8 @@ test('contexts: open write mode auto-authorizes a peer added as a writer', async
   const bAuthor = b.graph.key.toString('hex')
   await pumpUntil(async () => {
     await a.graph.update()
-    const a1 = await aCtx.get(`tref:a:post/a:${aAuthor}`)
-    const b1 = await aCtx.get(`tref:b:post/b:${bAuthor}`)
+    const a1 = (await collect(aCtx.tagged('a'))).find(e => e.entityId === 'post/a' && e.author === aAuthor)
+    const b1 = (await collect(aCtx.tagged('b'))).find(e => e.entityId === 'post/b' && e.author === bAuthor)
     if (!a1) throw new Error('missing a tag')
     if (!b1) throw new Error('missing b tag')
   }, 20000)

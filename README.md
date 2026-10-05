@@ -22,6 +22,7 @@ Hypergraph is a thin composition over lower-level Holepunch libraries:
 - [Corestore](https://github.com/holepunchto/corestore): Hypercore management and namespace isolation
 - [Autobase](https://github.com/holepunchto/autobase): Multi-writer CRDT for collaborative contexts
 - [Hyperbee](https://github.com/holepunchto/hyperbee): Materialized view and key-value indexes
+- [index-encoder](https://github.com/holepunchto/index-encoder): Compact, sortable binary index keys
 - [Keet-identity-key](https://github.com/holepunchto/keet-identity-key): Multi-device user ID management with mnemonic recovery
 
 ## Quickstart
@@ -153,7 +154,7 @@ they are indexed:
 const rules = { id: 'myapp/v1', validate: (event, reader) => event.type !== 'message' || event.text.length < 1000 }
 const ctx = await graph.createContext({ rules })
 await graph.openContext(ctx, { rules })
-await (await graph.openContext(ctx, { rules })).status() // { version: 2, rules: 'myapp/v1', confirmedLength, ... }
+await (await graph.openContext(ctx, { rules })).status() // { version: 3, rules: 'myapp/v1', layout: 2, confirmedLength, ... }
 ```
 
 Invite someone with a link that grants a role, redeemable while you're offline:

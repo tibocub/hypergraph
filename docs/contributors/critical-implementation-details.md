@@ -69,10 +69,10 @@ under the `meta:` prefix.
 
 ## Event Ordering
 
-Events are ordered by timestamp within time-sorted indexes (`nt:`, `nc:`, edge indexes).
-Timestamps are encoded as 16-digit zero-padded decimal strings to ensure correct sorting. The
-default, un-namespaced `n:` index is NOT chronologically ordered across multiple authors —
-see [Index Structure](index-structure.md).
+Events are ordered by timestamp within time-sorted indexes (nodes by type/time, nodes by time,
+edge indexes). In compact (layout 2) keys times are number members; in the text keys a layout 1
+context still uses, they are 16-digit zero-padded decimal strings. The node index itself is NOT
+chronologically ordered across multiple authors — see [Index Structure](index-structure.md).
 
 ## Signature Verification Proves Authorship, Not Ownership
 

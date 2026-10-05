@@ -198,25 +198,28 @@ all. Returns nothing if that author's core hasn't been opened/replicated locally
 
 Hypergraph maintains materialized indexes for efficient queries:
 
-### Node Indexes
-- `n:<entityId>` - Node records. NOT chronologically ordered across multiple authors —
-  keyed by `<type>/<authorCoreKeyHex>/<seq>`, and a core key's hex ordering has nothing to do
-  with when its owner actually wrote something
-- `nt:<type>:<createdAt>:<entityId>` - Type index (time-sorted) — what `query().type()` and
-  `getByType()` actually use
-- `nc:<createdAt>:<entityId>` - Type-agnostic time index — what `query()`'s default,
-  unfiltered order actually uses
+Keys are compact binary tuples (see [Index Structure](contributors/index-structure.md) for the
+exact layouts); what matters for querying is how each index is ordered.
 
-### Edge Indexes
-- `e:<from>:<type>:<createdAt>:<to>` - Edge records (includes an optional `value` field)
-- `i:in:<to>:<type>:<createdAt>:<from>` - Incoming edge index
-- `er:<from>:<type>:<to>` - Edge references
-- `cnt:in:<to>:<type>` - Edge counts (incoming)
-- `cnt:out:<from>:<type>` - Edge counts (outgoing)
+### Node Indexes (GraphView)
+- Nodes by id — ordered by (type, author, seq). NOT chronological across multiple authors: a
+  core key's ordering has nothing to do with when its owner actually wrote something
+- Nodes by type, then creation time — what `query().type()` and `getByType()` use
+- Nodes by creation time, all types — what `query()`'s default, unfiltered order uses
+- Content versions per entity — the newest wins; the body is read back from the author's log
 
-### Tag Indexes
-- `t:<tag>:<createdAt>:<entityId>:<author>` - Tags (time-sorted)
-- `tref:<tag>:<entityId>:<author>` - Tag references
+### Edge Indexes (each context's view)
+- Edges by (from, type, createdAt, to) — outgoing, oldest first (includes the optional `value`
+  and `data`)
+- Incoming edges by (to, type, createdAt, from)
+- Active edge per (from, type, to) — one live edge per triple
+- Edge counts per (entity, type), incoming and outgoing
+
+### Tag Indexes (each context's view)
+- Tags by (tag, createdAt, entity, author) — time-sorted
+- Tag references by (tag, entity, author) — for `hasTag()`
+
+Within the same millisecond, entities of one type and author sort by their seq as a number.
 
 ## Performance Considerations
 

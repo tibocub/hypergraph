@@ -76,7 +76,9 @@ guard, not just the encode/preencode sides.
 - `context/redeem` - Redeem an invite: `inviteKey`, `member`, `key` (the redeeming writer),
   signed with the invite secret and by the member; usually appended by a not-yet-writer as an
   Autobase optimistic block
-- `context/init` also carries an optional trailing `owner` (version 3)
+- `context/init` also carries an optional trailing `owner` (version 3), then an optional index
+  `layout` (spec 002; new contexts write `2`). A layout without an owner writes an empty owner
+  first; it decodes as no owner. Records from before layouts decode without one (= layout 1)
 - `relation/create` - Create relation (optional `value` field for weighted relations; optional
   `data` string, at most 4,096 bytes of UTF-8, appended after `value` and signed only when present,
   so relations without data keep their old bytes and signatures — spec 004)

@@ -13,6 +13,8 @@ const ProtomuxWakeup = require('protomux-wakeup')
 const RoleBase = require('./role-base')
 const ScopeBase = require('./scope-base')
 const GraphView = require('./view')
+const graphLayout = require('./index-layout/graph')
+const { NEW_CONTEXT_LAYOUT } = require('./index-layout/context')
 const GraphQuery = require('./query')
 const IdentityManager = require('./identity-manager')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
@@ -124,14 +126,16 @@ module.exports = class Hypergraph extends ReadyResource {
     const localKeyHex = this.#userCore.key.toString('hex')
     this.#userCores.set(localKeyHex, this.#userCore)
 
-    // Create the view core for indexes
-    const viewCore = this.#store.get({ name: 'graph-view' })
+    // The view core for indexes. `graph-view/2` holds the compact layout
+    // (src/index-layout/graph.js); a store from before it gets a fresh one,
+    // rebuilt from the logs by the first update().
+    const viewCore = this.#store.get({ name: 'graph-view/2' })
     await viewCore.ready()
 
     // Create Hyperbee for the view
     const viewBee = new Hyperbee(viewCore, {
-      keyEncoding: 'utf-8',
-      valueEncoding: 'json',
+      keyEncoding: 'binary',
+      valueEncoding: 'binary',
       // Read the core directly instead of opening and closing a snapshot
       // session for every get (~20% faster listings, measured). Snapshots
       // only protect a read from truncation, and nothing ever truncates this
@@ -140,6 +144,7 @@ module.exports = class Hypergraph extends ReadyResource {
       sessions: false
     })
     await viewBee.ready()
+    await this.#dropLegacyView(viewBee)
 
     this.#view = new GraphView(viewBee, this.#userCores, this.#contexts, {
       onIndexEvent: this.#onIndexEvent // test-only, see GraphView
@@ -151,6 +156,45 @@ module.exports = class Hypergraph extends ReadyResource {
       ? this.identity.identityPublicKey.toString('hex')
       : String(this.identity.identityPublicKey)
     this.#view.registerDeviceIdentity(localKeyHex, identityKeyHex)
+  }
+
+  /**
+   * Free the index of a store written before layout 2: the `graph-view` core,
+   * which nothing reads any more. Runs once, on the first open of
+   * `graph-view/2` (its format record marks it done). Truncating then
+   * compacting is what actually releases the disk space: Hypercore's own
+   * purge() fails in the installed version (calls a method that no longer
+   * exists), and a truncate alone leaves the bytes until RocksDB compacts.
+   */
+  async #dropLegacyView (viewBee) {
+    const formatKey = graphLayout.formatKey()
+    if (await viewBee.get(formatKey)) return
+
+    // Only open it if this store has one: opening a missing named core
+    // creates it, and `createIfMissing: false` leaks an unhandled rejection
+    // from inside Corestore. The alias lookup is Corestore's own existence
+    // check for named cores.
+    let exists = false
+    try {
+      exists = !!(await this.#store.storage.getAlias({ name: 'graph-view', namespace: this.#store.ns }))
+    } catch (err) {
+      safetyCatch(err)
+    }
+
+    if (exists) {
+      const legacy = this.#store.get({ name: 'graph-view' })
+      try {
+        await legacy.ready()
+        if (legacy.length > 0) {
+          await legacy.truncate(0)
+          await legacy.compact()
+        }
+      } finally {
+        await legacy.close()
+      }
+    }
+
+    await viewBee.put(formatKey, graphLayout.encodeFormat(graphLayout.FORMAT_VERSION))
   }
 
   async _close () {
@@ -775,12 +819,8 @@ module.exports = class Hypergraph extends ReadyResource {
 
     const context = await this.#getContext(opts.context)
 
-    const edgeRefKey = `er:${opts.from}:${opts.type || opts.relationType}:${opts.to}`
-    const edgeRef = await context.get(edgeRefKey)
-    if (!edgeRef || !edgeRef.value || !edgeRef.value.ref) throw new Error('Relation not found')
-
-    const edge = await context.get(edgeRef.value.ref)
-    if (!edge || !edge.value || edge.value.deleted) throw new Error('Relation not found')
+    const edge = await context.activeEdge(opts.from, opts.type || opts.relationType, opts.to)
+    if (!edge) throw new Error('Relation not found')
 
     const event = {
       type: 'relation/delete',
@@ -788,7 +828,7 @@ module.exports = class Hypergraph extends ReadyResource {
       to: opts.to,
       relationType: opts.type || opts.relationType,
       author,
-      createdAt: edge.value.createdAt,
+      createdAt: edge.createdAt,
       timestamp: Date.now(),
       signature: null
     }
@@ -842,7 +882,6 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   async #countEdges (entityId, type, direction, opts = {}) {
     if (!this.opened) await this.ready()
-    const key = `cnt:${direction}:${entityId}:${type}`
     let total = 0
 
     const seen = new Set()
@@ -856,8 +895,7 @@ module.exports = class Hypergraph extends ReadyResource {
         if (seen.has(viewKey)) continue
         seen.add(viewKey)
       }
-      const result = await context.get(key)
-      if (result && result.value && typeof result.value.count === 'number') total += result.value.count
+      total += await context.edgeCount(direction, entityId, type)
     }
 
     return total
@@ -1580,8 +1618,8 @@ module.exports = class Hypergraph extends ReadyResource {
     const roleSource = opts.roles === undefined ? 'context' : opts.roles
     if (roleSource !== 'context' && roleSource !== 'rolebase') throw new Error("opts.roles must be 'context' or 'rolebase'")
     const init = roleSource === 'rolebase'
-      ? { type: 'context/init', version: 2, rules: opts.rules ? opts.rules.id : '', timestamp: Date.now() }
-      : { type: 'context/init', version: CONTEXT_VERSION, rules: opts.rules ? opts.rules.id : '', owner: b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex'), timestamp: Date.now() }
+      ? { type: 'context/init', version: 2, rules: opts.rules ? opts.rules.id : '', layout: NEW_CONTEXT_LAYOUT, timestamp: Date.now() }
+      : { type: 'context/init', version: CONTEXT_VERSION, rules: opts.rules ? opts.rules.id : '', owner: b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex'), layout: NEW_CONTEXT_LAYOUT, timestamp: Date.now() }
     await context.append(init)
 
     const keyHex = context.key.toString('hex')

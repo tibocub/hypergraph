@@ -85,9 +85,7 @@ module.exports = async function runQueryV0 (graph, body) {
         const ctx = await graph.openContext(keyHex)
         if (!ctx || !ctx.view) continue
 
-        const stream = ctx.view.createReadStream({ gte: 't:', lt: 't:\uffff', limit: tagLimit })
-        for await (const entry of stream) {
-          const v = entry && entry.value ? entry.value : null
+        for await (const v of ctx.tagged(null, { limit: tagLimit })) {
           if (!v || !v.tag || !v.entityId) continue
 
           const tid = tagNodeId(v.tag)

@@ -12,6 +12,7 @@ const { can: canRole } = require('./roles-registry')
 const { toSortableTs, stableTagHash, stableRelationHash, stableContextHash, authorFromEntityId, relationDataProblem } = require('./utils')
 const rolesRegistry = require('./roles-registry')
 const tuning = require('./tuning')
+const { layoutFor, KNOWN_LAYOUTS } = require('./index-layout/context')
 
 // hypergraph://invite/<contextKeyHex>/<secretSeedHex> (spec 006)
 const INVITE_LINK = /^hypergraph:\/\/invite\/([0-9a-f]{64})\/([0-9a-f]{64})$/
@@ -63,6 +64,8 @@ class ContextBase extends ReadyResource {
   #base
   #viewBee
   #counts // edge counters pending for the current apply chunk, else null
+  #applyIndex // the index layout apply is writing with (src/index-layout/context.js)
+  #index // the index layout readers use, once this view's record says which
   #members // every member the system listed at the last update(), see writerKeys()
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
@@ -230,7 +233,10 @@ class ContextBase extends ReadyResource {
     // 1,000 times, each a block every joining peer has to build and commit.
     this.#counts = new Map()
     const flush = async () => {
-      for (const [key, count] of this.#counts) await view.put(key, { count })
+      for (const [key, count] of this.#counts) {
+        const [layoutId, direction, entityId, type] = JSON.parse(key)
+        await layoutFor({ layout: layoutId }).putCount(view, direction, entityId, type, count)
+      }
       this.#counts.clear()
       await view.flush()
     }
@@ -280,7 +286,10 @@ class ContextBase extends ReadyResource {
       // Every peer must apply this context the same way. A version this code
       // doesn't know, or app rules other than the ones the context was
       // created with, stop apply rather than build a different index.
-      if (record === null) record = await this.#record(view)
+      if (record === null) {
+        record = await this.#record(view)
+        this.#applyIndex = layoutFor(record)
+      }
       const refusal = this.#refusal(record)
       if (refusal) {
         host.interrupt(refusal)
@@ -758,6 +767,9 @@ class ContextBase extends ReadyResource {
     if (await view.get(CONTEXT_RECORD_KEY)) return
     const record = { version: event.version, rules: event.rules || '' }
     if (typeof event.owner === 'string' && event.owner.length > 0) record.owner = event.owner
+    // The index layout is fixed here, for the context's whole life: every
+    // peer must build the same view (spec 002). No layout means 1.
+    if (typeof event.layout === 'number' && event.layout !== 1) record.layout = event.layout
     await view.put(CONTEXT_RECORD_KEY, record)
     const refusal = this.#refusal(record)
     if (refusal) {
@@ -947,7 +959,8 @@ class ContextBase extends ReadyResource {
     if (event.version !== 3 || typeof event.owner !== 'string' || event.owner.length === 0) return
     const current = await this.#record(view)
     if (current.version !== 1 && current.version !== 2) return
-    await view.put(CONTEXT_RECORD_KEY, { version: 3, rules: current.rules || '', owner: event.owner })
+    // The layout stays: the entries already written use it.
+    await view.put(CONTEXT_RECORD_KEY, { version: 3, rules: current.rules || '', owner: event.owner, ...(current.layout ? { layout: current.layout } : {}) })
     await this.#startRoleTable(view, event.owner, from.key)
     const system = this.#base.system
     const indexers = system && Array.isArray(system.indexers) ? system.indexers.map(w => w.key) : []
@@ -960,6 +973,7 @@ class ContextBase extends ReadyResource {
   // Why this peer must not apply a context with this record, or null.
   #refusal (record) {
     if (!KNOWN_VERSIONS.includes(record.version)) return `unsupported context version ${record.version}`
+    if (!KNOWN_LAYOUTS.includes(record.layout || 1)) return `unsupported index layout ${record.layout}`
     const mine = this.#rules ? this.#rules.id : ''
     if (record.rules !== mine) {
       return `Context rules mismatch: context uses "${record.rules}", this peer provides "${mine}"`
@@ -987,11 +1001,12 @@ class ContextBase extends ReadyResource {
   // the current apply chunk (so a rule sees earlier events of the same
   // batch), for app rules. Contract: specs/003-fast-forward-contexts/contracts/api.md
   #reader (view) {
+    const index = this.#applyIndex || layoutFor(null)
     const counts = this.#counts
-    const count = async (key) => {
+    const count = async (direction, entityId, type) => {
+      const key = JSON.stringify([index.id, direction, entityId, type])
       if (counts && counts.has(key)) return counts.get(key)
-      const entry = await view.get(key)
-      return entry && entry.value ? entry.value.count : 0
+      return index.getCount(view, direction, entityId, type)
     }
     const edgeRecord = (value) => ({
       from: value.from,
@@ -1004,34 +1019,23 @@ class ContextBase extends ReadyResource {
     })
     return Object.freeze({
       async hasEdge (from, type, to) {
-        const ref = await view.get(`er:${from}:${type}:${to}`)
-        if (!ref || !ref.value || !ref.value.ref) return false
-        const edge = await view.get(ref.value.ref)
-        return !!(edge && edge.value && !edge.value.deleted)
+        const edge = await index.activeEdge(view, from, type, to)
+        return !!(edge && !edge.deleted)
       },
       async edges (entityId, opts = {}) {
         const direction = opts.direction === 'in' ? 'in' : 'out'
         const limit = typeof opts.limit === 'number' ? opts.limit : Infinity
-        const base = direction === 'in' ? `i:in:${entityId}:` : `e:${entityId}:`
-        const prefix = opts.type ? `${base}${opts.type}:` : base
         const out = []
-        for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff' })) {
+        for await (const edge of index.edges(view, entityId, { direction, type: opts.type })) {
           if (out.length >= limit) break
-          const edge = direction === 'in' ? await view.get(entry.value.ref) : entry
-          if (!edge || !edge.value || edge.value.deleted) continue
-          out.push(edgeRecord(edge.value))
+          if (edge.deleted) continue
+          out.push(edgeRecord(edge))
         }
         return out
       },
-      countIn: (entityId, type) => count(`cnt:in:${entityId}:${type}`),
-      countOut: (entityId, type) => count(`cnt:out:${entityId}:${type}`),
-      async hasTag (entityId, tag) {
-        const prefix = `tref:${tag}:${entityId}:`
-        for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff', limit: 1 })) {
-          if (entry) return true
-        }
-        return false
-      }
+      countIn: (entityId, type) => count('in', entityId, type),
+      countOut: (entityId, type) => count('out', entityId, type),
+      hasTag: (entityId, tag) => index.hasTag(view, entityId, tag)
     })
   }
 
@@ -1274,7 +1278,8 @@ class ContextBase extends ReadyResource {
    */
   async status () {
     if (!this.opened) await this.ready()
-    const { version, rules } = this.#interrupted ? { version: null, rules: null } : await this.#record()
+    const record = this.#interrupted ? { version: null, rules: null } : await this.#record()
+    const { version, rules } = record
     // The indexer set as the system knows it right now. A writer's own
     // isIndexer flag only flips once that change is itself confirmed.
     const system = this.#base.system
@@ -1284,6 +1289,7 @@ class ContextBase extends ReadyResource {
     return {
       version,
       rules,
+      layout: record.version === null ? null : (record.layout || 1),
       indexers,
       isIndexer: !!this.#base.isIndexer,
       writable: !!this.#base.writable,
@@ -1314,50 +1320,34 @@ class ContextBase extends ReadyResource {
     if (relationDataProblem(event.data)) return
     if (!(await this.#passesRules(view, event))) return
 
-    const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
-    const existingRef = await view.get(edgeRefKey)
+    const index = this.#applyIndex
+    const existing = await index.activeEdge(view, event.from, event.relationType, event.to)
+    if (existing && !existing.deleted) return
 
-    if (existingRef && existingRef.value && existingRef.value.ref) {
-      const existingEdge = await view.get(existingRef.value.ref)
-      if (existingEdge && existingEdge.value && !existingEdge.value.deleted) {
-        return
-      }
-    }
-
-    const createdAtKey = toSortableTs(event.timestamp)
-    const key = `e:${event.from}:${event.relationType}:${createdAtKey}:${event.to}`
-
-    await view.put(key, {
+    // The edge, its active-edge ref and its incoming entry.
+    await index.addEdge(view, {
       from: event.from,
       to: event.to,
       type: event.relationType,
       author: event.author,
       createdAt: event.timestamp,
-      deleted: false,
-      value: typeof event.value === 'number' ? event.value : undefined,
-      data: typeof event.data === 'string' ? event.data : undefined
+      value: event.value,
+      data: event.data
     })
-
-    await view.put(edgeRefKey, { ref: key })
-
-    // Add incoming edge index
-    const inKey = `i:in:${event.to}:${event.relationType}:${createdAtKey}:${event.from}`
-    await view.put(inKey, { ref: key })
 
     // In P2P delivery, a delete event may arrive before its create. The count is clamped at 0 on delete,
     // but will not self-correct when the create arrives later. Counts may read one low on recently-synced peers.
-    await this.#bumpCount(view, `cnt:in:${event.to}:${event.relationType}`, 1)
-    await this.#bumpCount(view, `cnt:out:${event.from}:${event.relationType}`, 1)
+    await this.#bumpCount(view, 'in', event.to, event.relationType, 1)
+    await this.#bumpCount(view, 'out', event.from, event.relationType, 1)
   }
 
   // Add `delta` to an edge counter, clamped at 0. Written at the end of the
   // apply chunk (see #applyView), so repeated bumps cost one block.
-  async #bumpCount (view, key, delta) {
+  async #bumpCount (view, direction, entityId, type, delta) {
+    const index = this.#applyIndex
+    const key = JSON.stringify([index.id, direction, entityId, type])
     let count = this.#counts.get(key)
-    if (count === undefined) {
-      const existing = await view.get(key)
-      count = existing && existing.value ? existing.value.count : 0
-    }
+    if (count === undefined) count = await index.getCount(view, direction, entityId, type)
     this.#counts.set(key, Math.max(0, count + delta))
   }
 
@@ -1374,23 +1364,11 @@ class ContextBase extends ReadyResource {
     // claim of origin, which is what needs the from-ownership check;
     // removing one doesn't fabricate anything.
 
-    const createdAtKey = toSortableTs(event.createdAt)
-    const key = `e:${event.from}:${event.relationType}:${createdAtKey}:${event.to}`
-    const existing = await view.get(key)
+    // Marks the edge deleted, drops its incoming entry and active-edge ref.
+    await this.#applyIndex.removeEdge(view, event.from, event.relationType, event.createdAt, event.to)
 
-    if (existing) {
-      await view.put(key, { ...existing.value, deleted: true })
-    }
-
-    // Remove incoming edge index
-    const inKey = `i:in:${event.to}:${event.relationType}:${createdAtKey}:${event.from}`
-    await view.del(inKey)
-
-    const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
-    await view.del(edgeRefKey)
-
-    await this.#bumpCount(view, `cnt:in:${event.to}:${event.relationType}`, -1)
-    await this.#bumpCount(view, `cnt:out:${event.from}:${event.relationType}`, -1)
+    await this.#bumpCount(view, 'in', event.to, event.relationType, -1)
+    await this.#bumpCount(view, 'out', event.from, event.relationType, -1)
   }
 
   async #applyTag (view, event) {
@@ -1398,16 +1376,12 @@ class ContextBase extends ReadyResource {
     if (!this.#verifyTagSignature(event)) return
     if (!(await this.#passesRules(view, event))) return
 
-    const key = `t:${event.tag}:${toSortableTs(event.timestamp)}:${event.entityId}:${event.author}`
-    const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
-    await view.put(key, {
+    await this.#applyIndex.addTag(view, {
       entityId: event.entityId,
       tag: event.tag,
       author: event.author,
       createdAt: event.timestamp
     })
-
-    await view.put(refKey, { ref: key })
   }
 
   async #applyTagDelete (view, event) {
@@ -1415,10 +1389,7 @@ class ContextBase extends ReadyResource {
     if (!this.#verifyTagSignature(event)) return
     if (!(await this.#passesRules(view, event))) return
 
-    const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
-    const ref = await view.get(refKey)
-    if (ref) await view.del(ref.value.ref)
-    await view.del(refKey)
+    await this.#applyIndex.removeTag(view, event.tag, event.entityId, event.author)
   }
 
   async #applyMessage (view, event) {
@@ -1706,6 +1677,76 @@ class ContextBase extends ReadyResource {
   // ========================================
   // Read Operations
   // ========================================
+
+  /**
+   * The index layout this context's view uses, from its own record. Until
+   * the record has arrived there is nothing to read anyway, so the answer
+   * is only cached once it exists.
+   *
+   * @returns {Promise<Object>} One of src/index-layout/context.js's layouts.
+   */
+  async #readIndex () {
+    if (this.#index) return this.#index
+    const view = this.#base.view
+    const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
+    const index = layoutFor(entry && entry.value)
+    if (entry && index) this.#index = index
+    return index || layoutFor(null)
+  }
+
+  /**
+   * Stored edges of an entity, deleted ones included (see the layout's
+   * `edges`). Used by GraphView; apps use graph.edges().
+   *
+   * @param {string} entityId
+   * @param {{ direction?: 'in'|'out', type?: string, reverse?: boolean, limit?: number }} [opts]
+   * @returns {AsyncIterable<Object>}
+   */
+  async * indexedEdges (entityId, opts = {}) {
+    if (!this.opened) await this.ready()
+    const index = await this.#readIndex()
+    yield * index.edges(this.#base.view, entityId, opts)
+  }
+
+  /**
+   * The live edge from → to of a type, or null.
+   *
+   * @returns {Promise<Object|null>}
+   */
+  async activeEdge (from, type, to) {
+    if (!this.opened) await this.ready()
+    const edge = await (await this.#readIndex()).activeEdge(this.#base.view, from, type, to)
+    return edge && !edge.deleted ? edge : null
+  }
+
+  /**
+   * An edge counter.
+   *
+   * @param {'in'|'out'} direction
+   * @returns {Promise<number>}
+   */
+  async edgeCount (direction, entityId, type) {
+    if (!this.opened) await this.ready()
+    return (await this.#readIndex()).getCount(this.#base.view, direction, entityId, type)
+  }
+
+  /**
+   * Tag entries `{ entityId, tag, author, createdAt }` of one tag, or of
+   * all tags when `tag` is null.
+   *
+   * @returns {AsyncIterable<Object>}
+   */
+  async * tagged (tag, opts = {}) {
+    if (!this.opened) await this.ready()
+    const index = await this.#readIndex()
+    yield * index.tagged(this.#base.view, tag, opts)
+  }
+
+  /** @returns {Promise<boolean>} Whether anyone tagged `entityId` with `tag`. */
+  async hasTag (entityId, tag) {
+    if (!this.opened) await this.ready()
+    return (await this.#readIndex()).hasTag(this.#base.view, entityId, tag)
+  }
 
   /**
    * Get a value from the context view.

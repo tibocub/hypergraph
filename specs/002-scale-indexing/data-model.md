@@ -41,19 +41,21 @@ the content event itself); profile `username`, `bio`.
 → `userCores.get(author).get(contentSeq)` → decode event → same record shape as today. If the
 author's core is not open locally or the block is not held: `null` (FR-016 edge case).
 
-## Context view — Autobase view, layout chosen per view
+## Context view — Autobase view, layout fixed by the context's record
 
-The layout of a context view is decided once, at its first apply:
+(Revised during implementation, research.md "R8 revised": views are shared since fast-forward.)
 
-| state on open | layout used |
+| context record (`meta:context`, from `context/init`) | layout used |
 |---|---|
-| view empty | 2 — writes the `format` record in the first apply |
-| view has `format = 2` | 2 |
-| view non-empty, no format record | 1 (today's text keys), for the life of this local view |
+| `layout: 2` (every context created now) | 2 |
+| no `layout` (every context created before) | 1 (text keys), for the context's whole life |
+| any other value | apply is interrupted (`unsupported index layout N`) |
+
+Implemented for the bulky indexes only (tags 0x10–0x16 below). The moderation, pending, message
+and record entries (0x17–0x1b planned) stay text in every context.
 
 | tag | index | key members after the tag | value | today (layout 1) |
 |---|---|---|---|---|
-| 0x00 | format | — | `{ version: 2 }` | none |
 | 0x10 | edge | from: EntityId, relType, createdAt, to: EntityId | `{ flags(deleted, hasValue), value? (float64) }` | `e:<from>:<type>:<ts>:<to>` → `{from,to,type,author,createdAt,deleted,value}` |
 | 0x11 | incoming edge | to: EntityId, relType, createdAt, from: EntityId | ∅ (the edge key is rebuilt from these members) | `i:in:…` → `{ ref: <whole e: key> }` |
 | 0x12 | active edge | from, relType, to | `{ createdAt }` | `er:…` → `{ ref: <whole e: key> }` |

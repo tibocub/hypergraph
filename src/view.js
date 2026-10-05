@@ -1,8 +1,11 @@
 const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const b4a = require('b4a')
-const { toSortableTs, resolveOpenContexts, authorFromEntityId } = require('./utils')
+const { resolveOpenContexts, authorFromEntityId } = require('./utils')
 const tuning = require('./tuning')
+const L = require('./index-layout/graph')
+
+const HEX64 = /^[0-9a-f]{64}$/
 
 /**
  * GraphView manages the materialized view for graph operations.
@@ -28,7 +31,8 @@ module.exports = class GraphView extends ReadyResource {
   /**
    * Create a new GraphView instance.
    *
-   * @param {Object} bee - The Hyperbee instance for the view
+   * @param {Object} bee - The Hyperbee instance for the view (binary keys
+   *   and values, layout 2: see src/index-layout/graph.js)
    * @param {Map} userCores - Map of user core keys to UserCore instances
    * @param {Map} contexts - Map of context names to ContextBase instances
    * @param {Object} [opts]
@@ -81,17 +85,24 @@ module.exports = class GraphView extends ReadyResource {
    */
   async getIdentity (pubkey) {
     if (!this.opened) await this.ready()
-    const entry = await this.#bee.get(`id:profile:${pubkey}`)
-    return entry ? entry.value : null
+    if (typeof pubkey !== 'string' || !HEX64.test(pubkey)) return null
+    const entry = await this.#bee.get(L.profileKey(pubkey))
+    if (!entry) return null
+    const { seq, username, bio } = L.decodeProfile(entry.value)
+    return { author: pubkey, username, bio, seq }
   }
 
   async _open () {
     for (const [keyHex, core] of this.#userCores) {
       if (!core.key) throw new Error('UserCore key missing')
-      const metaKey = `meta:user:${keyHex}:lastSeq`
-      const meta = await this.#bee.get(metaKey)
-      this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
+      this.#lastProcessedSeq.set(keyHex, await this.#readUserProgress(keyHex))
     }
+  }
+
+  // The last indexed seq of a user log, or -1.
+  async #readUserProgress (keyHex) {
+    const entry = await this.#bee.get(L.userProgressKey(keyHex))
+    return entry ? L.decodeCount(entry.value) : -1
   }
 
   async _close () {
@@ -152,8 +163,8 @@ module.exports = class GraphView extends ReadyResource {
       // addUserCore() loads this in the background; don't race it into
       // re-indexing from 0.
       if (!this.#lastProcessedSeq.has(keyHex)) {
-        const meta = await this.#bee.get(`meta:user:${keyHex}:lastSeq`)
-        if (!this.#lastProcessedSeq.has(keyHex)) this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
+        const seq = await this.#readUserProgress(keyHex)
+        if (!this.#lastProcessedSeq.has(keyHex)) this.#lastProcessedSeq.set(keyHex, seq)
       }
       const lastSeq = this.#lastProcessedSeq.get(keyHex)
       const currentLength = core.length
@@ -171,12 +182,12 @@ module.exports = class GraphView extends ReadyResource {
       if (!viewCore) continue
 
       const viewKeyHex = viewCore.key.toString('hex')
-      const metaKey = `meta:contextView:${viewKeyHex}:length`
+      const metaKey = L.contextProgressKey(viewKeyHex)
 
       // If we have not loaded the checkpoint for this view yet, load it lazily.
       if (!this.#contextCheckpoints.has(viewKeyHex)) {
         const v = await this.#bee.get(metaKey)
-        this.#contextCheckpoints.set(viewKeyHex, v ? v.value.length : -1)
+        this.#contextCheckpoints.set(viewKeyHex, v ? L.decodeCount(v.value) : -1)
       }
 
       const lastIndexedLen = this.#contextCheckpoints.get(viewKeyHex)
@@ -191,7 +202,7 @@ module.exports = class GraphView extends ReadyResource {
       const nextViewLen = viewCore.length
       if (nextViewLen !== lastIndexedLen) changed = true
       this.#contextCheckpoints.set(viewKeyHex, nextViewLen)
-      await this.#bee.put(metaKey, { length: nextViewLen })
+      await this.#bee.put(metaKey, L.encodeCount(nextViewLen))
     }
 
     return changed
@@ -213,13 +224,13 @@ module.exports = class GraphView extends ReadyResource {
    * @returns {Promise<boolean>} Whether anything was indexed.
    */
   async #indexUserCore (keyHex, core, lastSeq, currentLength) {
-    const metaKey = `meta:user:${keyHex}:lastSeq`
+    const metaKey = L.userProgressKey(keyHex)
     let committed = lastSeq
     let lastProcessed = lastSeq
     let prefetchedTo = this.#prefetch(core, lastSeq + 1, currentLength)
 
     const commit = async () => {
-      await this.#writer.put(metaKey, { seq: lastProcessed })
+      await this.#writer.put(metaKey, L.encodeCount(lastProcessed))
       await this.#writer.flush()
       committed = lastProcessed
       this.#lastProcessedSeq.set(keyHex, committed)
@@ -310,102 +321,71 @@ module.exports = class GraphView extends ReadyResource {
   async #applyIdentityUpdate (event, seq, coreKeyHex) {
     if (event.author !== coreKeyHex) return
 
-    const key = `id:profile:${event.author}`
-    await this.#db.put(key, {
-      author: event.author,
+    await this.#db.put(L.profileKey(event.author), L.encodeProfile({
+      seq,
       username: event.username,
-      bio: event.bio || null,
-      seq
-    })
+      bio: event.bio || null
+    }))
   }
 
   async #applyEntityCreate (event, seq, coreKeyHex) {
     // Binding invariant: entities are authored by the owner of the core they live in.
     if (event.author !== coreKeyHex) return
 
-    const derivedId = `${event.entityType}/${coreKeyHex}/${seq}`
+    // The id is derived, never taken from the event: <type>/<core key>/<seq>.
+    const p = L.parseEntityId(`${event.entityType}/${coreKeyHex}/${seq}`)
+    if (!p) return
 
-    const key = `n:${derivedId}`
+    const key = L.nodeKey(p)
     const existing = await this.#db.get(key)
 
     // Entities are immutable once created.
     // If it already exists, ignore subsequent creates.
-    if (existing && !existing.value.deleted) return
+    if (existing && !L.decodeNode(existing.value).deleted) return
 
-    await this.#db.put(key, {
-      id: derivedId,
-      type: event.entityType,
-      author: event.author,
-      createdAt: event.timestamp,
-      deleted: false,
-      version: seq
-    })
+    await this.#db.put(key, L.encodeNode({ createdAt: event.timestamp, deleted: false }))
 
-    // Type index (time sortable): nt:<type>:<createdAt>:<id>
-    // This is a secondary index to make by-type scans efficient.
-    const typeKey = `nt:${event.entityType}:${toSortableTs(event.timestamp)}:${derivedId}`
-    await this.#db.put(typeKey, { id: derivedId })
+    // By type, then creation time: makes by-type scans a single range.
+    await this.#db.put(L.nodeByTypeKey(p, event.timestamp), L.EMPTY)
 
-    // Type-agnostic time index: nc:<createdAt>:<id>
-    // The primary n:<id> key (used by the default, unfiltered scan) is
-    // ordered by (type, authorCoreKeyHex, seq) — not chronological at all
-    // once more than one author is involved, since a core key's hex is
-    // effectively random relative to when its owner actually wrote
-    // something. This index gives a real, efficient chronological scan
-    // across all types, without needing to load-then-sort every entity.
-    const timeKey = `nc:${toSortableTs(event.timestamp)}:${derivedId}`
-    await this.#db.put(timeKey, { id: derivedId })
+    // By creation time, across all types. The node index itself is ordered
+    // by (type, author, seq) - not chronological once more than one author
+    // is involved, since a core key is effectively random relative to when
+    // its owner wrote something. This one gives a real chronological scan
+    // without loading and sorting every entity.
+    await this.#db.put(L.nodeByTimeKey(p, event.timestamp), L.EMPTY)
   }
 
   async #applyEntityTombstone (event, coreKeyHex) {
     // Binding invariant: only the owner of the core can tombstone entities in that core.
     if (event.author !== coreKeyHex) return
 
-    // V1: tombstone ids are expected to already be in derived form.
-    // If not, ignore to avoid deleting an ambiguous/legacy id.
-    if (typeof event.id !== 'string' || !event.id.includes(`/${coreKeyHex}/`)) return
+    // Tombstone ids must be in derived form and name this core as author.
+    const p = L.parseEntityId(event.id)
+    if (!p || p.author.toString('hex') !== coreKeyHex) return
 
-    const key = `n:${event.id}`
+    const key = L.nodeKey(p)
     const existing = await this.#db.get(key)
 
     if (existing) {
-      await this.#db.put(key, {
-        ...existing.value,
-        deleted: true,
-        deletedAt: event.timestamp,
-        deletedBy: event.author
-      })
+      const node = L.decodeNode(existing.value)
+      await this.#db.put(key, L.encodeNode({ createdAt: node.createdAt, deleted: true, deletedAt: event.timestamp }))
     }
   }
 
   async #applyContentAppend (event, seq, coreKeyHex) {
     // Binding invariant: content can only be appended under the entity's own
-    // author's core — same rule as entity/create and entity/tombstone above.
+    // author's core - same rule as entity/create and entity/tombstone above.
     // Without this, any peer could forge content for any entityId simply by
     // appending a content/append event naming that id from their own core.
     if (authorFromEntityId(event.entityId) !== coreKeyHex) return
+    const p = L.parseEntityId(event.entityId)
+    if (!p) return
 
-    // seq must be zero-padded (toSortableTs) like every other time/seq-based
-    // index key here — a raw seq sorts lexicographically ("9" > "10"),
-    // which made getContent()'s reverse-order scan return stale content
-    // once an entity passed 10 revisions.
-    const key = `c:${event.entityId}:${toSortableTs(seq)}`
-    await this.#db.put(key, {
-      entityId: event.entityId,
-      contentType: event.contentType,
-      body: event.body,
-      createdAt: event.timestamp,
-      // Encryption metadata is optional and defaults to unencrypted —
-      // existing, already-stored content (and any content written without
-      // a scope) is completely unaffected. When present, `body` holds a
-      // hex ciphertext rather than plaintext; contentType still reflects
-      // the app's original type in the clear (only the payload is
-      // encrypted, not this kind of metadata).
-      encrypted: event.encrypted === true,
-      scope: event.encrypted === true ? event.scope : null,
-      epoch: event.encrypted === true ? event.epoch : null,
-      nonce: event.encrypted === true ? event.nonce : null
-    })
+    // A pointer, not a copy: getContent() reads the event back from this
+    // core at `seq`. The seq is a number key member, so the newest version
+    // is simply the last key of the entity's range.
+    await this.#db.put(L.contentKey(p, seq), L.EMPTY)
   }
 
   /**
@@ -419,10 +399,9 @@ module.exports = class GraphView extends ReadyResource {
     this.#userCores.set(keyHex, userCore)
     // Initialize checkpoint lazily
     this.ready().then(async () => {
-      const metaKey = `meta:user:${keyHex}:lastSeq`
-      const meta = await this.#bee.get(metaKey)
+      const seq = await this.#readUserProgress(keyHex)
       if (!this.#lastProcessedSeq.has(keyHex)) {
-        this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
+        this.#lastProcessedSeq.set(keyHex, seq)
       }
     }).catch(safetyCatch) // the graph may close before this read finishes
   }
@@ -451,9 +430,9 @@ module.exports = class GraphView extends ReadyResource {
       const viewKeyHex = viewCore.key.toString('hex')
       if (this.#contextCheckpoints.has(viewKeyHex)) return
 
-      const metaKey = `meta:contextView:${viewKeyHex}:length`
-      const v = await this.#bee.get(metaKey)
-      this.#contextCheckpoints.set(viewKeyHex, v ? v.value.length : -1)
+      const v = await this.#bee.get(L.contextProgressKey(viewKeyHex))
+      if (this.#contextCheckpoints.has(viewKeyHex)) return
+      this.#contextCheckpoints.set(viewKeyHex, v ? L.decodeCount(v.value) : -1)
     }).catch(safetyCatch) // the graph may close before this read finishes
   }
 
@@ -470,11 +449,20 @@ module.exports = class GraphView extends ReadyResource {
   async getNode (id) {
     if (!this.opened) await this.ready()
 
-    const entry = await this.#bee.get(`n:${id}`)
-    if (!entry || entry.value.deleted) {
-      return null
+    const p = L.parseEntityId(id)
+    if (!p) return null // every indexed entity has a derived id
+    const entry = await this.#bee.get(L.nodeKey(p))
+    if (!entry) return null
+    const node = L.decodeNode(entry.value)
+    if (node.deleted) return null
+    return {
+      id,
+      type: p.type,
+      author: p.author.toString('hex'),
+      createdAt: node.createdAt,
+      deleted: false,
+      version: p.seq
     }
-    return entry.value
   }
 
   /**
@@ -486,19 +474,43 @@ module.exports = class GraphView extends ReadyResource {
   async getContent (entityId) {
     if (!this.opened) await this.ready()
 
-    // Get latest content for entity
-    const stream = this.#bee.createReadStream({
-      gte: `c:${entityId}:`,
-      lt: `c:${entityId}:\uffff`,
-      reverse: true,
-      limit: 1
-    })
+    const p = L.parseEntityId(entityId)
+    if (!p) return null
 
-    for await (const entry of stream) {
-      return entry.value
+    // The newest version is the last key of the entity's range.
+    let contentSeq = -1
+    for await (const entry of this.#bee.createReadStream({ ...L.contentRange(p), reverse: true, limit: 1 })) {
+      contentSeq = L.contentSeqFromKey(entry.key)
     }
+    if (contentSeq === -1) return null
 
-    return null
+    // The body lives in the author's log, which this peer indexed it from.
+    // If that log is not open here or the block is no longer held, there
+    // is nothing to show.
+    const userCore = this.#userCores.get(p.author.toString('hex'))
+    if (!userCore) return null
+    let event
+    try {
+      event = await userCore.get(contentSeq, { wait: false })
+    } catch (err) {
+      safetyCatch(err)
+      return null
+    }
+    if (!event || event.type !== 'content/append' || event.entityId !== entityId) return null
+
+    const encrypted = event.encrypted === true
+    return {
+      entityId,
+      contentType: event.contentType,
+      body: event.body,
+      createdAt: event.timestamp,
+      // When encrypted, `body` holds a hex ciphertext rather than plaintext;
+      // contentType stays in the clear (only the payload is encrypted).
+      encrypted,
+      scope: encrypted ? event.scope : null,
+      epoch: encrypted ? event.epoch : null,
+      nonce: encrypted ? event.nonce : null
+    }
   }
 
   /**
@@ -574,45 +586,13 @@ module.exports = class GraphView extends ReadyResource {
     for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
-      if (direction === 'out') {
-        // Outgoing edges: e:<from>:<type>:<to>
-        const prefix = type
-          ? `e:${entityId}:${type}:`
-          : `e:${entityId}:`
-
-        const stream = context.view.createReadStream({
-          gte: prefix,
-          lt: prefix + '\uffff',
-          reverse,
-          limit: limit || undefined
-        })
-
-        for await (const entry of stream) {
-          if (entry.value.deleted) continue
-          if (!fromIsGenuine(entry.value.from, entry.value.author)) continue
-          yield entry.value
-        }
-      } else {
-        // Incoming edges: i:in:<to>:<type>:<from>
-        const prefix = type
-          ? `i:in:${entityId}:${type}:`
-          : `i:in:${entityId}:`
-
-        const stream = context.view.createReadStream({
-          gte: prefix,
-          lt: prefix + '\uffff',
-          reverse,
-          limit: limit || undefined
-        })
-
-        for await (const entry of stream) {
-          // Get the actual edge data
-          const edgeKey = entry.value.ref
-          const edge = await context.view.get(edgeKey)
-          if (!edge || edge.value.deleted) continue
-          if (!fromIsGenuine(edge.value.from, edge.value.author)) continue
-          yield edge.value
-        }
+      // Ordered by (entity, type, createdAt, other end), in the context's
+      // own index layout.
+      const edges = context.indexedEdges(entityId, { direction, type, reverse, limit: limit || undefined })
+      for await (const edge of edges) {
+        if (edge.deleted) continue
+        if (!fromIsGenuine(edge.from, edge.author)) continue
+        yield edge
       }
     }
   }
@@ -640,18 +620,11 @@ module.exports = class GraphView extends ReadyResource {
     for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
-      const prefix = `t:${tag}:`
-      const stream = context.view.createReadStream({
-        gte: prefix,
-        lt: prefix + '\uffff'
-      })
-
-      for await (const entry of stream) {
-        if (!entry.key.startsWith(prefix)) continue
-        if (allow && !allow.has(entry.value.author)) continue
-        const node = await this.getNode(entry.value.entityId)
-        if (node && node.author === entry.value.author) {
-          yield { ...node, tag: entry.value.tag }
+      for await (const entry of context.tagged(tag)) {
+        if (allow && !allow.has(entry.author)) continue
+        const node = await this.getNode(entry.entityId)
+        if (node && node.author === entry.author) {
+          yield { ...node, tag: entry.tag }
         }
       }
     }
@@ -675,20 +648,9 @@ module.exports = class GraphView extends ReadyResource {
   async hasTag (entityId, tag, opts = {}) {
     if (!this.opened) await this.ready()
 
-    const prefix = `tref:${tag}:${entityId}:`
-
     for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
-
-      const stream = context.view.createReadStream({
-        gte: prefix,
-        lt: prefix + '\uffff',
-        limit: 1
-      })
-
-      for await (const entry of stream) {
-        if (entry && entry.key && entry.key.startsWith(prefix)) return true
-      }
+      if (await context.hasTag(entityId, tag)) return true
     }
 
     return false
@@ -705,30 +667,34 @@ module.exports = class GraphView extends ReadyResource {
 
     // Legacy fallback: allow '*' to mean "all nodes"
     if (type === '*' || type == null) {
-      const stream = this.#bee.createReadStream({
-        gte: 'n:',
-        lt: 'n:\uffff'
-      })
-
-      for await (const entry of stream) {
-        if (!entry.value.deleted) {
-          yield entry.value
-        }
+      for await (const entry of this.#bee.createReadStream(L.nodeRange())) {
+        const node = await this.getNode(L.nodeIdFromKey(entry.key))
+        if (node) yield node
       }
-
       return
     }
 
-    // Use type index (time sortable)
-    const prefix = `nt:${type}:`
-    const stream = this.#bee.createReadStream({
-      gte: prefix,
-      lt: prefix + '\uffff'
-    })
-
-    for await (const entry of stream) {
-      const node = await this.getNode(entry.value.id)
+    for await (const id of this.nodeIds({ type })) {
+      const node = await this.getNode(id)
       if (node) yield node
+    }
+  }
+
+  /**
+   * Entity ids in creation-time order, of one type or of all types.
+   * Deleted entities are included; resolve each with getNode().
+   *
+   * @param {Object} [opts]
+   * @param {string} [opts.type]
+   * @param {boolean} [opts.reverse]
+   * @returns {AsyncIterable<string>}
+   */
+  async * nodeIds (opts = {}) {
+    if (!this.opened) await this.ready()
+    const typed = opts.type != null
+    const range = typed ? L.nodeByTypeRange(opts.type) : L.nodeByTimeRange()
+    for await (const entry of this.#bee.createReadStream({ ...range, reverse: !!opts.reverse })) {
+      yield typed ? L.nodeIdFromTypeKey(entry.key) : L.nodeIdFromTimeKey(entry.key)
     }
   }
 
@@ -768,7 +734,8 @@ module.exports = class GraphView extends ReadyResource {
   }
 
   /**
-   * Create a readable stream from the underlying Hyperbee.
+   * Create a readable stream from the underlying Hyperbee. Keys and values
+   * are raw layout-2 buffers (src/index-layout/graph.js).
    *
    * @param {Object} [opts] - Stream options (passed to Hyperbee.createReadStream)
    * @returns {AsyncIterable<Object>} Async iterator of view entries

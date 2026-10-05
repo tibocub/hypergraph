@@ -147,7 +147,10 @@ const eventEncoding = {
         c.uint.preencode(state, event.version)
         c.string.preencode(state, event.rules || '')
         // Optional trailing owner (spec 005): version 2 records keep their bytes.
-        if (typeof event.owner === 'string') c.string.preencode(state, event.owner)
+        // Then an optional index layout (spec 002), which needs the owner
+        // slot written first ('' when there is none).
+        if (typeof event.owner === 'string' || typeof event.layout === 'number') c.string.preencode(state, event.owner || '')
+        if (typeof event.layout === 'number') c.uint.preencode(state, event.layout)
         break
 
       case 'context/writer':
@@ -281,7 +284,8 @@ const eventEncoding = {
       case 'context/init':
         c.uint.encode(state, event.version)
         c.string.encode(state, event.rules || '')
-        if (typeof event.owner === 'string') c.string.encode(state, event.owner)
+        if (typeof event.owner === 'string' || typeof event.layout === 'number') c.string.encode(state, event.owner || '')
+        if (typeof event.layout === 'number') c.uint.encode(state, event.layout)
         break
 
       case 'context/writer':
@@ -445,7 +449,11 @@ const eventEncoding = {
         // version and app rules id (spec 003, data-model.md).
         event.version = c.uint.decode(state)
         event.rules = c.string.decode(state)
-        if (state.start < state.end) event.owner = c.string.decode(state)
+        if (state.start < state.end) {
+          const owner = c.string.decode(state)
+          if (owner.length > 0) event.owner = owner
+        }
+        if (state.start < state.end) event.layout = c.uint.decode(state)
         break
 
       // Roles inside the context (spec 005).

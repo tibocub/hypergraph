@@ -51,12 +51,13 @@ names.
 ### Weaknesses
 
 1. **Index and block overhead:**
-   - ~5x the event data per item for small items (measured, see
-     [Storage Model](storage-model.md#storage-estimate-measured)); 2-3x only for large inline
-     content
-   - Content body fully duplicated into GraphView
-   - ~183 bytes of on-disk overhead per stored block, 11 blocks per typical item
+   - ~3x the event data per item for small items (measured, see
+     [Storage Model](storage-model.md#storage-estimate-measured); was ~5x before compact keys)
+   - ~183 bytes of on-disk overhead per stored block, 11 blocks per typical item — now the
+     largest single cost
    - No compression at the storage layer
+   - Content bodies are no longer copied into GraphView (it keeps a pointer into the author's
+     log), and indexes use compact binary keys — but contexts created before keep text keys
 
 2. **Replaying a large context is expensive** — but no longer required:
    - A peer that replays rebuilds the whole view and Autobase commits it at once (a 1M-entry
@@ -85,8 +86,7 @@ The external pointer pattern is correctly implemented and matches Autobase's rec
 Storage efficiency could be improved with:
 - Content deduplication (if same content posted multiple times)
 - Garbage collection for old versions
-- Optional "lightweight" GraphView mode (indexes only, no content body)
-- A dedicated tag index, if tag-heavy queries become common
+- Fewer index entries per item (each costs a block, ~183 B on disk)
 
 Measurement changed that assessment (`specs/002-scale-indexing/`, `bench/README.md`): at
 community-archive scale, local storage and the cost of joining are the bottleneck, not network
