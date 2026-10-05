@@ -23,7 +23,10 @@ const EVENT_TYPES = {
   'moderation/action': 11,
   'message': 12,
   'roles/removeWriter': 13,
-  'context/init': 14
+  'context/init': 14,
+  'context/writer': 15,
+  'context/role': 16,
+  'context/upgrade': 17
 }
 
 // Map from code to string
@@ -41,7 +44,10 @@ const EVENT_TYPE_NAMES = {
   11: 'moderation/action',
   12: 'message',
   13: 'roles/removeWriter',
-  14: 'context/init'
+  14: 'context/init',
+  15: 'context/writer',
+  16: 'context/role',
+  17: 'context/upgrade'
 }
 
 // Compact encoding for events
@@ -136,6 +142,27 @@ const eventEncoding = {
       case 'context/init':
         c.uint.preencode(state, event.version)
         c.string.preencode(state, event.rules || '')
+        // Optional trailing owner (spec 005): version 2 records keep their bytes.
+        if (typeof event.owner === 'string') c.string.preencode(state, event.owner)
+        break
+
+      case 'context/writer':
+        c.string.preencode(state, event.key)
+        c.string.preencode(state, event.member || '')
+        c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/role':
+        c.string.preencode(state, event.member)
+        c.string.preencode(state, event.role || '')
+        c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/upgrade':
+        c.uint.preencode(state, event.version)
+        c.string.preencode(state, event.owner)
         break
 
       case 'message':
@@ -234,6 +261,26 @@ const eventEncoding = {
       case 'context/init':
         c.uint.encode(state, event.version)
         c.string.encode(state, event.rules || '')
+        if (typeof event.owner === 'string') c.string.encode(state, event.owner)
+        break
+
+      case 'context/writer':
+        c.string.encode(state, event.key)
+        c.string.encode(state, event.member || '')
+        c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/role':
+        c.string.encode(state, event.member)
+        c.string.encode(state, event.role || '')
+        c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/upgrade':
+        c.uint.encode(state, event.version)
+        c.string.encode(state, event.owner)
         break
 
       case 'message':
@@ -362,6 +409,31 @@ const eventEncoding = {
         // version and app rules id (spec 003, data-model.md).
         event.version = c.uint.decode(state)
         event.rules = c.string.decode(state)
+        if (state.start < state.end) event.owner = c.string.decode(state)
+        break
+
+      // Roles inside the context (spec 005).
+      case 'context/writer': {
+        event.key = c.string.decode(state)
+        event.member = c.string.decode(state)
+        event.author = c.string.decode(state)
+        const sig = c.buffer.decode(state)
+        event.signature = sig.length > 0 ? sig.toString('hex') : null
+        break
+      }
+
+      case 'context/role': {
+        event.member = c.string.decode(state)
+        event.role = c.string.decode(state)
+        event.author = c.string.decode(state)
+        const sig = c.buffer.decode(state)
+        event.signature = sig.length > 0 ? sig.toString('hex') : null
+        break
+      }
+
+      case 'context/upgrade':
+        event.version = c.uint.decode(state)
+        event.owner = c.string.decode(state)
         break
 
       case 'message':

@@ -21,9 +21,10 @@ const { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts } =
 const { CONTENT_LINK_TYPE, formatReference, parseReference, isReferenceType } = require('./content-ref')
 const { Batch, EntityRef, BulkWriteError, validateRelateOpts } = require('./batch')
 
-// Topology version of contexts this version creates (spec 003): the creator
-// is the only indexer, writers added later write without indexing.
-const CONTEXT_VERSION = 2
+// Topology version of contexts this version creates. Version 3 (spec 005):
+// the context keeps its own role table, the creator is its owner, and a
+// writer indexes iff its member's role allows it.
+const CONTEXT_VERSION = 3
 
 // App rules attached to a context: { id, validate(event, reader) }. Contract:
 // specs/003-fast-forward-contexts/contracts/api.md
@@ -1340,7 +1341,10 @@ module.exports = class Hypergraph extends ReadyResource {
     // throws here — previously this method had no pre-check at all, so
     // an unauthorized caller got no error at all; the action just
     // silently never took effect once the apply layer rejected it.
-    if (this.#roleBase) {
+    // Version 3 contexts decide from their own role table (spec 005).
+    const decided = await (await this.#getContext(opts.context)).allows(author, opts.action)
+    if (decided === false) throw new Error('Not authorized to perform this moderation action')
+    if (decided === null && this.#roleBase) {
       let registry = null
       try {
         registry = await this.#roleBase.getRegistry()
@@ -1562,7 +1566,15 @@ module.exports = class Hypergraph extends ReadyResource {
 
     // The context's first event: its topology record, so every peer applies
     // it the same way (spec 003, data-model.md).
-    await context.append({ type: 'context/init', version: CONTEXT_VERSION, rules: opts.rules ? opts.rules.id : '', timestamp: Date.now() })
+    // roles: 'context' (default, version 3) keeps the context's own role
+    // table; 'rolebase' (version 2) takes roles from the attached RoleBase,
+    // shared across contexts, with the creator as the only indexer.
+    const roleSource = opts.roles === undefined ? 'context' : opts.roles
+    if (roleSource !== 'context' && roleSource !== 'rolebase') throw new Error("opts.roles must be 'context' or 'rolebase'")
+    const init = roleSource === 'rolebase'
+      ? { type: 'context/init', version: 2, rules: opts.rules ? opts.rules.id : '', timestamp: Date.now() }
+      : { type: 'context/init', version: CONTEXT_VERSION, rules: opts.rules ? opts.rules.id : '', owner: b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex'), timestamp: Date.now() }
+    await context.append(init)
 
     const keyHex = context.key.toString('hex')
     this.#contexts.set(keyHex, context)

@@ -145,7 +145,7 @@ test('contexts: closed write mode authorizes a role-approved writer', async (t) 
   t.ok(await graph.can(adminPubkey, 'context.write'), 'admin role has context.write by default')
 
   console.log('  Step 2: create a closed context and add a writer as the admin')
-  const contextKey = await graph.createContext({ writeMode: 'closed' })
+  const contextKey = await graph.createContext({ writeMode: 'closed', roles: 'rolebase' })
   const context = await graph.openContext(contextKey, { writeMode: 'closed' })
   const newWriterKey = crypto.keyPair().publicKey.toString('hex')
 
@@ -545,12 +545,15 @@ test('contexts: counters are written once per apply chunk, not once per relation
 
 // ── Context record and topology (spec 003) ──────────────────────────────────
 
-test('contexts: a new context records version 2 and its rules id; status() reports it', async (t) => {
+test('contexts: a new context records its version and rules id; status() reports it', async (t) => {
   const { graph } = await createGraph(t, 'ctx-record')
   const ctx = await graph.createContext()
   const context = await graph.openContext(ctx)
   const status = await context.status()
-  t.is(status.version, 2, 'version 2')
+  t.is(status.version, 3, 'version 3 (roles in the context, spec 005)')
+
+  const shared = await graph.openContext(await graph.createContext({ roles: 'rolebase' }))
+  t.is((await shared.status()).version, 2, "roles: 'rolebase' creates version 2 (roles from the shared RoleBase)")
   t.is(status.rules, '', 'no rules')
   t.is(status.isIndexer, true, 'the creator indexes')
   t.is(status.writable, true)
@@ -578,7 +581,7 @@ test('contexts: context/init is honoured only from the creator, and only once', 
 
   for (const [name, c] of [['creator', aCtx], ['writer', bCtx]]) {
     const status = await c.status()
-    t.is(status.version, 2, `${name}: still version 2`)
+    t.is(status.version, 3, `${name}: still version 3`)
     t.is(status.rules, '', `${name}: rules unchanged`)
   }
 })
