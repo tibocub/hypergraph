@@ -213,6 +213,44 @@ release with a CHANGELOG migration note.
 **Alternative considered**: rebuild context views by dual-writing both layouts for a while.
 Rejected: doubles apply cost for the very peers this feature is trying to speed up.
 
+### R8 revised (2026-10-05, implementation) — the record fixes the layout
+
+Two things changed after R8 was written:
+
+- **Context views are shared now.** Spec 003 turned fast-forward on: a joining peer adopts the
+  view the indexers signed. A layout chosen locally "when the view is first written" would let two
+  indexers build different bytes for the same context. So the layout is fixed **by the context's
+  own record**: `context/init` carries `layout` (2 for contexts created now), written to
+  `meta:context`; a record without one is layout 1 for the context's whole life, also after
+  `upgrade()` to version 3. Every peer reads the same record, so every peer builds the same view.
+  An unknown layout interrupts apply, like an unknown version.
+- **`Hypercore.purge()` is broken** in the installed hypercore (11.30.1): it calls
+  `this._closeAllSessions`, which no longer exists. Measured instead: `truncate(0)` then
+  `compact()` releases the space (20.8 MB → 0.13 MB for 50k blocks); a truncate alone frees
+  nothing until RocksDB compacts. The old `graph-view` core is dropped that way **on first open**
+  (nothing reads it any more; keeping it until catch-up only helps a rollback, which this alpha
+  doesn't support). Existence is checked through Corestore's alias table first:
+  `store.get({ name, createIfMissing: false })` leaks an unhandled `STORAGE_EMPTY` rejection from
+  inside Corestore.
+
+Scope also narrowed: only the bulky context indexes (edges, incoming edges, active-edge refs,
+counters, tags) have a layout 2. The context record, roles, invites, moderation, pending queues and
+messages stay text in every context: a handful of entries each, not worth a second code path.
+GraphView has no layout 1 path at all: it moved wholesale to `graph-view/2`.
+
+Measured after compacting both stores (`bench/README.md`):
+
+| | 10k before | 10k after | 100k before | 100k after |
+|---|---|---|---|---|
+| GraphView, logical | 12.9 MB | 2.6 MB | 130.8 MB | 26.9 MB |
+| context view, logical | 12.9 MB | 4.0 MB | 130.1 MB | 41.1 MB |
+| writer disk | 51.3 MB | 31.7 MB | 520 MB | 322 MB |
+| joining peer disk | 34.8 MB | 18.6 MB | 260 MB | 149 MB |
+
+Uncompacted disk sizes are not comparable between runs: the joining peer's store measured 50 MB
+in one run and 22 MB after `compact()`, the difference being an unflushed write-ahead log.
+Listings got ~15% slower (content read back from the author's log; per-call key encodings).
+
 ## R9 — Defaults to tune during implementation
 
 | setting | start | how it is chosen |

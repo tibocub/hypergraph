@@ -47,7 +47,7 @@ test('writer-authorization: closed context grants a writer when the responding p
   // copy of the context, even though the owner's side already does.
   await peer.graph.openRoleBase(owner.graph.roleBase.key)
 
-  const contextKey = await owner.graph.createContext({ writeMode: 'closed' })
+  const contextKey = await owner.graph.createContext({ writeMode: 'closed', roles: 'rolebase' }) // permissions from the RoleBase set up above (spec 005)
   await owner.graph.openContext(contextKey, { writeMode: 'closed' })
   await peer.graph.openContext(contextKey, { writeMode: 'closed' })
 
@@ -105,7 +105,7 @@ test('writer-authorization: closed context denies a writer when the responding p
   const ownGraphPubkey = owner.graph.identity.deviceKeyPair.publicKey.toString('hex')
   t.absent(await owner.graph.can(ownGraphPubkey, 'context.write'), "the responding peer's own identity has no context.write privilege")
 
-  const contextKey = await owner.graph.createContext({ writeMode: 'closed' })
+  const contextKey = await owner.graph.createContext({ writeMode: 'closed', roles: 'rolebase' }) // permissions from the RoleBase set up above (spec 005)
   await owner.graph.openContext(contextKey, { writeMode: 'closed' })
   await peer.graph.openContext(contextKey, { writeMode: 'closed' })
 
@@ -313,7 +313,7 @@ test('writer-authorization: a single request can grant some contexts while denyi
   t.absent(await owner.graph.can(ownGraphPubkey, 'context.write'), 'responding peer has no context.write privilege')
 
   const openContextKey = await owner.graph.createContext({ writeMode: 'open' })
-  const closedContextKey = await owner.graph.createContext({ writeMode: 'closed' })
+  const closedContextKey = await owner.graph.createContext({ writeMode: 'closed', roles: 'rolebase' }) // permissions from the RoleBase set up above (spec 005)
   await owner.graph.openContext(openContextKey, { writeMode: 'open' })
   await owner.graph.openContext(closedContextKey, { writeMode: 'closed' })
   await peer.graph.openContext(openContextKey, { writeMode: 'open' })

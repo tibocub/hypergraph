@@ -58,9 +58,10 @@ byte-for-byte the same kind of event; only the grouping differs. A failure after
    (GraphView only tracks whether the context's view.length changed
    and forwards to it — it never applies relation events itself)
    ↓
-7. Indexes updated in the CONTEXT's OWN Hyperbee (e:, i:in:, er:,
-   cnt:, t:, tref:) — NOT GraphView's Hyperbee, which never stores
-   relation/tag/moderation data
+7. Indexes updated in the CONTEXT's OWN Hyperbee (edges, incoming
+   edges, active-edge refs, counters, tags — in the layout the
+   context's record names) — NOT GraphView's Hyperbee, which never
+   stores relation/tag/moderation data
 ```
 
 ## Write Path (Encrypted Content)

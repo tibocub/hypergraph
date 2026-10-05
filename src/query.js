@@ -288,16 +288,12 @@ module.exports = class GraphQuery {
     // sort before an older post from another purely because of key
     // ordering). nc: covers the same full set of entities as the old n:
     // scan did, just chronologically ordered instead.
-    const prefix = this.#typeFilter ? `nt:${this.#typeFilter}:` : 'nc:'
-
-    const stream = this.#view.createReadStream({
-      gte: prefix,
-      lt: prefix + '\uffff',
+    const ids = this.#view.nodeIds({
+      type: this.#typeFilter || undefined,
       reverse: this.#reverse
     })
 
-    for await (const entry of stream) {
-      const { id } = /** @type {any} */ (entry).value
+    for await (const id of ids) {
       const node = await this.#view.getNode(id)
       // getNode() already excludes deleted entities and returns null for
       // anything it can't resolve.

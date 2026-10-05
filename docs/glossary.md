@@ -103,7 +103,7 @@ A context's history up to the length its indexers signed. It can no longer be re
 Joining a context by adopting the indexers' signed state instead of replaying every event; index blocks are then fetched on demand when read.
 
 ### Context Record
-The `context/init` event the creator writes first (`{ version, rules }`), so every peer applies the context the same way.
+The `context/init` event the creator writes first (`{ version, rules, owner?, layout? }`), so every peer applies the context the same way and builds the same index layout.
 
 ### App Rules
 Deterministic checks an app attaches to a context (`{ id, validate(event, reader) }`), run in apply to reject events before they are indexed.

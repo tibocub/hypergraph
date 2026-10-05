@@ -154,7 +154,13 @@ build a different index. A peer that finds a version it doesn't know stops apply
 and reports `unsupported context version N` (from `context.status().interrupted`, the
 `'interrupt'` event, and any later `append()`).
 
-`await context.status()` returns `{ version, rules, indexers, isIndexer, writable, length,
+The same record fixes the context's **index layout**: new contexts store their edge and tag
+indexes as compact binary keys (layout 2, about 3x smaller); contexts created before keep the
+text layout (1) for good, also after `upgrade()`. Readers don't need to know which; an unknown
+layout stops apply the same way (`unsupported index layout N`). See
+[Index Structure](contributors/index-structure.md).
+
+`await context.status()` returns `{ version, rules, layout, indexers, isIndexer, writable, length,
 confirmedLength, fastForwards, interrupted }`.
 
 ### Joining a Context (Fast-Forward)

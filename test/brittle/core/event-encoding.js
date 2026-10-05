@@ -103,6 +103,16 @@ test('event-encoding: context/init round-trips (spec 003)', async (t) => {
   t.alike(decodeEvent(encodeEvent(plain)), plain, 'empty rules id survives')
 })
 
+test('event-encoding: context/init carries an optional index layout, with or without an owner (spec 002)', async (t) => {
+  const owner = 'a'.repeat(64)
+  const v3 = { type: 'context/init', version: 3, rules: 'x', owner, layout: 2, timestamp: 4 }
+  t.alike(decodeEvent(encodeEvent(v3)), v3, 'owner and layout')
+  const v2 = { type: 'context/init', version: 2, rules: '', layout: 2, timestamp: 4 }
+  t.alike(decodeEvent(encodeEvent(v2)), v2, 'layout without an owner: no owner comes back')
+  const old = { type: 'context/init', version: 3, rules: '', owner, timestamp: 4 }
+  t.absent('layout' in decodeEvent(encodeEvent(old)), 'records from before layouts decode without one')
+})
+
 test('event-encoding: an event type this version does not know decodes to { type: undefined } without throwing', async (t) => {
   // What an older peer does with context/init, and what this peer does with
   // a type added after it — the reason mixed versions in one context are

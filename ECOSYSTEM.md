@@ -194,7 +194,7 @@ a `CLAUDE.md`. Beyond that they differ, and the differences are mostly deliberat
 
 | Project | `npm test` | What green actually means |
 |---|---|---|
-| hypergraph | 143 + 12 + 1 tests, 387+ asserts | Real coverage, incl. real-Hyperswarm two-peer replication |
+| hypergraph | 305 tests in 5 stages (core 226, networking 37, replication 29, forum 12, integration 1) | Real coverage, incl. real-Hyperswarm two-peer replication. Every stage must print its own `# tests = n/n` line: until 2026-10-05 a `process.exit(0)` workaround cut networking short (8 tests silently never ran) while still exiting 0 |
 | hyperDNS | 46 tests / 103 asserts | Real coverage |
 | HyperBBS | sandbox + db + network + identity | Real coverage, incl. 4 real-swarm suites |
 | **HyperMD** | **smoke only** | **Nothing.** `test/*.js` are `console.log` probe scripts reporting **0 asserts**. Green means "did not throw." Cover format changes from HyperBBS's side. |
@@ -204,6 +204,9 @@ open items awaiting a `/speckit-specify` pass. The others don't have an equivale
 lives in their READMEs' status sections or decision logs.
 
 ---
+
+*Verified compatible 2026-10-05 (compact index keys): hypergraph (305/305 across all five
+stages), hyperDNS (46/46) and HyperBBS (full chained suite) pass against the working tree.*
 
 *Verified compatible 2026-09-10: hypergraph (143/143 + 12/12 + 1/1), hyperDNS (46/46), and
 HyperBBS (full chained suite) all pass against the current hypergraph working tree — after

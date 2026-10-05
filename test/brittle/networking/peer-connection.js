@@ -159,13 +159,9 @@ test('peer-connection: Hypergraph.on() rejects peer-join/peer-leave (no network 
   )
   console.log('TEST: on() rejects peer-join/peer-leave - passed')
 
-  // TEMPORARY WORKAROUND, not a real fix: this file's DHT test above
-  // leaves some resource open that prevents the process from exiting
-  // naturally after this, the last test in the file. The exact cause
-  // wasn't pinned down; deferring further investigation to focus on
-  // reviewing hypergraph's internals and shipping a first usable version.
-  // Force-exits shortly after this test finishes, giving brittle time to
-  // print its own final summary first. Remove once the actual lingering
-  // resource is found and fixed.
-  setTimeout(() => process.exit(0), 2000)
+  // No process.exit() here: test:networking runs every file in one brittle
+  // process, and a force-exit from this file killed writer-authorization.js
+  // after its first test — its other 8 tests silently never ran, from
+  // 2026-07 to 2026-10, hiding a real regression. If the process is slow to
+  // exit after a DHT test, that is the accepted cost (CLAUDE.md).
 })

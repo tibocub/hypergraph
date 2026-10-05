@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-05: compact index keys (one-time rebuild of the global index on first open)
+
+- **Global index (GraphView)** moved to a new core, `graph-view/2`, with binary keys
+  (`index-encoder`) and small values. Content versions are now pointers into the author's log
+  instead of copies of the body. The first open after upgrading rebuilds it from the logs on the
+  next `update()` (a few seconds per 10,000 entries) and frees the old `graph-view` core.
+- **New contexts** store their edges, counters and tags the same compact way (layout 2, recorded
+  in `context/init`, so every peer builds the same view). Existing contexts keep text keys for
+  good, also after `upgrade()`. `context.status()` now reports `layout`. A peer on an older
+  version can't apply a layout 2 context correctly — upgrade every peer of a new context.
+- Measured at 100,000 files, after RocksDB compaction: writer disk 520 → 322 MB, a joining peer
+  260 → 149 MB; index bytes per file ~2.5 KB → ~0.7 KB. Folder listings ~15% slower (content is
+  read back from the author's log).
+- Behavior change: entities of the same type and author created in the same millisecond now
+  sort by seq as a number (`…/9` before `…/10`).
+- Raw key access changed: GraphView's `get`/`put`/`createReadStream` see binary keys; a new
+  context's view no longer has `e:`/`i:in:`/`er:`/`cnt:`/`t:`/`tref:` keys. Read through
+  `graph.edges()`, `countEdgesIn/Out()`, `getByTag()`, or the context's `indexedEdges()`,
+  `activeEdge()`, `edgeCount()`, `tagged()`, `hasTag()`. HyperBBS and hyperDNS didn't use raw keys.
+- New dependency: `index-encoder`.
+- Tests: the networking and replication stages no longer force-exit. A `process.exit(0)`
+  workaround had been cutting `test:networking` short since 2026-07, so 8 of 9
+  `writer-authorization` tests never ran (2 of them were failing since spec 005, now fixed). The
+  real cause was leftover Hyperswarm discovery timers in two test files' teardown.
+
+Details: [`specs/002-scale-indexing/`](specs/002-scale-indexing/) (US3, research "R8 revised").
+
 ### 2026-10-05: invite links that carry a role (additive; one replication note)
 
 - `context.createInvite({ role, uses, keyPair })` → `hypergraph://invite/<context>/<secret>`;

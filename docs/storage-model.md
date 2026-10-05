@@ -100,23 +100,23 @@ sealed copies, each readable only by its intended recipient.
 
 **Purpose**: Provides fast queries by indexing data from UserCores and ContextBases.
 
-**Indexed data:**
-- `n:<id>` - Node records (entities with metadata) — NOT chronologically ordered across
-  multiple authors (keyed by `<type>/<authorCoreKeyHex>/<seq>`)
-- `c:<entityId>:<seq>` - Content versions (with optional encryption metadata)
-- `nt:<type>:<createdAt>:<id>` - Type index (time-sorted)
-- `nc:<createdAt>:<id>` - Type-agnostic time index
-- `e:<from>:<type>:<ts>:<to>` - Edge records (optional numeric `value`)
-- `i:in:<to>:<type>:<ts>:<from>` - Reverse edge lookup (incoming edges)
-- `er:<from>:<type>:<to>` - Edge references (one active edge per (from, type, to) triple)
-- `cnt:in:<to>:<type>` / `cnt:out:<from>:<type>` - Incoming/outgoing edge counts
-- `t:<tag>:<createdAt>:<entityId>:<author>` - Tag records, paired with
-  `tref:<tag>:<entityId>:<author>` for reverse lookup (see
-  [Index Structure](contributors/index-structure.md) for full key/value shapes)
-- `m:t:<target>:<ts>:<coreKeyHex>:<seq>` - Moderation by target
-- `m:a:<author>:<ts>:<target>:<coreKeyHex>:<seq>` - Moderation by author
+**Indexed data** (compact binary keys, core `graph-view/2`):
+- Nodes by id, by type then creation time, and by creation time
+- Content versions — as **pointers** into the author's user core, not copies of the body
+- Identity profiles, and how far each user core and context view has been indexed
 
-**Key characteristic**: Materialized view - duplicates data for query performance. Incremental updates via checkpoints.
+Edges, counters, tags, moderation and messages are **not** here: they live in each context's
+own view (below). See [Index Structure](contributors/index-structure.md) for every key and value.
+
+**Key characteristic**: Materialized view, rebuilt from the logs whenever needed. Incremental
+updates via checkpoints.
+
+### Context view (each context's Autobase view)
+
+Edges (with optional `value` and `data`), incoming edges, active-edge refs, edge counters and
+tags, in the layout the context's record names: compact binary keys for contexts created now
+(layout 2), text keys for older ones (layout 1). Moderation, invites, roles and messages are small
+text records in both.
 
 ## External Pointer Pattern
 
@@ -146,13 +146,15 @@ The ContextBase only stores the entity IDs, not the full content.
 ### Duplication Layers
 
 1. **UserCore → GraphView:**
-   - Entity metadata (type, author, timestamp) duplicated
-   - Content body duplicated in `c:<entityId>:<seq>` records
-   - Identity profiles duplicated
+   - Entity creation time duplicated (three index entries per entity; type, author and seq are
+     the key itself)
+   - Content: one pointer entry per version (entity id + seq), the body is NOT copied
+   - Identity profiles duplicated (one small entry per user)
 
 2. **Context oplog → context view** (not GraphView, which never stores these):
-   - Relation metadata (from, to, type, author, value) duplicated across several index
-     entries per relation (`e:`, `er:`, `i:in:`, plus counters)
+   - Relation metadata (from, to, type, value, data) duplicated across several index entries
+     per relation (edge, active-edge ref, incoming edge, plus counters); in layout 2 only the
+     edge entry carries `value`/`data`, the others are keys with tiny values
    - Tag metadata (entityId, tag, author) duplicated
    - Moderation metadata (action, target, reason, author) duplicated, twice (`m:t:`, `m:a:`)
 
@@ -167,21 +169,26 @@ The ContextBase only stores the entity IDs, not the full content.
 
 The old rule of thumb here ("2-3x raw data size") only holds for large inline content. For many
 small items it is far higher, because fixed per-item costs dominate. Measured with
-`bench/scale.js` (2026-10-05, writer side, one entity + one content reference + one relation per
-item, ~1 KB of real event data per item):
+`bench/scale.js` (writer side, one entity + one content reference + one relation per item, ~1 KB
+of real event data per item), before and after the compact index layout (spec 002, US3):
 
-| part | per item |
-|---|---|
-| user log (2 events) | ~440 B |
-| context oplog (1 relation) | ~350 B |
-| GraphView indexes (4 entries) | ~1.25 KB |
-| context view indexes (4 entries) | ~1.3 KB |
-| per-block overhead on disk (11 blocks × ~183 B: Merkle tree, RocksDB keys, filters) | ~2.0 KB |
-| **total** | **~5.4 KB (≈ 5x the event data)** |
+| part | text keys (before) | compact keys (now) |
+|---|---|---|
+| user log (2 events) | ~440 B | ~440 B |
+| context oplog (1 relation) | ~350 B | ~350 B |
+| GraphView indexes (4 entries) | ~1.25 KB | ~260 B |
+| context view indexes (4 entries) | ~1.3 KB | ~400 B |
+| per-block overhead on disk (11 blocks × ~183 B: Merkle tree, RocksDB keys, filters) | ~2.0 KB | ~2.0 KB |
+| **total** | **~5.4 KB (≈ 5x the event data)** | **~3.4 KB (≈ 3x)** |
+
+On disk, after RocksDB compaction, at 100,000 items: writer 520 → 322 MB, a peer that joined
+and listed everything 260 → 149 MB. (Uncompacted sizes swing by tens of percent depending on
+what RocksDB has flushed; compare compacted stores.)
 
 Two things to know: RocksDB is **not compressing** any of this (the store files shrink to
 25-29% under gzip/zstd; rocksdb-native exposes no compression option), and the per-block
-overhead means the number of index entries per item matters as much as their size.
+overhead is now the largest single cost, so the number of index entries per item matters more
+than their size.
 
 ### Escaping that cost: external content references
 
@@ -203,7 +210,8 @@ This is an ordinary content version, not a new mechanism. It is stored exactly l
 content, with `contentType` set to the marker `'link'` and the address payload as the body:
 
 ```text
-c:<entityId>:<seq> → { contentType: 'link', body: '{"v":1,"src":[…],"size":…}', … }
+user core, seq 7: { type: 'content/append', entityId, contentType: 'link', body: '{"v":1,"src":[…],"size":…}', … }
+GraphView:        (content version: entityId, 7) → ∅   # a pointer to that event
 ```
 
 So the storage cost is proportional to the *address*, a few hundred bytes, regardless of how

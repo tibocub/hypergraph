@@ -25,7 +25,7 @@ test('relations: a validly-signed relation event cannot be replayed into a diffe
 
   await graph.update()
   const inCtxB = []
-  for await (const e of ctxB.createReadStream({ gte: 'e:', lt: 'e:\uffff' })) inCtxB.push(e)
+  for await (const e of ctxB.indexedEdges(comment.id)) inCtxB.push(e)
   t.is(inCtxB.length, 0, 'the replayed edge was not applied in context B, even though its signature is genuinely valid')
 
   const inCtxA = []

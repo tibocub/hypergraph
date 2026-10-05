@@ -137,11 +137,13 @@ end: -1 })` that follows new appends, so the log streams in while `update()` is 
 }
 ```
 
-**Topology (spec 003)**: the context's first event is the creator's `context/init`
-(`{ version, rules }`), stored as `meta:context`. Version 2 (contexts created now): the creator
-is the only indexer and writers added later don't index. Version 1 (no record, older contexts):
-every writer indexes. Apply refuses (`host.interrupt`) a version it doesn't know or app rules that
-differ from the recorded id.
+**Topology (specs 003, 005, 002)**: the context's first event is the creator's `context/init`
+(`{ version, rules, owner?, layout? }`), stored as `meta:context`. Version 3 (contexts created
+now): roles live in the context and decide who indexes (owner and admins). Version 2
+(`roles: 'rolebase'`): the creator is the only indexer. Version 1 (no record, older contexts):
+every writer indexes. `layout` picks the index layout (2 for new contexts, 1 when absent; see
+[Index Structure](index-structure.md)). Apply refuses (`host.interrupt`) a version or layout it
+doesn't know, or app rules that differ from the recorded id.
 
 **Write Modes**:
 - **Open**: No permission checks, writers added freely via `addWriter()`
@@ -153,7 +155,10 @@ Note: regardless of write mode, `moderateAction()` and writer-change events (`ro
 - `append(event)` - Append event to Autobase
 - `appendBatch(events)` - Append many events as ONE Autobase batch (one apply call on every peer)
 - `addWriter(key)` / `removeWriter(key)` - Add/remove a writer, signed and permission-gated in closed mode
-- `status()` - `{ version, rules, indexers, isIndexer, writable, length, confirmedLength, fastForwards, interrupted }`
+- `status()` - `{ version, rules, layout, indexers, isIndexer, writable, length, confirmedLength, fastForwards, interrupted }`
+- `indexedEdges(entityId, { direction, type, reverse, limit })`, `activeEdge(from, type, to)`,
+  `edgeCount(direction, entityId, type)`, `tagged(tag)`, `hasTag(entityId, tag)` - Index reads in
+  whichever layout the context uses (GraphView and `Hypergraph` read through these, never raw keys)
 - `refusal()` - Why this peer can't apply the context, if already known locally (used by `openContext()`)
 - `writerKeys()` - Every member (indexers and non-indexing writers)
 - `roles()` / `setRole(member, role, { keyPair })` / `removeRole(member, { keyPair })` - The
@@ -263,8 +268,9 @@ update()
    - Compare context.view.length against the stored checkpoint
    - If changed, call context.update() — this delegates entirely to
      ContextBase's own Autobase apply function, which processes
-     relation/tag/moderation events and writes e:/i:in:/er:/cnt:/t:/tref:/m:
-     indexes into the CONTEXT's OWN separate Hyperbee (context.view), not
+     relation/tag/moderation events and writes edge, counter, tag and
+     moderation indexes (in the context's own index layout, see
+     index-structure.md) into the CONTEXT's OWN separate Hyperbee (context.view), not
      GraphView's #bee
    - Update the stored checkpoint
 ```
