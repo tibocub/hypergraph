@@ -94,3 +94,25 @@ test('event-encoding: a context stores exactly encodeEvent(event) in its oplog, 
     t.alike(block.node.value, encodeEvent(events[i]), `${events[i].type} (#${i}) is stored as encodeEvent() output`)
   }
 })
+
+test('event-encoding: context/init round-trips (spec 003)', async (t) => {
+  const event = { type: 'context/init', version: 2, rules: 'swarmfs/v1', timestamp: 1791000000000 }
+  t.alike(decodeEvent(encodeEvent(event)), event, 'version and rules survive')
+
+  const plain = { type: 'context/init', version: 2, rules: '', timestamp: 1 }
+  t.alike(decodeEvent(encodeEvent(plain)), plain, 'empty rules id survives')
+})
+
+test('event-encoding: an event type this version does not know decodes to { type: undefined } without throwing', async (t) => {
+  // What an older peer does with context/init, and what this peer does with
+  // a type added after it — the reason mixed versions in one context are
+  // unsupported rather than silently wrong (spec 003, research R3).
+  const c = require('compact-encoding')
+  const state = { start: 0, end: 0, buffer: null }
+  c.uint.preencode(state, 200); c.uint.preencode(state, 5); c.string.preencode(state, 'future')
+  state.buffer = Buffer.alloc(state.end)
+  c.uint.encode(state, 200); c.uint.encode(state, 5); c.string.encode(state, 'future')
+  const decoded = decodeEvent(state.buffer)
+  t.is(decoded.type, undefined, 'unknown type')
+  t.is(decoded.timestamp, 5, 'common fields still read')
+})

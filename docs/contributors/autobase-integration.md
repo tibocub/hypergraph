@@ -85,12 +85,29 @@ every committed block plus two tree nodes each, all in parallel: ~5 million bloc
 1M-relation context, which exhausts an 8 GB heap. Every index write apply makes is a block in
 that commit, so keep them few (`specs/002-scale-indexing/research.md` R11).
 
-### Multi-writer contexts and `ackInterval: 0`
+### Indexers, acks and fast-forward (spec 003)
 
-Every writer is added as an indexer, and acks are off. With more than one indexer, nodes are
-only confirmed once a majority build on them, which idle writers never do without acks: measured,
-a 3-writer context confirmed none of its 24,013 view blocks (research R12). Single-writer
-contexts are unaffected. Changing this is part of the fast-forward design, not a setting to flip.
+ContextBase's Autobase config is `ackInterval: tuning.ACK_INTERVAL` (1,000 ms) and
+`fastForward: true` unless the peer passes `fastForward: false`. Before spec 003 both were off,
+and every writer was an indexer: a 3-writer context then confirmed none of its 24,013 view blocks
+(spec 002 research R12).
+
+Whether an added writer indexes is decided in apply from the context's record
+(`meta:context`, written from the creator's `context/init` event): version 1 → indexer, version
+2 → not, anything else → `host.interrupt()`. The record is honoured only from the bootstrap
+writer and only once. Before handling any other event, `#applyNodes` checks the record against
+this peer's rules id and version and interrupts on a mismatch (`#refusal`). Autobase closes the
+base after an interrupt; ContextBase keeps the reason (`status().interrupted`) and refuses
+`update()` / `append()` with it.
+
+Autobase fast-forwards a peer that is at least `FastForward.MINIMUM` (16) system nodes behind,
+also mid-replay once it learns how far behind it is. Pausing a fresh base to force it does not
+work: the system core does not learn its remote length while paused
+(`specs/003-fast-forward-contexts/research.md` R2).
+
+`writerKeys()` lists members from Autobase's system table (`system.list()`, refreshed in
+`update()`, never during apply as Autobase requires), because `activeWriters` only includes a
+non-indexing writer once it has written something.
 
 ## Tracking Progress
 

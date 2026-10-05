@@ -153,11 +153,11 @@ The ContextBase only stores the entity IDs, not the full content.
    - Moderation metadata (action, target, reason, author) duplicated, twice (`m:t:`, `m:a:`)
 
 3. **Autobase internal:**
-   - Every peer keeps every writer's oplog *and* builds the context view itself by replaying it
-     (`fastForward: false`), so the view is rebuilt, not downloaded, on each peer
-   - On a joining peer, Autobase commits the whole replayed view in one step at the end of
-     catch-up, which is what limits how big a context a fresh peer can join today
-     (`specs/002-scale-indexing/research.md` R11)
+   - A peer that replays keeps every writer's oplog and builds the context view itself; Autobase
+     then commits the whole replayed view in one step at the end of catch-up, which limits how
+     big a context a peer can join by replaying (`specs/002-scale-indexing/research.md` R11)
+   - A peer far enough behind fast-forwards instead (spec 003): it adopts the view the indexers
+     signed and fetches its blocks only when reading them, so it stores only what it reads
 
 ### Storage Estimate (measured)
 

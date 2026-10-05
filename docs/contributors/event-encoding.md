@@ -62,6 +62,10 @@ guard, not just the encode/preencode sides.
 - `identity/update` - Identity profile update (username, bio)
 
 **Context (ContextBase)**:
+- `context/init` - The context's own record: topology `version` and app `rules` id. Written
+  first by `createContext()`; honoured only from the creator, only once (spec 003). Older peers
+  decode it as `{ type: undefined }` and ignore it, which is why mixed versions in one context
+  are unsupported
 - `relation/create` - Create relation (optional `value` field for weighted relations)
 - `relation/delete` - Delete relation
 - `tag/add` - Add tag

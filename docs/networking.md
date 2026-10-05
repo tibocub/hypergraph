@@ -117,9 +117,11 @@ descriptor above.
 
 Joining a discovery key decides which peers you **connect** to; what you **download** is
 decided by what you open. Over a connection, `store.replicate()` serves any core both sides
-have open. A peer that never opens a context or user core never downloads it, and opening one
-downloads it in full (contexts are replayed in full; `openUserCore()` downloads the log in the
-background). There is no partial download of one core today. To find peers for one context only:
+have open. A peer that never opens a context or user core never downloads it, and opening a user
+core downloads it in full (`openUserCore()` downloads the log in the
+background). A context is the exception: a peer far enough behind fast-forwards to the indexers'
+signed state and fetches index pieces on demand (see [Contexts and Roles](contexts-and-roles.md#joining-a-context-fast-forward)).
+To find peers for one context only:
 
 ```js
 // Replicate only a specific context

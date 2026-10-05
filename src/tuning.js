@@ -13,5 +13,11 @@ module.exports = {
 
   // How many blocks of another user's log to request ahead of the indexing
   // position, instead of one network round trip per block.
-  PREFETCH_WINDOW: 4096
+  PREFETCH_WINDOW: 4096,
+
+  // How often a context's indexers acknowledge new history, which is what
+  // lets it become confirmed (signed). Autobase's own default. With acks off,
+  // multi-writer contexts never confirmed anything (specs/003-fast-forward-
+  // contexts/research.md R1).
+  ACK_INTERVAL: 1000
 }
