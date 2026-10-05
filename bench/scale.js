@@ -309,13 +309,19 @@ async function fetchIndex (dir, port, keys, n) {
   const lastFile = `file/${keys.author}/${keys.dirIds.length + 2 * (n - 1)}`
 
   let firstListable = null
+  // Polled on its own timer: update() can be busy indexing users' logs for a
+  // long time, while the context becomes listable as soon as it is fetched or
+  // fast-forwarded (Autobase advances by itself as data arrives).
+  const listableWatch = setInterval(async () => {
+    if (firstListable !== null) return
+    try {
+      if (await graph.countEdgesIn(keys.dirIds[0], 'in', { context: keys.ctx }) === Math.min(PER_DIR, n)) firstListable = ms(t0)
+    } catch {}
+  }, 100)
   let rounds = 0
   while (true) {
     rounds++
     await graph.update()
-    if (firstListable === null && await graph.countEdgesIn(keys.dirIds[0], 'in', { context: keys.ctx }) === Math.min(PER_DIR, n)) {
-      firstListable = ms(t0)
-    }
     const ready = only === 'ctx'
       ? await graph.countEdgesIn(lastDir, 'in', { context: keys.ctx }) === lastDirSize
       : only === 'log'
@@ -325,10 +331,13 @@ async function fetchIndex (dir, port, keys, n) {
     await new Promise(resolve => setTimeout(resolve, 20))
   }
   const replicateMs = ms(t0)
+  clearInterval(listableWatch)
+  if (firstListable === null) firstListable = replicateMs
   if (process.env.MEMLOG) console.error(`mem fetch-child phase: joined after ${Math.round(replicateMs / 1000)}s`)
 
   const listing = await listingStats(graph, keys.ctx, keys.dirIds)
   if (process.env.MEMLOG) console.error('mem fetch-child phase: listing done')
+  const contextStatus = await context.status()
   const peak = mem.stop()
   const held = retained()
 
@@ -339,6 +348,8 @@ async function fetchIndex (dir, port, keys, n) {
   return {
     retained: held,
     applyCalls,
+    fastForwards: contextStatus.fastForwards,
+    confirmed: `${contextStatus.confirmedLength}/${contextStatus.length}`,
     replicateMs: Math.round(replicateMs),
     firstDirListableMs: Math.round(firstListable),
     rounds,

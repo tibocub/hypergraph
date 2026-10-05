@@ -16,28 +16,28 @@ contexts (US4 #2) — blocked on deterministic permission checks (research R4).
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `ACK_INTERVAL: 1000` to `src/tuning.js` with a comment pointing at research R1
-- [ ] T002 `bench/scale.js` fetch-child: report whether the context fast-forwarded (`'fast-forward'` event, attached before `ready`) alongside `applyCalls`
+- [X] T001 Add `ACK_INTERVAL: 1000` to `src/tuning.js` with a comment pointing at research R1
+- [X] T002 `bench/scale.js` fetch-child: report whether the context fast-forwarded (`'fast-forward'` event, attached before `ready`) alongside `applyCalls`
 
 ## Phase 2: Foundational — the context record
 
-- [ ] T003 Test first in `test/brittle/core/event-encoding.js`: `context/init` `{ version, rules }` round-trips; an unknown future type code still decodes to `{ type: undefined }` without throwing
-- [ ] T004 Add `context/init` (type code 14: `version` uint, `rules` string) to `src/encodings/event.js`
-- [ ] T005 Test first in `test/brittle/core/contexts.js`: `createContext()` → `context.status()` reports `{ version: 2, rules: '' }`; a `context/init` appended by a non-bootstrap writer, or a second one, is ignored
-- [ ] T006 `src/hypergraph.js` `createContext({ rules })` appends `context/init` first; `src/context-base.js` applies it (bootstrap writer only, once) into `meta:context`, and adds `status()`
+- [X] T003 Test first in `test/brittle/core/event-encoding.js`: `context/init` `{ version, rules }` round-trips; an unknown future type code still decodes to `{ type: undefined }` without throwing
+- [X] T004 Add `context/init` (type code 14: `version` uint, `rules` string) to `src/encodings/event.js`
+- [X] T005 Test first in `test/brittle/core/contexts.js`: `createContext()` → `context.status()` reports `{ version: 2, rules: '' }`; a `context/init` appended by a non-bootstrap writer, or a second one, is ignored
+- [X] T006 `src/hypergraph.js` `createContext({ rules })` appends `context/init` first; `src/context-base.js` applies it (bootstrap writer only, once) into `meta:context`, and adds `status()`
 
 ## Phase 3: US1 — agreed state with a single indexer
 
-- [ ] T007 [US1] Test first in `test/brittle/core/contexts.js`: in a version 2 context the creator `isIndexer`, a writer added via `addWriter` (open) and via signed `roles/addWriter` (closed) is writable but not an indexer; in a version 1 context (built without `context/init`) an added writer is an indexer as before
-- [ ] T008 [US1] Test first in `test/brittle/replication/indexers.js`: 3 writers each flush 1,000 relations concurrently; within 10 s of stopping every peer's `status().confirmedLength === status().length` and indexes are identical (SC-003)
-- [ ] T009 [US1] Test first in `test/brittle/replication/indexers.js`: with the creator's device disconnected, two writers' events still apply on both; confirmed once the creator reconnects
-- [ ] T010 [US1] `src/context-base.js`: indexer flag for added writers from the context record (v1: indexer, v2: non-indexer, unknown: `host.interrupt`); Autobase `ackInterval: tuning.ACK_INTERVAL`
+- [X] T007 [US1] Test first in `test/brittle/core/contexts.js`: in a version 2 context the creator `isIndexer`, a writer added via `addWriter` (open) and via signed `roles/addWriter` (closed) is writable but not an indexer; in a version 1 context (built without `context/init`) an added writer is an indexer as before
+- [X] T008 [US1] Test first in `test/brittle/replication/indexers.js`: 3 writers each flush 1,000 relations concurrently; within 10 s of stopping every peer's `status().confirmedLength === status().length` and indexes are identical (SC-003)
+- [X] T009 [US1] Test first in `test/brittle/replication/indexers.js`: with the creator's device disconnected, two writers' events still apply on both; confirmed once the creator reconnects
+- [X] T010 [US1] `src/context-base.js`: indexer flag for added writers from the context record (v1: indexer, v2: non-indexer, unknown: `host.interrupt`); Autobase `ackInterval: tuning.ACK_INTERVAL`
 
 ## Phase 4: US2 — fast-forward joins
 
-- [ ] T011 [US2] Test first in `test/brittle/replication/fast-forward.js`: a writer makes 40 bulk calls of 500 relations; a fresh peer opening the context fast-forwards (event fired, ≤ 2 apply calls), lists folders identical to the writer's, holds less than half the context view's blocks after reading one folder, and applies a relation written after it joined
-- [ ] T012 [US2] Test first in the same file: `openContext(key, { fastForward: false })` replays (no fast-forward event, every batch applied) and ends with the same index
-- [ ] T013 [US2] `src/context-base.js` + `src/hypergraph.js`: `fastForward` on by default, `fastForward: false` option on create/open
+- [X] T011 [US2] Test first in `test/brittle/replication/fast-forward.js`: a writer makes 40 bulk calls of 500 relations; a fresh peer opening the context fast-forwards (event fired, ≤ 2 apply calls), lists folders identical to the writer's, holds less than half the context view's blocks after reading one folder, and applies a relation written after it joined
+- [X] T012 [US2] Test first in the same file: `openContext(key, { fastForward: false })` replays (no fast-forward event, every batch applied) and ends with the same index
+- [X] T013 [US2] `src/context-base.js` + `src/hypergraph.js`: `fastForward` on by default, `fastForward: false` option on create/open
 - [ ] T014 [US2] Benchmark: `bench/scale.js` at 100k and 1M (`BENCH_DIR`, `RSS_LIMIT_MB`); record SC-001/SC-002 in `bench/README.md`
 
 ## Phase 5: US3 — app rules

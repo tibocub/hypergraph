@@ -12,6 +12,9 @@ const { can: canRole } = require('./roles-registry')
 const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId } = require('./utils')
 const tuning = require('./tuning')
 
+// Where a context's topology record lives in its view (spec 003).
+const CONTEXT_RECORD_KEY = 'meta:context'
+
 function sleep (ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -31,6 +34,9 @@ module.exports = class ContextBase extends ReadyResource {
   #base
   #viewBee
   #counts // edge counters pending for the current apply chunk, else null
+  #members // every member the system listed at the last update(), see writerKeys()
+  #fastForward
+  #fastForwards // how many times this peer fast-forwarded, reported by status()
   #keyEncoding
   #valueEncoding
   #roleBase
@@ -67,9 +73,14 @@ module.exports = class ContextBase extends ReadyResource {
     this.#writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
     this.#base = null
     this.#viewBee = null
+    this.#members = []
     this.#pendingWriterRequests = new Map()
     this.#emitter = new EventEmitter()
     this.#verifySignatures = opts.verifySignatures !== undefined ? opts.verifySignatures : true
+    // Join by adopting the indexers' signed state instead of replaying history
+    // (spec 003). false: replay and verify everything on this peer.
+    this.#fastForward = opts.fastForward !== false
+    this.#fastForwards = 0
 
     // Use provided keyPair if available
     // In open mode, we don't generate a keyPair to allow Autobase to handle local core creation
@@ -92,14 +103,18 @@ module.exports = class ContextBase extends ReadyResource {
       // run our codec — but Autobase's batched append encodes an array as ONE
       // value with any non-binary encoding, which made batched appends
       // impossible. See specs/002-scale-indexing/research.md R3.
-      ackInterval: 0,
+      // Indexers acknowledge new history so it becomes confirmed (signed) —
+      // without this, multi-writer contexts never confirmed anything
+      // (specs/003-fast-forward-contexts/research.md R1).
+      ackInterval: tuning.ACK_INTERVAL,
       ackThreshold: 0,
-      fastForward: false
+      fastForward: this.#fastForward
     }
 
     // Let Autobase handle local writer creation automatically
     // Closed mode enforcement is at the application level via role checks, not at Autobase level
     this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
+    this.#base.on('fast-forward', () => { this.#fastForwards++ })
     await this.#base.ready()
   }
 
@@ -203,7 +218,7 @@ module.exports = class ContextBase extends ReadyResource {
       if (event.type === 'addWriter') {
         if (this.#writeMode !== 'open') continue
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
-        await host.addWriter(key, { indexer: true })
+        await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
         continue
       }
 
@@ -233,7 +248,7 @@ module.exports = class ContextBase extends ReadyResource {
           if (!allowed) continue
         }
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
-        await host.addWriter(key, { indexer: true })
+        await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
         continue
       }
 
@@ -259,6 +274,9 @@ module.exports = class ContextBase extends ReadyResource {
       }
 
       switch (event.type) {
+        case 'context/init':
+          await this.#applyContextInit(view, event, from)
+          break
         case 'relation/create':
           await this.#applyRelation(view, event)
           break
@@ -513,7 +531,7 @@ module.exports = class ContextBase extends ReadyResource {
 
       const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
       if (event.type === 'roles/addWriter') {
-        await host.addWriter(key, { indexer: true })
+        await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
       } else if (event.type === 'roles/removeWriter') {
         try {
           host.removeWriter(key)
@@ -609,6 +627,84 @@ module.exports = class ContextBase extends ReadyResource {
 
     await view.put(byTargetKey, value)
     await view.put(byAuthorKey, value)
+  }
+
+  // The context's own record of how it is applied (spec 003, data-model.md).
+  // Honoured only from the bootstrap writer — the context's creator — and only
+  // once, so no other writer can change how every peer applies the context.
+  async #applyContextInit (view, event, from) {
+    if (!from || !from.key || !this.#base.key || !from.key.equals(this.#base.key)) return
+    if (await view.get(CONTEXT_RECORD_KEY)) return
+    await view.put(CONTEXT_RECORD_KEY, { version: event.version, rules: event.rules || '' })
+  }
+
+  /**
+   * The context's topology record. Contexts created before spec 003 have
+   * none and are version 1.
+   *
+   * @returns {Promise<{ version: number, rules: string }>}
+   */
+  async #record (view = this.#base.view) {
+    const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
+    return entry && entry.value ? entry.value : { version: 1, rules: '' }
+  }
+
+  // Whether a writer added now indexes. Decided from the context's own record,
+  // so every peer decides the same: version 1 contexts (before spec 003) make
+  // every writer an indexer; version 2 keeps the creator as the only one.
+  async #addedWriterIndexes (view, host) {
+    const { version } = await this.#record(view)
+    if (version === 1) return true
+    if (version === 2) return false
+    host.interrupt(`unsupported context version ${version}`)
+    return false
+  }
+
+  // Refresh the full member list writerKeys() reports. Reads the system's
+  // member table, which Autobase says is not safe during apply — so only
+  // ever called from update(), outside it.
+  async #refreshMembers () {
+    const system = this.#base && this.#base.system
+    if (!system || typeof system.list !== 'function') return
+    const members = []
+    try {
+      for await (const { key, value } of system.list()) {
+        if (value && value.isRemoved) continue
+        members.push(b4a.toString(key, 'hex'))
+      }
+    } catch (err) {
+      safetyCatch(err)
+      return
+    }
+    this.#members = members
+  }
+
+  /**
+   * Where this context stands: its topology, this peer's role in it, and how
+   * much of its history is confirmed (signed by the indexers, so it can no
+   * longer be reordered).
+   *
+   * @returns {Promise<{ version: number, rules: string, indexers: string[], fastForwards: number, isIndexer: boolean, writable: boolean, length: number, confirmedLength: number }>}
+   */
+  async status () {
+    if (!this.opened) await this.ready()
+    const { version, rules } = await this.#record()
+    // The indexer set as the system knows it right now. A writer's own
+    // isIndexer flag only flips once that change is itself confirmed.
+    const system = this.#base.system
+    const indexers = system && Array.isArray(system.indexers)
+      ? system.indexers.map(w => b4a.toString(w.key, 'hex'))
+      : []
+    return {
+      version,
+      rules,
+      indexers,
+      isIndexer: !!this.#base.isIndexer,
+      writable: !!this.#base.writable,
+      length: this.#base.length,
+      confirmedLength: this.#base.signedLength,
+      fastForwards: this.#fastForwards
+    }
   }
 
   async #applyRelation (view, event) {
@@ -801,7 +897,11 @@ module.exports = class ContextBase extends ReadyResource {
     const base = this.#base
     if (!base) return []
 
-    const keys = []
+    // Every member the system lists, as of the last update(): Autobase's
+    // activeWriters below only includes a non-indexing writer once it has
+    // written something, and version 2 contexts make most writers
+    // non-indexers (spec 003).
+    const keys = [...this.#members]
 
     try {
       // Autobase (7.x) has no `inputs`/`writers` array — the live writer set
@@ -1024,6 +1124,7 @@ module.exports = class ContextBase extends ReadyResource {
    */
   async update () {
     await this.#base.update()
+    await this.#refreshMembers()
 
     const view = this.#viewBee || this.#base?.view
     if (!view) return

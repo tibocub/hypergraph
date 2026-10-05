@@ -542,3 +542,118 @@ test('contexts: counters are written once per apply chunk, not once per relation
   t.is(await graph.countEdgesOut(files[0], 'in', { context: ctx }), 1, 'removed then re-added: 1')
   t.is(await graph.countEdgesOut(files[20], 'in', { context: ctx }), 0, 'removed: 0')
 })
+
+// ── Context record and topology (spec 003) ──────────────────────────────────
+
+test('contexts: a new context records version 2 and its rules id; status() reports it', async (t) => {
+  const { graph } = await createGraph(t, 'ctx-record')
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+  const status = await context.status()
+  t.is(status.version, 2, 'version 2')
+  t.is(status.rules, '', 'no rules')
+  t.is(status.isIndexer, true, 'the creator indexes')
+  t.is(status.writable, true)
+  t.ok(status.length >= 1, 'has history')
+})
+
+test('contexts: context/init is honoured only from the creator, and only once', async (t) => {
+  const a = await createGraph(t, 'ctx-init-once-a')
+  const b = await createGraph(t, 'ctx-init-once-b')
+  const repl = replicatePair(a, b)
+  t.teardown(async () => repl.close())
+
+  const ctxKey = await a.graph.createContext()
+  const aCtx = await a.graph.openContext(ctxKey)
+  const bCtx = await b.graph.openContext(ctxKey)
+  await aCtx.addWriter(bCtx.localKey)
+  await pumpUntil(async () => { await b.graph.update(); if (!bCtx.writable) throw new Error('not yet') }, 20000)
+
+  await bCtx.append({ type: 'context/init', version: 7, rules: 'hijack', timestamp: Date.now() })
+  await aCtx.append({ type: 'context/init', version: 9, rules: 'again', timestamp: Date.now() })
+  await pumpUntil(async () => {
+    await a.graph.update(); await b.graph.update()
+    if (aCtx.base.length !== bCtx.base.length) throw new Error('not converged')
+  }, 20000)
+
+  for (const [name, c] of [['creator', aCtx], ['writer', bCtx]]) {
+    const status = await c.status()
+    t.is(status.version, 2, `${name}: still version 2`)
+    t.is(status.rules, '', `${name}: rules unchanged`)
+  }
+})
+
+test('contexts: in a version 2 context the creator indexes and added writers do not (open mode)', async (t) => {
+  const a = await createGraph(t, 'ctx-topo-open-a')
+  const b = await createGraph(t, 'ctx-topo-open-b')
+  const repl = replicatePair(a, b)
+  t.teardown(async () => repl.close())
+
+  const ctxKey = await a.graph.createContext()
+  const aCtx = await a.graph.openContext(ctxKey)
+  const bCtx = await b.graph.openContext(ctxKey)
+  await aCtx.addWriter(bCtx.localKey)
+  await pumpUntil(async () => { await b.graph.update(); if (!bCtx.writable) throw new Error('not yet') }, 20000)
+
+  await pumpUntil(async () => {
+    await a.graph.update(); await b.graph.update()
+    if (aCtx.base.length !== bCtx.base.length) throw new Error('not converged')
+  }, 20000)
+  const aStatus = await aCtx.status()
+  const bStatus = await bCtx.status()
+  t.alike(aStatus.indexers, [aCtx.localKey.toString('hex')], 'the creator is the only indexer')
+  t.alike(bStatus.indexers, aStatus.indexers, 'and the writer agrees')
+  t.is(bStatus.writable, true, 'added writer can write')
+})
+
+test('contexts: in a version 2 context a writer added by a signed roles/addWriter does not index (closed mode)', async (t) => {
+  const owner = await createGraph(t, 'ctx-topo-closed-owner')
+  const peer = await createGraph(t, 'ctx-topo-closed-peer')
+  const ownerKeyPair = owner.graph.identity.deviceKeyPair
+  await owner.graph.createRoleBase()
+  await owner.graph.roleBase.init(ownerKeyPair.publicKey.toString('hex'))
+  await owner.graph.update()
+  await peer.graph.openRoleBase(owner.graph.roleBase.key)
+
+  const contextKey = await owner.graph.createContext({ writeMode: 'closed' })
+  const ownerCtx = await owner.graph.openContext(contextKey, { writeMode: 'closed' })
+  const peerCtx = await peer.graph.openContext(contextKey, { writeMode: 'closed' })
+  const repl = replicatePair(owner, peer)
+  t.teardown(async () => repl.close())
+
+  await ownerCtx.addWriter(peerCtx.localKey, { keyPair: ownerKeyPair })
+  await pumpUntil(async () => { await peer.graph.roleBase.update(); await peerCtx.update(); if (!peerCtx.writable) throw new Error('not yet') }, 20000)
+
+  await pumpUntil(async () => {
+    await owner.graph.update(); await peer.graph.update()
+    if (ownerCtx.base.length !== peerCtx.base.length) throw new Error('not converged')
+    if ((await ownerCtx.status()).indexers.length === 0) throw new Error('no indexer info yet')
+  }, 20000)
+  const status = await ownerCtx.status()
+  t.alike(status.indexers, [ownerCtx.localKey.toString('hex')], 'the owner is the only indexer')
+  t.alike((await peerCtx.status()).indexers, status.indexers, 'and the peer agrees')
+  t.absent(status.indexers.includes(peerCtx.localKey.toString('hex')), 'the added writer is not one')
+})
+
+test('contexts: a version 1 context (created before spec 003) still makes added writers indexers', async (t) => {
+  const ContextBase = require('../../../src/context-base.js')
+  const a = await createGraph(t, 'ctx-topo-v1-a')
+  const b = await createGraph(t, 'ctx-topo-v1-b')
+  const repl = replicatePair(a, b)
+  t.teardown(async () => repl.close())
+
+  // Built the way createContext() did before spec 003: no context/init.
+  const legacy = new ContextBase(a.store, null, {})
+  await legacy.ready()
+  t.teardown(() => legacy.close())
+  const ctxKey = legacy.key.toString('hex')
+
+  const bCtx = await b.graph.openContext(ctxKey)
+  await legacy.addWriter(bCtx.localKey)
+  await pumpUntil(async () => { await legacy.update(); await b.graph.update(); if (!bCtx.writable) throw new Error('not yet') }, 20000)
+
+  const status = await bCtx.status()
+  t.is(status.version, 1, 'version 1')
+  t.ok(status.indexers.includes(bCtx.localKey.toString('hex')), 'added writer indexes, as before')
+  t.is(status.indexers.length, 2, 'both writers index')
+})

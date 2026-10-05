@@ -21,6 +21,10 @@ const { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts } =
 const { CONTENT_LINK_TYPE, formatReference, parseReference, isReferenceType } = require('./content-ref')
 const { Batch, EntityRef, BulkWriteError, validateRelateOpts } = require('./batch')
 
+// Topology version of contexts this version creates (spec 003): the creator
+// is the only indexer, writers added later write without indexing.
+const CONTEXT_VERSION = 2
+
 
 /**
  * Minimal graph database optimised for P2P social apps on the Holepunch stack.
@@ -1463,6 +1467,7 @@ module.exports = class Hypergraph extends ReadyResource {
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
+      fastForward: opts.fastForward,
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
@@ -1534,12 +1539,17 @@ module.exports = class Hypergraph extends ReadyResource {
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
+      fastForward: opts.fastForward,
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
       }
     })
     await context.ready()
+
+    // The context's first event: its topology record, so every peer applies
+    // it the same way (spec 003, data-model.md).
+    await context.append({ type: 'context/init', version: CONTEXT_VERSION, rules: '', timestamp: Date.now() })
 
     const keyHex = context.key.toString('hex')
     this.#contexts.set(keyHex, context)

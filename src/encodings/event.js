@@ -22,7 +22,8 @@ const EVENT_TYPES = {
   'roles/addWriter': 10,
   'moderation/action': 11,
   'message': 12,
-  'roles/removeWriter': 13
+  'roles/removeWriter': 13,
+  'context/init': 14
 }
 
 // Map from code to string
@@ -39,7 +40,8 @@ const EVENT_TYPE_NAMES = {
   10: 'roles/addWriter',
   11: 'moderation/action',
   12: 'message',
-  13: 'roles/removeWriter'
+  13: 'roles/removeWriter',
+  14: 'context/init'
 }
 
 // Compact encoding for events
@@ -123,6 +125,11 @@ const eventEncoding = {
         c.string.preencode(state, event.author)
         c.uint.preencode(state, event.timestamp)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/init':
+        c.uint.preencode(state, event.version)
+        c.string.preencode(state, event.rules || '')
         break
 
       case 'message':
@@ -212,6 +219,11 @@ const eventEncoding = {
         c.string.encode(state, event.author)
         c.uint.encode(state, event.timestamp)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/init':
+        c.uint.encode(state, event.version)
+        c.string.encode(state, event.rules || '')
         break
 
       case 'message':
@@ -330,6 +342,13 @@ const eventEncoding = {
         event.timestamp = c.uint.decode(state)
         const sig4 = c.buffer.decode(state)
         event.signature = sig4.length > 0 ? sig4.toString('hex') : null
+        break
+
+      case 'context/init':
+        // The context's own record of how it is applied: its topology
+        // version and app rules id (spec 003, data-model.md).
+        event.version = c.uint.decode(state)
+        event.rules = c.string.decode(state)
         break
 
       case 'message':
