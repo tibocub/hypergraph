@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> utils.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: utils.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: utils.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>utils.js</h1>
-                </header>
-                
 
 
 
@@ -91,25 +32,50 @@
 
 const crypto = require('crypto')
 
+// Matches the 16-character zero-padded width below and stays within
+// Number.MAX_SAFE_INTEGER, so a clamped value never loses precision.
+const MAX_SORTABLE_TS = Number.MAX_SAFE_INTEGER // 9007199254740991 (16 digits)
+
 /**
  * Convert a timestamp to a sortable string by padding with zeros.
+ *
+ * `ts` may come directly from a peer-controlled, self-signed event field
+ * (relation/tag/entity timestamps) — clamped to a non-negative safe integer
+ * first, since an unsanitized negative number (padStart puts the zeros
+ * BEFORE the existing string, so the sign ends up mid-string, not at the
+ * front) or an out-of-range one (renders in JS exponential notation, e.g.
+ * "1e+21") would silently corrupt lexicographic ordering for every
+ * time-sorted index without throwing.
  *
  * @param   {number} ts - Unix timestamp in milliseconds
  * @returns {string} Zero-padded 16-character string for sorting
  */
-const toSortableTs = ts => String(ts).padStart(16, '0')
+const toSortableTs = ts => {
+  const n = Number(ts)
+  const safe = Number.isFinite(n) &amp;&amp; n > 0 ? Math.min(Math.floor(n), MAX_SORTABLE_TS) : 0
+  return String(safe).padStart(16, '0')
+}
 
 /**
  * Compute a stable hash for tag events (used for signature verification).
- * This matches the hash function used in hypergraph.js for signing tag events.
+ * Shared between hypergraph.js (signing) and context-base.js (verifying) so
+ * the two can never drift apart.
+ *
+ * `contextKeyHex` binds the signature to a specific context (its Autobase
+ * key) — without this, a validly-signed tag/add or tag/remove event created
+ * for one context carries an identical signature regardless of which
+ * context it's actually appended into, so it can be replayed into any other
+ * context the signer (or anyone else) has writer access to.
  *
  * @param {Object} event - The tag event
+ * @param {string} [contextKeyHex] - Hex-encoded key of the context this event belongs to
  * @returns {Buffer} SHA-256 hash digest
  */
-const stableTagHash = (event) => {
+const stableTagHash = (event, contextKeyHex) => {
   const payload = {
     entityId: event.entityId,
-    tag: event.tag
+    tag: event.tag,
+    context: contextKeyHex || null
   }
 
   const msg = {
@@ -122,7 +88,140 @@ const stableTagHash = (event) => {
   return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
 }
 
-module.exports = { toSortableTs, stableTagHash }
+/**
+ * Compute a stable hash for relation events (used for signature
+ * verification). Shared between hypergraph.js (signing) and
+ * context-base.js (verifying) so the two can never drift apart — this used
+ * to be a verbatim-duplicated private method in each file.
+ *
+ * `contextKeyHex` binds the signature to a specific context, same rationale
+ * as stableTagHash above.
+ *
+ * @param {Object} event - The relation event
+ * @param {string} [contextKeyHex] - Hex-encoded key of the context this event belongs to
+ * @returns {Buffer} SHA-256 hash digest
+ */
+const stableRelationHash = (event, contextKeyHex) => {
+  const payload = {
+    from: event.from,
+    to: event.to,
+    relationType: event.relationType,
+    value: typeof event.value === 'number' ? event.value : null,
+    context: contextKeyHex || null
+  }
+  // Data on the relation (spec 004) is signed when present. Only then: a
+  // relation without data keeps exactly its pre-spec-004 digest and
+  // signature.
+  if (typeof event.data === 'string') payload.data = event.data
+
+  const msg = {
+    op: event.type,
+    payload,
+    author: event.author,
+    timestamp: event.timestamp
+  }
+
+  // For relation/delete, include createdAt
+  if (event.createdAt) {
+    msg.createdAt = event.createdAt
+  }
+
+  return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+}
+
+// Largest data a relation may carry, in bytes of UTF-8 (spec 004): every
+// member of a context may fetch it, and it lives in the index.
+const MAX_RELATION_DATA_BYTES = 4096
+
+/**
+ * Whether `data` is acceptable relation data. Shared by the write path
+ * (which throws) and apply (which rejects), so both enforce the same bound.
+ *
+ * @param {*} data
+ * @returns {string|null} Why it is not acceptable, or null.
+ */
+const relationDataProblem = (data) => {
+  if (data === undefined) return null
+  if (typeof data !== 'string') return 'data must be a string'
+  if (Buffer.byteLength(data, 'utf-8') > MAX_RELATION_DATA_BYTES) return `data must be at most ${MAX_RELATION_DATA_BYTES} bytes of UTF-8`
+  return null
+}
+
+module.exports = { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts, authorFromEntityId, relationDataProblem, MAX_RELATION_DATA_BYTES }
+
+/**
+ * Extract the author (core key hex) embedded in an entity id.
+ *
+ * Entity ids are always formed as `${type}/${authorCoreKeyHex}/${seq}` (see
+ * Hypergraph#put) — the author is the entity's own UserCore key, the exact
+ * same key that appears in `event.author` on any tag/relation event that
+ * identity signs. This makes it possible to check "does this id genuinely
+ * belong to this claimed author" from the id string alone, with no entity
+ * lookup and no dependency on having that author's UserCore open/replicated
+ * locally at all.
+ *
+ * Splits from the end rather than assuming a fixed prefix, so an entity
+ * `type` that itself happens to contain a `/` doesn't break parsing — only
+ * the author (a hex string) and seq (an integer) are guaranteed slash-free.
+ *
+ * @param {string} id
+ * @returns {string|null} The author hex, or null if `id` isn't a
+ *   well-formed entity id (fewer than 2 `/`-separated segments).
+ */
+function authorFromEntityId (id) {
+  if (typeof id !== 'string') return null
+  const parts = id.split('/')
+  if (parts.length &lt; 3) return null
+  return parts[parts.length - 2]
+}
+
+/**
+ * Resolve which open context(s) a context-scoped read should query, given
+ * the caller's opts and the graph instance's full set of currently-open
+ * contexts.
+ *
+ * Shared between GraphView (getEdges/getByTag/hasTag) and Hypergraph
+ * (countEdgesIn/countEdgesOut) - see either call site for the full
+ * rationale. In short: tags/relations are stored per-context, and silently
+ * aggregating across every open context whenever the caller didn't name one
+ * would let a query scoped to one context blend in data from a completely
+ * unrelated context it never asked about. That's fine when at most one
+ * context is open (nothing to disambiguate), but must be explicit once
+ * there's more than one.
+ *
+ * @param {Map&lt;string, Object>} contexts - keyHex -> ContextBase
+ * @param {Object} [opts]
+ * @param {string|string[]} [opts.context]
+ * @param {boolean} [opts.allContexts]
+ * @returns {Array&lt;Array>} [keyHex, ContextBase] pairs
+ */
+function resolveOpenContexts (contexts, opts = {}) {
+  if (opts.context !== undefined &amp;&amp; opts.context !== null) {
+    const keys = Array.isArray(opts.context) ? opts.context : [opts.context]
+    const out = []
+    for (const key of keys) {
+      if (!contexts.has(key)) {
+        throw new Error(`Context not opened on this graph instance: ${key}`)
+      }
+      out.push([key, contexts.get(key)])
+    }
+    return out
+  }
+
+  if (opts.allContexts === true) {
+    return [...contexts]
+  }
+
+  if (contexts.size &lt;= 1) {
+    return [...contexts]
+  }
+
+  throw new Error(
+    'Multiple contexts are open on this graph instance - pass { context } ' +
+    '(a context key, or an array of them) to say which one(s) to query, ' +
+    'or { allContexts: true } to explicitly query across all of them.'
+  )
+}
 </code></pre>
         </article>
     </section>
@@ -130,26 +229,19 @@ module.exports = { toSortableTs, stableTagHash }
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

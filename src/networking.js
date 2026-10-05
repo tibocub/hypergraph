@@ -587,7 +587,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * happened, don't block the caller on it" behavior.
    *
    * @private
-   * @param {import('hyperswarm')} swarm
+   * @param {Object} swarm - A Hyperswarm instance
    * @param {Buffer} topic
    * @param {string} label - 'data' or 'control', for event/log purposes
    */

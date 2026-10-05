@@ -121,9 +121,8 @@ module.exports = class UserCore extends ReadyResource {
    * `fn`, append with {@link UserCore#appendBatchUnlocked}; the locked
    * methods would wait on the lock `fn` itself holds.
    *
-   * @template T
-   * @param {(length: number) => Promise<T>} fn
-   * @returns {Promise<T>}
+   * @param {function(number): Promise<*>} fn - Called with the length the next block will land at
+   * @returns {Promise<*>} Whatever `fn` resolves to
    */
   async withWriteLock (fn) {
     if (!this.opened) await this.ready()

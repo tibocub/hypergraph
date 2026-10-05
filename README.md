@@ -7,8 +7,11 @@ A minimal graph database optimized for P2P social apps on the Holepunch ecosyste
 Hypergraph provides a local graph API for building decentralized applications with:
 - **Graph operations**: Entities, relations, tags, content, and queries
 - **Identity system**: Mnemonic recovery, device attestation, multi-device support
-- **Collaborative contexts**: Multi-writer CRDTs for relations, tags, and moderation
+- **Collaborative contexts**: Multi-writer CRDTs for relations, tags, and moderation — confirmed
+  by the context's creator, joined by fast-forward, guarded by app rules
 - **Role-based permissions**: Per-role access control and moderation
+- **Built for scale**: bulk writes, batched indexing, and data on relations, so a member can
+  browse a million-entry space a second after joining (see [Scale](#scale))
 
 ## Under the Hood
 
@@ -66,13 +69,30 @@ await store.close()
 Nodes in your graph (posts, users, comments). Each entity has a unique ID, type, and author. Stored in the author's personal UserCore.
 
 ### Relations
-Directed edges connecting entities (reply-to, likes, follows). Stored in collaborative contexts (Autobase) where multiple peers can contribute.
+Directed edges connecting entities (reply-to, likes, follows). Stored in collaborative contexts (Autobase) where multiple peers can contribute. A relation can carry an optional numeric `value` and an optional signed `data` string (≤ 4 KB) returned with the edge — put what a listing needs there and nobody has to download authors' logs to browse.
 
 ### Contexts
-Collaborative workspaces for relations, tags, and moderation. Each context is an isolated Autobase instance with two write modes: `open` (anyone can write) and `closed` (role-based).
+Collaborative workspaces for relations, tags, and moderation. Each context is an isolated Autobase instance with two write modes: `open` (anyone can write) and `closed` (role-based). The context's creator confirms everyone's writes (it is the context's **indexer**); a member who joins far behind **fast-forwards** to that confirmed state instead of replaying history; apps can attach **rules** that reject events before they are indexed. See [Contexts and Roles](docs/contexts-and-roles.md).
 
 ### Roles
 Role-based access control for contexts and moderation. RoleBase stores role registry with member→role mappings and role→permission mappings.
+
+## Scale
+
+Measured with [`bench/scale.js`](bench/README.md) (one Windows 10 machine, 16 GB RAM), a context
+holding 1,000,000 file entries (one entity, one content reference and one relation each):
+
+| | before (2026-10-04) | now |
+|---|---|---|
+| writing them (`graph.batch()`) | ~1.5 h projected | ~11 min |
+| a new member can list a folder | joining crashed (out of memory) | **1.2 s** after joining, with names and sizes from relation data |
+| new member's disk | — | 60 MB (context only) / 2.6 GB (full replica of the author's log) |
+| new member's peak memory | > 8 GB | 329 MB (context only) / 751 MB (full) |
+
+How: bulk writes and batched indexing ([spec 002](specs/002-scale-indexing/)), confirmation and
+fast-forward joins ([spec 003](specs/003-fast-forward-contexts/)), data on relations
+([spec 004](specs/004-relation-data/)). What is left and why:
+[scaling study](specs/research/scaling-study.md).
 
 ## Learn More
 
@@ -80,7 +100,10 @@ Role-based access control for contexts and moderation. RoleBase stores role regi
 - [Local Data Distribution](docs/local%20data%20distribution.md) - Detailed analysis of storage efficiency and data duplication
 - [Identity System](docs/identity-system.md) - Multi-device support, mnemonic recovery, identity vs device keys
 - [Contexts and Roles](docs/contexts-and-roles.md) - Collaborative contexts, write modes, role-based access control
-- [Networking](docs/networking.md) - Replication patterns, Hyperswarm integration, DHT timing
+- [Networking](docs/networking.md) - Replication patterns, Hyperswarm integration, what joining downloads
+- [Querying](docs/querying.md) - Query API, edges and their data, indexes
+- [Benchmarks](bench/README.md) - How to measure, and every result so far
+- [Scaling study](specs/research/scaling-study.md) - Where the bytes and time go, what is left to do
 - [Glossary](docs/glossary.md) - P2P/Holepunch terminology explained
 
 ## Installation

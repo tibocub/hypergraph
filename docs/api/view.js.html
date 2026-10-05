@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> view.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: view.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: view.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>view.js</h1>
-                </header>
-                
 
 
 
@@ -88,7 +29,8 @@
             <pre class="prettyprint source linenums"><code>const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const b4a = require('b4a')
-const { toSortableTs } = require('./utils')
+const { toSortableTs, resolveOpenContexts, authorFromEntityId } = require('./utils')
+const tuning = require('./tuning')
 
 /**
  * GraphView manages the materialized view for graph operations.
@@ -107,6 +49,9 @@ module.exports = class GraphView extends ReadyResource {
   #contextCheckpoints
   #userMetaKey
   #deviceToIdentity // Maps device key hex -> identity key hex
+  #writer // the open Hyperbee batch while a user core is being indexed, else null
+  #updating // tail of the chain that serializes update() passes
+  #onIndexEvent // test-only hook, see constructor
 
   /**
    * Create a new GraphView instance.
@@ -114,8 +59,12 @@ module.exports = class GraphView extends ReadyResource {
    * @param {Object} bee - The Hyperbee instance for the view
    * @param {Map} userCores - Map of user core keys to UserCore instances
    * @param {Map} contexts - Map of context names to ContextBase instances
+   * @param {Object} [opts]
+   * @param {Function} [opts.onIndexEvent] - Test-only: called after each
+   *   user-core event is applied, before it is committed. Throwing from it
+   *   simulates a crash mid-pass.
    */
-  constructor (bee, userCores, contexts) {
+  constructor (bee, userCores, contexts, opts = {}) {
     super()
 
     this.#bee = bee
@@ -125,6 +74,9 @@ module.exports = class GraphView extends ReadyResource {
     this.#contextCheckpoints = new Map()
     this.#userMetaKey = null
     this.#deviceToIdentity = new Map()
+    this.#writer = null
+    this.#updating = Promise.resolve()
+    this.#onIndexEvent = opts.onIndexEvent || null
 
     this.ready().catch(safetyCatch)
   }
@@ -174,6 +126,12 @@ module.exports = class GraphView extends ReadyResource {
     // Nothing to close, bee is managed by Hypergraph
   }
 
+  // Where apply functions read and write: the open batch while indexing a
+  // user core (so reads see the batch's own pending entries), else the bee.
+  get #db () {
+    return this.#writer || this.#bee
+  }
+
   /** @returns {Object} The underlying Hyperbee instance */
   get bee () {
     return this.#bee
@@ -186,27 +144,50 @@ module.exports = class GraphView extends ReadyResource {
   /**
    * Update the view by processing new events from user cores and contexts.
    *
-   * @returns {Promise&lt;void>}
+   * @returns {Promise&lt;boolean>} True if any new user-core or context-view
+   *   data was actually processed this call, false if there was nothing
+   *   new. Used by Hypergraph.update() to know when to emit a 'change'
+   *   event for live queries — this is a coarse, "something changed"
+   *   signal, not a per-entity/per-relation one.
    */
   async update () {
     if (!this.opened) await this.ready()
 
-    // Ensure replicated data is pulled in before indexing
-    for (const [keyHex, core] of this.#userCores) {
-      await core.update()
+    // One pass at a time. Each pass indexes through its own Hyperbee batch,
+    // and two passes over the same range would also both start from the
+    // same progress record. A call made while a pass is running runs after
+    // it, so it still picks up whatever arrived in the meantime.
+    const run = this.#updating.then(() => this.#update())
+    this.#updating = run.catch(safetyCatch)
+    return run
+  }
 
-      const lastSeq = this.#lastProcessedSeq.get(keyHex) ?? -1
+  async #update () {
+    let changed = false
+
+    // Ensure replicated data is pulled in before indexing.
+    // wait:false: core.update() with no options blocks indefinitely if the
+    // core's replicator believes it's still finding peers (confirmed by
+    // reading Hypercore's own update()/_shouldWait() implementation) — for
+    // example a user core only reachable via relay through another peer,
+    // not a direct connection. That would hang this entire view update
+    // waiting on one specific core, even when other cores/contexts here
+    // have data ready to process right now. This should be a "check what's
+    // available" operation, not a "block until something arrives" one.
+    for (const [keyHex, core] of this.#userCores) {
+      await core.update({ wait: false })
+
+      // addUserCore() loads this in the background; don't race it into
+      // re-indexing from 0.
+      if (!this.#lastProcessedSeq.has(keyHex)) {
+        const meta = await this.#bee.get(`meta:user:${keyHex}:lastSeq`)
+        if (!this.#lastProcessedSeq.has(keyHex)) this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
+      }
+      const lastSeq = this.#lastProcessedSeq.get(keyHex)
       const currentLength = core.length
       if (currentLength &lt;= lastSeq + 1) continue
 
-      for (let i = lastSeq + 1; i &lt; currentLength; i++) {
-        const event = await core.get(i)
-        await this.#applyEvent(event, i, keyHex)
-      }
-
-      const nextSeq = currentLength - 1
-      this.#lastProcessedSeq.set(keyHex, nextSeq)
-      await this.#bee.put(`meta:user:${keyHex}:lastSeq`, { seq: nextSeq })
+      if (await this.#indexUserCore(keyHex, core, lastSeq, currentLength)) changed = true
     }
 
     // Context autobases update themselves via their apply function
@@ -236,9 +217,105 @@ module.exports = class GraphView extends ReadyResource {
       await context.update()
 
       const nextViewLen = viewCore.length
+      if (nextViewLen !== lastIndexedLen) changed = true
       this.#contextCheckpoints.set(viewKeyHex, nextViewLen)
       await this.#bee.put(metaKey, { length: nextViewLen })
     }
+
+    return changed
+  }
+
+  /**
+   * Index events [lastSeq + 1, currentLength) of one user core.
+   *
+   * Index entries are written through a Hyperbee batch committed every
+   * `tuning.INDEX_BATCH` events: one hypercore append (one hash, one
+   * signature, one flush) per chunk instead of one per entry, which was the
+   * single largest indexing cost (specs/002-scale-indexing/research.md R1).
+   * The progress record goes into the same batch, so a chunk's entries and
+   * the record that says they exist are committed together - an
+   * interruption loses at most the uncommitted chunk, which the next pass
+   * redoes from the last committed record. Readers see each chunk as it is
+   * committed, not only when the whole pass ends.
+   *
+   * @returns {Promise&lt;boolean>} Whether anything was indexed.
+   */
+  async #indexUserCore (keyHex, core, lastSeq, currentLength) {
+    const metaKey = `meta:user:${keyHex}:lastSeq`
+    let committed = lastSeq
+    let lastProcessed = lastSeq
+    let prefetchedTo = this.#prefetch(core, lastSeq + 1, currentLength)
+
+    const commit = async () => {
+      await this.#writer.put(metaKey, { seq: lastProcessed })
+      await this.#writer.flush()
+      committed = lastProcessed
+      this.#lastProcessedSeq.set(keyHex, committed)
+      this.#writer = this.#bee.batch()
+    }
+
+    this.#writer = this.#bee.batch()
+    try {
+      for (let i = lastSeq + 1; i &lt; currentLength; i++) {
+        if (prefetchedTo &lt; currentLength &amp;&amp; i >= prefetchedTo - tuning.PREFETCH_WINDOW / 2) {
+          prefetchedTo = this.#prefetch(core, prefetchedTo, currentLength)
+        }
+
+        // core.get(i) with no options blocks indefinitely if the block
+        // hasn't actually arrived yet, even though the core's length
+        // metadata has already synced (confirmed by reading Hypercore's
+        // own get()/_get() implementation: with no timeout, the block
+        // request has no bound at all). A timeout still issues the
+        // request - so the block can still arrive later in the
+        // background - without blocking this whole view update forever.
+        // If it times out, stop processing further events for this core
+        // in this call; a later update() call will pick up where this one
+        // left off once the block has arrived.
+        let event
+        try {
+          event = await core.get(i, { timeout: 5000 })
+        } catch (err) {
+          safetyCatch(err)
+          break
+        }
+        if (event === null) break
+        await this.#applyEvent(event, i, keyHex)
+        lastProcessed = i
+        if (this.#onIndexEvent) this.#onIndexEvent(i, keyHex)
+
+        if (lastProcessed - committed >= tuning.INDEX_BATCH) await commit()
+      }
+
+      if (lastProcessed > committed) await commit()
+    } finally {
+      // Discards whatever was not committed (only non-empty on a throw).
+      const writer = this.#writer
+      this.#writer = null
+      await writer.close()
+    }
+
+    return lastProcessed > lastSeq
+  }
+
+  /**
+   * Ask peers for up to `tuning.PREFETCH_WINDOW` blocks of another user's
+   * log at once, instead of one network round trip per block as the
+   * indexing loop reaches it. Never awaited: a block no connected peer has
+   * must not hold up the update, and the loop's own get() timeout already
+   * handles a block that doesn't arrive (research R4).
+   *
+   * @returns {number} The end of the requested range.
+   */
+  #prefetch (core, start, currentLength) {
+    const end = Math.min(currentLength, start + tuning.PREFETCH_WINDOW)
+    const hypercore = core.core
+    if (!hypercore || core.writable || start >= end) return end
+    try {
+      hypercore.download({ start, end }).done().catch(safetyCatch)
+    } catch (err) {
+      safetyCatch(err)
+    }
+    return end
   }
 
   async #applyEvent (event, seq, coreKeyHex) {
@@ -250,7 +327,7 @@ module.exports = class GraphView extends ReadyResource {
         await this.#applyEntityTombstone(event, coreKeyHex)
         break
       case 'content/append':
-        await this.#applyContentAppend(event, seq)
+        await this.#applyContentAppend(event, seq, coreKeyHex)
         break
       case 'identity/update':
         await this.#applyIdentityUpdate(event, seq, coreKeyHex)
@@ -262,7 +339,7 @@ module.exports = class GraphView extends ReadyResource {
     if (event.author !== coreKeyHex) return
 
     const key = `id:profile:${event.author}`
-    await this.#bee.put(key, {
+    await this.#db.put(key, {
       author: event.author,
       username: event.username,
       bio: event.bio || null,
@@ -277,13 +354,13 @@ module.exports = class GraphView extends ReadyResource {
     const derivedId = `${event.entityType}/${coreKeyHex}/${seq}`
 
     const key = `n:${derivedId}`
-    const existing = await this.#bee.get(key)
+    const existing = await this.#db.get(key)
 
     // Entities are immutable once created.
     // If it already exists, ignore subsequent creates.
     if (existing &amp;&amp; !existing.value.deleted) return
 
-    await this.#bee.put(key, {
+    await this.#db.put(key, {
       id: derivedId,
       type: event.entityType,
       author: event.author,
@@ -295,7 +372,17 @@ module.exports = class GraphView extends ReadyResource {
     // Type index (time sortable): nt:&lt;type>:&lt;createdAt>:&lt;id>
     // This is a secondary index to make by-type scans efficient.
     const typeKey = `nt:${event.entityType}:${toSortableTs(event.timestamp)}:${derivedId}`
-    await this.#bee.put(typeKey, { id: derivedId })
+    await this.#db.put(typeKey, { id: derivedId })
+
+    // Type-agnostic time index: nc:&lt;createdAt>:&lt;id>
+    // The primary n:&lt;id> key (used by the default, unfiltered scan) is
+    // ordered by (type, authorCoreKeyHex, seq) — not chronological at all
+    // once more than one author is involved, since a core key's hex is
+    // effectively random relative to when its owner actually wrote
+    // something. This index gives a real, efficient chronological scan
+    // across all types, without needing to load-then-sort every entity.
+    const timeKey = `nc:${toSortableTs(event.timestamp)}:${derivedId}`
+    await this.#db.put(timeKey, { id: derivedId })
   }
 
   async #applyEntityTombstone (event, coreKeyHex) {
@@ -307,10 +394,10 @@ module.exports = class GraphView extends ReadyResource {
     if (typeof event.id !== 'string' || !event.id.includes(`/${coreKeyHex}/`)) return
 
     const key = `n:${event.id}`
-    const existing = await this.#bee.get(key)
+    const existing = await this.#db.get(key)
 
     if (existing) {
-      await this.#bee.put(key, {
+      await this.#db.put(key, {
         ...existing.value,
         deleted: true,
         deletedAt: event.timestamp,
@@ -319,13 +406,33 @@ module.exports = class GraphView extends ReadyResource {
     }
   }
 
-  async #applyContentAppend (event, seq) {
-    const key = `c:${event.entityId}:${seq}`
-    await this.#bee.put(key, {
+  async #applyContentAppend (event, seq, coreKeyHex) {
+    // Binding invariant: content can only be appended under the entity's own
+    // author's core — same rule as entity/create and entity/tombstone above.
+    // Without this, any peer could forge content for any entityId simply by
+    // appending a content/append event naming that id from their own core.
+    if (authorFromEntityId(event.entityId) !== coreKeyHex) return
+
+    // seq must be zero-padded (toSortableTs) like every other time/seq-based
+    // index key here — a raw seq sorts lexicographically ("9" > "10"),
+    // which made getContent()'s reverse-order scan return stale content
+    // once an entity passed 10 revisions.
+    const key = `c:${event.entityId}:${toSortableTs(seq)}`
+    await this.#db.put(key, {
       entityId: event.entityId,
       contentType: event.contentType,
       body: event.body,
-      createdAt: event.timestamp
+      createdAt: event.timestamp,
+      // Encryption metadata is optional and defaults to unencrypted —
+      // existing, already-stored content (and any content written without
+      // a scope) is completely unaffected. When present, `body` holds a
+      // hex ciphertext rather than plaintext; contentType still reflects
+      // the app's original type in the clear (only the payload is
+      // encrypted, not this kind of metadata).
+      encrypted: event.encrypted === true,
+      scope: event.encrypted === true ? event.scope : null,
+      epoch: event.encrypted === true ? event.epoch : null,
+      nonce: event.encrypted === true ? event.nonce : null
     })
   }
 
@@ -345,7 +452,7 @@ module.exports = class GraphView extends ReadyResource {
       if (!this.#lastProcessedSeq.has(keyHex)) {
         this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
       }
-    })
+    }).catch(safetyCatch) // the graph may close before this read finishes
   }
 
   // ========================================
@@ -375,7 +482,7 @@ module.exports = class GraphView extends ReadyResource {
       const metaKey = `meta:contextView:${viewKeyHex}:length`
       const v = await this.#bee.get(metaKey)
       this.#contextCheckpoints.set(viewKeyHex, v ? v.value.length : -1)
-    })
+    }).catch(safetyCatch) // the graph may close before this read finishes
   }
 
   // ========================================
@@ -429,7 +536,44 @@ module.exports = class GraphView extends ReadyResource {
    * @param {EdgeQueryOpts} [opts] - Query options
    * @returns {AsyncIterable&lt;Edge>} Async iterator of edges
    */
+  /**
+   * @param {string} entityId
+   * @param {Object} [opts]
+   * @param {'in'|'out'} [opts.direction='out']
+   * @param {string} [opts.type]
+   * @param {string|string[]} [opts.context] - Restrict to this context (or
+   *   these contexts). Required if more than one context is open on this
+   *   graph instance - see #resolveContexts.
+   * @param {boolean} [opts.allContexts] - Explicitly query across every open
+   *   context instead of requiring `context` to be named.
+   * @param {number} [opts.limit]
+   * @param {'asc'|'desc'} [opts.order]
+   * @param {boolean} [opts.reverse]
+   * @param {boolean} [opts.latestPerAuthor] - Reduce results to only the
+   *   most recent edge per author (by createdAt). Useful for any "one fact
+   *   per author per target" pattern — e.g. a vote, rating, or presence
+   *   marker — where an author may have created multiple edges over time
+   *   (there is no built-in uniqueness constraint across those) but only
+   *   their latest one should count. This buffers all matching edges in
+   *   memory before yielding, unlike the normal streaming path.
+   */
   async * getEdges (entityId, opts = {}) {
+    if (!opts.latestPerAuthor) {
+      yield * this.#getEdgesRaw(entityId, opts)
+      return
+    }
+
+    const latestByAuthor = new Map()
+    for await (const edge of this.#getEdgesRaw(entityId, opts)) {
+      const existing = latestByAuthor.get(edge.author)
+      if (!existing || (edge.createdAt || 0) > (existing.createdAt || 0)) {
+        latestByAuthor.set(edge.author, edge)
+      }
+    }
+    yield * latestByAuthor.values()
+  }
+
+  async * #getEdgesRaw (entityId, opts = {}) {
     if (!this.opened) await this.ready()
 
     const direction = opts.direction || 'out'
@@ -440,8 +584,22 @@ module.exports = class GraphView extends ReadyResource {
       ? opts.reverse
       : (order === 'desc')
 
-    // Query from all context views
-    for (const [name, context] of this.#contexts) {
+    // An edge's `author` is only ever the signer of the edge event itself
+    // (verified by #verifyRelationSignature at apply time) — relate() does
+    // not, and cannot cheaply, check that the caller actually owns
+    // `opts.from`. So without this check, anyone could sign a perfectly
+    // valid edge event claiming `from: &lt;someone else's entity>`, and it
+    // would apply and appear here as if that entity really pointed at it.
+    // This mirrors the same defensive re-check getByTag() already does for
+    // tags (`node.author === entry.value.author`) — same underlying gap,
+    // same fix, applied where edges are actually read. Checked via
+    // authorFromEntityId() (the id itself embeds its author) rather than
+    // getNode(), so it works with no dependency on having that author's
+    // UserCore open/replicated locally - e.g. tallying votes on a popular
+    // post shouldn't require opening every voter's UserCore.
+    const fromIsGenuine = (from, claimedAuthor) => authorFromEntityId(from) === claimedAuthor
+
+    for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
       if (direction === 'out') {
@@ -458,9 +616,9 @@ module.exports = class GraphView extends ReadyResource {
         })
 
         for await (const entry of stream) {
-          if (!entry.value.deleted) {
-            yield entry.value
-          }
+          if (entry.value.deleted) continue
+          if (!fromIsGenuine(entry.value.from, entry.value.author)) continue
+          yield entry.value
         }
       } else {
         // Incoming edges: i:in:&lt;to>:&lt;type>:&lt;from>
@@ -479,9 +637,9 @@ module.exports = class GraphView extends ReadyResource {
           // Get the actual edge data
           const edgeKey = entry.value.ref
           const edge = await context.view.get(edgeKey)
-          if (edge &amp;&amp; !edge.value.deleted) {
-            yield edge.value
-          }
+          if (!edge || edge.value.deleted) continue
+          if (!fromIsGenuine(edge.value.from, edge.value.author)) continue
+          yield edge.value
         }
       }
     }
@@ -494,6 +652,11 @@ module.exports = class GraphView extends ReadyResource {
    * @param {Object} [opts] - Query options
    * @param {string} [opts.author] - Filter by a single author (hex public key)
    * @param {string[]} [opts.authors] - Filter by multiple authors (hex public keys)
+   * @param {string|string[]} [opts.context] - Restrict to this context (or
+   *   these contexts). Required if more than one context is open on this
+   *   graph instance - see #resolveContexts.
+   * @param {boolean} [opts.allContexts] - Explicitly query across every open
+   *   context instead of requiring `context` to be named.
    * @returns {AsyncIterable&lt;Entity>} Async iterator of entities with the tag
    */
   async * getByTag (tag, opts = {}) {
@@ -502,8 +665,7 @@ module.exports = class GraphView extends ReadyResource {
     const authors = opts.authors || (opts.author ? [opts.author] : null)
     const allow = authors ? new Set(authors) : null
 
-    // Query from all context views
-    for (const [name, context] of this.#contexts) {
+    for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
 
       const prefix = `t:${tag}:`
@@ -521,6 +683,43 @@ module.exports = class GraphView extends ReadyResource {
         }
       }
     }
+  }
+
+  /**
+   * Check whether an entity has been tagged with a given tag.
+   *
+   * Tag refs live in each ContextBase's own Hyperbee view (not the top-level
+   * graph view). By default this checks the single open context (or throws
+   * if more than one is open and neither `context` nor `allContexts` was
+   * given) - see #resolveContexts.
+   *
+   * @param {string} entityId - The entity id to check
+   * @param {string} tag - The tag to check for
+   * @param {Object} [opts]
+   * @param {string|string[]} [opts.context]
+   * @param {boolean} [opts.allContexts]
+   * @returns {Promise&lt;boolean>}
+   */
+  async hasTag (entityId, tag, opts = {}) {
+    if (!this.opened) await this.ready()
+
+    const prefix = `tref:${tag}:${entityId}:`
+
+    for (const [name, context] of resolveOpenContexts(this.#contexts, opts)) {
+      if (!context.opened) continue
+
+      const stream = context.view.createReadStream({
+        gte: prefix,
+        lt: prefix + '\uffff',
+        limit: 1
+      })
+
+      for await (const entry of stream) {
+        if (entry &amp;&amp; entry.key &amp;&amp; entry.key.startsWith(prefix)) return true
+      }
+    }
+
+    return false
   }
 
   /**
@@ -569,20 +768,30 @@ module.exports = class GraphView extends ReadyResource {
    * @param {string} author - The author's hex public key
    * @returns {AsyncIterable&lt;Entity>} Async iterator of entities by the author
    */
+  /**
+   * Get entities by author (hex public key).
+   *
+   * Scans the author's own UserCore directly, rather than the shared
+   * view — a UserCore already only contains that person's own entities,
+   * so no separate author index is needed at all. Returns nothing if this
+   * author's core hasn't been opened/replicated locally yet.
+   *
+   * @param {string} author - The author's hex public key
+   * @returns {AsyncIterable&lt;Entity>} Async iterator of entities by the author
+   */
   async * getByAuthor (author) {
     if (!this.opened) await this.ready()
 
-    // Scan all nodes and filter by author
-    // This is O(n) - could be optimized with an author index
-    const stream = this.#bee.createReadStream({
-      gte: 'n:',
-      lt: 'n:\uffff'
-    })
+    const userCore = this.#userCores.get(author)
+    if (!userCore) return
 
-    for await (const entry of stream) {
-      if (!entry.value.deleted &amp;&amp; entry.value.author === author) {
-        yield entry.value
-      }
+    for (let seq = 0; seq &lt; userCore.length; seq++) {
+      const event = await userCore.get(seq)
+      if (!event || event.type !== 'entity/create') continue
+
+      const id = `${event.entityType}/${author}/${seq}`
+      const node = await this.getNode(id)
+      if (node) yield node
     }
   }
 
@@ -631,26 +840,19 @@ module.exports = class GraphView extends ReadyResource {
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

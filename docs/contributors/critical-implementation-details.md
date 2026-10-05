@@ -102,6 +102,27 @@ already-persisted events without those bytes will crash with "Out of bounds" the
 they're replayed — this happened for real once (round 33) before the guard was added. Any new
 optional field on an existing event type needs the same treatment.
 
+## Every Peer of a Context Must Apply It the Same Way
+
+Since spec 003 a context records how it is applied (`context/init`: topology version, app rules
+id). An older hypergraph version doesn't understand that record and would make every writer an
+indexer, so **mixed versions in one context are unsupported**; a peer that finds a version it
+doesn't know, or rules other than the recorded ones, stops applying the context with a clear reason
+(`status().interrupted`) instead of building a different index. App rules must be deterministic for
+the same reason. Older peers also reject relations carrying `data` (spec 004).
+
+Permission checks in apply consult the attached RoleBase, a separate log that reaches each peer
+at its own pace, so two peers can decide the same event differently. Harmless while one device
+(the creator) confirms a context; it must be fixed before several indexers can agree on one
+signed state (spec 003, phase 2).
+
+## Joining Peers Fast-Forward
+
+A peer ≥ 16 Autobase nodes behind adopts the indexers' signed state instead of replaying, and
+trusts it: built-in checks and app rules are not re-run on history. Bulk writes produce few
+Autobase nodes, so a small context written in a couple of bulk calls is usually replayed (which is
+cheap) rather than fast-forwarded. `fastForward: false` makes a peer always replay.
+
 ## See Also
 
 - [Replication Flow](replication-flow.md) - DHT timing and writer authorization

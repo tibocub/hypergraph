@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> user-core.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: user-core.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: user-core.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>user-core.js</h1>
-                </header>
-                
 
 
 
@@ -107,6 +48,7 @@ module.exports = class UserCore extends ReadyResource {
   #length
   #key
   #keyPair
+  #writeLock
 
   /**
    * Create a new UserCore instance.
@@ -127,6 +69,7 @@ module.exports = class UserCore extends ReadyResource {
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#core = null
     this.#length = 0
+    this.#writeLock = Promise.resolve()
 
     this.ready().catch(safetyCatch)
   }
@@ -184,29 +127,60 @@ module.exports = class UserCore extends ReadyResource {
    * @returns {Promise&lt;number>} The sequence number of the appended event
    */
   async append (event) {
-    if (!this.opened) await this.ready()
-
-    const encoded = encodeEvent(event)
-    await this.#core.append(encoded)
-    this.#length = this.#core.length
-
-    return this.#length - 1
+    return this.withWriteLock(() => this.appendBatchUnlocked([event]))
   }
 
   /**
-   * Append multiple events to the user core in a batch.
+   * Append multiple events to the user core in one hypercore append (one
+   * hash, one signature, one flush).
    *
    * @param {Object[]} events - Array of events to append
-   * @returns {Promise&lt;number>} The sequence number of the last appended event
+   * @returns {Promise&lt;number>} The sequence number of the FIRST appended event
    */
   async appendBatch (events) {
+    return this.withWriteLock(() => this.appendBatchUnlocked(events))
+  }
+
+  /**
+   * Run `fn(length)` while holding this core's write lock. `length` is where
+   * the next appended block will land, and stays true for as long as `fn`
+   * runs — which is what lets a caller build events that embed their own
+   * future seq (a bulk write's entity ids) before appending them. Inside
+   * `fn`, append with {@link UserCore#appendBatchUnlocked}; the locked
+   * methods would wait on the lock `fn` itself holds.
+   *
+   * @param {function(number): Promise&lt;*>} fn - Called with the length the next block will land at
+   * @returns {Promise&lt;*>} Whatever `fn` resolves to
+   */
+  async withWriteLock (fn) {
     if (!this.opened) await this.ready()
 
-    const encoded = events.map(encodeEvent)
-    await this.#core.append(encoded)
-    this.#length = this.#core.length
+    const previous = this.#writeLock
+    let release
+    this.#writeLock = new Promise((resolve) => { release = resolve })
+    try {
+      await previous
+      return await fn(this.#core.length)
+    } finally {
+      release()
+    }
+  }
 
-    return this.#length - events.length
+  /**
+   * Append without taking the write lock. Only for use inside
+   * {@link UserCore#withWriteLock}.
+   *
+   * @param {Object[]} events
+   * @returns {Promise&lt;number>} The sequence number of the first appended event
+   */
+  async appendBatchUnlocked (events) {
+    const encoded = events.map(encodeEvent)
+    // Take the seq from this append's own result rather than reading
+    // core.length afterwards, which another append may already have moved.
+    const { length } = await this.#core.append(encoded)
+    this.#length = length
+
+    return length - events.length
   }
 
   // ========================================
@@ -219,10 +193,19 @@ module.exports = class UserCore extends ReadyResource {
    * @param {number} seq - The sequence number of the event
    * @returns {Promise&lt;Object|null>} The decoded event, or null if not found
    */
-  async get (seq) {
+  /**
+   * @param {number} seq
+   * @param {Object} [opts] - Forwarded to the underlying Hypercore's get().
+   *   Notably opts.timeout: by default, get() with no options blocks
+   *   indefinitely if the block hasn't arrived yet, even if the core's
+   *   length has already synced (confirmed by reading Hypercore's own
+   *   get()/_get() implementation — with no timeout, the block request has
+   *   no bound at all).
+   */
+  async get (seq, opts) {
     if (!this.opened) await this.ready()
 
-    const block = await this.#core.get(seq)
+    const block = await this.#core.get(seq, opts)
     return decodeEvent(block)
   }
 
@@ -274,11 +257,17 @@ module.exports = class UserCore extends ReadyResource {
   /**
    * Update the core from remote peers.
    *
+   * @param {Object} [opts] - Forwarded to the underlying Hypercore's
+   *   update(). Notably opts.wait: by default, update() blocks
+   *   indefinitely if the core's replicator believes it's still finding
+   *   peers for this specific core (confirmed by reading Hypercore's own
+   *   update()/_shouldWait() implementation) — pass { wait: false } to
+   *   just check for an update that's already available without blocking.
    * @returns {Promise&lt;boolean>} True if the core was updated, false otherwise
    */
-  update () {
+  update (opts) {
     if (!this.#core) return Promise.resolve(false)
-    return this.#core.update().then((changed) => {
+    return this.#core.update(opts).then((changed) => {
       this.#length = this.#core.length
       return changed
     })
@@ -291,26 +280,19 @@ module.exports = class UserCore extends ReadyResource {
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

@@ -1,4 +1,32 @@
-/**
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: batch.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: batch.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
  * src/batch.js — bulk writes: `graph.batch()`.
  *
  * Collects entity creations, content versions and relations, then writes them
@@ -29,8 +57,8 @@ function validateRelateOpts (opts) {
   if (!opts.from) throw new Error('opts.from is required')
   if (!opts.to) throw new Error('opts.to is required')
   if (!opts.context) throw new Error('opts.context is required')
-  if (!opts.type && !opts.relationType) throw new Error('opts.type or opts.relationType is required')
-  if (opts.value !== undefined && (typeof opts.value !== 'number' || !Number.isFinite(opts.value))) {
+  if (!opts.type &amp;&amp; !opts.relationType) throw new Error('opts.type or opts.relationType is required')
+  if (opts.value !== undefined &amp;&amp; (typeof opts.value !== 'number' || !Number.isFinite(opts.value))) {
     throw new Error('opts.value must be a finite number if provided')
   }
   const dataProblem = relationDataProblem(opts.data)
@@ -87,12 +115,12 @@ class Batch {
   #flushed
 
   /**
-   * @param {function(Batch): Promise<Object>} flush - Provided by Hypergraph.
+   * @param {function(Batch): Promise&lt;Object>} flush - Provided by Hypergraph.
    */
   constructor (flush) {
     this.#flush = flush
     this.#flushed = false
-    /** @type {Array<Object>} Recorded operations, in call order. Internal. */
+    /** @type {Array&lt;Object>} Recorded operations, in call order. Internal. */
     this._ops = []
   }
 
@@ -155,7 +183,7 @@ class Batch {
    * Validate everything, then write it. See the contract for the return
    * shape and failure modes.
    *
-   * @returns {Promise<{ entities: Array<{id: string, type: string, author: string}>, written: { userCore: boolean, contexts: string[] } }>}
+   * @returns {Promise&lt;{ entities: Array&lt;{id: string, type: string, author: string}>, written: { userCore: boolean, contexts: string[] } }>}
    */
   async flush () {
     this.#assertOpen()
@@ -178,3 +206,26 @@ class Batch {
 }
 
 module.exports = { Batch, EntityRef, BulkWriteError, validateRelateOpts }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

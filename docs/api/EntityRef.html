@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>JSDoc: Module: docs</title>
+    <title>JSDoc: Class: EntityRef</title>
 
     <script src="scripts/prettify/prettify.js"> </script>
     <script src="scripts/prettify/lang-css.js"> </script>
@@ -17,7 +17,7 @@
 
 <div id="main">
 
-    <h1 class="page-title">Module: docs</h1>
+    <h1 class="page-title">Class: EntityRef</h1>
 
     
 
@@ -28,8 +28,10 @@
 
 <header>
     
+        <h2><span class="attribs"><span class="type-signature"></span></span>EntityRef<span class="signature">()</span><span class="type-signature"></span></h2>
         
-            
+            <div class="class-description">Stands for an entity created by `batch.put()`, before it has an id.
+Accepted anywhere an entity id is, within the same batch.</div>
         
     
 </header>
@@ -38,62 +40,16 @@
     <div class="container-overview">
     
         
-            <div class="description">Hypergraph Architecture
 
-Hypergraph is a minimal graph database optimized for P2P social apps on the Holepunch stack.
-It is a thin composition over Hypercore, Corestore, Autobase and Hyperbee.
+    
+    <h2>Constructor</h2>
+    
 
-## Core Components
+    
+    <h4 class="name" id="EntityRef"><span class="type-signature"></span>new EntityRef<span class="signature">()</span><span class="type-signature"></span></h4>
+    
 
-- **UserCore**: Single-writer Hypercore storing user's identity and authored entities
-- **ContextBase**: Multi-writer Autobase storing shared graph data (relations, tags, moderation)
-- **RoleBase**: Manages access control and permissions for contexts
-- **GraphView**: Materialized view combining data from all cores for efficient querying
-- **GraphQuery**: Query builder for traversing the graph
-
-## Data Model
-
-- **Entities**: Nodes in the graph (posts, profiles, etc.) stored in UserCore
-- **Relations**: Edges connecting entities stored in ContextBase
-- **Tags**: Labels attached to entities stored in ContextBase
-- **Moderation**: Content moderation events stored in ContextBase
-
-## Identity System
-
-Hypergraph uses a dual-key identity system:
-- **Identity Key**: Long-term public key representing the user's identity
-- **Device Key**: Ephemeral key per device for signing operations
-
-This allows multiple devices to share the same identity while maintaining device-specific
-signing capabilities.
-
-## Contexts and Roles
-
-Contexts are isolated graph spaces with their own access control:
-- **Open contexts**: Anyone can write (e.g., public forums)
-- **Closed contexts**: Only authorized writers can contribute (e.g., private groups)
-
-Roles define permissions within contexts:
-- **Owner**: Full control including role management
-- **Moderator**: Can perform moderation actions
-- **Member**: Can read and write based on context settings
-
-## Networking
-
-Hypergraph exposes a local graph API; networking is the responsibility of the application.
-Typically done via Hyperswarm for P2P discovery and replication.
-
-## Querying
-
-GraphQuery provides a fluent API for querying the graph:
-- Filter by entity type, author, or custom criteria
-- Traverse relations in any direction
-- Limit and sort results
-- Stream results for large datasets</div>
-        
-
-        
-            
+    
 
 
 
@@ -138,19 +94,12 @@ GraphQuery provides a fluent API for querying the graph:
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="docs.js.html">docs.js</a>, <a href="docs.js.html#line7">line 7</a>
+        <a href="batch.js.html">batch.js</a>, <a href="batch.js.html#line44">line 44</a>
     </li></ul></dd>
     
 
     
 
-    
-    <dt class="tag-see">See:</dt>
-    <dd class="tag-see">
-        <ul>
-            <li>hypergraph</li>
-        </ul>
-    </dd>
     
 
     
@@ -175,7 +124,6 @@ GraphQuery provides a fluent API for querying the graph:
 
 
 
-        
     
     </div>
 
@@ -191,6 +139,126 @@ GraphQuery provides a fluent API for querying the graph:
 
     
 
+    
+        <h3 class="subsection-title">Members</h3>
+
+        
+            
+<h4 class="name" id="id"><span class="type-signature"></span>id<span class="type-signature"></span></h4>
+
+
+
+
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="batch.js.html">batch.js</a>, <a href="batch.js.html#line55">line 55</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+        
+            
+<h4 class="name" id="resolved"><span class="type-signature"></span>resolved<span class="type-signature"></span></h4>
+
+
+
+
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="batch.js.html">batch.js</a>, <a href="batch.js.html#line61">line 61</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+        
     
 
     
@@ -214,7 +282,7 @@ GraphQuery provides a fluent API for querying the graph:
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:38 GMT+0100 (GMT+01:00)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
 </footer>
 
 <script> prettyPrint(); </script>

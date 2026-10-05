@@ -115,6 +115,27 @@ null }` rather than throwing or returning garbage.
    applied to the scope registry otherwise
 ```
 
+## Join Path (Opening a Context Someone Else Writes)
+
+```
+1. graph.openContext(key, { rules? })
+   ↓
+2. Autobase replicates the context's system core and learns the
+   indexers' signed length
+   ↓
+3a. ≥ 16 nodes behind → FAST-FORWARD: adopt the signed state, apply
+    nothing from history; view blocks are fetched when read
+3b. otherwise (or fastForward: false) → REPLAY: apply every event,
+    then commit the rebuilt view once signatures are known
+   ↓
+4. New events from then on are applied as they arrive
+```
+
+Reading a folder after fast-forward fetches only the index blocks the listing touches. With the
+listing's data on the relations (spec 004), nothing else is needed — no user core is opened. A
+peer that does open other users' cores (`openUserCore()`) downloads them in full in the
+background and indexes them on `update()`.
+
 ## Read Path (Querying)
 
 ```

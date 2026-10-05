@@ -118,6 +118,11 @@ end: -1 })` that follows new appends, so the log streams in while `update()` is 
 - `#pendingWriterRequests` - Map of pending writer requests
 - `#keyPair` - KeyPair for local writer
 - `#verifySignatures` - Whether to verify signatures
+- `#rules` - App rules `{ id, validate }` or null (spec 003)
+- `#fastForward` / `#fastForwards` - Whether fast-forward is enabled / how often it happened
+- `#interrupted` - Why the context stopped applying (version or rules refusal), or null
+- `#members` - Every member from Autobase's system table, refreshed in `update()` (for `writerKeys()`)
+- `#counts` - Edge counters pending for the current apply chunk
 
 **Autobase Configuration**:
 ```js
@@ -126,11 +131,17 @@ end: -1 })` that follows new appends, so the log streams in while `update()` is 
   apply: this.#applyView.bind(this), // Called to apply writer's output
   // no valueEncoding: values are bytes, encoded in append(), decoded in #applyView
   // (see autobase-integration.md)
-  ackInterval: 0,
+  ackInterval: tuning.ACK_INTERVAL,  // 1,000 ms: indexers ack, so history gets confirmed
   ackThreshold: 0,
-  fastForward: false
+  fastForward: this.#fastForward     // true unless opened with fastForward: false
 }
 ```
+
+**Topology (spec 003)**: the context's first event is the creator's `context/init`
+(`{ version, rules }`), stored as `meta:context`. Version 2 (contexts created now): the creator
+is the only indexer and writers added later don't index. Version 1 (no record, older contexts):
+every writer indexes. Apply refuses (`host.interrupt`) a version it doesn't know or app rules that
+differ from the recorded id.
 
 **Write Modes**:
 - **Open**: No permission checks, writers added freely via `addWriter()`
@@ -142,6 +153,9 @@ Note: regardless of write mode, `moderateAction()` and writer-change events (`ro
 - `append(event)` - Append event to Autobase
 - `appendBatch(events)` - Append many events as ONE Autobase batch (one apply call on every peer)
 - `addWriter(key)` / `removeWriter(key)` - Add/remove a writer, signed and permission-gated in closed mode
+- `status()` - `{ version, rules, indexers, isIndexer, writable, length, confirmedLength, fastForwards, interrupted }`
+- `refusal()` - Why this peer can't apply the context, if already known locally (used by `openContext()`)
+- `writerKeys()` - Every member (indexers and non-indexing writers)
 - `relate()` - Create relation (helper method)
 - `tag()` - Create tag (helper method)
 - `handlePeerConnection()` - Auto-add writer in open mode, emit request in closed mode

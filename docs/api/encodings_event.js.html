@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> encodings/event.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: encodings/event.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: encodings/event.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>encodings/event.js</h1>
-                </header>
-                
 
 
 
@@ -108,7 +49,9 @@ const EVENT_TYPES = {
   'addWriter': 9,
   'roles/addWriter': 10,
   'moderation/action': 11,
-  'message': 12
+  'message': 12,
+  'roles/removeWriter': 13,
+  'context/init': 14
 }
 
 // Map from code to string
@@ -124,7 +67,9 @@ const EVENT_TYPE_NAMES = {
   9: 'addWriter',
   10: 'roles/addWriter',
   11: 'moderation/action',
-  12: 'message'
+  12: 'message',
+  13: 'roles/removeWriter',
+  14: 'context/init'
 }
 
 // Compact encoding for events
@@ -149,6 +94,12 @@ const eventEncoding = {
         c.string.preencode(state, event.entityId)
         c.string.preencode(state, event.contentType)
         c.string.preencode(state, event.body)
+        c.uint.preencode(state, event.encrypted === true ? 1 : 0)
+        if (event.encrypted === true) {
+          c.string.preencode(state, event.scope)
+          c.uint.preencode(state, event.epoch)
+          c.string.preencode(state, event.nonce)
+        }
         break
 
       case 'relation/create':
@@ -157,6 +108,14 @@ const eventEncoding = {
         c.string.preencode(state, event.relationType)
         c.string.preencode(state, event.author)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        c.uint.preencode(state, typeof event.value === 'number' ? 1 : 0)
+        if (typeof event.value === 'number') c.float64.preencode(state, event.value)
+        // Optional trailing data (spec 004). Written only when present, so
+        // relations without data keep exactly their old bytes.
+        if (typeof event.data === 'string') {
+          c.uint.preencode(state, 1)
+          c.string.preencode(state, event.data)
+        }
         break
 
       case 'relation/delete':
@@ -184,9 +143,11 @@ const eventEncoding = {
 
       case 'addWriter':
       case 'roles/addWriter':
+      case 'roles/removeWriter':
         c.string.preencode(state, event.key)
         if (event.author) c.string.preencode(state, event.author)
         if (event.timestamp) c.uint.preencode(state, event.timestamp)
+        if (event.signature) c.buffer.preencode(state, b4a.from(event.signature, 'hex'))
         break
 
       case 'moderation/action':
@@ -198,6 +159,11 @@ const eventEncoding = {
         c.string.preencode(state, event.author)
         c.uint.preencode(state, event.timestamp)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/init':
+        c.uint.preencode(state, event.version)
+        c.string.preencode(state, event.rules || '')
         break
 
       case 'message':
@@ -228,6 +194,12 @@ const eventEncoding = {
         c.string.encode(state, event.entityId)
         c.string.encode(state, event.contentType)
         c.string.encode(state, event.body)
+        c.uint.encode(state, event.encrypted === true ? 1 : 0)
+        if (event.encrypted === true) {
+          c.string.encode(state, event.scope)
+          c.uint.encode(state, event.epoch)
+          c.string.encode(state, event.nonce)
+        }
         break
 
       case 'relation/create':
@@ -236,6 +208,12 @@ const eventEncoding = {
         c.string.encode(state, event.relationType)
         c.string.encode(state, event.author)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        c.uint.encode(state, typeof event.value === 'number' ? 1 : 0)
+        if (typeof event.value === 'number') c.float64.encode(state, event.value)
+        if (typeof event.data === 'string') {
+          c.uint.encode(state, 1)
+          c.string.encode(state, event.data)
+        }
         break
 
       case 'relation/delete':
@@ -263,9 +241,11 @@ const eventEncoding = {
 
       case 'addWriter':
       case 'roles/addWriter':
+      case 'roles/removeWriter':
         c.string.encode(state, event.key)
         if (event.author) c.string.encode(state, event.author)
         if (event.timestamp) c.uint.encode(state, event.timestamp)
+        if (event.signature) c.buffer.encode(state, b4a.from(event.signature, 'hex'))
         break
 
       case 'moderation/action':
@@ -277,6 +257,11 @@ const eventEncoding = {
         c.string.encode(state, event.author)
         c.uint.encode(state, event.timestamp)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/init':
+        c.uint.encode(state, event.version)
+        c.string.encode(state, event.rules || '')
         break
 
       case 'message':
@@ -310,6 +295,15 @@ const eventEncoding = {
         event.entityId = c.string.decode(state)
         event.contentType = c.string.decode(state)
         event.body = c.string.decode(state)
+        // Backward compat: events encoded before this field existed
+        // don't have these trailing bytes at all — decoding them must not
+        // crash (same pattern as relation/create's value field, round 33).
+        if (state.start &lt; state.end &amp;&amp; c.uint.decode(state) === 1) {
+          event.encrypted = true
+          event.scope = c.string.decode(state)
+          event.epoch = c.uint.decode(state)
+          event.nonce = c.string.decode(state)
+        }
         break
 
       case 'relation/create':
@@ -319,6 +313,15 @@ const eventEncoding = {
         event.author = c.string.decode(state)
         const sig1 = c.buffer.decode(state)
         event.signature = sig1.length > 0 ? sig1.toString('hex') : null
+        // Backward compat: events encoded before the value field existed
+        // don't have these trailing bytes at all — decoding them must not
+        // crash. Confirmed necessary in practice, not just in theory: a
+        // real deployment hit "Out of bounds" here on already-persisted
+        // data the moment this field was added.
+        event.value = (state.start &lt; state.end &amp;&amp; c.uint.decode(state) === 1) ? c.float64.decode(state) : undefined
+        // Data on the relation (spec 004): same trailing-bytes guard. An older
+        // decoder stops above and never sees it.
+        if (state.start &lt; state.end &amp;&amp; c.uint.decode(state) === 1) event.data = c.string.decode(state)
         break
 
       case 'relation/delete':
@@ -348,15 +351,21 @@ const eventEncoding = {
 
       case 'addWriter':
       case 'roles/addWriter':
+      case 'roles/removeWriter':
         event.key = c.string.decode(state)
         if (state.end > state.start) {
-          // Check if there are more fields (author, timestamp)
-          // These fields are optional for backward compatibility
-          // Try-catch handles both old format (key only) and new format (key + author + timestamp)
+          // Check if there are more fields (author, timestamp, signature)
+          // These fields are optional for backward compatibility.
+          // Try-catch handles old formats (key only, or key+author+timestamp
+          // without a signature) alongside the current format.
           try {
             event.author = c.string.decode(state)
             if (state.end > state.start) {
               event.timestamp = c.uint.decode(state)
+              if (state.end > state.start) {
+                const sig = c.buffer.decode(state)
+                event.signature = sig.length > 0 ? sig.toString('hex') : null
+              }
             }
           } catch {
             // No more fields - old format event
@@ -374,6 +383,13 @@ const eventEncoding = {
         event.timestamp = c.uint.decode(state)
         const sig4 = c.buffer.decode(state)
         event.signature = sig4.length > 0 ? sig4.toString('hex') : null
+        break
+
+      case 'context/init':
+        // The context's own record of how it is applied: its topology
+        // version and app rules id (spec 003, data-model.md).
+        event.version = c.uint.decode(state)
+        event.rules = c.string.decode(state)
         break
 
       case 'message':
@@ -394,6 +410,16 @@ const eventEncoding = {
  * @returns {Buffer} The encoded event as a Buffer
  */
 function encodeEvent (event) {
+  // Fail fast on an unregistered/mistyped event.type here, at the one
+  // actual entry point every caller goes through — without this,
+  // preencode/encode's own `EVENT_TYPES[event.type] || 0` fallback would
+  // silently write typeCode 0 with none of the type's real fields, and
+  // decode would hand back only `{ type: undefined, timestamp }`, with
+  // every other field permanently lost and no error anywhere to say why.
+  if (!event || typeof event.type !== 'string' || !Object.prototype.hasOwnProperty.call(EVENT_TYPES, event.type)) {
+    throw new Error(`Unknown event type: ${event &amp;&amp; typeof event.type === 'string' ? JSON.stringify(event.type) : String(event &amp;&amp; event.type)}`)
+  }
+
   const state = { start: 0, end: 0, buffer: null }
   eventEncoding.preencode(state, event)
   state.buffer = b4a.allocUnsafe(state.end)
@@ -410,7 +436,20 @@ function encodeEvent (event) {
 function decodeEvent (buffer) {
   if (!buffer) return null
   const state = { start: 0, end: buffer.length, buffer }
-  return eventEncoding.decode(state)
+  try {
+    return eventEncoding.decode(state)
+  } catch {
+    // Malformed/truncated/adversarial bytes must never crash the caller —
+    // this is wired directly into Autobase's apply loop (context-base.js
+    // passes decodeEvent straight through as valueEncoding.decode) and
+    // UserCore's read paths, none of which wrap this call in their own
+    // try/catch. Returns the same safe shape already used for a structurally
+    // valid but unrecognized event type, NOT null — null specifically means
+    // "no buffer at all" to callers like GraphView's UserCore read loop
+    // (view.js), which stops processing on a null event; a corrupted event
+    // should be skipped, not mistaken for the end of the stream.
+    return { type: undefined, timestamp: undefined, decodeError: true }
+  }
 }
 
 /**
@@ -437,26 +476,19 @@ module.exports = {
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

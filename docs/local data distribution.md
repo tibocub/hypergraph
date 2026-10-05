@@ -58,11 +58,12 @@ names.
    - ~183 bytes of on-disk overhead per stored block, 11 blocks per typical item
    - No compression at the storage layer
 
-2. **Every peer rebuilds every context view:**
-   - Joining a context means replaying all of it, and Autobase then commits the whole view at
-     once — measured, a 1M-entry context does not fit an 8 GB heap
-   - Fast-forward (download the signed view instead) would remove this; see
-     `specs/002-scale-indexing/research.md` R13
+2. **Replaying a large context is expensive** — but no longer required:
+   - A peer that replays rebuilds the whole view and Autobase commits it at once (a 1M-entry
+     context does not fit an 8 GB heap that way)
+   - Since spec 003, a peer far behind fast-forwards to the creator-signed state instead, and
+     since spec 004 a listing can come from the context alone: a 1M-entry archive is browsable
+     1.2 s after joining, with 60 MB on disk
 
 3. **No garbage collection:**
    - Tombstones remain in logs

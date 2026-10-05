@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> context-base.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: context-base.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: context-base.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>context-base.js</h1>
-                </header>
-                
 
 
 
@@ -96,7 +37,15 @@ const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
-const { toSortableTs, stableTagHash } = require('./utils')
+const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId, relationDataProblem } = require('./utils')
+const tuning = require('./tuning')
+
+// Where a context's topology record lives in its view (spec 003).
+const CONTEXT_RECORD_KEY = 'meta:context'
+
+function sleep (ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 /**
  * ContextBase manages collaborative contexts using Autobase.
@@ -112,6 +61,12 @@ module.exports = class ContextBase extends ReadyResource {
   #namespace
   #base
   #viewBee
+  #counts // edge counters pending for the current apply chunk, else null
+  #members // every member the system listed at the last update(), see writerKeys()
+  #fastForward
+  #fastForwards // how many times this peer fast-forwarded, reported by status()
+  #rules // app rules { id, validate } or null (spec 003, US3)
+  #interrupted // why this context stopped applying, or null
   #keyEncoding
   #valueEncoding
   #roleBase
@@ -148,9 +103,16 @@ module.exports = class ContextBase extends ReadyResource {
     this.#writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
     this.#base = null
     this.#viewBee = null
+    this.#members = []
     this.#pendingWriterRequests = new Map()
     this.#emitter = new EventEmitter()
     this.#verifySignatures = opts.verifySignatures !== undefined ? opts.verifySignatures : true
+    // Join by adopting the indexers' signed state instead of replaying history
+    // (spec 003). false: replay and verify everything on this peer.
+    this.#fastForward = opts.fastForward !== false
+    this.#fastForwards = 0
+    this.#rules = opts.rules || null
+    this.#interrupted = null
 
     // Use provided keyPair if available
     // In open mode, we don't generate a keyPair to allow Autobase to handle local core creation
@@ -167,15 +129,30 @@ module.exports = class ContextBase extends ReadyResource {
     const autobaseOpts = {
       open: this.#openView.bind(this),
       apply: this.#applyView.bind(this),
-      valueEncoding: { encode: encodeEvent, decode: decodeEvent },
-      ackInterval: 0,
+      // No valueEncoding: Autobase gets bytes we encode ourselves (append)
+      // and decode ourselves (#applyView). Autobase stores node values
+      // verbatim either way, so the oplog bytes are identical to letting it
+      // run our codec — but Autobase's batched append encodes an array as ONE
+      // value with any non-binary encoding, which made batched appends
+      // impossible. See specs/002-scale-indexing/research.md R3.
+      // Indexers acknowledge new history so it becomes confirmed (signed) —
+      // without this, multi-writer contexts never confirmed anything
+      // (specs/003-fast-forward-contexts/research.md R1).
+      ackInterval: tuning.ACK_INTERVAL,
       ackThreshold: 0,
-      fastForward: false
+      fastForward: this.#fastForward
     }
 
     // Let Autobase handle local writer creation automatically
     // Closed mode enforcement is at the application level via role checks, not at Autobase level
     this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
+    this.#base.on('fast-forward', () => { this.#fastForwards++ })
+    // Autobase closes the base after an interrupt (unknown context version,
+    // rules mismatch): remember why, so status() and openContext() can say.
+    this.#base.on('interrupt', (reason) => {
+      this.#interrupted = String(reason)
+      this.#emitter.emit('interrupt', this.#interrupted)
+    })
     await this.#base.ready()
   }
 
@@ -228,18 +205,126 @@ module.exports = class ContextBase extends ReadyResource {
     return this.#viewBee
   }
 
-  async #applyView (batch, view, host) {
-    for (const { value: event, from, length } of batch) {
+  async #applyView (batch, rawView, host) {
+    // Index writes go through a Hyperbee batch: one view append per chunk of
+    // `tuning.INDEX_BATCH` events instead of one per entry (research R1/R2).
+    // Chunked rather than one batch per apply call, so memory stays bounded
+    // even when a writer (possibly a hostile one) appends a huge batch.
+    // Autobase still owns atomicity across reorgs: it truncates the view
+    // itself, whatever we flushed.
+    let view = rawView.batch()
+    let pending = 0
+    // Edge counters are accumulated here and written once per chunk: 1,000
+    // relations into one folder would otherwise rewrite that folder's count
+    // 1,000 times, each a block every joining peer has to build and commit.
+    this.#counts = new Map()
+    const flush = async () => {
+      for (const [key, count] of this.#counts) await view.put(key, { count })
+      this.#counts.clear()
+      await view.flush()
+    }
+    try {
+      await this.#applyNodes(batch, host, () => view, async () => {
+        if (++pending &lt; tuning.INDEX_BATCH) return
+        await flush()
+        view = rawView.batch()
+        pending = 0
+      })
+      await flush()
+    } finally {
+      this.#counts = null
+      await view.close()
+    }
+
+    await this.#drainPendingModeration(rawView)
+    await this.#drainPendingWriterChanges(rawView, host)
+  }
+
+  async #applyNodes (batch, host, currentView, beforeEvent) {
+    let record = null
+    for (const { value, from, length } of batch) {
+      // Count first: this may flush and open a fresh batch, which is then
+      // the one every write for this event must go to.
+      await beforeEvent()
+      const view = currentView()
+      // decodeEvent never throws (malformed bytes come back as a
+      // decodeError marker) — and a node with no value at all is skipped
+      // rather than crashing apply for every peer (Principle I).
+      if (!value) continue
+      const event = decodeEvent(value)
+      if (!event || event.decodeError) continue
+
+      if (event.type === 'context/init') {
+        await this.#applyContextInit(view, event, from, host)
+        record = null // re-read: it may have just been written
+        continue
+      }
+
+      // Every peer must apply this context the same way. A version this code
+      // doesn't know, or app rules other than the ones the context was
+      // created with, stop apply rather than build a different index.
+      if (record === null) record = await this.#record(view)
+      const refusal = this.#refusal(record)
+      if (refusal) {
+        host.interrupt(refusal)
+        return
+      }
+
       if (event.type === 'addWriter') {
         if (this.#writeMode !== 'open') continue
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
-        await host.addWriter(key, { indexer: true })
+        await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
         continue
       }
 
       if (event.type === 'roles/addWriter') {
+        // SECURITY: this is the real, enforced boundary — it runs
+        // identically on every peer regardless of how the event got into
+        // the log (the "nice" addWriter() method's own check, further
+        // down, is a client-side fail-fast convenience only; append()
+        // bypasses it entirely, confirmed directly). Only enforced in
+        // closed mode: open mode's whole point is that anyone can add
+        // anyone, so author-forgery protection has nothing to protect
+        // there, and requiring it would break every existing open-mode
+        // caller for no security benefit.
+        if (this.#writeMode === 'closed') {
+          if (!this.#verifyWriterChangeSignature(event)) continue
+          const allowed = await this.#isWriterChangeAllowed(event.author)
+          if (allowed === null) {
+            // RoleBase not yet synced on this peer — defer rather than
+            // permanently drop. Confirmed empirically: a peer that hasn't
+            // finished syncing its RoleBase by the time this event is
+            // first processed would otherwise lose this grant forever,
+            // since Autobase doesn't re-run apply for past entries just
+            // because unrelated data (the RoleBase) later changes.
+            await this.#queuePendingWriterChange(view, event)
+            continue
+          }
+          if (!allowed) continue
+        }
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
-        await host.addWriter(key, { indexer: true })
+        await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
+        continue
+      }
+
+      if (event.type === 'roles/removeWriter') {
+        if (this.#writeMode === 'closed') {
+          if (!this.#verifyWriterChangeSignature(event)) continue
+          const allowed = await this.#isWriterChangeAllowed(event.author)
+          if (allowed === null) {
+            await this.#queuePendingWriterChange(view, event)
+            continue
+          }
+          if (!allowed) continue
+        }
+        const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
+        try {
+          host.removeWriter(key)
+        } catch (err) {
+          // host.removeWriter() itself throws if this would remove the
+          // last indexer — not a reason to abort the rest of this batch.
+          safetyCatch(err)
+        }
         continue
       }
 
@@ -264,8 +349,6 @@ module.exports = class ContextBase extends ReadyResource {
           break
       }
     }
-
-    await this.#drainPendingModeration(view)
   }
 
   #stableModerationHash (event) {
@@ -287,27 +370,12 @@ module.exports = class ContextBase extends ReadyResource {
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
-  #stableRelationHash (event) {
-    const payload = {
-      from: event.from,
-      to: event.to,
-      relationType: event.relationType
-    }
-
-    const msg = {
-      op: event.type,
-      payload,
-      author: event.author,
-      timestamp: event.timestamp
-    }
-
-    // For relation/delete, include createdAt
-    if (event.createdAt) {
-      msg.createdAt = event.createdAt
-    }
-
-    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
-  }
+  // How far into the future a moderation event's own claimed timestamp is
+  // allowed to be, relative to this peer's clock at the moment it's
+  // applied. See the rejection check in #verifyModerationSignature for why
+  // this exists — it is not just clock-skew tolerance, it closes a real
+  // exploit.
+  static #MODERATION_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
 
   #verifyModerationSignature (event) {
     if (!event || event.type !== 'moderation/action') return false
@@ -323,6 +391,29 @@ module.exports = class ContextBase extends ReadyResource {
 
     // v1 constraint: target MUST be an entityId (string); no author/context targets
     // (we only validate type here; semantics belong to apps)
+
+    // SECURITY: consumers of moderation history (including this library's
+    // own reference ForumPolicy, examples/forum/policy/index.js) resolve a
+    // conflict between a 'content.hide' and a later 'content.reveal' (or
+    // vice versa) on the same target by picking whichever event's
+    // `timestamp` is larger — a timestamp is part of the signed payload
+    // (see #stableModerationHash), so it's the signer's own honest claim,
+    // never independently verified. Without this bound, anyone holding
+    // even ONE of those two permissions (by default, content.reveal is
+    // admin/owner-only, but content.hide is also granted to plain `mod`)
+    // could sign a single event with an arbitrarily large timestamp and
+    // make it permanently un-overridable by any real action from anyone —
+    // including a more-trusted role — since no genuine future timestamp
+    // could ever exceed a forged one. This only needs to bound the future
+    // side: an old timestamp just makes an event lose comparisons, which
+    // isn't useful to an attacker trying to make their own action stick.
+    // Also robust to normal replication delay — this compares against
+    // wall-clock time at whatever moment the event is actually applied, not
+    // against when it was created, so a peer catching up long after being
+    // offline is unaffected; only a timestamp claiming to be from the
+    // future relative to whenever it's actually checked is rejected, and
+    // real time only moves forward.
+    if (event.timestamp > Date.now() + ContextBase.#MODERATION_MAX_FUTURE_SKEW_MS) return false
 
     let publicKey = null
     let signature = null
@@ -356,7 +447,7 @@ module.exports = class ContextBase extends ReadyResource {
       return false
     }
 
-    const digest = this.#stableRelationHash(event)
+    const digest = stableRelationHash(event, this.key ? this.key.toString('hex') : null)
     return hypercoreCrypto.verify(digest, signature, publicKey)
   }
 
@@ -378,8 +469,129 @@ module.exports = class ContextBase extends ReadyResource {
       return false
     }
 
-    const digest = stableTagHash(event)
+    const digest = stableTagHash(event, this.key ? this.key.toString('hex') : null)
     return hypercoreCrypto.verify(digest, signature, publicKey)
+  }
+
+  #verifyWriterChangeSignature (event) {
+    if (!event) return false
+    if (event.type !== 'roles/addWriter' &amp;&amp; event.type !== 'roles/removeWriter') return false
+    if (typeof event.key !== 'string' || event.key.length === 0) return false
+    if (typeof event.author !== 'string' || event.author.length === 0) return false
+    if (typeof event.timestamp !== 'number') return false
+    if (typeof event.signature !== 'string' || event.signature.length === 0) return false
+
+    let publicKey = null
+    let signature = null
+    try {
+      publicKey = b4a.from(event.author, 'hex')
+      signature = b4a.from(event.signature, 'hex')
+    } catch {
+      return false
+    }
+
+    const digest = this.#stableWriterChangeHash(event)
+    return hypercoreCrypto.verify(digest, signature, publicKey)
+  }
+
+  #stableWriterChangeHash (event) {
+    const msg = {
+      op: event.type,
+      key: event.key,
+      author: event.author,
+      timestamp: event.timestamp
+    }
+    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+  }
+
+  /**
+   * Whether event.author has permission to add/remove writers on this
+   * context. Mirrors #isModerationAllowed's pattern: returns null (not
+   * false) if no RoleBase is attached at all, so open-mode contexts
+   * (which don't require one) aren't blocked by this check — closed-mode
+   * callers are expected to check for null themselves and treat it as
+   * "not authorized", since closed mode requires a RoleBase to be
+   * meaningful at all.
+   */
+  async #isWriterChangeAllowed (authorPubkeyHex) {
+    if (!this.#roleBase || typeof this.#roleBase.getRegistry !== 'function' || typeof this.#roleBase.can !== 'function') {
+      return null
+    }
+
+    // Bounded retry: the RoleBase and this context are two independent
+    // Autobase structures that replicate concurrently — the RoleBase data
+    // for a given author may simply not have arrived yet at the moment
+    // this specific event is first processed. Apply only runs when new
+    // data arrives for THIS context's own log, so if nothing else is ever
+    // appended here, a single immediate "not ready" would leave this
+    // pending forever with no way to re-check (confirmed empirically).
+    // Polling here for a few seconds covers the common case; the pending-
+    // queue fallback in the caller remains as a last resort if the
+    // RoleBase genuinely never arrives within this window.
+    let registry = null
+    for (let i = 0; i &lt; 40; i++) {
+      try {
+        registry = await this.#roleBase.getRegistry()
+      } catch {
+        registry = null
+      }
+      if (registry) break
+      await sleep(250)
+    }
+
+    if (!registry) return null
+
+    try {
+      return await this.#roleBase.can(authorPubkeyHex, 'context.write')
+    } catch {
+      return false
+    }
+  }
+
+  async #queuePendingWriterChange (view, event) {
+    const key = `w:p:${event.type}:${event.key}:${event.timestamp}`
+    await view.put(key, { event })
+  }
+
+  async #drainPendingWriterChanges (view, host) {
+    // If registry isn't ready yet, keep pending items — mirrors
+    // #drainPendingModeration's own guard.
+    if (!this.#roleBase || typeof this.#roleBase.getRegistry !== 'function') return
+
+    let registry = null
+    try {
+      registry = await this.#roleBase.getRegistry()
+    } catch {
+      registry = null
+    }
+    if (!registry) return
+
+    const stream = view.createReadStream({ gte: 'w:p:', lt: 'w:p:' + '\uffff' })
+    for await (const entry of stream) {
+      const v = entry.value
+      if (!v || !v.event || typeof v.event !== 'object') {
+        await view.del(entry.key)
+        continue
+      }
+
+      const event = v.event
+      const allowed = await this.#isWriterChangeAllowed(event.author)
+      if (allowed === null) continue // still not ready, leave queued
+
+      await view.del(entry.key)
+      if (!allowed) continue // now resolved: explicitly denied
+
+      const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
+      if (event.type === 'roles/addWriter') {
+        await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
+      } else if (event.type === 'roles/removeWriter') {
+        try {
+          host.removeWriter(key)
+        } catch (err) {
+          safetyCatch(err)
+        }
+      }
+    }
   }
 
   async #applyModerationAction (view, event, from, length) {
@@ -411,11 +623,23 @@ module.exports = class ContextBase extends ReadyResource {
       return null
     }
 
+    // Bounded retry, matching #isWriterChangeAllowed's own reasoning: the
+    // RoleBase and this context are two independent Autobase structures
+    // that replicate concurrently, so the registry may simply not have
+    // arrived yet at the moment this specific event is first processed.
+    // The pending-queue fallback in the caller remains as a last resort
+    // (and is drainable from any update() call for moderation, not just
+    // during apply, unlike writer-changes) — this just resolves the
+    // common case faster, without waiting for a later update() call.
     let registry = null
-    try {
-      registry = await this.#roleBase.getRegistry()
-    } catch {
-      registry = null
+    for (let i = 0; i &lt; 40; i++) {
+      try {
+        registry = await this.#roleBase.getRegistry()
+      } catch {
+        registry = null
+      }
+      if (registry) break
+      await sleep(250)
     }
 
     if (!registry) return null
@@ -457,9 +681,207 @@ module.exports = class ContextBase extends ReadyResource {
     await view.put(byAuthorKey, value)
   }
 
+  // The context's own record of how it is applied (spec 003, data-model.md).
+  // Honoured only from the bootstrap writer — the context's creator — and only
+  // once, so no other writer can change how every peer applies the context.
+  async #applyContextInit (view, event, from, host) {
+    if (!from || !from.key || !this.#base.key || !from.key.equals(this.#base.key)) return
+    if (await view.get(CONTEXT_RECORD_KEY)) return
+    const record = { version: event.version, rules: event.rules || '' }
+    await view.put(CONTEXT_RECORD_KEY, record)
+    const refusal = this.#refusal(record)
+    if (refusal) host.interrupt(refusal)
+  }
+
+  // Why this peer must not apply a context with this record, or null.
+  #refusal (record) {
+    if (record.version !== 1 &amp;&amp; record.version !== 2) return `unsupported context version ${record.version}`
+    const mine = this.#rules ? this.#rules.id : ''
+    if (record.rules !== mine) {
+      return `Context rules mismatch: context uses "${record.rules}", this peer provides "${mine}"`
+    }
+    return null
+  }
+
+  /**
+   * Run the app's rules on an app data event. Called after the built-in
+   * checks passed, before anything is written. Only a literal `true`
+   * accepts; a throw, a rejection or any other value rejects — a broken rule
+   * must never crash apply (spec 003, FR-015).
+   */
+  async #passesRules (view, event) {
+    if (!this.#rules) return true
+    try {
+      return (await this.#rules.validate(event, this.#reader(view))) === true
+    } catch (err) {
+      safetyCatch(err)
+      return false
+    }
+  }
+
+  // Read-only, layout-independent access to the index as it stands inside
+  // the current apply chunk (so a rule sees earlier events of the same
+  // batch), for app rules. Contract: specs/003-fast-forward-contexts/contracts/api.md
+  #reader (view) {
+    const counts = this.#counts
+    const count = async (key) => {
+      if (counts &amp;&amp; counts.has(key)) return counts.get(key)
+      const entry = await view.get(key)
+      return entry &amp;&amp; entry.value ? entry.value.count : 0
+    }
+    const edgeRecord = (value) => ({
+      from: value.from,
+      to: value.to,
+      type: value.type,
+      author: value.author,
+      createdAt: value.createdAt,
+      ...(typeof value.value === 'number' ? { value: value.value } : {}),
+      ...(typeof value.data === 'string' ? { data: value.data } : {})
+    })
+    return Object.freeze({
+      async hasEdge (from, type, to) {
+        const ref = await view.get(`er:${from}:${type}:${to}`)
+        if (!ref || !ref.value || !ref.value.ref) return false
+        const edge = await view.get(ref.value.ref)
+        return !!(edge &amp;&amp; edge.value &amp;&amp; !edge.value.deleted)
+      },
+      async edges (entityId, opts = {}) {
+        const direction = opts.direction === 'in' ? 'in' : 'out'
+        const limit = typeof opts.limit === 'number' ? opts.limit : Infinity
+        const base = direction === 'in' ? `i:in:${entityId}:` : `e:${entityId}:`
+        const prefix = opts.type ? `${base}${opts.type}:` : base
+        const out = []
+        for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff' })) {
+          if (out.length >= limit) break
+          const edge = direction === 'in' ? await view.get(entry.value.ref) : entry
+          if (!edge || !edge.value || edge.value.deleted) continue
+          out.push(edgeRecord(edge.value))
+        }
+        return out
+      },
+      countIn: (entityId, type) => count(`cnt:in:${entityId}:${type}`),
+      countOut: (entityId, type) => count(`cnt:out:${entityId}:${type}`),
+      async hasTag (entityId, tag) {
+        const prefix = `tref:${tag}:${entityId}:`
+        for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff', limit: 1 })) {
+          if (entry) return true
+        }
+        return false
+      }
+    })
+  }
+
+  /**
+   * The context's topology record. Contexts created before spec 003 have
+   * none and are version 1.
+   *
+   * @returns {Promise&lt;{ version: number, rules: string }>}
+   */
+  async #record (view = this.#base.view) {
+    const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
+    return entry &amp;&amp; entry.value ? entry.value : { version: 1, rules: '' }
+  }
+
+  /**
+   * Why this peer can't apply this context, if that is already known locally:
+   * it was interrupted, or the context's record is held locally and refuses
+   * this peer's rules or version. Never waits on the network — a fresh peer
+   * that hasn't received the record yet finds out when it applies.
+   *
+   * @returns {Promise&lt;string|null>}
+   */
+  async refusal () {
+    if (!this.opened) await this.ready()
+    if (this.#interrupted) return this.#interrupted
+    const view = this.#base.view
+    if (!view || !view.core || view.core.length === 0) return null
+    let entry = null
+    try {
+      entry = await view.get(CONTEXT_RECORD_KEY, { wait: false })
+    } catch {
+      return null
+    }
+    return entry &amp;&amp; entry.value ? this.#refusal(entry.value) : null
+  }
+
+  // Whether a writer added now indexes. Decided from the context's own record,
+  // so every peer decides the same: version 1 contexts (before spec 003) make
+  // every writer an indexer; version 2 keeps the creator as the only one.
+  async #addedWriterIndexes (view, host) {
+    const { version } = await this.#record(view)
+    if (version === 1) return true
+    if (version === 2) return false
+    host.interrupt(`unsupported context version ${version}`)
+    return false
+  }
+
+  // Refresh the full member list writerKeys() reports. Reads the system's
+  // member table, which Autobase says is not safe during apply — so only
+  // ever called from update(), outside it.
+  async #refreshMembers () {
+    const system = this.#base &amp;&amp; this.#base.system
+    if (!system || typeof system.list !== 'function') return
+    const members = []
+    try {
+      for await (const { key, value } of system.list()) {
+        if (value &amp;&amp; value.isRemoved) continue
+        members.push(b4a.toString(key, 'hex'))
+      }
+    } catch (err) {
+      safetyCatch(err)
+      return
+    }
+    this.#members = members
+  }
+
+  /**
+   * Where this context stands: its topology, this peer's role in it, and how
+   * much of its history is confirmed (signed by the indexers, so it can no
+   * longer be reordered).
+   *
+   * @returns {Promise&lt;{ version: number, rules: string, indexers: string[], fastForwards: number, interrupted: string|null, isIndexer: boolean, writable: boolean, length: number, confirmedLength: number }>}
+   */
+  async status () {
+    if (!this.opened) await this.ready()
+    const { version, rules } = this.#interrupted ? { version: null, rules: null } : await this.#record()
+    // The indexer set as the system knows it right now. A writer's own
+    // isIndexer flag only flips once that change is itself confirmed.
+    const system = this.#base.system
+    const indexers = system &amp;&amp; Array.isArray(system.indexers)
+      ? system.indexers.map(w => b4a.toString(w.key, 'hex'))
+      : []
+    return {
+      version,
+      rules,
+      indexers,
+      isIndexer: !!this.#base.isIndexer,
+      writable: !!this.#base.writable,
+      length: this.#base.length,
+      confirmedLength: this.#base.signedLength,
+      fastForwards: this.#fastForwards,
+      interrupted: this.#interrupted
+    }
+  }
+
   async #applyRelation (view, event) {
     // Verify signature before applying (if enabled)
     if (this.#verifySignatures &amp;&amp; !this.#verifyRelationSignature(event)) return
+
+    // SECURITY: relate() cannot cheaply check that its caller actually owns
+    // `from` (legitimately, `from` is very often someone ELSE's entity —
+    // a reply, a vote). So a validly-signed relation event claiming
+    // `from: &lt;an entity the signer doesn't own>` is not a forged
+    // signature, just an honest lie about provenance — and it runs
+    // identically on every peer regardless of how the event reached the
+    // log, the same enforcement model as roles/addWriter above. Rejected
+    // here (not just filtered at getEdges() read time in view.js) so the
+    // cnt:in/cnt:out counters — which getEdges()'s own defensive filter
+    // cannot reach, since countEdgesIn/Out() read those counters directly
+    // rather than iterating and re-checking every edge — never count a
+    // spoofed edge in the first place.
+    if (authorFromEntityId(event.from) !== event.author) return
+    if (relationDataProblem(event.data)) return
+    if (!(await this.#passesRules(view, event))) return
 
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
     const existingRef = await view.get(edgeRefKey)
@@ -480,7 +902,9 @@ module.exports = class ContextBase extends ReadyResource {
       type: event.relationType,
       author: event.author,
       createdAt: event.timestamp,
-      deleted: false
+      deleted: false,
+      value: typeof event.value === 'number' ? event.value : undefined,
+      data: typeof event.data === 'string' ? event.data : undefined
     })
 
     await view.put(edgeRefKey, { ref: key })
@@ -489,25 +913,35 @@ module.exports = class ContextBase extends ReadyResource {
     const inKey = `i:in:${event.to}:${event.relationType}:${createdAtKey}:${event.from}`
     await view.put(inKey, { ref: key })
 
-    const inCountKey = `cnt:in:${event.to}:${event.relationType}`
-    const outCountKey = `cnt:out:${event.from}:${event.relationType}`
-
-    const inExisting = await view.get(inCountKey)
-    const outExisting = await view.get(outCountKey)
-
-    const nextIn = Math.max(0, (inExisting &amp;&amp; inExisting.value ? inExisting.value.count : 0) + 1)
-    const nextOut = Math.max(0, (outExisting &amp;&amp; outExisting.value ? outExisting.value.count : 0) + 1)
-
     // In P2P delivery, a delete event may arrive before its create. The count is clamped at 0 on delete,
     // but will not self-correct when the create arrives later. Counts may read one low on recently-synced peers.
+    await this.#bumpCount(view, `cnt:in:${event.to}:${event.relationType}`, 1)
+    await this.#bumpCount(view, `cnt:out:${event.from}:${event.relationType}`, 1)
+  }
 
-    await view.put(inCountKey, { count: nextIn })
-    await view.put(outCountKey, { count: nextOut })
+  // Add `delta` to an edge counter, clamped at 0. Written at the end of the
+  // apply chunk (see #applyView), so repeated bumps cost one block.
+  async #bumpCount (view, key, delta) {
+    let count = this.#counts.get(key)
+    if (count === undefined) {
+      const existing = await view.get(key)
+      count = existing &amp;&amp; existing.value ? existing.value.count : 0
+    }
+    this.#counts.set(key, Math.max(0, count + delta))
   }
 
   async #applyRelationDelete (view, event) {
     // Verify signature before applying (if enabled)
     if (this.#verifySignatures &amp;&amp; !this.#verifyRelationSignature(event)) return
+    if (!(await this.#passesRules(view, event))) return
+
+    // NOTE: deliberately no from-ownership check here, unlike
+    // #applyRelation above. unrelate() is intentionally permissive — any
+    // authorized writer can remove a relation, not just whoever originally
+    // created it (see "unrelate by a different writer" in
+    // test/brittle/core/relations.js). Creating a relation asserts a new
+    // claim of origin, which is what needs the from-ownership check;
+    // removing one doesn't fabricate anything.
 
     const createdAtKey = toSortableTs(event.createdAt)
     const key = `e:${event.from}:${event.relationType}:${createdAtKey}:${event.to}`
@@ -524,22 +958,14 @@ module.exports = class ContextBase extends ReadyResource {
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
     await view.del(edgeRefKey)
 
-    const inCountKey = `cnt:in:${event.to}:${event.relationType}`
-    const outCountKey = `cnt:out:${event.from}:${event.relationType}`
-
-    const inExisting = await view.get(inCountKey)
-    const outExisting = await view.get(outCountKey)
-
-    const nextIn = Math.max(0, (inExisting &amp;&amp; inExisting.value ? inExisting.value.count : 0) - 1)
-    const nextOut = Math.max(0, (outExisting &amp;&amp; outExisting.value ? outExisting.value.count : 0) - 1)
-
-    await view.put(inCountKey, { count: nextIn })
-    await view.put(outCountKey, { count: nextOut })
+    await this.#bumpCount(view, `cnt:in:${event.to}:${event.relationType}`, -1)
+    await this.#bumpCount(view, `cnt:out:${event.from}:${event.relationType}`, -1)
   }
 
   async #applyTag (view, event) {
     // Verify signature before applying
     if (!this.#verifyTagSignature(event)) return
+    if (!(await this.#passesRules(view, event))) return
 
     const key = `t:${event.tag}:${toSortableTs(event.timestamp)}:${event.entityId}:${event.author}`
     const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
@@ -556,6 +982,7 @@ module.exports = class ContextBase extends ReadyResource {
   async #applyTagDelete (view, event) {
     // Verify signature before applying
     if (!this.#verifyTagSignature(event)) return
+    if (!(await this.#passesRules(view, event))) return
 
     const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
     const ref = await view.get(refKey)
@@ -564,6 +991,7 @@ module.exports = class ContextBase extends ReadyResource {
   }
 
   async #applyMessage (view, event) {
+    if (!(await this.#passesRules(view, event))) return
     // Store message in the view with a unique key
     const key = `msg:${event.timestamp}:${event.author.slice(0, 8)}`
     await view.put(key, {
@@ -632,14 +1060,18 @@ module.exports = class ContextBase extends ReadyResource {
     const base = this.#base
     if (!base) return []
 
-    const keys = []
+    // Every member the system lists, as of the last update(): Autobase's
+    // activeWriters below only includes a non-indexing writer once it has
+    // written something, and version 2 contexts make most writers
+    // non-indexers (spec 003).
+    const keys = [...this.#members]
 
     try {
-      const inputs = base.inputs
-      if (Array.isArray(inputs)) {
-        for (const input of inputs) {
-          if (input &amp;&amp; input.key) keys.push(input.key.toString('hex'))
-        }
+      // Autobase (7.x) has no `inputs`/`writers` array — the live writer set
+      // is `activeWriters`, an iterable of Writer instances, each wrapping
+      // its own core at `.core`.
+      for (const w of base.activeWriters) {
+        if (w &amp;&amp; w.core &amp;&amp; w.core.key) keys.push(w.core.key.toString('hex'))
       }
     } catch {}
 
@@ -670,22 +1102,76 @@ module.exports = class ContextBase extends ReadyResource {
     // This is required for P2P replication to work correctly
     const opts = this.#writeMode === 'open' ? { optimistic: true } : {}
     
-    await this.#base.append(event, opts)
+    if (this.#interrupted) throw new Error(this.#interrupted)
+    try {
+      await this.#base.append(encodeEvent(event), opts)
+    } catch (err) {
+      // If this append is what made the context stop (its own record refused
+      // this peer), say why rather than Autobase's generic "closing".
+      if (this.#interrupted) throw new Error(this.#interrupted)
+      throw err
+    }
     await this.#base.update()
+    return { length: this.#base.length }
+  }
+
+  /**
+   * Append many events as ONE Autobase batch.
+   *
+   * Every peer replays a context one writer batch at a time — each with its
+   * own apply call and system flush — so grouping a bulk write here is what
+   * keeps it cheap for every future member, not just for this writer (see
+   * specs/002-scale-indexing/research.md R2).
+   *
+   * The `optimistic` flag `append()` uses in open mode is left off here:
+   * with an array, Autobase splits the batch around the optimistic block and
+   * hands apply nodes with no value (research R3). A peer that is not yet a
+   * writer falls back to one `append()` per event, which is exactly what it
+   * would have done without this method.
+   *
+   * @param {Object[]} events
+   * @returns {Promise&lt;{length: number}>} The length of the base after append
+   */
+  async appendBatch (events) {
+    if (!this.opened) await this.ready()
+    if (events.length === 0) return { length: this.#base.length }
+
+    // Encode everything first, so a bad event throws before anything is written.
+    const encoded = events.map(encodeEvent)
+
+    if (!this.#base.writable) {
+      for (const event of events) await this.append(event)
+      return { length: this.#base.length }
+    }
+
+    if (this.#interrupted) throw new Error(this.#interrupted)
+    try {
+      await this.#base.append(encoded)
+      await this.#base.update()
+    } catch (err) {
+      if (this.#interrupted) throw new Error(this.#interrupted)
+      throw err
+    }
     return { length: this.#base.length }
   }
 
   /**
    * Add a writer to the context.
    *
-   * In 'open' mode, any writer can be added. In 'closed' mode, requires the
-   * 'context.write' privilege from the attached RoleBase.
+   * In 'open' mode, any writer can be added; no keyPair/signature is
+   * needed, since there's no permission check for a forged author to
+   * threaten. In 'closed' mode, requires the 'context.write' privilege
+   * from the attached RoleBase, and the event is cryptographically signed
+   * with opts.keyPair and verified again at the apply layer (the real,
+   * enforced security boundary — this method's own check is a
+   * client-side fail-fast convenience, since a caller could otherwise
+   * bypass it entirely via the generic append() method).
    *
    * @param {Buffer|string} coreKey - The writer's core key (hex string or Buffer)
    * @param {Object} [opts] - Options object
-   * @param {string} [opts.author] - Required in 'closed' mode: the author's public key hex
+   * @param {Object} [opts.keyPair] - Required in closed mode: { publicKey, secretKey } to sign the event
    * @returns {Promise&lt;void>}
-   * @throws {Error} If RoleBase is required but not attached, or authorization fails
+   * @throws {Error} If keyPair is missing in closed mode, RoleBase is required but not attached, or authorization fails
    */
   async addWriter (coreKey, opts = {}) {
     if (!this.opened) await this.ready()
@@ -693,10 +1179,74 @@ module.exports = class ContextBase extends ReadyResource {
     const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
     const keyHex = key.toString('hex')
 
-    // Add the writer by appending a roles/addWriter event to the system core
-    // This is the correct way to add writers in Autobase
-    await this.#base.append({ type: 'roles/addWriter', key: keyHex })
-    await this.#base.update()
+    if (this.#writeMode !== 'closed') {
+      await this.append({ type: 'roles/addWriter', key: keyHex })
+      return
+    }
+
+    if (!opts.keyPair || !opts.keyPair.publicKey || !opts.keyPair.secretKey) {
+      throw new Error('opts.keyPair (with publicKey and secretKey) is required in closed mode to sign the addWriter event')
+    }
+    const author = b4a.isBuffer(opts.keyPair.publicKey) ? opts.keyPair.publicKey.toString('hex') : String(opts.keyPair.publicKey)
+
+    if (!this.#roleBase || typeof this.#roleBase.can !== 'function') {
+      throw new Error('RoleBase is required for closed-mode writer authorization but is not attached')
+    }
+    const authorized = await this.#roleBase.can(author, 'context.write')
+    if (!authorized) {
+      throw new Error('Not authorized to add writers to this context')
+    }
+
+    const event = { type: 'roles/addWriter', key: keyHex, author, timestamp: Date.now(), signature: null }
+    const digest = this.#stableWriterChangeHash(event)
+    event.signature = hypercoreCrypto.sign(digest, opts.keyPair.secretKey).toString('hex')
+
+    await this.append(event)
+  }
+
+  /**
+   * Remove a writer from the context. Same authorization/signing model as
+   * addWriter() (unrestricted in open mode, signed + permission-checked in
+   * closed mode). The Autobase-level removal itself refuses to remove the
+   * last remaining indexer regardless of permission (host.removeWriter()
+   * throws in that case, which the apply layer catches and ignores rather
+   * than aborting the rest of the batch).
+   *
+   * @param {Buffer|string} coreKey - The writer's core key (hex string or Buffer)
+   * @param {Object} [opts] - Options object
+   * @param {Object} [opts.keyPair] - Required in closed mode: { publicKey, secretKey } to sign the event
+   * @returns {Promise&lt;void>}
+   * @throws {Error} If keyPair is missing in closed mode, RoleBase is required but not attached, or authorization fails
+   */
+  async removeWriter (coreKey, opts = {}) {
+    if (!this.opened) await this.ready()
+
+    const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
+    const keyHex = key.toString('hex')
+
+    if (this.#writeMode !== 'closed') {
+      await this.append({ type: 'roles/removeWriter', key: keyHex })
+      return
+    }
+
+    if (!opts.keyPair || !opts.keyPair.publicKey || !opts.keyPair.secretKey) {
+      throw new Error('opts.keyPair (with publicKey and secretKey) is required in closed mode to sign the removeWriter event')
+    }
+    const author = b4a.isBuffer(opts.keyPair.publicKey) ? opts.keyPair.publicKey.toString('hex') : String(opts.keyPair.publicKey)
+
+    if (!this.#roleBase || typeof this.#roleBase.can !== 'function') {
+      throw new Error('RoleBase is required for closed-mode writer authorization but is not attached')
+    }
+    const authorized = await this.#roleBase.can(author, 'context.write')
+    if (!authorized) {
+      throw new Error('Not authorized to remove writers from this context')
+    }
+
+    const event = { type: 'roles/removeWriter', key: keyHex, author, timestamp: Date.now(), signature: null }
+    const digest = this.#stableWriterChangeHash(event)
+    event.signature = hypercoreCrypto.sign(digest, opts.keyPair.secretKey).toString('hex')
+
+    await this.append(event)
   }
 
   // ========================================
@@ -750,7 +1300,9 @@ module.exports = class ContextBase extends ReadyResource {
    * @returns {Promise&lt;void>}
    */
   async update () {
+    if (this.#interrupted) return
     await this.#base.update()
+    await this.#refreshMembers()
 
     const view = this.#viewBee || this.#base?.view
     if (!view) return
@@ -867,8 +1419,8 @@ module.exports = class ContextBase extends ReadyResource {
     this.emitContextEvent('writer-request', {
       key: keyHex,
       userCore: opts.userCore || null,
-      approve: async () => {
-        await this.addWriter(writerKey)
+      approve: async (approveOpts = {}) => {
+        await this.addWriter(writerKey, approveOpts)
         this.#pendingWriterRequests.delete(keyHex)
       },
       reject: () => {
@@ -885,10 +1437,10 @@ module.exports = class ContextBase extends ReadyResource {
    * @param {Buffer|string} writerKey - The writer's core key
    * @returns {Promise&lt;void>}
    */
-  async approveWriter (writerKey) {
+  async approveWriter (writerKey, opts = {}) {
     if (!this.opened) await this.ready()
     const keyHex = Buffer.isBuffer(writerKey) ? writerKey.toString('hex') : writerKey
-    await this.addWriter(writerKey)
+    await this.addWriter(writerKey, opts)
     this.#pendingWriterRequests.delete(keyHex)
     this.#emitter.emit('writer-approved', Buffer.isBuffer(writerKey) ? writerKey : Buffer.from(writerKey, 'hex'))
   }
@@ -944,26 +1496,19 @@ module.exports = class ContextBase extends ReadyResource {
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

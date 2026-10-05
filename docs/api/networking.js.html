@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> networking.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: networking.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: networking.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>networking.js</h1>
-                </header>
-                
 
 
 
@@ -87,91 +28,486 @@
         <article>
             <pre class="prettyprint source linenums"><code>const EventEmitter = require('events')
 const safetyCatch = require('safety-catch')
-const crypto = require('crypto')
-const b4a = require('b4a')
+const c = require('compact-encoding')
+
+// The bootstrap descriptor shape produced by generateBootstrap() and
+// consumed by connectFromBootstrap(). No version negotiation/migration
+// logic exists yet (not needed while nothing runs this in production) —
+// connectFromBootstrap() just rejects anything that doesn't match exactly,
+// so a future shape change fails loudly and immediately instead of
+// silently misinterpreting an incompatible descriptor. Bump this and add
+// real migration handling once there are real deployments to stay
+// compatible with.
+const BOOTSTRAP_VERSION = '2.0.0'
+
+// A valid Hypercore key is exactly 32 bytes (64 hex characters).
+const HEX_KEY_PATTERN = /^[0-9a-f]{64}$/i
+
+function isValidHexKey (value) {
+  return typeof value === 'string' &amp;&amp; HEX_KEY_PATTERN.test(value)
+}
+
+function describeForError (value) {
+  if (typeof value !== 'string') return `${typeof value} (${JSON.stringify(value)})`
+  return value.length > 40 ? `"${value.slice(0, 40)}..." (length ${value.length})` : `"${value}" (length ${value.length})`
+}
 
 function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function withTimeout (promise, ms) {
-  return await Promise.race([
-    promise,
-    sleep(ms).then(() => null)
+/**
+ * Like a timeout-capped await, but emits a 'flush-timeout' event on
+ * `emitter` if the timeout wins the race, instead of silently swallowing
+ * it. Still doesn't throw (connect() callers may reasonably want to
+ * proceed and let application code decide what to do), but a caller can
+ * now listen for 'flush-timeout' to detect a partial/failed connect
+ * instead of only ever seeing an unconditional `connected: true`.
+ */
+async function withTimeoutWarn (emitter, label, promise, ms) {
+  const result = await Promise.race([
+    promise.then((value) => ({ timedOut: false, value })),
+    sleep(ms).then(() => ({ timedOut: true, value: null }))
   ])
+  if (result.timedOut) {
+    emitter.emit('flush-timeout', { step: label, timeoutMs: ms })
+  }
+  return result.value
 }
 
 /**
- * HypergraphNetworking - Helper class for Hypergraph + Hyperswarm integration
- * 
+ * HypergraphNetwork - Helper class for Hypergraph + Hyperswarm integration
+ *
  * This class provides a simple networking solution for Hypergraph applications by:
- * - Using a single Hyperswarm for core replication via store.replicate(conn)
- * - Automatically calling store.replicate(conn) on every connection
- * - Handling writer authorization via context keys (simplified approach)
+ * - Using a single Hyperswarm connection for both replication and writer-auth control
+ * - Automatically calling store.replicate(conn) on connections
+ * - Handling writer authorization via a protomux channel multiplexed onto that same connection
  * - Sensible defaults for simple use cases, options for advanced customization
- * 
- * Simplified approach:
- * - Single swarm for data replication (matches old hypergraph approach)
- * - Writer authorization handled via context keys (simplified approach)
- * - No separate control swarm or protomux (simpler, more reliable)
- * - Can be extended with control swarm later if needed
+ *
+ * Design decisions:
+ * - REDESIGNED (previously used a second, internally-created Hyperswarm swarm
+ *   sharing the data swarm's DHT, joining a second, derived "control" topic,
+ *   with writer-auth as a raw JSON-line protocol over that separate
+ *   connection). That design required establishing two independent DHT
+ *   rendezvous/hole-punch processes between the same two peers. In extensive
+ *   real-network testing, the data channel connected reliably every time;
+ *   the control channel was unreliable — sometimes needing retries,
+ *   sometimes never connecting at all, with no code-level bug found to
+ *   explain the difference after an extensive investigation (see
+ *   CHANGELOG.md). Rather than continue working around an unreliable second
+ *   connection, this eliminates it: writer-auth is now a protomux channel
+ *   multiplexed onto the *same* connection the data swarm already
+ *   establishes — the one connection already proven reliable — using the
+ *   same muxer Corestore's own replication already attaches to that
+ *   connection (`Protomux.from(conn)` returns the existing muxer via
+ *   `conn.userData`, confirmed by reading Hypercore.createProtocolStream()
+ *   and NoiseSecretStream's `this.noiseStream = this` self-reference
+ *   directly).
+ * - Hyperswarm instance passed as parameter (follows holepunch pattern)
+ * - Context keys (not instances) to avoid timing problems
+ * - Any writer can add writers (no owner required for authorization)
  *
  * @example
- * const networking = new HypergraphNetworking(graph, store, {
- *   topic: myTopic
- * })
- * await networking.connect()
- *
- * Advanced mode (custom swarm):
- * @example
- * const customSwarm = new Hyperswarm({ maxPeers: 8 })
- * const networking = new HypergraphNetworking(graph, store, {
+ * const swarm = new Hyperswarm({ maxPeers: 16 })
+ * const network = new HypergraphNetwork(graph, store, swarm, {
  *   topic: myTopic,
- *   swarm: customSwarm
+ *   contexts: { comments: contextKey, moderation: contextKey },
+ *   role: 'peer'
  * })
- * await networking.connect()
+ * await network.connect()
  */
-module.exports = class HypergraphNetworking extends EventEmitter {
+module.exports = class HypergraphNetwork extends EventEmitter {
   #graph
   #store
-  #swarm
+  #dataSwarm
   #topic
   #maxPeers
   #connected = false
-  #ownsSwarm = false
-  #peerConnections = new Set()
+  #autoReplicate = true
+  #contexts = new Map() // name -> contextKey
+  #contextInstances = new Map() // name -> contextInstance
+  #role = 'peer'
+  #connections = 0
+  #hasPeerJoined = false
+  #hasReceivedWriterGrant = false
+  #writerRequestTimeoutMs = 30000
+  #channelsByConn = new WeakMap() // conn -> { channel, messages, writerRequestTimeout }
+  #activeConns = new Set() // iterable set of currently-open connections, for broadcasting (e.g. context-announce) — WeakMap above can't be iterated
+  #pendingWriterRequestTimeouts = new Set() // tracked separately since WeakMap can't be iterated for cleanup in destroy()
 
   /**
    * @param {Object} graph - Hypergraph instance
    * @param {Object} store - Corestore instance
+   * @param {Object} swarm - Hyperswarm instance
    * @param {Object} opts - Configuration options
    * @param {Buffer|string} opts.topic - Hyperswarm topic (Buffer or hex string)
-   * @param {number} [opts.maxPeers=16] - Maximum peers
-   * @param {Object} [opts.swarm] - Optional custom swarm
+   * @param {Object} [opts.contexts] - Context keys mapping: { name: contextKey }
+   * @param {boolean} [opts.autoReplicate=true] - Auto-replicate store on connections
+   * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
+   * @param {number} [opts.writerRequestTimeoutMs=30000] - How long a peer waits for a
+   *   writer-granted/writer-error response after sending a writer-request before emitting
+   *   'writer-request-timeout'. Without this, a peer whose request is never answered (owner
+   *   offline, response lost, etc.) would wait indefinitely with no way to detect it.
    */
-  constructor (graph, store, opts = {}) {
+  constructor (graph, store, swarm, opts = {}) {
     super()
     this.#graph = graph
     this.#store = store
+    this.#dataSwarm = swarm
     this.#topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
-    this.#maxPeers = opts.maxPeers || 16
-    this.#swarm = opts.swarm || null
-    this.#ownsSwarm = !opts.swarm
+    this.#autoReplicate = opts.autoReplicate !== false
+    this.#role = opts.role || 'peer'
+    this.#writerRequestTimeoutMs = opts.writerRequestTimeoutMs || 30000
 
     if (!this.#topic) {
       throw new Error('Topic is required')
     }
+    if (!this.#dataSwarm) {
+      throw new Error('Hyperswarm instance is required')
+    }
+
+    // Parse contexts option
+    if (opts.contexts) {
+      for (const [name, key] of Object.entries(opts.contexts)) {
+        this.#contexts.set(name, key)
+      }
+    }
   }
 
   /**
-   * Handle connection - replicate cores
+   * Handle a swarm connection: replicate the store and wire up the
+   * writer-auth protomux channel on the same connection.
    * @private
    */
-  _handleConnection (conn, info) {
-    // Replicate the entire store (includes usercore, viewcore, context cores)
-    // Corestore replicates all cores loaded in memory
-    this.#store.replicate(conn)
-    this.emit('connection', { conn, info })
+  _handleDataConnection (conn, info) {
+    if (this.#autoReplicate) {
+      // Replicate the entire store (includes usercore, viewcore, context cores)
+      // Corestore replicates all cores loaded in memory
+      this.#store.replicate(conn)
+    }
+    this._wireWriterAuthChannel(conn, info)
+    this.emit('data-connection', { conn, info })
+  }
+
+  /**
+   * Open contexts internally
+   * @private
+   */
+  async _openContexts () {
+    for (const [name, key] of this.#contexts) {
+      const context = await this.#graph.openContext(key)
+      this.#contextInstances.set(name, context)
+    }
+  }
+
+  /**
+   * Register a new context with this network instance after construction
+   * — for a context created mid-session (e.g. a new chatroom, a new
+   * private area), not part of the original bootstrap. Opens it locally
+   * if not already known, then broadcasts a context-announce message to
+   * every currently-connected peer, so each of them can open it too and
+   * — if they're a 'peer' — immediately request writer access for it.
+   *
+   * This reuses the existing writer-request/grant machinery rather than
+   * building a separate one: _sendWriterRequest()/_handleWriterRequest()
+   * already iterate the full, current set of contexts generically, not a
+   * fixed list from construction time — the only genuinely new piece
+   * needed here is telling an already-connected peer the new context's
+   * key at all, which they'd have no way to know otherwise.
+   *
+   * @param {string} name - A name for this context (the key used in contexts maps)
+   * @param {Buffer|string} contextKey - The context's bootstrap key
+   * @param {Object} [opts]
+   * @param {'open'|'closed'} [opts.writeMode='open']
+   * @returns {Promise&lt;Object>} The opened ContextBase instance
+   * @throws {Error} If a context with this name is already registered
+   */
+  async addContext (name, contextKey, opts = {}) {
+    if (typeof name !== 'string' || name.length === 0) throw new Error('name is required')
+    if (!contextKey) throw new Error('contextKey is required')
+    if (this.#contexts.has(name)) throw new Error(`A context named '${name}' is already registered`)
+
+    const contextKeyBuf = Buffer.isBuffer(contextKey) ? contextKey : Buffer.from(contextKey, 'hex')
+    const writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
+
+    const context = await this.#graph.openContext(contextKeyBuf, { writeMode })
+    this.#contexts.set(name, contextKeyBuf)
+    this.#contextInstances.set(name, context)
+
+    for (const conn of this.#activeConns) {
+      this._announceContextTo(conn, name, contextKeyBuf, writeMode)
+    }
+
+    return context
+  }
+
+  /**
+   * Send a context-announce message for one context to one connection.
+   * Shared by addContext() (a new context, told to every currently-active
+   * connection) and _wireWriterAuthChannel()'s onopen (every already-known
+   * context, told to one newly-opened connection) — the same message, the
+   * same recipient-side handling (_handleContextAnnounce), just a
+   * different "which contexts × which connections" pairing.
+   * @private
+   */
+  _announceContextTo (conn, name, contextKeyBuf, writeMode) {
+    this._sendControlMessage(conn, 'contextAnnounceMsg', {
+      type: 'context-announce',
+      name,
+      contextKey: contextKeyBuf.toString('hex'),
+      writeMode
+    })
+  }
+
+  /**
+   * Wire the writer-auth protocol as a protomux channel multiplexed onto
+   * the same connection the data swarm already established, instead of a
+   * separate connection/topic. Protomux.from(conn) reuses the exact muxer
+   * store.replicate(conn) already attached to this connection (via
+   * conn.userData) rather than creating a second one.
+   * @private
+   */
+  _wireWriterAuthChannel (conn, info) {
+    const Protomux = require('protomux')
+    const mux = Protomux.from(conn)
+
+    const channel = mux.createChannel({
+      protocol: 'hypergraph-writer-auth',
+      id: this.#topic,
+      onopen: () => {
+        this.emit('control-connection', { conn, info })
+        this.#activeConns.add(conn)
+
+        // Tell this newly-connected peer about every context we already
+        // know about, not just ones registered after they connected (that
+        // path already existed via addContext(), above) or ones they
+        // already knew the key for in advance (the constructor's
+        // `contexts` option). Without this, a peer connecting with no
+        // prior knowledge at all (e.g. discovering an authority purely by
+        // name, never having received a descriptor) had no way to ever
+        // learn about a context that existed before they connected -
+        // context-announce only ever reached peers who were already
+        // connected at the moment a NEW context was registered.
+        //
+        // This applies regardless of writeMode. 'closed' only ever gates
+        // who can become a WRITER - it has never gated who can READ a
+        // context's replicated data, which has always been available to
+        // anyone who obtains the key through any channel. Excluding closed
+        // contexts here would not protect anything genuinely confidential;
+        // it would just silently remove discoverability for a closed
+        // authority specifically, which is a real regression, not a
+        // privacy feature. Actual confidentiality (where knowing the topic/
+        // key isn't sufficient to read anything) is a separate, orthogonal
+        // concern - see ScopeBase's encryption, not writeMode.
+        for (const [ctxName, ctxKeyBuf] of this.#contexts) {
+          const instance = this.#contextInstances.get(ctxName)
+          const writeMode = instance &amp;&amp; instance.writeMode ? instance.writeMode : 'open'
+          this._announceContextTo(conn, ctxName, ctxKeyBuf, writeMode)
+        }
+
+        if (this.#role === 'peer') {
+          this._sendWriterRequest(conn)
+          this._startWriterRequestTimeout(conn, info)
+        }
+      },
+      onclose: () => {
+        this._clearWriterRequestTimeout(conn)
+        this.#channelsByConn.delete(conn)
+        this.#activeConns.delete(conn)
+      }
+    })
+
+    if (!channel) return // duplicate channel on this connection; shouldn't normally happen
+
+    const writerRequestMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
+        this._handleWriterRequest(msg, conn).catch((err) => {
+          safetyCatch(err)
+          this.emit('control-error', err)
+        })
+      }
+    })
+    const writerGrantedMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
+        this._clearWriterRequestTimeout(conn)
+        this.#hasReceivedWriterGrant = true
+        this.emit('writer-granted', msg)
+      }
+    })
+    const writerErrorMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
+        this._clearWriterRequestTimeout(conn)
+        this.emit('writer-error', msg)
+      }
+    })
+    const contextAnnounceMsg = channel.addMessage({
+      encoding: c.json,
+      onmessage: (msg) => {
+        this.emit('control-message', msg, conn, info)
+        this._handleContextAnnounce(msg, conn).catch((err) => {
+          safetyCatch(err)
+          this.emit('control-error', err)
+        })
+      }
+    })
+
+    this.#channelsByConn.set(conn, { channel, writerRequestMsg, writerGrantedMsg, writerErrorMsg, contextAnnounceMsg, writerRequestTimeout: null })
+    channel.open()
+  }
+
+  /**
+   * Start a timeout after sending a writer-request: if neither
+   * writer-granted nor writer-error arrives on this connection within
+   * writerRequestTimeoutMs, emit 'writer-request-timeout' so the
+   * application can react (retry, reconnect, alert the user) instead of
+   * waiting indefinitely with no signal that anything is wrong.
+   * @private
+   */
+  _startWriterRequestTimeout (conn, info) {
+    const entry = this.#channelsByConn.get(conn)
+    if (!entry) return
+    const timeout = setTimeout(() => {
+      this.#pendingWriterRequestTimeouts.delete(timeout)
+      entry.writerRequestTimeout = null
+      this.emit('writer-request-timeout', { conn, info, timeoutMs: this.#writerRequestTimeoutMs })
+    }, this.#writerRequestTimeoutMs)
+    entry.writerRequestTimeout = timeout
+    this.#pendingWriterRequestTimeouts.add(timeout)
+  }
+
+  /**
+   * @private
+   */
+  _clearWriterRequestTimeout (conn) {
+    const entry = this.#channelsByConn.get(conn)
+    if (entry &amp;&amp; entry.writerRequestTimeout) {
+      clearTimeout(entry.writerRequestTimeout)
+      this.#pendingWriterRequestTimeouts.delete(entry.writerRequestTimeout)
+      entry.writerRequestTimeout = null
+    }
+  }
+
+  /**
+   * Handle writer-request message
+   * @private
+   */
+  async _handleWriterRequest (msg, conn) {
+    // Permission checking: for closed-mode contexts, ContextBase.addWriter()
+    // checks whether the author has the 'context.write' privilege (per the
+    // attached RoleBase) before granting, and signs the resulting event
+    // with this peer's own identity keyPair — verified again at the apply
+    // layer, the real enforced security boundary (see context-base.js).
+    // Passing this peer's own identity means the check is "does the peer
+    // receiving this request have the authority to grant it", which is the
+    // natural authorization model here (the same one already used
+    // elsewhere in this codebase for role-gated actions). Open-mode
+    // contexts are unaffected — no keyPair/signature is needed there.
+    const keyPair = this.#graph.identity.deviceKeyPair
+
+    try {
+      // Open userCore if provided
+      if (msg.userCore) {
+        await this.#graph.openUserCore(msg.userCore)
+      }
+
+      // Add writers for each context
+      const granted = {}
+      for (const [name, context] of this.#contextInstances) {
+        const writerKeyHex = msg.contexts?.[name]
+        if (writerKeyHex) {
+          try {
+            const writerKey = Buffer.from(writerKeyHex, 'hex')
+            await context.addWriter(writerKey, { keyPair })
+            granted[name] = true
+          } catch (err) {
+            // A denial for one context (e.g. not authorized in closed
+            // mode) shouldn't block grants for other contexts in the same
+            // request that the requester IS authorized for — reported via
+            // granted[name] = false, not escalated to the outer catch.
+            safetyCatch(err)
+            granted[name] = false
+          }
+        }
+      }
+
+      // Send writer-granted response
+      this._sendControlMessage(conn, 'writerGrantedMsg', {
+        type: 'writer-granted',
+        contexts: granted
+      })
+    } catch (err) {
+      safetyCatch(err)
+      // Send writer-error on failure
+      this._sendControlMessage(conn, 'writerErrorMsg', {
+        type: 'writer-error',
+        message: err.message || String(err)
+      })
+    }
+  }
+
+  /**
+   * Handle a context-announce message: a context created after this
+   * connection was established (not part of the original bootstrap).
+   * Opens it locally if not already known, then — if this side is a
+   * 'peer' — immediately (re-)sends a writer-request over the same
+   * connection, which now covers this new context too, since
+   * _sendWriterRequest() already iterates the full, current
+   * #contextInstances rather than a fixed list from construction time.
+   * @private
+   */
+  async _handleContextAnnounce (msg, conn) {
+    if (!msg || typeof msg.name !== 'string' || msg.name.length === 0) return
+    if (typeof msg.contextKey !== 'string' || msg.contextKey.length === 0) return
+    if (this.#contexts.has(msg.name)) return // already known — idempotent, ignore a duplicate/replayed announce
+
+    const contextKeyBuf = Buffer.from(msg.contextKey, 'hex')
+    const writeMode = msg.writeMode === 'closed' ? 'closed' : 'open'
+
+    const context = await this.#graph.openContext(contextKeyBuf, { writeMode })
+    this.#contexts.set(msg.name, contextKeyBuf)
+    this.#contextInstances.set(msg.name, context)
+
+    this.emit('context-announced', { name: msg.name, contextKey: msg.contextKey, writeMode })
+
+    if (this.#role === 'peer') {
+      this._sendWriterRequest(conn)
+    }
+  }
+
+  /**
+   * Send writer-request message
+   * @private
+   */
+  _sendWriterRequest (conn) {
+    const contexts = {}
+    for (const [name, context] of this.#contextInstances) {
+      contexts[name] = context.localKey.toString('hex')
+    }
+
+    const msg = {
+      type: 'writer-request',
+      userCore: this.#graph.key.toString('hex'),
+      contexts
+    }
+
+    this._sendControlMessage(conn, 'writerRequestMsg', msg)
+  }
+
+  /**
+   * Send a message over this connection's writer-auth channel.
+   * @private
+   * @param {string} slot - 'writerRequestMsg' | 'writerGrantedMsg' | 'writerErrorMsg'
+   */
+  _sendControlMessage (conn, slot, msg) {
+    const entry = this.#channelsByConn.get(conn)
+    if (!entry) return
+    entry[slot].send(msg)
   }
 
   /**
@@ -180,43 +516,143 @@ module.exports = class HypergraphNetworking extends EventEmitter {
   async connect () {
     if (this.#connected) return
 
-    const Hyperswarm = require('hyperswarm')
+    // Open contexts internally before joining the swarm
+    await this._openContexts()
 
-    // Create swarm if not provided
-    if (!this.#swarm) {
-      this.#swarm = new Hyperswarm({ maxPeers: this.#maxPeers })
-    }
-
-    // Set up connection handler
-    this.#swarm.on('connection', (conn, info) => {
-      this.#peerConnections.add(conn)
-      this._handleConnection(conn, info)
+    // Set up swarm connection handler: replicate + wire the writer-auth
+    // channel onto the same connection (see _handleDataConnection).
+    this.#dataSwarm.on('connection', (conn, info) => {
+      this.#connections++
+      this.#hasPeerJoined = true
+      this._handleDataConnection(conn, info)
 
       const peerKey = info &amp;&amp; info.publicKey ? info.publicKey.toString('hex') : 'unknown'
       this.emit('peer-join', { peerKey, conn, info })
 
       conn.on('error', (err) => {
         safetyCatch(err)
-        this.emit('peer-error', { peerKey, err })
+        this.emit('data-error', err)
       })
 
       conn.on('close', () => {
-        this.#peerConnections.delete(conn)
+        this.#connections--
         this.emit('peer-leave', { peerKey, conn, info })
       })
     })
 
     // Join topic
-    const discovery = this.#swarm.join(this.#topic, { server: true, client: true })
+    const discovery = this.#dataSwarm.join(this.#topic, { server: true, client: true })
 
-    // Wait for discovery and swarm to be ready with timeout
-    await withTimeout(discovery.flushed(), 10000)
-    await withTimeout(this.#swarm.flush(), 10000)
+    // Matches hyperswarm's own canonical example (example.js in the
+    // holepunchto/hyperswarm repo) exactly: only the announcing side
+    // ("owner" here — the side other peers are expected to find) awaits its
+    // own discovery.flushed(), so that by the time a peer looks for it, the
+    // announce has actually landed. A joining peer ("peer" role) awaits
+    // nothing at all before proceeding — the connection handler wired up
+    // above will fire on its own once a peer is actually found; the
+    // canonical example's own second `swarm.join(key)` call is not awaited
+    // on anything, and its one commented-out line (`// await
+    // swarm2.flush()`) is explicit about swarm.flush() not being part of
+    // this at all.
+    //
+    // swarm.flush() is never called here (or in the retry loop below) as a
+    // way to detect connection success — per hyperswarm's own README:
+    // "flush() ... is quite heavyweight, so it could take a while. In most
+    // cases it's not necessary, as connections are emitted by
+    // swarm.on('connection') immediately after they're opened." Confirmed
+    // directly: awaiting flush()/flushed() symmetrically on both sides (the
+    // previous version of this method) produced connection times ranging
+    // from ~10s up to 100s+ and occasional outright failures on identical,
+    // known-good hardware and network conditions; this asymmetric pattern
+    // produced a consistent ~3-5s across repeated runs on the same machine.
+    if (this.#role === 'owner') {
+      await withTimeoutWarn(this, 'discovery flush', discovery.flushed(), 60000)
+    }
+
+    // Safety net, not the normal path: two peers can genuinely race to
+    // connect at nearly the same time, before the DHT has had a chance to
+    // propagate an announce (e.g. two 'peer'-role connections, or an
+    // 'owner' whose announce hasn't reached nearby DHT nodes yet despite
+    // discovery.flushed() resolving locally). If a connection hasn't
+    // appeared yet, retry by leaving and rejoining rather than waiting
+    // longer on the same attempt — but see _ensureConnectionWithRetry for
+    // why this no longer waits nearly as long as it used to before
+    // considering that necessary.
+    if (this.#dataSwarm.connections.size === 0) {
+      await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data')
+    }
 
     this.#connected = true
     this.emit('connected')
   }
 
+  /**
+   * Wait for a swarm to report at least one live connection, retrying by
+   * leaving and rejoining the topic if none appears within the wait
+   * window. This is a fallback for a genuine edge case — e.g. two peers
+   * racing to connect at nearly the same time, before the DHT has had a
+   * chance to propagate an announce — not the normal path; connect() only
+   * calls this if a connection hasn't already appeared by the time its own
+   * role-appropriate wait (see connect()) has finished.
+   *
+   * waitMs is deliberately much shorter than earlier versions of this
+   * method used (15s): that value was calibrated around the assumption
+   * that waiting on flush()/flushed() was what made a connection "ready",
+   * which turned out to be wrong (see connect()) — real connections
+   * complete in a few seconds once the announce/join sequencing itself is
+   * correct, so a fallback retry shouldn't need to wait much longer than
+   * that before trying again.
+   *
+   * swarm.flush() is not called here, for the same reason it isn't in
+   * connect() — it's unrelated to whether this rejoin actually finds a
+   * peer, and the polling loop below already detects that directly via
+   * swarm.connections.size.
+   *
+   * Emits 'connection-retry' (with the label and attempt number) each time
+   * a rejoin is attempted, and 'connection-retry-exhausted' if no
+   * connection ever appears after all attempts — both observable by a
+   * caller, neither thrown, matching connect()'s existing "report what
+   * happened, don't block the caller on it" behavior.
+   *
+   * @private
+   * @param {Object} swarm - A Hyperswarm instance
+   * @param {Buffer} topic
+   * @param {string} label - 'data' or 'control', for event/log purposes
+   */
+  async _ensureConnectionWithRetry (swarm, topic, label) {
+    const retries = 2
+    const waitMs = 8000
+    const joinOpts = { server: true, client: true }
+
+    for (let attempt = 0; ; attempt++) {
+      const start = Date.now()
+      while (swarm.connections.size === 0 &amp;&amp; Date.now() - start &lt; waitMs) {
+        await sleep(500)
+      }
+
+      if (swarm.connections.size > 0) return
+
+      if (attempt >= retries) {
+        this.emit('connection-retry-exhausted', { label, attempts: attempt + 1 })
+        return
+      }
+
+      this.emit('connection-retry', { label, attempt: attempt + 1 })
+      try {
+        await swarm.leave(topic)
+      } catch (err) {
+        safetyCatch(err)
+      }
+      await sleep(1000)
+
+      const discovery = swarm.join(topic, joinOpts)
+      try {
+        await discovery.flushed()
+      } catch (err) {
+        safetyCatch(err)
+      }
+    }
+  }
 
   /**
    * Disconnect from the Hyperswarm topic
@@ -224,11 +660,8 @@ module.exports = class HypergraphNetworking extends EventEmitter {
   async disconnect () {
     if (!this.#connected) return
 
-    // Leave topic
-    if (this.#swarm) {
-      this.#swarm.leave(this.#topic)
-      await this.#swarm.flush()
-    }
+    this.#dataSwarm.leave(this.#topic)
+    await this.#dataSwarm.flush()
 
     this.#connected = false
     this.emit('disconnected')
@@ -238,8 +671,8 @@ module.exports = class HypergraphNetworking extends EventEmitter {
   /**
    * Get the swarm instance
    */
-  get swarm () {
-    return this.#swarm
+  get dataSwarm () {
+    return this.#dataSwarm
   }
 
   /**
@@ -257,10 +690,10 @@ module.exports = class HypergraphNetworking extends EventEmitter {
   }
 
   /**
-   * Get the number of active peer connections
+   * Get the number of active connections
    */
-  get peerCount () {
-    return this.#peerConnections.size
+  get connections () {
+    return this.#connections
   }
 
   /**
@@ -268,7 +701,7 @@ module.exports = class HypergraphNetworking extends EventEmitter {
    * @param {number} timeoutMs - Timeout in milliseconds (default: 10000)
    */
   async waitForPeer (timeoutMs = 10000) {
-    if (this.#peerConnections.size > 0) return true
+    if (this.#hasPeerJoined) return true
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -287,22 +720,189 @@ module.exports = class HypergraphNetworking extends EventEmitter {
   }
 
   /**
-   * Destroy the networking helper
-   * Disconnects and cleans up resources
+   * Wait for a writer-granted (or writer-error) response, so a caller can
+   * explicitly await the outcome instead of only ever passively listening
+   * for the event or the 'writer-request-timeout' notification. Rejects if
+   * neither arrives within timeoutMs, or if a writer-error is received.
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000)
+   */
+  async waitForWriterGrant (timeoutMs = this.#writerRequestTimeoutMs) {
+    if (this.#hasReceivedWriterGrant) return true
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.off('writer-granted', onGranted)
+        this.off('writer-error', onError)
+        reject(new Error(`No writer-granted/writer-error response within ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      const onGranted = () => {
+        clearTimeout(timeout)
+        this.off('writer-error', onError)
+        resolve(true)
+      }
+
+      const onError = (msg) => {
+        clearTimeout(timeout)
+        this.off('writer-granted', onGranted)
+        reject(new Error(msg &amp;&amp; msg.message ? msg.message : 'writer-error received'))
+      }
+
+      this.on('writer-granted', onGranted)
+      this.on('writer-error', onError)
+    })
+  }
+
+  /**
+   * Destroy the networking helper.
+   *
+   * Since the redesign removed the internally-created control swarm
+   * entirely (see class doc comment), there is no longer any
+   * internally-owned network resource for this method to tear down — the
+   * single swarm was always owned by the caller. This just marks the
+   * instance disconnected and removes its own listeners; the caller is
+   * still responsible for destroying their own swarm (with
+   * `{ force: true }` recommended, to skip Hyperswarm's own
+   * discovery-session cleanup, which can invoke an unannounce() network
+   * call with no visible internal timeout).
    */
   async destroy () {
-    await this.disconnect()
+    if (this.#connected) {
+      this.#connected = false
+      this.emit('disconnected')
+    }
 
-    // Only destroy swarm if we created it
-    if (this.#ownsSwarm) {
-      try {
-        if (this.#swarm) await this.#swarm.destroy()
-      } catch (err) {
-        safetyCatch(err)
-      }
+    // Clear any pending writer-request timeouts — without this, a timer
+    // set up to fire in up to writerRequestTimeoutMs would be left running
+    // after destroy(), which is exactly the class of lingering-handle bug
+    // that took many rounds to track down and fix elsewhere in this test
+    // suite. removeAllListeners() below means the resulting emit would be
+    // a harmless no-op even if left running, but the timer handle itself
+    // would still keep the process alive until it fires.
+    for (const timeout of this.#pendingWriterRequestTimeouts) {
+      clearTimeout(timeout)
+    }
+    this.#pendingWriterRequestTimeouts.clear()
+    this.#activeConns.clear()
+
+    // Unlike disconnect() (which only leaves the topic — deliberately, so
+    // a caller can reconnect the same swarm later), destroy() is meant to
+    // fully tear this down. Without this, the underlying swarm/DHT node
+    // was never actually destroyed by anything on this class — every
+    // caller had to separately reach for the dataSwarm getter and destroy
+    // it themselves, which is easy to miss (real dangling UDP sockets/DHT
+    // nodes, not just a lingering reference).
+    try {
+      await this.#dataSwarm.destroy()
+    } catch (err) {
+      safetyCatch(err)
     }
 
     this.removeAllListeners()
+  }
+
+  /**
+   * Generate bootstrap.json for a hypergraph
+   * This is a static method that can be called without an instance
+   *
+   * @param {Object} graph - Hypergraph instance
+   * @param {Object} opts - Bootstrap options
+   * @param {Buffer|string} opts.topic - Swarm topic
+   * @param {Object} opts.contexts - Context keys mapping: { name: contextKey }
+   * @param {Object} [opts.metadata] - Optional app-specific metadata
+   * @returns {Object} Bootstrap object
+   */
+  static generateBootstrap (graph, opts) {
+    if (!graph || !graph.key) {
+      throw new Error('Graph instance with key is required')
+    }
+    if (!opts || !opts.topic) {
+      throw new Error('Topic is required')
+    }
+    if (!opts.contexts) {
+      throw new Error('Contexts mapping is required')
+    }
+
+    const topic = typeof opts.topic === 'string' ? Buffer.from(opts.topic, 'hex') : opts.topic
+
+    return {
+      version: BOOTSTRAP_VERSION,
+      topic: topic.toString('hex'),
+      ownerCore: graph.key.toString('hex'),
+      contexts: opts.contexts,
+      metadata: opts.metadata || null
+    }
+  }
+
+  /**
+   * Create a HypergraphNetwork instance configured to join from a bootstrap
+   * descriptor (as produced by generateBootstrap()) — the consumption-side
+   * counterpart. Note this is a different, networking-oriented bootstrap shape
+   * than graph.export()'s own — there is no Hypergraph.join() that consumes
+   * export()'s shape directly; this method and its generateBootstrap()
+   * counterpart are the actual, supported way to join over the network.
+   * Also opens the owner's user core on the joining graph
+   * (via bootstrap.ownerCore), so the owner's data becomes visible to the
+   * view once connected, without the caller needing to do that step
+   * themselves.
+   *
+   * The returned instance is not yet connected — call .connect() on it as
+   * usual.
+   *
+   * @param {Object} graph - Hypergraph instance (the joining peer's own graph)
+   * @param {Object} store - Corestore instance
+   * @param {Object} swarm - Hyperswarm instance
+   * @param {Object} bootstrap - A bootstrap descriptor from generateBootstrap()
+   * @param {Object} [opts] - Additional constructor options (e.g. role, autoReplicate)
+   * @returns {Promise&lt;HypergraphNetwork>}
+   */
+  static async connectFromBootstrap (graph, store, swarm, bootstrap, opts = {}) {
+    if (!bootstrap || !bootstrap.topic) {
+      throw new Error('A valid bootstrap descriptor with a topic is required')
+    }
+
+    // No version migration logic exists yet — reject anything that doesn't
+    // match exactly, so an incompatible descriptor fails loudly and
+    // immediately instead of being silently misinterpreted (e.g. a future
+    // shape change adding/renaming fields this code doesn't know about).
+    if (bootstrap.version !== BOOTSTRAP_VERSION) {
+      throw new Error(`Unsupported bootstrap version: ${bootstrap.version ?? '(missing)'} (expected ${BOOTSTRAP_VERSION})`)
+    }
+
+    // Shape-validate every key in the bootstrap before using any of them.
+    // Without this, a corrupted bootstrap with a correctly-shaped but wrong
+    // key (confirmed directly: e.g. all zeros) doesn't throw anywhere —
+    // openUserCore() silently succeeds with a permanently-empty, dead core
+    // reference, since there's no way to distinguish "wrong key" from "key
+    // whose owner just hasn't sent anything yet" without actually trying to
+    // connect. This can't catch a wrong-but-plausible key either (the same
+    // fundamental limit applies), but it does catch a corrupted/truncated/
+    // mistyped one immediately instead of leaving a caller to debug a
+    // silent non-sync with no error at all.
+    if (!isValidHexKey(bootstrap.topic)) {
+      throw new Error(`bootstrap.topic must be a 64-character hex string (32 bytes), got: ${describeForError(bootstrap.topic)}`)
+    }
+    if (bootstrap.ownerCore &amp;&amp; !isValidHexKey(bootstrap.ownerCore)) {
+      throw new Error(`bootstrap.ownerCore must be a 64-character hex string (32 bytes), got: ${describeForError(bootstrap.ownerCore)}`)
+    }
+    if (bootstrap.contexts) {
+      for (const [name, key] of Object.entries(bootstrap.contexts)) {
+        if (!isValidHexKey(key)) {
+          throw new Error(`bootstrap.contexts.${name} must be a 64-character hex string (32 bytes), got: ${describeForError(key)}`)
+        }
+      }
+    }
+
+    if (bootstrap.ownerCore) {
+      await graph.openUserCore(bootstrap.ownerCore)
+    }
+
+    return new this(graph, store, swarm, {
+      topic: bootstrap.topic,
+      contexts: bootstrap.contexts || {},
+      role: opts.role || 'peer',
+      autoReplicate: opts.autoReplicate
+    })
   }
 }
 </code></pre>
@@ -312,26 +912,19 @@ module.exports = class HypergraphNetworking extends EventEmitter {
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

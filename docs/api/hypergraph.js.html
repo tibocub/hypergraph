@@ -1,84 +1,25 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title> hypergraph.js</title>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: hypergraph.js</title>
 
-  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="./build/entry.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
-  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
-  <link type="text/css" rel="stylesheet" href="">
-  <script async defer src="https://buttons.github.io/buttons.js"></script>
-
-  
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
 </head>
 
+<body>
 
+<div id="main">
 
-<body class="layout small-header">
-    <div id="stickyNavbarOverlay"></div>
+    <h1 class="page-title">Source: hypergraph.js</h1>
+
     
-
-<div class="top-nav">
-    <div class="inner">
-        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-        </a>
-        <div class="logo">
-            
-            
-        </div>
-        <div class="menu">
-            
-            <div class="navigation">
-                <a
-                    href="index.html"
-                    class="link"
-                >
-                    Documentation
-                </a>
-                
-                
-                
-            </div>
-        </div>
-    </div>
-</div>
-    <div id="main">
-        <div
-            class="sidebar "
-            id="sidebarNav"
-        >
-            
-            <nav>
-                
-                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="global.html#PeerDiscovery">PeerDiscovery</a></li><li><a href="module.exports.html">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li></ul></div>
-                
-            </nav>
-        </div>
-        <div class="core" id="main-content-wrapper">
-            <div class="content">
-                <header class="page-title">
-                    <p>Source</p>
-                    <h1>hypergraph.js</h1>
-                </header>
-                
 
 
 
@@ -92,18 +33,35 @@ const codecs = require('codecs')
 const Hyperbee = require('hyperbee')
 const crypto = require('crypto')
 const hypercoreCrypto = require('hypercore-crypto')
+const sodium = require('sodium-universal')
 const b4a = require('b4a')
 const UserCore = require('./user-core')
 const ContextBase = require('./context-base')
 const RoleBase = require('./role-base')
+const ScopeBase = require('./scope-base')
 const GraphView = require('./view')
 const GraphQuery = require('./query')
-const PeerDiscovery = require('./peer-discovery')
 const IdentityManager = require('./identity-manager')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
 const Hypercore = require('hypercore')
-const { toSortableTs, stableTagHash } = require('./utils')
+const { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts } = require('./utils')
+const { CONTENT_LINK_TYPE, formatReference, parseReference, isReferenceType } = require('./content-ref')
+const { Batch, EntityRef, BulkWriteError, validateRelateOpts } = require('./batch')
+
+// Topology version of contexts this version creates (spec 003): the creator
+// is the only indexer, writers added later write without indexing.
+const CONTEXT_VERSION = 2
+
+// App rules attached to a context: { id, validate(event, reader) }. Contract:
+// specs/003-fast-forward-contexts/contracts/api.md
+function validateRules (rules) {
+  if (rules === undefined || rules === null) return null
+  if (typeof rules !== 'object') throw new Error('opts.rules must be an object { id, validate }')
+  if (typeof rules.id !== 'string' || rules.id.length === 0) throw new Error('opts.rules.id must be a non-empty string')
+  if (typeof rules.validate !== 'function') throw new Error('opts.rules.validate must be a function')
+  return rules
+}
 
 
 /**
@@ -127,8 +85,9 @@ module.exports = class Hypergraph extends ReadyResource {
   #valueEncoding
   #userCoreKey
   #roleBase
-  #peerDiscovery
+  #scopeBase
   #emitter
+  #onIndexEvent
   identity
 
   /**
@@ -142,6 +101,8 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#userCoreKey = opts.userCoreKey || null
+    // Test-only (underscore): lets a test simulate a crash mid-indexing.
+    this.#onIndexEvent = opts._onIndexEvent || null
     
     // Initialize identity system
     this.identity = new IdentityManager({
@@ -156,16 +117,8 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#contexts = new Map()
     this.#view = null
     this.#roleBase = null
-    this.#peerDiscovery = new PeerDiscovery(this)
+    this.#scopeBase = null
     this.#emitter = new EventEmitter()
-
-    // Forward peer discovery events to unified change event
-    this.#peerDiscovery.on('peer-join', (peerInfo) => {
-      this.#emitter.emit('change', { type: 'peer-join', ...peerInfo })
-    })
-    this.#peerDiscovery.on('peer-leave', (peerInfo) => {
-      this.#emitter.emit('change', { type: 'peer-leave', ...peerInfo })
-    })
 
     this.ready().catch(safetyCatch)
   }
@@ -200,11 +153,19 @@ module.exports = class Hypergraph extends ReadyResource {
     // Create Hyperbee for the view
     const viewBee = new Hyperbee(viewCore, {
       keyEncoding: 'utf-8',
-      valueEncoding: 'json'
+      valueEncoding: 'json',
+      // Read the core directly instead of opening and closing a snapshot
+      // session for every get (~20% faster listings, measured). Snapshots
+      // only protect a read from truncation, and nothing ever truncates this
+      // core: it is local and append-only. Context views ARE truncated by
+      // Autobase on reorder, so they keep the default.
+      sessions: false
     })
     await viewBee.ready()
 
-    this.#view = new GraphView(viewBee, this.#userCores, this.#contexts)
+    this.#view = new GraphView(viewBee, this.#userCores, this.#contexts, {
+      onIndexEvent: this.#onIndexEvent // test-only, see GraphView
+    })
     await this.#view.ready()
 
     // Register device-to-identity mapping for multi-device support
@@ -219,6 +180,7 @@ module.exports = class Hypergraph extends ReadyResource {
     if (this.#userCore) await this.#userCore.close()
 
     if (this.#roleBase) await this.#roleBase.close()
+    if (this.#scopeBase) await this.#scopeBase.close()
 
     for (const context of this.#contexts.values()) {
       await context.close()
@@ -258,6 +220,11 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.#roleBase
   }
 
+	/** @returns {ScopeBase|null} */
+  get scopeBase () {
+    return this.#scopeBase
+  }
+
 	/** @returns {Array&lt;PubKeyHex>} UserCore's keys as an array */
   userCoreKeys () {
     return Array.from(this.#userCores.keys()).sort()
@@ -290,13 +257,7 @@ module.exports = class Hypergraph extends ReadyResource {
     // Callers must not provide IDs.
     if (entity.id) throw new Error('Entity id must NOT be provided')
 
-    const event = {
-      type: 'entity/create',
-      id: '',
-      entityType: entity.type,
-      author,
-      timestamp: Date.now()
-    }
+    const event = this.#entityCreateEvent(entity.type, author)
 
     const seq = await this.#userCore.append(event)
     const id = `${entity.type}/${author}/${seq}`
@@ -367,6 +328,218 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
 
+// ── Event builders, shared by the single-item methods and graph.batch() ──
+//
+// One place builds each kind of event, so a bulk write cannot drift from the
+// single-item path (spec 002, FR-010).
+
+  #entityCreateEvent (type, author) {
+    return { type: 'entity/create', id: '', entityType: type, author, timestamp: Date.now() }
+  }
+
+  /**
+   * Resolve the key content is encrypted with for `scope`. Throws the
+   * putContent() errors when that's impossible.
+   *
+   * @returns {Promise&lt;{ scope: string, epoch: number, key: Buffer }>}
+   */
+  async #resolveScopeKey (scope) {
+    if (!this.#scopeBase) throw new Error('No ScopeBase attached — cannot encrypt content')
+
+    const author = this.identity.deviceKeyPair.publicKey.toString('hex')
+    const epoch = await this.#scopeBase.getCurrentEpoch(scope)
+    if (epoch === null) throw new Error('Unknown scope')
+
+    const key = await this.#scopeBase.resolveKey(scope, author, this.identity.encryptionKeyPair, epoch)
+    if (!key) throw new Error('You do not hold the current key for this scope — cannot encrypt content for it')
+
+    return { scope, epoch, key }
+  }
+
+  /**
+   * @param {Object|null} scopeKey - From #resolveScopeKey, or null for plaintext.
+   */
+  #contentEvent (entityId, content, contentType, scopeKey) {
+    const event = {
+      type: 'content/append',
+      entityId,
+      contentType,
+      body: content,
+      timestamp: Date.now()
+    }
+
+    if (scopeKey) {
+      const nonce = hypercoreCrypto.randomBytes(sodium.crypto_secretbox_NONCEBYTES)
+      const message = Buffer.from(String(content), 'utf-8')
+      const ciphertext = Buffer.alloc(message.length + sodium.crypto_secretbox_MACBYTES)
+      sodium.crypto_secretbox_easy(ciphertext, message, nonce, scopeKey.key)
+
+      event.body = ciphertext.toString('hex')
+      event.encrypted = true
+      event.scope = scopeKey.scope
+      event.epoch = scopeKey.epoch
+      event.nonce = nonce.toString('hex')
+    }
+
+    return event
+  }
+
+  /** A signed relation/create event for `context`. */
+  #relationEvent (context, from, to, relationType, value, data) {
+    const deviceKeyPair = this.identity.deviceKeyPair
+    const author = b4a.isBuffer(deviceKeyPair.publicKey)
+      ? deviceKeyPair.publicKey.toString('hex')
+      : String(deviceKeyPair.publicKey)
+
+    const event = {
+      type: 'relation/create',
+      from,
+      to,
+      relationType,
+      author,
+      timestamp: Date.now(),
+      signature: null
+    }
+    if (typeof value === 'number') event.value = value
+    if (typeof data === 'string') event.data = data
+
+    const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
+    event.signature = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey).toString('hex')
+    return event
+  }
+
+
+// ── Bulk writes ───────────────────────────────────────────────────────────
+
+  /**
+   * Start a bulk write: entities, content versions and relations collected
+   * here are written by `flush()` as one append to this user's core and one
+   * append per context — which every peer then replays in one step, instead
+   * of one step per item. Use it for anything bigger than a handful of
+   * writes (importing a folder, say).
+   *
+   * Same verbs, arguments and validation as the single-item methods;
+   * `batch.put()` returns an EntityRef usable as an id within the batch.
+   * See specs/002-scale-indexing/contracts/bulk-write.md.
+   *
+   * @returns {Batch}
+   *
+   * @example
+   * const batch = graph.batch()
+   * const dir = batch.put({ type: 'dir' })
+   * for (const f of files) {
+   *   const file = batch.put({ type: 'file' })
+   *   batch.putContentRef(file, { src: [`swarmwire://${f.root}`], size: f.size, type: f.mime, mutable: false })
+   *   batch.relate({ from: file, to: dir, type: 'in', context: ctx })
+   * }
+   * const { entities } = await batch.flush()
+   */
+  batch () {
+    return new Batch((batch) => this.#flushBatch(batch))
+  }
+
+  async #flushBatch (batch) {
+    if (!this.opened) await this.ready()
+    const ops = batch._ops
+
+    // ── 1. Validate everything; nothing is written until this passes ──
+    const hasUserCoreWrites = ops.some(o => o.op !== 'relate')
+    if (hasUserCoreWrites &amp;&amp; !this.#userCore.writable) throw new Error('User core is read-only')
+
+    const created = new Set()
+    const scopeKeys = new Map()
+    const contexts = new Map()
+    for (let i = 0; i &lt; ops.length; i++) {
+      const o = ops[i]
+      if (o.op === 'put') {
+        created.add(o.ref)
+      } else if (o.op === 'content') {
+        await this.#assertBatchTarget(o.target, created)
+        if (o.opts.scope &amp;&amp; !scopeKeys.has(o.opts.scope)) scopeKeys.set(o.opts.scope, await this.#resolveScopeKey(o.opts.scope))
+      } else if (o.op === 'relate') {
+        for (const end of [o.from, o.to]) {
+          if (end instanceof EntityRef &amp;&amp; !created.has(end)) throw new Error('An EntityRef must be put() earlier in the batch than where it is used')
+        }
+        const keyHex = Buffer.isBuffer(o.context) ? o.context.toString('hex') : o.context
+        if (!contexts.has(keyHex)) contexts.set(keyHex, await this.#getContext(keyHex))
+      }
+    }
+
+    // ── 2. One append to the user core ──
+    const author = this.#userCore.key.toString('hex')
+    const entities = []
+    const idOf = (target) => target instanceof EntityRef ? target.id : target
+
+    if (hasUserCoreWrites) {
+      await this.#userCore.withWriteLock(async (length) => {
+        const events = []
+        for (const o of ops) {
+          if (o.op === 'put') {
+            o.ref._resolve(`${o.ref.type}/${author}/${length + events.length}`)
+            events.push(this.#entityCreateEvent(o.ref.type, author))
+          } else if (o.op === 'content') {
+            const scopeKey = o.opts.scope ? scopeKeys.get(o.opts.scope) : null
+            events.push(this.#contentEvent(idOf(o.target), o.content, o.contentType, scopeKey))
+          }
+        }
+        await this.#userCore.appendBatchUnlocked(events)
+      })
+      for (const o of ops) if (o.op === 'put') entities.push({ id: o.ref.id, type: o.ref.type, author })
+    }
+
+    // ── 3. One append per context ──
+    const written = { userCore: hasUserCoreWrites, contexts: [] }
+    const byContext = new Map()
+    for (const o of ops) {
+      if (o.op !== 'relate') continue
+      const keyHex = Buffer.isBuffer(o.context) ? o.context.toString('hex') : o.context
+      const context = contexts.get(keyHex)
+      if (!byContext.has(keyHex)) byContext.set(keyHex, [])
+      byContext.get(keyHex).push(this.#relationEvent(context, idOf(o.from), idOf(o.to), o.relationType, o.value, o.data))
+    }
+
+    for (const [keyHex, events] of byContext) {
+      try {
+        await contexts.get(keyHex).appendBatch(events)
+      } catch (err) {
+        if (!written.userCore &amp;&amp; written.contexts.length === 0) throw err
+        // What was written is real: index it, so the entities the error
+        // lists can actually be read before the caller retries.
+        await this.#view.update().catch(safetyCatch)
+        throw new BulkWriteError(`Bulk write partly failed: context ${keyHex} could not be written (${err.message})`, { written, entities, cause: err })
+      }
+      written.contexts.push(keyHex)
+    }
+
+    // ── 4. Index once, then announce each item as the single methods do ──
+    await this.#view.update()
+
+    for (const o of ops) {
+      if (o.op === 'put') {
+        this.#emitter.emit('change', { type: 'entity-create', id: o.ref.id, entityType: o.ref.type, author, timestamp: Date.now() })
+      } else if (o.op === 'content') {
+        this.#emitter.emit('change', { type: 'content-append', entityId: idOf(o.target), contentType: o.contentType, timestamp: Date.now() })
+      }
+    }
+    for (const [keyHex, events] of byContext) {
+      for (const e of events) {
+        this.#emitter.emit('change', { type: 'relation-create', from: e.from, to: e.to, relationType: e.relationType, value: e.value, context: keyHex, author: e.author, timestamp: Date.now() })
+      }
+    }
+
+    return { entities, written }
+  }
+
+  /** A content target must exist already, or be put() earlier in the batch. */
+  async #assertBatchTarget (target, created) {
+    if (target instanceof EntityRef) {
+      if (!created.has(target)) throw new Error('An EntityRef must be put() earlier in the batch than where it is used')
+      return
+    }
+    if (!(await this.#view.getNode(target))) throw new Error('Entity not found')
+  }
+
+
 // ── Content operations ────────────────────────────────────────────────────
 
   /**
@@ -378,18 +551,16 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param   {'text'|string} [contentType='text']
    * @returns {Promise&lt;{ entityId: string, contentType: string, body: string }>}
    */
-  async putContent (entityId, content, contentType = 'text') {
+  async putContent (entityId, content, contentType = 'text', opts = {}) {
     if (!this.opened) await this.ready()
 
     if (!entityId) throw new Error('entityId is required')
 
-    const event = {
-      type: 'content/append',
-      entityId,
-      contentType,
-      body: content,
-      timestamp: Date.now()
-    }
+    const node = await this.#view.getNode(entityId)
+    if (!node) throw new Error('Entity not found')
+
+    const scopeKey = opts.scope ? await this.#resolveScopeKey(opts.scope) : null
+    const event = this.#contentEvent(entityId, content, contentType, scopeKey)
 
     await this.#userCore.append(event)
     await this.#view.update()
@@ -402,18 +573,119 @@ module.exports = class Hypergraph extends ReadyResource {
       timestamp: Date.now()
     })
     
-    return { entityId, contentType, body: content }
+    // The caller already has the plaintext they just wrote — always
+    // return that, not the ciphertext, regardless of whether this was
+    // encrypted for storage.
+    return { entityId, contentType, body: content, encrypted: !!opts.scope, scope: opts.scope || null }
+  }
+
+  /**
+   * Append a reference to content held outside this graph.
+   *
+   * Stores an *address* instead of bytes, so large content can belong to a
+   * graph without every byte replicating to every participant. Hypergraph
+   * never fetches, caches, or verifies what the address points at, and never
+   * interprets a scheme's meaning — see `src/content-ref.js`.
+   *
+   * This is an ordinary content version: the entity id stays stable across
+   * updates, relations and tags pointing at it stay valid, and superseded
+   * references remain addressable.
+   *
+   * @param   {string} entityId
+   * @param   {Object} reference
+   * @param   {string|string[]} reference.src - One address, or several for the
+   *   same content in preference order (e.g. `swarmfs://&lt;root>`).
+   * @param   {number} reference.size - Declared byte length. An unverified claim.
+   * @param   {string} reference.type - Declared media type of the referenced content.
+   * @param   {boolean} reference.mutable - Whether the content behind the address may change.
+   * @param   {string} [reference.digest] - Optional `&lt;algo>:&lt;hex>` content digest.
+   * @param   {Object} [opts]
+   * @param   {string} [opts.scope] - Store the reference encrypted under a read
+   *   scope, so only members learn the address.
+   * @returns {Promise&lt;{ entityId: string, contentType: string, reference: Object }>}
+   * @throws  {Error} If the reference is malformed, the entity is unknown, or
+   *   the scope's key is unavailable.
+   */
+  async putContentRef (entityId, reference, opts = {}) {
+    // Throws on malformed input, deliberately: this is a local write, so a
+    // caller's mistake should surface here rather than as a puzzling failure
+    // in another repo later.
+    const body = formatReference(reference)
+
+    await this.putContent(entityId, body, CONTENT_LINK_TYPE, opts)
+
+    return {
+      entityId,
+      contentType: CONTENT_LINK_TYPE,
+      reference: parseReference(body)
+    }
   }
 
   /**
    * Read the latest content version from an entity.
    *
+   * If the stored content is encrypted (see putContent()'s opts.scope),
+   * this tries to resolve the scope's key locally and decrypt it. If the
+   * caller doesn't hold that scope's key for the relevant epoch, this
+   * returns a shape with `body: null` and `encrypted: true` rather than
+   * throwing or returning garbage — giving the caller a clean way to
+   * render "you don't have access" in their UI.
+   *
    * @param   {string} entityId
-   * @returns {Promise&lt;{ contentType: string, body: string }|null>}
+   * @returns {Promise&lt;?Object>} The latest content record `{ contentType, body, encrypted?, scope?, epoch?, reference? }` (`body: null` when encrypted and this reader has no key), or null
    */
   async getContent (entityId) {
+    const record = await this.#readContent(entityId)
+    if (!record) return null
+
+    // Inline content is returned exactly as before — existing callers see no
+    // change at all.
+    if (!isReferenceType(record.contentType)) return record
+
+    // `body` is null when the record is encrypted and this reader holds no key
+    // for the scope. There is nothing to parse, and the caller can still tell
+    // referenced content exists.
+    if (typeof record.body !== 'string') return record
+
+    // parseReference never throws, so a malformed or hostile payload yields
+    // `valid: false` rather than breaking every read of this entity.
+    return { ...record, reference: parseReference(record.body) }
+  }
+
+  /**
+   * Read the latest content record, decrypting it if it is scoped and this
+   * peer holds the key. Returns the record as stored, without interpreting a
+   * reference payload.
+   *
+   * @param   {string} entityId
+   * @returns {Promise&lt;Object|null>}
+   */
+  async #readContent (entityId) {
     if (!this.opened) await this.ready()
-    return this.#view.getContent(entityId)
+    const record = await this.#view.getContent(entityId)
+    if (!record) return null
+    if (!record.encrypted) return record
+
+    if (!this.#scopeBase) {
+      return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+    }
+
+    const author = this.identity.deviceKeyPair.publicKey.toString('hex')
+    const key = await this.#scopeBase.resolveKey(record.scope, author, this.identity.encryptionKeyPair, record.epoch)
+    if (!key) {
+      return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+    }
+
+    try {
+      const nonce = b4a.from(record.nonce, 'hex')
+      const ciphertext = b4a.from(record.body, 'hex')
+      const plaintext = Buffer.alloc(ciphertext.length - sodium.crypto_secretbox_MACBYTES)
+      const ok = sodium.crypto_secretbox_open_easy(plaintext, ciphertext, nonce, key)
+      if (!ok) return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+      return { contentType: record.contentType, body: plaintext.toString('utf-8'), encrypted: true, scope: record.scope, epoch: record.epoch }
+    } catch {
+      return { contentType: record.contentType, body: null, encrypted: true, scope: record.scope, epoch: record.epoch }
+    }
   }
 
 
@@ -474,32 +746,11 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   async relate (opts) {
     if (!this.opened) await this.ready()
-    if (!opts) throw new Error('Options object is required')
-    if (!opts.from) throw new Error('opts.from is required')
-    if (!opts.to) throw new Error('opts.to is required')
-    if (!opts.context) throw new Error('opts.context is required')
-    if (!opts.type &amp;&amp; !opts.relationType) throw new Error('opts.type or opts.relationType is required')
-
-    const deviceKeyPair = this.identity.deviceKeyPair
-    const author = b4a.isBuffer(deviceKeyPair.publicKey)
-      ? deviceKeyPair.publicKey.toString('hex')
-      : String(deviceKeyPair.publicKey)
+    validateRelateOpts(opts)
 
     const context = await this.#getContext(opts.context)
-
-    const event = {
-      type: 'relation/create',
-      from: opts.from,
-      to: opts.to,
-      relationType: opts.type || opts.relationType,
-      author,
-      timestamp: Date.now(),
-      signature: null
-    }
-
-    const digest = this.#stableRelationHash(event)
-    const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
-    event.signature = sig.toString('hex')
+    const event = this.#relationEvent(context, opts.from, opts.to, opts.type || opts.relationType, opts.value, opts.data)
+    const author = event.author
 
     await context.append(event)
     await this.#view.update()
@@ -510,6 +761,7 @@ module.exports = class Hypergraph extends ReadyResource {
       from: opts.from,
       to: opts.to,
       relationType: opts.type || opts.relationType,
+      value: typeof opts.value === 'number' ? opts.value : undefined,
       context: opts.context,
       author,
       timestamp: Date.now()
@@ -562,7 +814,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = this.#stableRelationHash(event)
+    const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -596,21 +848,27 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Count edges of a given type and direction across all open contexts.
+   * Count edges of a given type and direction.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
    * @param   {'in'|'out'} direction - Edge direction
+   * @param   {Object} [opts]
+   * @param   {string|string[]} [opts.context] - Restrict to this context (or
+   *   these contexts). Required if more than one context is open on this
+   *   graph instance - see utils.resolveOpenContexts.
+   * @param   {boolean} [opts.allContexts] - Explicitly count across every
+   *   open context instead of requiring `context` to be named.
    * @returns {Promise&lt;number>}
    */
-  async #countEdges (entityId, type, direction) {
+  async #countEdges (entityId, type, direction, opts = {}) {
     if (!this.opened) await this.ready()
     const key = `cnt:${direction}:${entityId}:${type}`
     let total = 0
 
     const seen = new Set()
 
-    for (const [, context] of this.#contexts) {
+    for (const [, context] of resolveOpenContexts(this.#contexts, opts)) {
       if (!context.opened) continue
       const viewKey = context.view &amp;&amp; context.view.core &amp;&amp; context.view.core.key
         ? context.view.core.key.toString('hex')
@@ -627,25 +885,27 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Count incoming edges of a given type across all open contexts.
+   * Count incoming edges of a given type.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
+   * @param   {Object} [opts] - See #countEdges for `context`/`allContexts`.
    * @returns {Promise&lt;number>}
    */
-  async countEdgesIn (entityId, type) {
-    return this.#countEdges(entityId, type, 'in')
+  async countEdgesIn (entityId, type, opts = {}) {
+    return this.#countEdges(entityId, type, 'in', opts)
   }
 
   /**
-   * Count outgoing edges of a given type across all open contexts.
+   * Count outgoing edges of a given type.
    *
    * @param   {string} entityId
    * @param   {string} type      - Relation type label
+   * @param   {Object} [opts] - See #countEdges for `context`/`allContexts`.
    * @returns {Promise&lt;number>}
    */
-  async countEdgesOut (entityId, type) {
-    return this.#countEdges(entityId, type, 'out')
+  async countEdgesOut (entityId, type, opts = {}) {
+    return this.#countEdges(entityId, type, 'out', opts)
   }
 
 
@@ -688,7 +948,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = stableTagHash(event)
+    const digest = stableTagHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -733,7 +993,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
 
-    const digest = stableTagHash(event)
+    const digest = stableTagHash(event, context.key ? context.key.toString('hex') : null)
     const sig = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey)
     event.signature = sig.toString('hex')
 
@@ -768,6 +1028,58 @@ module.exports = class Hypergraph extends ReadyResource {
     return this.#view.getByTag(tag, opts)
   }
 
+  /**
+   * Iterate over entities of a given type, in chronological order.
+   *
+   * Backed by the same type-specific, time-sorted index `query().type()`
+   * uses internally — an efficient, indexed scan, not a full table scan.
+   *
+   * @param   {string} type
+   * @returns {AsyncGenerator&lt;Entity>}
+   *
+   * @example
+   * for await (const node of graph.getByType('post')) {
+   *   console.log(node.id)
+   * }
+   */
+  getByType (type) {
+    if (!this.opened) {
+      return (async function * () {
+        await this.ready()
+        yield * this.#view.getByType(type)
+      }).call(this)
+    }
+    return this.#view.getByType(type)
+  }
+
+  /**
+   * Iterate over entities created by a given author, in the order they
+   * appear in that author's own UserCore.
+   *
+   * Scans that author's own UserCore directly rather than the shared
+   * view — since a UserCore already only contains that person's own
+   * entities, no separate author index is needed at all. Yields nothing
+   * if that author's core hasn't been opened/replicated locally yet (see
+   * `openUserCore()`).
+   *
+   * @param   {PubKeyHex} author
+   * @returns {AsyncGenerator&lt;Entity>}
+   *
+   * @example
+   * for await (const node of graph.getByAuthor(authorPubkeyHex)) {
+   *   console.log(node.id)
+   * }
+   */
+  getByAuthor (author) {
+    if (!this.opened) {
+      return (async function * () {
+        await this.ready()
+        yield * this.#view.getByAuthor(author)
+      }).call(this)
+    }
+    return this.#view.getByAuthor(author)
+  }
+
   // ========================================
   // Sync
   // ========================================
@@ -778,18 +1090,28 @@ module.exports = class Hypergraph extends ReadyResource {
    * Call this after appending events to ensure indexes are up-to-date.
    * Most operations call this automatically.
    *
+   * Emits a 'change' event (`{ type: 'sync' }`) if this call actually
+   * processed new data — whether from a local write or data that arrived
+   * via replication. This is the signal live queries (see
+   * `GraphQuery.live()`) subscribe to; it's intentionally coarse (does
+   * this graph have new data at all, not which entity/relation changed).
+   *
    * @returns {Promise&lt;void>}
    */
   async update () {
     if (!this.opened) await this.ready()
     if (this.#roleBase) await this.#roleBase.update()
+    if (this.#scopeBase) await this.#scopeBase.update()
 
     for (const [, context] of this.#contexts) {
       if (!context || !context.opened) continue
       await context.update()
     }
 
-    await this.#view.update()
+    const changed = await this.#view.update()
+    if (changed) {
+      this.#emitter.emit('change', { type: 'sync', timestamp: Date.now() })
+    }
   }
 
 
@@ -833,6 +1155,48 @@ module.exports = class Hypergraph extends ReadyResource {
     return roles
   }
 
+// ── ScopeBase ─────────────────────────────────────────────────────────────
+
+  /**
+   * Create a fresh ScopeBase and attach it to this graph instance.
+   * Closes any previously attached ScopeBase. Permission checks on scope
+   * actions (scope.create/scope.grant/scope.revoke) are evaluated against
+   * whichever RoleBase is currently attached to this graph, if any.
+   *
+   * @returns {Promise&lt;string>} The new ScopeBase key as a hex string.
+   */
+  async createScopeBase () {
+    if (!this.opened) await this.ready()
+
+    if (this.#scopeBase) await this.#scopeBase.close()
+
+    const scopes = new ScopeBase(this.#store, null, { identity: this.identity, roleBase: this.#roleBase })
+    await scopes.ready()
+    this.#scopeBase = scopes
+    return scopes.key.toString('hex')
+  }
+
+  /**
+   * Open an existing ScopeBase by key and attach it to this graph instance.
+   *
+   * @param   {Buffer|string} keyOrHex
+   * @returns {Promise&lt;ScopeBase>}
+   */
+  async openScopeBase (keyOrHex) {
+    if (!this.opened) await this.ready()
+    if (!keyOrHex) throw new Error('ScopeBase key is required')
+
+    const keyHex = Buffer.isBuffer(keyOrHex) ? keyOrHex.toString('hex') : keyOrHex
+    if (typeof keyHex !== 'string' || keyHex.length === 0) throw new Error('Invalid ScopeBase key')
+
+    if (this.#scopeBase) await this.#scopeBase.close()
+
+    const scopes = new ScopeBase(this.#store, Buffer.from(keyHex, 'hex'), { identity: this.identity, roleBase: this.#roleBase })
+    await scopes.ready()
+    this.#scopeBase = scopes
+    return scopes
+  }
+
   /**
    * Get the role string currently assigned to a member.
    *
@@ -844,8 +1208,9 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!this.#roleBase) throw new Error('RoleBase is not open')
     if (typeof pubkeyHex !== 'string' || pubkeyHex.length === 0) throw new Error('Invalid pubkeyHex')
 
-    const entry = await this.#roleBase.view.get(`roles:member:${pubkeyHex}`)
-    return entry &amp;&amp; entry.value ? entry.value.role : null
+    const registry = await this.#roleBase.getRegistry()
+    if (!registry || !registry.members) return null
+    return registry.members[pubkeyHex] || null
   }
 
   /**
@@ -898,16 +1263,24 @@ module.exports = class Hypergraph extends ReadyResource {
    *
    * @param {PubKeyHex} memberPubkeyHex
    * @param {Object}    opts
-   * @param {PubKeyHex} opts.author
+   * @param {KeyPair}   opts.keyPair - KeyPair for signing the event
    */
   async removeRole (memberPubkeyHex, opts = {}) {
     if (!this.opened) await this.ready()
     if (!this.#roleBase) throw new Error('RoleBase is not open')
+    if (!opts.keyPair || !opts.keyPair.secretKey || !opts.keyPair.publicKey) {
+      throw new Error('opts.keyPair is required')
+    }
+
+    const author = b4a.isBuffer(opts.keyPair.publicKey)
+      ? opts.keyPair.publicKey.toString('hex')
+      : String(opts.keyPair.publicKey)
 
     await this.#roleBase.append({
       type: 'roles/removeMember',
       member: memberPubkeyHex,
-      author: opts.author,
+      author,
+      keyPair: opts.keyPair,
       timestamp: Date.now()
     })
   }
@@ -952,28 +1325,6 @@ module.exports = class Hypergraph extends ReadyResource {
     return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
   }
 
-  #stableRelationHash (event) {
-    const payload = {
-      from: event.from,
-      to: event.to,
-      relationType: event.relationType
-    }
-
-    const msg = {
-      op: event.type,
-      payload,
-      author: event.author,
-      timestamp: event.timestamp
-    }
-
-    // For relation/delete, include createdAt
-    if (event.createdAt) {
-      msg.createdAt = event.createdAt
-    }
-
-    return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
-  }
-
   /**
    * Publish a signed moderation action into a context.
    *
@@ -1006,6 +1357,28 @@ module.exports = class Hypergraph extends ReadyResource {
     const author = b4a.isBuffer(opts.keyPair.publicKey)
       ? opts.keyPair.publicKey.toString('hex')
       : String(opts.keyPair.publicKey)
+
+    // Client-side fail-fast check: mirrors the apply layer's own
+    // semantics (#isModerationAllowed) rather than duplicating a
+    // stricter one. "No RoleBase yet" or "registry not ready yet" means
+    // "not yet determined" — allowed through here, exactly as the apply
+    // layer queues it as pending rather than rejecting outright (see the
+    // "records a signed fact even before a RoleBase exists" test). Only
+    // a RoleBase that has a registry AND explicitly denies the action
+    // throws here — previously this method had no pre-check at all, so
+    // an unauthorized caller got no error at all; the action just
+    // silently never took effect once the apply layer rejected it.
+    if (this.#roleBase) {
+      let registry = null
+      try {
+        registry = await this.#roleBase.getRegistry()
+      } catch {
+        registry = null
+      }
+      if (registry &amp;&amp; !canRole(registry, author, opts.action)) {
+        throw new Error('Not authorized to perform this moderation action')
+      }
+    }
 
     const event = {
       type: 'moderation/action',
@@ -1050,7 +1423,7 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   query (opts = {}) {
     if (!this.opened) this.ready().then(() => {})
-    return new GraphQuery(this.#view, opts)
+    return new GraphQuery(this.#view, opts, this)
   }
 
 
@@ -1133,6 +1506,8 @@ module.exports = class Hypergraph extends ReadyResource {
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
+      fastForward: opts.fastForward,
+      rules: validateRules(opts.rules),
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
@@ -1204,12 +1579,18 @@ module.exports = class Hypergraph extends ReadyResource {
       keyEncoding: this.#keyEncoding,
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
+      fastForward: opts.fastForward,
+      rules: validateRules(opts.rules),
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
       }
     })
     await context.ready()
+
+    // The context's first event: its topology record, so every peer applies
+    // it the same way (spec 003, data-model.md).
+    await context.append({ type: 'context/init', version: CONTEXT_VERSION, rules: opts.rules ? opts.rules.id : '', timestamp: Date.now() })
 
     const keyHex = context.key.toString('hex')
     this.#contexts.set(keyHex, context)
@@ -1228,6 +1609,10 @@ module.exports = class Hypergraph extends ReadyResource {
   async openContext (keyOrHex, opts = {}) {
     if (!this.opened) await this.ready()
     const ctx = await this.#getContext(keyOrHex, opts)
+    // Refuse up front when the context's record is already here and says
+    // this peer would apply it differently (spec 003, FR-016/FR-018).
+    const refusal = await ctx.refusal()
+    if (refusal) throw new Error(refusal)
     return ctx
   }
 
@@ -1257,6 +1642,19 @@ module.exports = class Hypergraph extends ReadyResource {
       valueEncoding: this.#valueEncoding
     })
     await core.ready()
+
+    // Download it in the background from now on, following new appends.
+    // Everything in a followed log gets indexed anyway, and on a joining
+    // peer the first update() spends its time replaying contexts — the log
+    // should be streaming in meanwhile, not wait its turn (spec 002).
+    if (!core.writable &amp;&amp; core.core) {
+      try {
+        core.core.download({ start: 0, end: -1 }).done().catch(safetyCatch)
+      } catch (err) {
+        safetyCatch(err)
+      }
+    }
+
     this.#userCores.set(keyHex, core)
     this.#view.addUserCore(keyHex, core)
     return core
@@ -1265,36 +1663,6 @@ module.exports = class Hypergraph extends ReadyResource {
   // ========================================
   // Replication Helpers (app uses these)
   // ========================================
-
-  /**
-   * Announce this peer's presence to the graph.
-   * 
-   * @param {Object} [opts] - Announcement options
-   * @param {Object} [opts.metadata] - Optional metadata to include
-   * @returns {Promise&lt;void>}
-   */
-  async announce (opts = {}) {
-    return this.#peerDiscovery.announce(opts)
-  }
-
-  /**
-   * Discover other peers in the graph.
-   * 
-   * @param {Object} [opts] - Discovery options
-   * @returns {Promise&lt;AsyncGenerator&lt;Array&lt;{userCoreKey: string, timestamp: number, metadata: Object|null}>>>}
-   */
-  async discoverPeers (opts = {}) {
-    return this.#peerDiscovery.discoverPeers(opts)
-  }
-
-  /**
-   * Get the list of known peers.
-   * 
-   * @returns {Array&lt;{userCoreKey: string, timestamp: number, metadata: Object|null}>}
-   */
-  listPeers () {
-    return this.#peerDiscovery.listPeers()
-  }
 
   /**
    * Handle a peer connection for automatic writer authorization.
@@ -1307,8 +1675,8 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Promise&lt;void>}
    */
   async handlePeerConnection (peerKey, contextKey, opts = {}) {
-    // Handle peer discovery
-    await this.#peerDiscovery.handlePeerConnection(peerKey, opts)
+    // Peer discovery is now handled by HypergraphNetwork
+    // This method is kept for backward compatibility
 
     // Handle writer authorization for the specified context
     if (contextKey) {
@@ -1379,45 +1747,39 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /**
-   * Handle a peer disconnection.
-   * 
-   * @param {Buffer} peerKey - The peer's public key
-   * @param {Object} [opts] - Additional options
-   * @returns {Promise&lt;void>}
-   */
-  async handlePeerDisconnection (peerKey, opts = {}) {
-    return this.#peerDiscovery.handlePeerDisconnection(peerKey, opts)
-  }
-
-  /**
-   * Register an event listener for peer-related events.
-   * 
-   * @param {string} event - Event name ('peer-join', 'peer-leave')
-   * @param {Function} callback - Callback function
+   * Register an event listener.
+   *
+   * Hypergraph currently only emits `'change'`. Peer discovery events
+   * (`'peer-join'`, `'peer-leave'`) are emitted by `HypergraphNetwork`, not
+   * by Hypergraph itself — subscribe on your `HypergraphNetwork` instance
+   * for those.
+   *
+   * @param   {string}   event - Event name (only `'change'` is supported)
+   * @param   {Function} callback
    * @returns {this}
+   * @throws  {Error} If `event` is not `'change'`
    */
   on (event, callback) {
-    if (event === 'change') {
-      this.#emitter.on('change', callback)
-    } else {
-      this.#peerDiscovery.on(event, callback)
+    if (event !== 'change') {
+      throw new Error(`Unsupported event '${event}'. Hypergraph only emits 'change'; peer discovery events are emitted by HypergraphNetwork.`)
     }
+    this.#emitter.on('change', callback)
     return this
   }
 
   /**
    * Remove an event listener.
-   * 
-   * @param {string} event - Event name
-   * @param {Function} callback - Callback function
+   *
+   * @param   {string}   event - Event name (only `'change'` is supported)
+   * @param   {Function} callback
    * @returns {this}
+   * @throws  {Error} If `event` is not `'change'`
    */
   off (event, callback) {
-    if (event === 'change') {
-      this.#emitter.off('change', callback)
-    } else {
-      this.#peerDiscovery.off(event, callback)
+    if (event !== 'change') {
+      throw new Error(`Unsupported event '${event}'. Hypergraph only emits 'change'; peer discovery events are emitted by HypergraphNetwork.`)
     }
+    this.#emitter.off('change', callback)
     return this
   }
 
@@ -1499,7 +1861,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
   /**
    * Connect to a Hyperswarm topic for P2P networking.
-   * This is a convenience method that uses HypergraphNetworking internally.
+   * This is a convenience method that uses HypergraphNetwork internally.
    *
    * @param {Buffer|string} topic - Hyperswarm topic (Buffer or hex string)
    * @param {Object} [opts] - Connection options
@@ -1507,12 +1869,13 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
    * @param {Object&lt;string, string|Buffer>} [opts.contexts] - Context keys for writer authorization (key-value pairs)
    * @param {number} [opts.maxPeers=16] - Maximum peers per swarm
-   * @returns {Promise&lt;Object>} The HypergraphNetworking instance
+   * @returns {Promise&lt;Object>} The HypergraphNetwork instance
    */
   async connectToSwarm (topic, opts = {}) {
-    const HypergraphNetworking = require('./networking')
-    const networking = new HypergraphNetworking(this, this.#store, {
-      dataSwarm: opts.swarm,
+    const HypergraphNetwork = require('./networking')
+    const Hyperswarm = require('hyperswarm')
+    const swarm = opts.swarm || new Hyperswarm()
+    const networking = new HypergraphNetwork(this, this.#store, swarm, {
       topic,
       role: opts.role || 'peer',
       contexts: opts.contexts || {},
@@ -1525,7 +1888,7 @@ module.exports = class Hypergraph extends ReadyResource {
   /**
    * Disconnect from a Hyperswarm topic.
    *
-   * @param {Object} networking - The HypergraphNetworking instance from connectToSwarm
+   * @param {Object} networking - The HypergraphNetwork instance from connectToSwarm
    * @returns {Promise&lt;void>}
    */
   async disconnectFromSwarm (networking) {
@@ -1572,26 +1935,19 @@ module.exports = class Hypergraph extends ReadyResource {
 
 
 
-            </div>
-            
-            <footer class="footer">
-                <div class="content has-text-centered">
-                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a></p>
-                    <p class="sidebar-created-by">
-                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by
-                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
-                    </p>
-                </div>
-            </footer>
-            
-        </div>
-        <div id="side-nav" class="side-nav">
-        </div>
-    </div>
-<script src="scripts/app.min.js"></script>
-<script>PR.prettyPrint();</script>
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-docs.html">docs</a></li><li><a href="module-event-encoding.html">event-encoding</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Classes</h3><ul><li><a href="Batch.html">Batch</a></li><li><a href="BulkWriteError.html">BulkWriteError</a></li><li><a href="EntityRef.html">EntityRef</a></li><li><a href="global.html#IdentityManager">IdentityManager</a></li><li><a href="module.html#.exports">exports</a></li><li><a href="module-hypergraph.html">hypergraph</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CONTENT_LINK_TYPE">CONTENT_LINK_TYPE</a></li><li><a href="global.html#CURRENT_VERSION">CURRENT_VERSION</a></li><li><a href="global.html#DIGEST_PATTERN">DIGEST_PATTERN</a></li><li><a href="global.html#EVENT_TYPES">EVENT_TYPES</a></li><li><a href="global.html#SUPPORTED_VERSIONS">SUPPORTED_VERSIONS</a></li><li><a href="global.html#applyRoleEvent">applyRoleEvent</a></li><li><a href="global.html#applyScopeEvent">applyScopeEvent</a></li><li><a href="global.html#authorFromEntityId">authorFromEntityId</a></li><li><a href="global.html#can">can</a></li><li><a href="global.html#crypto">crypto</a></li><li><a href="global.html#decodeEvent">decodeEvent</a></li><li><a href="global.html#encodeEvent">encodeEvent</a></li><li><a href="global.html#formatReference">formatReference</a></li><li><a href="global.html#getGrant">getGrant</a></li><li><a href="global.html#initRegistry">initRegistry</a></li><li><a href="global.html#initScope">initScope</a></li><li><a href="global.html#isReferenceType">isReferenceType</a></li><li><a href="global.html#normalizeSrc">normalizeSrc</a></li><li><a href="global.html#parseReference">parseReference</a></li><li><a href="global.html#relationDataProblem">relationDataProblem</a></li><li><a href="global.html#resolveOpenContexts">resolveOpenContexts</a></li><li><a href="global.html#schemeOf">schemeOf</a></li><li><a href="global.html#stableRelationHash">stableRelationHash</a></li><li><a href="global.html#stableTagHash">stableTagHash</a></li><li><a href="global.html#toSortableTs">toSortableTs</a></li><li><a href="global.html#validateRelateOpts">validateRelateOpts</a></li><li><a href="global.html#validationError">validationError</a></li><li><a href="global.html#withTimeoutWarn">withTimeoutWarn</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Oct 05 2026 15:29:37 GMT+0100 (GMT+01:00)
+</footer>
+
+<script> prettyPrint(); </script>
 <script src="scripts/linenumber.js"> </script>
-
-
 </body>
 </html>

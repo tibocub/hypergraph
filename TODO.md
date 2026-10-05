@@ -12,8 +12,8 @@ from here — don't leave a stale copy.
 - **Auth middleware example for HTTP APIs**: `graph.can()` exposes the primitive permission
   check; no packaged Express/HTTP middleware example exists yet for apps that want to gate
   routes on it.
-- **Batch operations**: no bulk/batch variants of `relate()`/`unrelate()`/`tag()`/`untag()` —
-  only singular versions exist.
+- **Batch operations, the rest**: `graph.batch()` covers `put`/`putContent`/`putContentRef`/
+  `relate` (spec 002); `unrelate`/`tag`/`untag`/`del` still have no bulk form.
 - **Broader statistics/metrics**: `query().count()` exists; nothing beyond that (storage size,
   replication/peer stats, per-type counts without a full scan).
 - **Per-context cleanup**: `Hypergraph`'s teardown (`_close()`) correctly tears down every open

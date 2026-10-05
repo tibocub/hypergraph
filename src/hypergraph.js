@@ -604,7 +604,7 @@ module.exports = class Hypergraph extends ReadyResource {
    * render "you don't have access" in their UI.
    *
    * @param   {string} entityId
-   * @returns {Promise<{ contentType: string, body: string|null, encrypted?: boolean, scope?: string, epoch?: number }|null>}
+   * @returns {Promise<?Object>} The latest content record `{ contentType, body, encrypted?, scope?, epoch?, reference? }` (`body: null` when encrypted and this reader has no key), or null
    */
   async getContent (entityId) {
     const record = await this.#readContent(entityId)

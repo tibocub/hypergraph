@@ -88,7 +88,25 @@ Corestore feature that prevents core key conflicts by prefixing core names with 
 Process of adding a peer as a writer to a ContextBase. In open mode, writers are added automatically. In closed mode, writers must be approved based on role permissions. Writers can also be removed the same way (`removeWriter()`).
 
 ### Relation
-Directed edge between two entities (e.g., reply-to, likes, follows), with an optional numeric `value` (e.g. a vote's weight). Stored in ContextBase as collaborative data. Any authorized writer can relate any two entities — signature verification proves who created the relation, not that they own the entities it connects (this is required for the normal case of commenting on someone else's post).
+Directed edge between two entities (e.g., reply-to, likes, follows), with an optional numeric `value` (e.g. a vote's weight) and an optional signed `data` string (≤ 4 KB, e.g. a file's listing data). Stored in ContextBase as collaborative data. The signer must own the `from` entity (checked at apply time on every peer); `to` can be anyone's — which is what commenting on someone else's post needs.
+
+### Indexer
+A member whose device confirms the order of a context's writes and signs the result. In contexts created since spec 003, only the creator; in older contexts, every writer.
+
+### Confirmed (Signed) State
+A context's history up to the length its indexers signed. It can no longer be reordered, and it is what a newcomer fast-forwards to.
+
+### Fast-Forward
+Joining a context by adopting the indexers' signed state instead of replaying every event; index blocks are then fetched on demand when read.
+
+### Context Record
+The `context/init` event the creator writes first (`{ version, rules }`), so every peer applies the context the same way.
+
+### App Rules
+Deterministic checks an app attaches to a context (`{ id, validate(event, reader) }`), run in apply to reject events before they are indexed.
+
+### Bulk Write
+`graph.batch()`: many entities, contents and relations written as one append to the user core and one per context, which every peer then replays in one step.
 
 ### Tag
 Author-scoped label for an entity (e.g., "important", "spam"). Only the entity's author can tag it. Stored in ContextBase.

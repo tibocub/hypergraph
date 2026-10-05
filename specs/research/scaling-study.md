@@ -140,6 +140,12 @@ would then be part of the context, chosen by whoever creates it.
 
 ## 7. Recommended order
 
+Status (2026-10-05): **1 is done for single-indexer contexts** (spec 003 phase 1: acks,
+creator-only indexing, fast-forward, app rules); multi-indexer appointment is phase 2. **3 is
+done differently from planned**: rather than lazily loading users' logs, a relation can carry
+signed data (spec 004), so listings never need the logs — a 1M-entry archive is browsable 1.2 s
+after joining with 60 MB on disk. GraphView `sessions: false` is done. 2 and 4 remain.
+
 1. **Fast-forward + indexer topology + acks + app validation hook**, one spec: the only path to
    1M joins, the fix for unconfirmed multi-writer contexts, and the natural home of your
    validation-hook ask (rules run on indexers, which is what every fast-forwarding member

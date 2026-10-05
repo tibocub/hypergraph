@@ -165,7 +165,7 @@ function authorFromEntityId (id) {
  * @param {Object} [opts]
  * @param {string|string[]} [opts.context]
  * @param {boolean} [opts.allContexts]
- * @returns {Array<[string, Object]>} [keyHex, ContextBase] pairs
+ * @returns {Array<Array>} [keyHex, ContextBase] pairs
  */
 function resolveOpenContexts (contexts, opts = {}) {
   if (opts.context !== undefined && opts.context !== null) {
