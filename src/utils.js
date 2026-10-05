@@ -102,17 +102,22 @@ const stableRelationHash = (event, contextKeyHex) => {
 }
 
 /**
- * Stable hash for the signed context governance events of spec 005
- * (`context/writer`, `context/role`), bound to one context like relations.
+ * Stable hash for the signed context governance events of specs 005/006
+ * (`context/writer`, `context/role`, `context/invite`, `context/redeem`),
+ * bound to one context like relations.
  *
  * @param {Object} event
  * @param {string} contextKeyHex
  * @returns {Buffer} SHA-256 digest
  */
 const stableContextHash = (event, contextKeyHex) => {
-  const payload = event.type === 'context/writer'
-    ? { key: event.key, member: event.member || '' }
-    : { member: event.member, role: event.role || '' }
+  let payload
+  if (event.type === 'context/writer') payload = { key: event.key, member: event.member || '' }
+  else if (event.type === 'context/invite') payload = { inviteKey: event.inviteKey, role: event.role || '', uses: event.uses }
+  // context/redeem: signed twice with this same digest, by the invite key
+  // (proves the link) and by the member (binds the redemption to them).
+  else if (event.type === 'context/redeem') payload = { inviteKey: event.inviteKey, member: event.member, key: event.key }
+  else payload = { member: event.member, role: event.role || '' }
   const msg = {
     op: event.type,
     payload,

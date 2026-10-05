@@ -9,6 +9,7 @@ const sodium = require('sodium-universal')
 const b4a = require('b4a')
 const UserCore = require('./user-core')
 const ContextBase = require('./context-base')
+const ProtomuxWakeup = require('protomux-wakeup')
 const RoleBase = require('./role-base')
 const ScopeBase = require('./scope-base')
 const GraphView = require('./view')
@@ -61,6 +62,7 @@ module.exports = class Hypergraph extends ReadyResource {
   #scopeBase
   #emitter
   #onIndexEvent
+  #wakeup
   identity
 
   /**
@@ -76,6 +78,9 @@ module.exports = class Hypergraph extends ReadyResource {
     this.#userCoreKey = opts.userCoreKey || null
     // Test-only (underscore): lets a test simulate a crash mid-indexing.
     this.#onIndexEvent = opts._onIndexEvent || null
+    // One writer-discovery protocol for every context of this graph, attached
+    // to streams by replicate() (spec 006).
+    this.#wakeup = new ProtomuxWakeup()
     
     // Initialize identity system
     this.identity = new IdentityManager({
@@ -149,6 +154,7 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   async _close () {
+    if (this.#wakeup) this.#wakeup.destroy()
     if (this.#view) await this.#view.close()
     if (this.#userCore) await this.#userCore.close()
 
@@ -1484,6 +1490,7 @@ module.exports = class Hypergraph extends ReadyResource {
       writeMode: opts.writeMode,
       fastForward: opts.fastForward,
       rules: validateRules(opts.rules),
+      wakeup: this.#wakeup,
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
@@ -1557,6 +1564,7 @@ module.exports = class Hypergraph extends ReadyResource {
       writeMode: opts.writeMode,
       fastForward: opts.fastForward,
       rules: validateRules(opts.rules),
+      wakeup: this.#wakeup,
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
@@ -1840,7 +1848,67 @@ module.exports = class Hypergraph extends ReadyResource {
    * @returns {Object} The replication stream
    */
   replicate (isInitiator, opts) {
-    return this.#store.replicate(isInitiator, opts)
+    const stream = this.#store.replicate(isInitiator, opts)
+    // Writer discovery for every context (spec 006): lets peers learn of a
+    // writer they don't know yet, such as someone redeeming an invite.
+    this.#wakeup.addStream(stream)
+    return stream
+  }
+
+  /**
+   * Parse an invite link (see ContextBase#createInvite).
+   *
+   * @param {string} link
+   * @returns {{ context: string, seed: string, inviteKey: string }}
+   */
+  static parseInvite (link) {
+    return ContextBase.parseInviteLink(link)
+  }
+
+  /**
+   * Redeem an invite link: open its context, ask to become a writer with the
+   * invite's role, and wait until this device is one. No member has to act:
+   * every peer applying the context checks the redemption itself. Peers must
+   * be connected through graph.replicate() (or HypergraphNetwork).
+   *
+   * @param {string} link
+   * @param {{ timeout?: number }} [opts] - Default 30 s.
+   * @returns {Promise<ContextBase>} The context, writable.
+   * @throws {Error} If not granted within the timeout (used up, revoked, invalid, or nobody reachable).
+   */
+  async redeemInvite (link, opts = {}) {
+    if (!this.opened) await this.ready()
+    const { context: contextKey, inviteKey } = ContextBase.parseInviteLink(link)
+    const context = await this.#getContext(contextKey)
+    if (!context.writable) await context.redeem(link, this.identity.deviceKeyPair)
+    const timeout = opts.timeout === undefined ? 30000 : opts.timeout
+    const deadline = Date.now() + timeout
+    const me = b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex')
+    const tick = async () => {
+      if (Date.now() > deadline) throw new Error('Invite not granted (timed out): used up, revoked, invalid, or no peer reachable')
+      await context.update().catch(safetyCatch)
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    // This device applies its own redemption at once, possibly before it has
+    // heard of a competing one for the last use. Only the confirmed history
+    // decides: wait until the indexers have confirmed past the point where we
+    // first saw ourselves as a writer, then look again.
+    while (!context.writable) {
+      // Fail fast once the invite's own record, confirmed, says it's spent.
+      const inv = (await context.invites())[inviteKey]
+      if (inv && (inv.revoked || inv.used >= inv.uses) && context.base.signedLength >= context.base.length) {
+        throw new Error(`Invite not granted: ${inv.revoked ? 'it was revoked' : 'it has no uses left'}`)
+      }
+      await tick()
+    }
+    const seenAt = context.base.length
+    while (context.base.signedLength < seenAt) await tick()
+    if (!context.writable || !(await context.roles()).members[me]) {
+      throw new Error('Invite not granted: another redemption took its last use, or it was revoked')
+    }
+    await this.#view.update()
+    return context
   }
 
   /**

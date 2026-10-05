@@ -155,7 +155,8 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     if (this.#autoReplicate) {
       // Replicate the entire store (includes usercore, viewcore, context cores)
       // Corestore replicates all cores loaded in memory
-      this.#store.replicate(conn)
+      // Through the graph, so the stream carries writer discovery (spec 006).
+      this.#graph.replicate(conn)
     }
     this._wireWriterAuthChannel(conn, info)
     this.emit('data-connection', { conn, info })

@@ -159,3 +159,15 @@ test('event-encoding: context/writer, context/role and context/upgrade round-tri
   const init2 = { type: 'context/init', version: 2, rules: '', timestamp: 4 }
   t.alike(decodeEvent(encodeEvent(init2)), init2, 'context/init without owner keeps its old bytes and shape')
 })
+
+test('event-encoding: context/invite and context/redeem round-trip (spec 006)', async (t) => {
+  const a = 'a'.repeat(64)
+  const b = 'b'.repeat(64)
+  const sig = 'c'.repeat(128)
+  const invite = { type: 'context/invite', inviteKey: b, role: 'admin', uses: 3, author: a, timestamp: 1, signature: sig }
+  t.alike(decodeEvent(encodeEvent(invite)), invite, 'context/invite')
+  const revoke = { type: 'context/invite', inviteKey: b, role: 'admin', uses: 0, author: a, timestamp: 2, signature: sig }
+  t.alike(decodeEvent(encodeEvent(revoke)), revoke, 'revocation (uses: 0)')
+  const redeem = { type: 'context/redeem', inviteKey: b, member: a, key: 'd'.repeat(64), timestamp: 3, signature: sig, memberSignature: 'e'.repeat(128) }
+  t.alike(decodeEvent(encodeEvent(redeem)), redeem, 'context/redeem')
+})
