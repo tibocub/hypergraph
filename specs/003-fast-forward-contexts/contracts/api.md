@@ -17,10 +17,12 @@ event.
 ## `graph.openContext(key, opts?)`
 
 Same options. `rules.id` must match the id the context was created with (or both absent).
-On a mismatch the context is interrupted and `openContext()` rejects with
-`Error('Context rules mismatch: context uses "<a>", this peer provides "<b>"')`; a mismatch found
-later (e.g. the record arrives after open) emits `'error'` on the context with the same message.
-A context recorded with an unknown version is interrupted the same way.
+On a mismatch `openContext()` rejects with
+`Error('Context rules mismatch: context uses "<a>", this peer provides "<b>"')` when the context's
+record is already local. A mismatch found later (the record arrives after open) stops the context:
+`status().interrupted` holds the same message, the context emits `'interrupt'`, and later
+`append()` calls reject with it. (Not `'error'`: an `'error'` event nobody listens to would crash
+the app.) A context recorded with an unknown version is refused the same way.
 
 ## `rules.validate(event, reader) → boolean | Promise<boolean>`
 
@@ -47,12 +49,15 @@ after the built-in checks (signature, ownership) have passed.
   rules: 'swarmfs/v1',   // '' when none
   isIndexer: true,
   writable: true,
+  indexers: ['<hex>'],   // writer keys of the current indexers
   length: 1234,          // system length known locally
-  confirmedLength: 1230  // signed by the indexers; history up to here cannot change
+  confirmedLength: 1230, // signed by the indexers; history up to here cannot change
+  fastForwards: 1,       // how many times this peer fast-forwarded
+  interrupted: null      // why this context stopped applying, or null
 }
 ```
 
-## Trust model (documented in `docs/contexts-and-roles.md`)
+## Trust model (documented in `docs/contexts-and-roles.md#trust-model`)
 
 - A version 2 context is confirmed by its creator's device. A peer that joins by fast-forward
   adopts the creator-signed state without re-running the built-in checks or app rules on the

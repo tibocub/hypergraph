@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-05: contexts confirm, newcomers fast-forward, apps can add rules — BREAKING for mixed versions
+
+**Breaking**: in contexts created from now on, writers added after the creator **write without
+indexing** — only the creator confirms the context. The topology is recorded in the context's
+first event (new event type `context/init`), so **all peers of a context must run this version or
+later**: an older peer would make every writer an indexer and build a different index. Contexts
+created before keep their behavior (every writer indexes). No consumer code changes were needed
+(HyperBBS and hyperDNS suites pass unchanged).
+
+- **Contexts reach a confirmed state.** Indexers now acknowledge new history (about once a
+  second). Before, a context with several writers never confirmed anything (measured: 0 of 24,013
+  index entries); now everything is confirmed about a second after it arrives.
+- **Newcomers fast-forward.** A peer far behind adopts the state the indexers signed instead of
+  replaying every event, fetching index pieces only when reading. A 100,000-entry context: a
+  fresh peer's full join 132 s / 3.1 GB → 48 s / 689 MB (the context itself is listable in under
+  a second; the rest is the author's log). Opt out per peer with `openContext(key, { fastForward:
+  false })`.
+- **App rules**: `createContext({ rules: { id, validate(event, reader) } })` — deterministic checks
+  run in apply after the built-in ones; rejected events are never indexed by anyone who applies
+  them and never enter the confirmed state. A peer opening a context with different rules is
+  refused (`Context rules mismatch`).
+- `context.status()`: version, rules id, indexers, confirmed vs total length, fast-forwards,
+  and why the context stopped, if it did.
+- `writerKeys()` now lists every member, including non-indexing writers that haven't written.
+- Not yet: appointing more indexers, converting existing contexts (they need deterministic
+  permission checks first), sparse access to users' logs.
+
+Details: [`specs/003-fast-forward-contexts/`](specs/003-fast-forward-contexts/), trust model in
+[`docs/contexts-and-roles.md`](docs/contexts-and-roles.md#trust-model).
+
 ### 2026-10-05: faster GraphView reads; docs corrected (no format change)
 
 - GraphView reads no longer open and close a snapshot session per lookup: folder listings ~20%

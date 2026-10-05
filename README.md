@@ -119,6 +119,21 @@ It is much faster for you, and for everyone else too: other peers replay a conte
 call at a time, so the same import written item by item would stay slow for every future member.
 Contract: [`specs/002-scale-indexing/contracts/bulk-write.md`](specs/002-scale-indexing/contracts/bulk-write.md).
 
+## Contexts: confirmation, fast joins and app rules
+
+A context's creator confirms everyone's writes; newcomers far behind fast-forward to that signed
+state instead of replaying history; apps can attach deterministic rules that reject events before
+they are indexed:
+
+```js
+const rules = { id: 'myapp/v1', validate: (event, reader) => event.type !== 'message' || event.text.length < 1000 }
+const ctx = await graph.createContext({ rules })
+await graph.openContext(ctx, { rules })
+await (await graph.openContext(ctx, { rules })).status() // { version: 2, rules: 'myapp/v1', confirmedLength, ... }
+```
+
+See [Contexts and Roles](docs/contexts-and-roles.md) for the trust model.
+
 ## API Reference
 
 See the JSDoc-generated API documentation in [`docs/api/`](docs/api/) (open `index.html` in a

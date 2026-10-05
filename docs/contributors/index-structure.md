@@ -137,6 +137,12 @@ scopes:registry → {
 The actual symmetric key is never stored here in the clear — only `sealedKey` (ciphertext,
 openable only by its intended recipient). See [Read Permission](../read-permission.md).
 
+## Context Record (context view)
+
+```
+meta:context → { version, rules }   # from the creator's context/init; absent = version 1
+```
+
 ## Message and Pending Indexes (context view)
 
 ```

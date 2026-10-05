@@ -67,3 +67,16 @@ replicates one half of the index, `HEAPSNAP=<MB>` writes a heap snapshot past th
 That final commit is Autobase/Hypercore committing the whole replayed view at once
 (`specs/002-scale-indexing/research.md` R11). It cannot be avoided from hypergraph while every
 joiner rebuilds the view itself; fast-forward (research R13) is what removes it.
+
+### 2026-10-05 — `specs/003-fast-forward-contexts` (acks, creator-only indexing, fast-forward)
+
+| files | write | first folder listable on a fresh peer | fresh peer fully indexed | peak memory, fresh peer | fresh peer disk |
+|---|---|---|---|---|---|
+| 20,000 | — | 0.5 s | 9.2 s | — | — |
+| 100,000 | 62 s | — | 48 s (was 132 s) | 689 MB (was 3.1 GB) | 304 MB (was 706 MB) |
+| **1,000,000** | 11.3 min, 912 MB peak, 5.25 GB disk | **10.3 s** | **11.4 min** (was: crashed after ~21 min) | **751 MB** | 2.58 GB |
+
+The fresh peer fast-forwards the context (one fast-forward, 2 apply calls at 1M) and fetches
+index blocks only when reading: a 1,000-entry folder listing takes ~1.7 s on first read at 1M.
+What remains of a full join is downloading and indexing the author's whole log (2 million blocks
+at 1M) for the global view — the part a sparse user-core mode would remove.
