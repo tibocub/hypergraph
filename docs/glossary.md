@@ -91,7 +91,10 @@ Process of adding a peer as a writer to a ContextBase. In open mode, writers are
 Directed edge between two entities (e.g., reply-to, likes, follows), with an optional numeric `value` (e.g. a vote's weight) and an optional signed `data` string (≤ 4 KB, e.g. a file's listing data). Stored in ContextBase as collaborative data. The signer must own the `from` entity (checked at apply time on every peer); `to` can be anyone's — which is what commenting on someone else's post needs.
 
 ### Indexer
-A member whose device confirms the order of a context's writes and signs the result. In contexts created since spec 003, only the creator; in older contexts, every writer.
+A member whose device confirms the order of a context's writes and signs the result (a majority of indexers is needed). In version 3 contexts (the default), the owner and members whose role in the context allows indexing; in version 2, the creator only; in version 1, every writer.
+
+### Context Role Table
+A version 3 context's own record of who holds which role, changed only by signed role events in the context, so every peer makes the same permission decisions.
 
 ### Confirmed (Signed) State
 A context's history up to the length its indexers signed. It can no longer be reordered, and it is what a newcomer fast-forwards to.

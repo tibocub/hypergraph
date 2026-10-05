@@ -8,7 +8,7 @@ test('moderation: moderateAction records a signed fact even before a RoleBase ex
   const { graph } = await createGraph(t, 'moderation-t1')
 
   const modKeyPair = crypto.keyPair()
-  const ctx = await graph.createContext()
+  const ctx = await graph.createContext({ roles: 'rolebase' })
   const post = await graph.put({ type: 'post' })
 
   console.log('  Step 1: record a moderation action with no RoleBase attached')
@@ -34,7 +34,7 @@ test('moderation: events recorded before and after RoleBase init are both querya
 
   const modKeyPair = crypto.keyPair()
   const modPubkey = modKeyPair.publicKey.toString('hex')
-  const ctx = await graph.createContext()
+  const ctx = await graph.createContext({ roles: 'rolebase' })
   const post = await graph.put({ type: 'post' })
 
   console.log('  Step 1: moderate before any RoleBase exists')
@@ -74,7 +74,7 @@ test('moderation: an unauthorized action is rejected immediately, client-side, w
 
   const ownerKeyPair = crypto.keyPair()
   const ownerPubkey = ownerKeyPair.publicKey.toString('hex')
-  const ctx = await graph.createContext()
+  const ctx = await graph.createContext({ roles: 'rolebase' })
   const post = await graph.put({ type: 'post' })
 
   console.log('  Step 1: set up a trust policy naming only the owner as having permissions')
@@ -153,7 +153,7 @@ test('moderation: a moderation event that arrives before its author\'s RoleBase 
   await a.update()
 
   const post = await a.put({ type: 'post' })
-  const ctx = await a.createContext()
+  const ctx = await a.createContext({ roles: 'rolebase' })
 
   const modKeyPair = crypto.keyPair()
   await a.moderateAction({ context: ctx, action: 'content.flag', target: post.id, keyPair: modKeyPair })
@@ -224,7 +224,7 @@ test('moderation: offline-created events converge once two peers replicate', asy
   await a.update()
 
   const post = await a.put({ type: 'post' })
-  const ctx = await a.createContext()
+  const ctx = await a.createContext({ roles: 'rolebase' })
 
   const mod1 = crypto.keyPair()
   const mod2 = crypto.keyPair()
@@ -296,7 +296,7 @@ test('moderation: a validly-signed action with an extreme future timestamp is re
   const modKeyPair = require('hypercore-crypto').keyPair()
   const modPubkey = modKeyPair.publicKey.toString('hex')
 
-  const ctx = await graph.createContext()
+  const ctx = await graph.createContext({ roles: 'rolebase' })
   const context = await graph.openContext(ctx)
   const post = await graph.put({ type: 'post' })
 

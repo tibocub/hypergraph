@@ -138,3 +138,24 @@ test('event-encoding: relation/create carries optional data; without it the byte
   t.is(old.from, base.from, 'the fields before data still decode')
   t.absent(old.data, 'and data is simply not there')
 })
+
+test('event-encoding: context/writer, context/role and context/upgrade round-trip; context/init carries an optional owner (spec 005)', async (t) => {
+  const a = 'a'.repeat(64)
+  const b = 'b'.repeat(64)
+  const sig = 'c'.repeat(128)
+  const writer = { type: 'context/writer', key: b, member: a, author: a, timestamp: 1, signature: sig }
+  t.alike(decodeEvent(encodeEvent(writer)), writer, 'context/writer')
+  const noMember = { type: 'context/writer', key: b, member: '', author: a, timestamp: 1, signature: sig }
+  t.alike(decodeEvent(encodeEvent(noMember)), noMember, 'context/writer without member')
+  const role = { type: 'context/role', member: b, role: 'admin', author: a, timestamp: 2, signature: sig }
+  t.alike(decodeEvent(encodeEvent(role)), role, 'context/role')
+  const removal = { type: 'context/role', member: b, role: '', author: a, timestamp: 2, signature: sig }
+  t.alike(decodeEvent(encodeEvent(removal)), removal, 'context/role removal')
+  const upgrade = { type: 'context/upgrade', version: 3, owner: a, timestamp: 3 }
+  t.alike(decodeEvent(encodeEvent(upgrade)), upgrade, 'context/upgrade')
+
+  const init3 = { type: 'context/init', version: 3, rules: 'x', owner: a, timestamp: 4 }
+  t.alike(decodeEvent(encodeEvent(init3)), init3, 'context/init with owner')
+  const init2 = { type: 'context/init', version: 2, rules: '', timestamp: 4 }
+  t.alike(decodeEvent(encodeEvent(init2)), init2, 'context/init without owner keeps its old bytes and shape')
+})

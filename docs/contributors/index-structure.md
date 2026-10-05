@@ -142,7 +142,10 @@ openable only by its intended recipient). See [Read Permission](../read-permissi
 ## Context Record (context view)
 
 ```
-meta:context → { version, rules }   # from the creator's context/init; absent = version 1
+meta:context → { version, rules, owner? }   # from the creator's context/init; absent = version 1
+meta:roles   → { version, roles: { role: [permission] }, members: { pubkey: role } }   # version 3
+w:m:<writerKeyHex>          → { member }   # which member a writer belongs to (version 3)
+w:k:<member>:<writerKeyHex> → {}           # a member's writers, to promote/demote them together
 ```
 
 ## Message and Pending Indexes (context view)

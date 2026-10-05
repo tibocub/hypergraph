@@ -111,10 +111,11 @@ doesn't know, or rules other than the recorded ones, stops applying the context 
 (`status().interrupted`) instead of building a different index. App rules must be deterministic for
 the same reason. Older peers also reject relations carrying `data` (spec 004).
 
-Permission checks in apply consult the attached RoleBase, a separate log that reaches each peer
-at its own pace, so two peers can decide the same event differently. Harmless while one device
-(the creator) confirms a context; it must be fixed before several indexers can agree on one
-signed state (spec 003, phase 2).
+In version 1 and 2 contexts, permission checks in apply consult the attached RoleBase, a separate
+log that reaches each peer at its own pace, so two peers can decide the same event differently —
+harmless with one indexer, which is why version 2 contexts keep the creator as their only indexer.
+Version 3 contexts (the default since spec 005) take every decision from their own role table,
+which is what lets several indexers agree.
 
 ## Joining Peers Fast-Forward
 

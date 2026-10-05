@@ -156,6 +156,11 @@ Note: regardless of write mode, `moderateAction()` and writer-change events (`ro
 - `status()` - `{ version, rules, indexers, isIndexer, writable, length, confirmedLength, fastForwards, interrupted }`
 - `refusal()` - Why this peer can't apply the context, if already known locally (used by `openContext()`)
 - `writerKeys()` - Every member (indexers and non-indexing writers)
+- `roles()` / `setRole(member, role, { keyPair })` / `removeRole(member, { keyPair })` - The
+  context's own role table (version 3)
+- `allows(pubkey, action)` - The context's own permission decision (version 3), or null when its
+  roles live in the RoleBase
+- `upgrade({ keyPair })` - The creator converts a version 1/2 context to version 3
 - `relate()` - Create relation (helper method)
 - `tag()` - Create tag (helper method)
 - `handlePeerConnection()` - Auto-add writer in open mode, emit request in closed mode

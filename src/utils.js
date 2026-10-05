@@ -101,6 +101,28 @@ const stableRelationHash = (event, contextKeyHex) => {
   return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
 }
 
+/**
+ * Stable hash for the signed context governance events of spec 005
+ * (`context/writer`, `context/role`), bound to one context like relations.
+ *
+ * @param {Object} event
+ * @param {string} contextKeyHex
+ * @returns {Buffer} SHA-256 digest
+ */
+const stableContextHash = (event, contextKeyHex) => {
+  const payload = event.type === 'context/writer'
+    ? { key: event.key, member: event.member || '' }
+    : { member: event.member, role: event.role || '' }
+  const msg = {
+    op: event.type,
+    payload,
+    context: contextKeyHex || null,
+    author: event.author,
+    timestamp: event.timestamp
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
+}
+
 // Largest data a relation may carry, in bytes of UTF-8 (spec 004): every
 // member of a context may fetch it, and it lives in the index.
 const MAX_RELATION_DATA_BYTES = 4096
@@ -119,7 +141,7 @@ const relationDataProblem = (data) => {
   return null
 }
 
-module.exports = { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts, authorFromEntityId, relationDataProblem, MAX_RELATION_DATA_BYTES }
+module.exports = { toSortableTs, stableTagHash, stableRelationHash, stableContextHash, resolveOpenContexts, authorFromEntityId, relationDataProblem, MAX_RELATION_DATA_BYTES }
 
 /**
  * Extract the author (core key hex) embedded in an entity id.

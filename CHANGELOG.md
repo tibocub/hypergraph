@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-05: roles inside the context; several indexers — BREAKING for roles in new contexts
+
+**Breaking**: `createContext()` now creates **version 3** contexts, which take every permission
+decision from their **own role table**, not from the RoleBase. A moderator or writer-adder
+appointed only in the RoleBase is not recognized in such a context: grant the role in the context
+(`context.setRole(member, role, { keyPair })`). To keep the old model — one RoleBase shared by many
+contexts, the creator as the only indexer — create with `createContext({ roles: 'rolebase' })`.
+Existing contexts are unchanged. HyperBBS needed no change; **hyperDNS** keeps its authority
+roles in its RoleBase, so it now creates authority contexts with `{ roles: 'rolebase' }`
+(`src/authority.js`, and its moderation test in `test/brittle/resolve.js`).
+
+- Several indexers: a writer added with `context.addWriter(key, { keyPair, member })` indexes iff
+  its member's role allows it (owner, admin); changing the role promotes or demotes it. Measured:
+  with the owner offline, two admins confirmed everything 4.9 s after it was applied.
+- Why: decisions taken from the RoleBase, a separate log, can differ between peers; indexers that
+  decide differently can never sign the same state. The context's own log gives every peer the
+  same answer.
+- `context.roles()`, `setRole()`, `removeRole()`, `allows()`, and `upgrade()` (the creator converts a
+  version 1 or 2 context).
+- New event types `context/writer`, `context/role`, `context/upgrade`; `context/init` carries the
+  owner. As before, every peer of a context must run a version that understands them.
+- Hypergraph's own moderation tests, one closed-mode test and one networking test exercise the
+  RoleBase model and now create their contexts with `{ roles: 'rolebase' }`.
+
+Details: [`specs/005-context-roles/`](specs/005-context-roles/).
+
 ### 2026-10-05: data on relations (additive; one compatibility note)
 
 - `relate({ ..., data })` / `batch.relate({ ..., data })`: a relation can carry an app string (at

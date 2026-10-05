@@ -9,11 +9,24 @@ const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
-const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId, relationDataProblem } = require('./utils')
+const { toSortableTs, stableTagHash, stableRelationHash, stableContextHash, authorFromEntityId, relationDataProblem } = require('./utils')
+const rolesRegistry = require('./roles-registry')
 const tuning = require('./tuning')
 
 // Where a context's topology record lives in its view (spec 003).
 const CONTEXT_RECORD_KEY = 'meta:context'
+// A version 3 context's own role table (spec 005).
+const ROLES_KEY = 'meta:roles'
+// Context versions this code can apply.
+const KNOWN_VERSIONS = [1, 2, 3]
+
+// The default role table of a version 3 context: the role registry's own
+// defaults, plus indexing for admins (owners have '*').
+function defaultRoleTable (owner) {
+  const table = rolesRegistry.initRegistry(owner)
+  table.roles.admin = [...table.roles.admin, 'context.index']
+  return table
+}
 
 function sleep (ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -232,6 +245,12 @@ module.exports = class ContextBase extends ReadyResource {
         continue
       }
 
+      if (event.type === 'context/upgrade') {
+        await this.#applyContextUpgrade(view, event, from, host)
+        record = null
+        continue
+      }
+
       // Every peer must apply this context the same way. A version this code
       // doesn't know, or app rules other than the ones the context was
       // created with, stop apply rather than build a different index.
@@ -246,6 +265,32 @@ module.exports = class ContextBase extends ReadyResource {
         if (this.#writeMode !== 'open') continue
         const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
         await host.addWriter(key, { indexer: await this.#addedWriterIndexes(view, host) })
+        continue
+      }
+
+      if (event.type === 'context/writer') {
+        await this.#applyContextWriter(view, event, host, record)
+        continue
+      }
+
+      if (event.type === 'context/role') {
+        await this.#applyContextRole(view, event, host, record)
+        continue
+      }
+
+      if (record.version === 3 && (event.type === 'roles/addWriter' || event.type === 'roles/removeWriter')) {
+        // Version 3: the decision comes from the context's own role table,
+        // so every peer decides the same (spec 005). No RoleBase, no queue.
+        if (this.#writeMode === 'closed') {
+          if (!this.#verifyWriterChangeSignature(event)) continue
+          if (!(await this.#can(view, event.author, 'context.write'))) continue
+        }
+        const key = Buffer.isBuffer(event.key) ? event.key : Buffer.from(event.key, 'hex')
+        if (event.type === 'roles/addWriter') {
+          await host.addWriter(key, { indexer: false })
+        } else {
+          try { host.removeWriter(key) } catch (err) { safetyCatch(err) }
+        }
         continue
       }
 
@@ -570,6 +615,16 @@ module.exports = class ContextBase extends ReadyResource {
     // Ingestion rules (deterministic): verify signature + validate schema or skip.
     if (!this.#verifyModerationSignature(event)) return
 
+    // Version 3: decided from the context's own role table (spec 005).
+    if ((await this.#record(view)).version === 3) {
+      if (!(await this.#can(view, event.author, event.action))) return
+      const coreKeyHex = from && from.key ? from.key.toString('hex') : ''
+      const seq = typeof length === 'number' && length > 0 ? length - 1 : -1
+      const eventId = crypto.createHash('sha256').update(`${coreKeyHex}:${seq}`).digest('hex')
+      await this.#indexModerationEvent(view, event, { eventId, coreKeyHex, seq })
+      return
+    }
+
     const coreKeyHex = from && from.key ? from.key.toString('hex') : ''
     const seq = typeof length === 'number' && length > 0 ? length - 1 : -1
     const eventId = crypto.createHash('sha256').update(`${coreKeyHex}:${seq}`).digest('hex')
@@ -657,17 +712,150 @@ module.exports = class ContextBase extends ReadyResource {
   // Honoured only from the bootstrap writer — the context's creator — and only
   // once, so no other writer can change how every peer applies the context.
   async #applyContextInit (view, event, from, host) {
-    if (!from || !from.key || !this.#base.key || !from.key.equals(this.#base.key)) return
+    if (!this.#fromBootstrap(from)) return
     if (await view.get(CONTEXT_RECORD_KEY)) return
     const record = { version: event.version, rules: event.rules || '' }
+    if (typeof event.owner === 'string' && event.owner.length > 0) record.owner = event.owner
     await view.put(CONTEXT_RECORD_KEY, record)
     const refusal = this.#refusal(record)
-    if (refusal) host.interrupt(refusal)
+    if (refusal) {
+      host.interrupt(refusal)
+      return
+    }
+    if (record.version === 3 && record.owner) await this.#startRoleTable(view, record.owner, from.key)
+  }
+
+  // Whether a node comes from the context's bootstrap writer (its creator).
+  #fromBootstrap (from) {
+    return !!(from && from.key && this.#base.key && from.key.equals(this.#base.key))
+  }
+
+  // A version 3 context's starting role table: the creator is owner, and
+  // the creator's own writer (the bootstrap writer) is linked to it.
+  async #startRoleTable (view, owner, bootstrapKey) {
+    await view.put(ROLES_KEY, defaultRoleTable(owner))
+    await this.#linkWriter(view, b4a.toString(bootstrapKey, 'hex'), owner)
+  }
+
+  async #linkWriter (view, writerHex, member) {
+    await view.put(`w:m:${writerHex}`, { member })
+    await view.put(`w:k:${member}:${writerHex}`, {})
+  }
+
+  async #roleTable (view) {
+    const entry = await view.get(ROLES_KEY)
+    return entry && entry.value ? entry.value : null
+  }
+
+  async #can (view, pubkeyHex, action) {
+    return rolesRegistry.can(await this.#roleTable(view), pubkeyHex, action)
+  }
+
+  // Whether `author` may set `member`'s role to `role` ('' removes it), per
+  // the context's own table at this point of its history (spec 005, R3).
+  #mayAssign (table, author, member, role) {
+    if (!table) return false
+    const current = table.members[member] || null
+    if (rolesRegistry.can(table, author, '*')) {
+      // An owner may do anything except give up its own ownership: that could
+      // leave the context with nobody able to manage it.
+      return !(member === author && current === 'owner' && role !== 'owner')
+    }
+    const minor = (r) => r === 'mod' || r === 'member'
+    if (role === '') return (current === null || minor(current)) && rolesRegistry.can(table, author, 'mod.remove')
+    return minor(role) && (current === null || minor(current)) && rolesRegistry.can(table, author, 'mod.add')
+  }
+
+  #verifyContextSignature (event) {
+    if (typeof event.author !== 'string' || event.author.length === 0) return false
+    if (typeof event.signature !== 'string' || event.signature.length === 0) return false
+    try {
+      return hypercoreCrypto.verify(
+        stableContextHash(event, this.key ? this.key.toString('hex') : null),
+        b4a.from(event.signature, 'hex'),
+        b4a.from(event.author, 'hex')
+      )
+    } catch {
+      return false
+    }
+  }
+
+  // context/writer (spec 005): add a writer, linked to the member it belongs
+  // to; it indexes iff that member's role allows it.
+  async #applyContextWriter (view, event, host, record) {
+    if (record.version !== 3) return
+    if (typeof event.key !== 'string' || event.key.length === 0) return
+    if (!this.#verifyContextSignature(event)) return
+    if (this.#writeMode === 'closed' && !(await this.#can(view, event.author, 'context.write'))) return
+    const member = event.member || ''
+    if (member) await this.#linkWriter(view, event.key, member)
+    const indexer = member ? await this.#can(view, member, 'context.index') : false
+    await host.addWriter(b4a.from(event.key, 'hex'), { indexer })
+  }
+
+  // context/role (spec 005): change a member's role, then promote or demote
+  // the member's writers to match. All or nothing: if that would demote the
+  // last indexer, nothing changes.
+  async #applyContextRole (view, event, host, record) {
+    if (record.version !== 3) return
+    if (typeof event.member !== 'string' || event.member.length === 0) return
+    if (!this.#verifyContextSignature(event)) return
+    const table = await this.#roleTable(view)
+    const role = event.role || ''
+    if (!this.#mayAssign(table, event.author, event.member, role)) return
+
+    let next
+    try {
+      next = rolesRegistry.applyRoleEvent(table, role
+        ? { type: 'roles/setRole', member: event.member, role }
+        : { type: 'roles/removeMember', member: event.member })
+    } catch (err) {
+      safetyCatch(err)
+      return
+    }
+
+    const before = rolesRegistry.can(table, event.member, 'context.index')
+    const after = rolesRegistry.can(next, event.member, 'context.index')
+    const writers = before === after ? [] : await this.#writersOf(view, event.member)
+    if (before && !after) {
+      for (const key of writers) if (!host.removeable(key)) return
+    }
+
+    await view.put(ROLES_KEY, next)
+    for (const key of writers) await host.addWriter(key, { indexer: after })
+  }
+
+  async #writersOf (view, member) {
+    const prefix = `w:k:${member}:`
+    const keys = []
+    for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff' })) {
+      keys.push(b4a.from(entry.key.slice(prefix.length), 'hex'))
+    }
+    return keys
+  }
+
+  // context/upgrade (spec 005): the creator converts a version 1 or 2
+  // context to version 3. From here on the context has its own role table;
+  // every indexer except the creator's writer stops indexing (they keep
+  // writing).
+  async #applyContextUpgrade (view, event, from, host) {
+    if (!this.#fromBootstrap(from)) return
+    if (event.version !== 3 || typeof event.owner !== 'string' || event.owner.length === 0) return
+    const current = await this.#record(view)
+    if (current.version !== 1 && current.version !== 2) return
+    await view.put(CONTEXT_RECORD_KEY, { version: 3, rules: current.rules || '', owner: event.owner })
+    await this.#startRoleTable(view, event.owner, from.key)
+    const system = this.#base.system
+    const indexers = system && Array.isArray(system.indexers) ? system.indexers.map(w => w.key) : []
+    for (const key of indexers) {
+      if (b4a.equals(key, from.key)) continue
+      await host.addWriter(key, { indexer: false })
+    }
   }
 
   // Why this peer must not apply a context with this record, or null.
   #refusal (record) {
-    if (record.version !== 1 && record.version !== 2) return `unsupported context version ${record.version}`
+    if (!KNOWN_VERSIONS.includes(record.version)) return `unsupported context version ${record.version}`
     const mine = this.#rules ? this.#rules.id : ''
     if (record.rules !== mine) {
       return `Context rules mismatch: context uses "${record.rules}", this peer provides "${mine}"`
@@ -782,7 +970,9 @@ module.exports = class ContextBase extends ReadyResource {
   async #addedWriterIndexes (view, host) {
     const { version } = await this.#record(view)
     if (version === 1) return true
-    if (version === 2) return false
+    // Version 2: only the creator indexes. Version 3: a writer added this way
+    // has no member link, so no role that could make it index (spec 005).
+    if (version === 2 || version === 3) return false
     host.interrupt(`unsupported context version ${version}`)
     return false
   }
@@ -804,6 +994,93 @@ module.exports = class ContextBase extends ReadyResource {
       return
     }
     this.#members = members
+  }
+
+  // The hex public key of a signing key pair, or a clear error.
+  #signer (keyPair, what) {
+    if (!keyPair || !keyPair.publicKey || !keyPair.secretKey) {
+      throw new Error(`opts.keyPair (with publicKey and secretKey) is required to sign ${what}`)
+    }
+    return b4a.isBuffer(keyPair.publicKey) ? keyPair.publicKey.toString('hex') : String(keyPair.publicKey)
+  }
+
+  #signContext (event, keyPair) {
+    event.signature = hypercoreCrypto.sign(stableContextHash(event, this.key ? this.key.toString('hex') : null), keyPair.secretKey).toString('hex')
+    return event
+  }
+
+  /**
+   * This context's own role table (version 3 contexts, spec 005):
+   * `{ roles: { role: permissions[] }, members: { pubkeyHex: role } }`.
+   * Empty for older contexts, whose roles live in the RoleBase.
+   *
+   * @returns {Promise<{ roles: Object, members: Object }>}
+   */
+  async roles () {
+    if (!this.opened) await this.ready()
+    const table = this.#base.view ? await this.#roleTable(this.#base.view) : null
+    return table ? { roles: table.roles, members: table.members } : { roles: {}, members: {} }
+  }
+
+  /**
+   * Give `member` a role in this context (version 3). Takes effect only if
+   * the signer may grant it at that point of the context's history: the
+   * owner any role; holders of `mod.add` the `mod` and `member` roles. A
+   * member's writers index iff the new role allows it.
+   *
+   * @param {string} member - Device public key (hex)
+   * @param {string} role
+   * @param {{ keyPair: { publicKey: Buffer, secretKey: Buffer } }} opts
+   */
+  async setRole (member, role, opts = {}) {
+    if (!this.opened) await this.ready()
+    if (typeof role !== 'string' || role.length === 0) throw new Error('role is required')
+    await this.#appendRole(member, role, opts)
+  }
+
+  /**
+   * Remove `member`'s role in this context (version 3).
+   *
+   * @param {string} member
+   * @param {{ keyPair: { publicKey: Buffer, secretKey: Buffer } }} opts
+   */
+  async removeRole (member, opts = {}) {
+    if (!this.opened) await this.ready()
+    await this.#appendRole(member, '', opts)
+  }
+
+  async #appendRole (member, role, opts) {
+    if (typeof member !== 'string' || member.length === 0) throw new Error('member is required')
+    if ((await this.#record()).version !== 3) throw new Error('This context has no role table of its own (version 3 only; see upgrade())')
+    const author = this.#signer(opts.keyPair, 'a role change')
+    await this.append(this.#signContext({ type: 'context/role', member, role, author, timestamp: Date.now(), signature: null }, opts.keyPair))
+  }
+
+  /**
+   * Convert a version 1 or 2 context to version 3 (spec 005). Only takes
+   * effect when appended by the context's creator (its bootstrap writer);
+   * `opts.keyPair` names the owner of the new role table.
+   *
+   * @param {{ keyPair: { publicKey: Buffer } }} opts
+   */
+  async upgrade (opts = {}) {
+    if (!this.opened) await this.ready()
+    if (!opts.keyPair || !opts.keyPair.publicKey) throw new Error('opts.keyPair is required')
+    const owner = b4a.isBuffer(opts.keyPair.publicKey) ? opts.keyPair.publicKey.toString('hex') : String(opts.keyPair.publicKey)
+    await this.append({ type: 'context/upgrade', version: 3, owner, timestamp: Date.now() })
+  }
+
+  /**
+   * Whether `pubkeyHex` may perform `action` in this context, if this
+   * context decides that itself (version 3); null when its roles live in
+   * the RoleBase.
+   *
+   * @returns {Promise<boolean|null>}
+   */
+  async allows (pubkeyHex, action) {
+    if (!this.opened) await this.ready()
+    if ((await this.#record()).version !== 3) return null
+    return this.#can(this.#base.view, pubkeyHex, action)
   }
 
   /**
@@ -1151,6 +1428,20 @@ module.exports = class ContextBase extends ReadyResource {
     const key = Buffer.isBuffer(coreKey) ? coreKey : Buffer.from(coreKey, 'hex')
     const keyHex = key.toString('hex')
 
+    // Version 3 (spec 005): a signed context/writer, linked to its member so
+    // the member's role decides whether it indexes. Without a keyPair (open
+    // mode only) it falls through to the unsigned event: a non-indexing
+    // writer with no member link.
+    const { version } = await this.#record()
+    if (version === 3 && (opts.keyPair || this.#writeMode === 'closed')) {
+      const author = this.#signer(opts.keyPair, 'addWriter')
+      if (this.#writeMode === 'closed' && !(await this.#can(this.#base.view, author, 'context.write'))) {
+        throw new Error('Not authorized to add writers to this context')
+      }
+      await this.append(this.#signContext({ type: 'context/writer', key: keyHex, member: opts.member || '', author, timestamp: Date.now(), signature: null }, opts.keyPair))
+      return
+    }
+
     if (this.#writeMode !== 'closed') {
       await this.append({ type: 'roles/addWriter', key: keyHex })
       return
@@ -1198,6 +1489,15 @@ module.exports = class ContextBase extends ReadyResource {
 
     if (this.#writeMode !== 'closed') {
       await this.append({ type: 'roles/removeWriter', key: keyHex })
+      return
+    }
+
+    if ((await this.#record()).version === 3) {
+      const author = this.#signer(opts.keyPair, 'removeWriter')
+      if (!(await this.#can(this.#base.view, author, 'context.write'))) throw new Error('Not authorized to remove writers from this context')
+      const event = { type: 'roles/removeWriter', key: keyHex, author, timestamp: Date.now(), signature: null }
+      event.signature = hypercoreCrypto.sign(this.#stableWriterChangeHash(event), opts.keyPair.secretKey).toString('hex')
+      await this.append(event)
       return
     }
 
