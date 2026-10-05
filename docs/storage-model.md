@@ -146,24 +146,38 @@ The ContextBase only stores the entity IDs, not the full content.
    - Content body duplicated in `c:<entityId>:<seq>` records
    - Identity profiles duplicated
 
-2. **ContextBase → GraphView:**
-   - Relation metadata (from, to, type, author, value) duplicated
+2. **Context oplog → context view** (not GraphView, which never stores these):
+   - Relation metadata (from, to, type, author, value) duplicated across several index
+     entries per relation (`e:`, `er:`, `i:in:`, plus counters)
    - Tag metadata (entityId, tag, author) duplicated
-   - Moderation metadata (action, target, reason, author) duplicated
+   - Moderation metadata (action, target, reason, author) duplicated, twice (`m:t:`, `m:a:`)
 
-3. **Autobase Internal:**
-   - Autobase copies writer data into its linearized view (by design)
-   - This is inherent to Autobase's CRDT merge process
+3. **Autobase internal:**
+   - Every peer keeps every writer's oplog *and* builds the context view itself by replaying it
+     (`fastForward: false`), so the view is rebuilt, not downloaded, on each peer
+   - On a joining peer, Autobase commits the whole replayed view in one step at the end of
+     catch-up, which is what limits how big a context a fresh peer can join today
+     (`specs/002-scale-indexing/research.md` R11)
 
-### Storage Estimate
+### Storage Estimate (measured)
 
-**For 1MB of content:**
-- UserCore: ~1MB (content events)
-- GraphView content index: ~1MB (full content body duplicated)
-- ContextBase: ~10-50KB (relations/tags referencing the content)
-- GraphView relation/tag indexes: ~10-50KB (metadata duplicated)
+The old rule of thumb here ("2-3x raw data size") only holds for large inline content. For many
+small items it is far higher, because fixed per-item costs dominate. Measured with
+`bench/scale.js` (2026-10-05, writer side, one entity + one content reference + one relation per
+item, ~1 KB of real event data per item):
 
-**Total: ~2-3x raw data size**
+| part | per item |
+|---|---|
+| user log (2 events) | ~440 B |
+| context oplog (1 relation) | ~350 B |
+| GraphView indexes (4 entries) | ~1.25 KB |
+| context view indexes (4 entries) | ~1.3 KB |
+| per-block overhead on disk (11 blocks × ~183 B: Merkle tree, RocksDB keys, filters) | ~2.0 KB |
+| **total** | **~5.4 KB (≈ 5x the event data)** |
+
+Two things to know: RocksDB is **not compressing** any of this (the store files shrink to
+25-29% under gzip/zstd; rocksdb-native exposes no compression option), and the per-block
+overhead means the number of index entries per item matters as much as their size.
 
 ### Escaping that cost: external content references
 
@@ -209,6 +223,9 @@ integrity rules a consumer must follow.
 
 ### No Built-in Compaction
 
+(RocksDB compacts its own files; what is meant here is that hypergraph never removes old
+events or index entries.)
+
 - Tombstones remain in logs (not deleted, just marked)
 - Old content versions remain in UserCore (append-only)
 - Could add garbage collection in future
@@ -228,7 +245,9 @@ View updates are caller-driven:
 **Key properties:**
 - Never query raw logs directly
 - Updates are incremental (only process new events)
-- Checkpoints track the last processed sequence per core
+- Checkpoints track the last processed sequence per core, committed in the same Hyperbee batch
+  as the index entries they cover (every `tuning.INDEX_BATCH` events, default 1,000), so a long
+  pass becomes visible chunk by chunk and an interruption loses at most one uncommitted chunk
 
 ## See Also
 

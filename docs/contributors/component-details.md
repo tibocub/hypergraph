@@ -26,7 +26,8 @@ _open()
   ↓
 2. Create UserCore with device keyPair
   ↓
-3. Create GraphView with Hyperbee
+3. Create GraphView with Hyperbee (`sessions: false`: reads skip per-get snapshot sessions,
+   safe because nothing truncates this local core)
 ```
 
 **Key Methods**:
@@ -34,6 +35,8 @@ _open()
 - `putContent()` - Append content via UserCore (optionally encrypted — pass `opts.scope`, see [Read Permission](../read-permission.md))
 - `getContent()` - Read content back, transparently decrypting if the caller holds the relevant scope key
 - `relate()` - Create relation via ContextBase
+- `batch()` - Bulk writes: entities, content and relations written as one user-core append and
+  one append per context (see [Data Flow](data-flow.md))
 - `tag()` - Create tag via ContextBase (author-only — see [Contexts and Roles](../contexts-and-roles.md))
 - `query()` - Fluent query interface (see [Querying](../querying.md))
 - `getByTag()` / `getByType()` / `getByAuthor()` - Direct iteration helpers, each backed by an index or UserCore scan rather than a full table scan
@@ -83,10 +86,18 @@ seq 2: { type: 'entity/create', entityType: 'post', author, timestamp }
 (Entity ids are derived as `<type>/<authorCoreKeyHex>/<seq>`, not stored directly on the event — see `GraphView#applyEntityCreate`.)
 
 **Key Methods**:
-- `append(event)` - Append event to Hypercore
+- `append(event)` / `appendBatch(events)` - Append one / many events (many = one hypercore
+  append); both take the write lock and return the seq of the (first) event
+- `withWriteLock(fn)` + `appendBatchUnlocked(events)` - Run `fn(length)` with the length the
+  next block will land at, held fixed — how `graph.batch()` builds events that embed their own
+  future entity ids
 - `get(seq)` - Get event by sequence number
 - `createReadStream(opts)` / `createHistoryStream(opts)` - Stream decoded events
 - `length` - Number of events in core
+
+`Hypergraph.openUserCore()` on someone else's core starts a background `download({ start: 0,
+end: -1 })` that follows new appends, so the log streams in while `update()` is busy elsewhere
+(e.g. replaying a context).
 
 **Critical Detail**: UserCore is single-writer. Only the owner (with the keyPair) can append. This ensures conflict-free replication.
 
@@ -113,7 +124,8 @@ seq 2: { type: 'entity/create', entityType: 'post', author, timestamp }
 {
   open: this.#openView.bind(this),  // Called to open writer's view
   apply: this.#applyView.bind(this), // Called to apply writer's output
-  valueEncoding: { encode: encodeEvent, decode: decodeEvent },
+  // no valueEncoding: values are bytes, encoded in append(), decoded in #applyView
+  // (see autobase-integration.md)
   ackInterval: 0,
   ackThreshold: 0,
   fastForward: false
@@ -128,6 +140,7 @@ Note: regardless of write mode, `moderateAction()` and writer-change events (`ro
 
 **Key Methods**:
 - `append(event)` - Append event to Autobase
+- `appendBatch(events)` - Append many events as ONE Autobase batch (one apply call on every peer)
 - `addWriter(key)` / `removeWriter(key)` - Add/remove a writer, signed and permission-gated in closed mode
 - `relate()` - Create relation (helper method)
 - `tag()` - Create tag (helper method)
@@ -217,12 +230,15 @@ Permission strings are otherwise free-form — an app can call `roles/setRolePer
 ```js
 update()
   ↓
+   (passes are serialized: a call made during a pass runs after it)
 1. For each UserCore:
-   - Get events since lastProcessedSeq
+   - Get events since lastProcessedSeq, prefetching tuning.PREFETCH_WINDOW
+     blocks ahead (one request, not one round trip per block)
    - Process each event (GraphView's own #applyEvent: entity/create,
      entity/tombstone, content/append, identity/update)
-   - Update indexes (n:, nt:, nc:, c:, id:profile:) in GraphView's own Hyperbee (#bee)
-   - Update lastProcessedSeq
+   - Write indexes (n:, nt:, nc:, c:, id:profile:) through a Hyperbee batch,
+     committed every tuning.INDEX_BATCH events TOGETHER with lastProcessedSeq,
+     so an interruption never leaves indexes and progress out of step
   ↓
 2. For each ContextBase:
    - Compare context.view.length against the stored checkpoint

@@ -1,11 +1,21 @@
 # Index Structure
 
-All indexes are stored in GraphView's Hyperbee with UTF-8 keys and JSON values.
+Two kinds of Hyperbee hold indexes, both with UTF-8 keys and JSON values:
+
+- **GraphView** (one per peer, core `graph-view`): node, content, identity and progress
+  indexes, built from the user cores this peer follows.
+- **Each context's own Autobase view**: edge, tag, moderation, message and pending indexes,
+  built by that context's apply function. GraphView never stores these; it only records how far
+  each context view has been processed.
+
+Every entry is one Hyperbee block, and each block costs roughly 180 bytes on disk beyond its own
+key and value (Merkle tree nodes, RocksDB keys, filters), so the number of entries per item
+matters as much as their size — see `bench/README.md`.
 
 ## Node Indexes
 
 ```
-n:<entityId> → { id, type, author, deleted, createdAt }
+n:<entityId> → { id, type, author, deleted, createdAt, version, deletedAt?, deletedBy? }
 
 nt:<type>:<createdAt>:<entityId> → { id }
 
@@ -67,7 +77,8 @@ cnt:out:<from>:<type> → { count }
   the event since it's included in the signed digest; absent (`undefined`) on relations that
   never set it
 - The `er:` index enforces one active edge per (from, type, to) triple
-- Edge counts are incremented on create and decremented on delete (clamped at 0)
+- Edge counts are incremented on create and decremented on delete (clamped at 0), accumulated
+  in memory per apply chunk and written once per chunk
 - In P2P delivery, if a delete arrives before its create, the count may read one low temporarily
 
 ## Tag Indexes
@@ -84,8 +95,9 @@ tref:<tag>:<entityId>:<author> → { ref }
   self-categorization, not community/moderator-applied labeling (which needs `relate()` or a
   moderation event instead)
 - This prevents spam and keeps tag indexes low-noise
-- Unlike `n:`/`nt:`/`nc:`, tag lookups currently do a full scan with a per-node tag check —
-  no dedicated index yet. Worth revisiting if tag-heavy queries become a real bottleneck
+- Tag lookups are indexed: `getByTag(tag)` is a prefix scan of `t:<tag>:` in each open
+  context, in time order, followed by one node lookup per result to confirm the tagger still
+  authors that entity
 
 ## Moderation Indexes
 
@@ -125,12 +137,23 @@ scopes:registry → {
 The actual symmetric key is never stored here in the clear — only `sealedKey` (ciphertext,
 openable only by its intended recipient). See [Read Permission](../read-permission.md).
 
-## Checkpoint Indexes
+## Message and Pending Indexes (context view)
 
 ```
-meta:user:<keyHex>:lastSeq → { seq }
-meta:context:<keyHex>:checkpoint → { checkpoint }
+msg:<timestamp>:<first 8 chars of author> → { text, username, author, timestamp }
+m:p:<eventId> → { eventId, coreKey, seq, event }     # moderation awaiting RoleBase sync
+w:p:<type>:<key>:<timestamp> → { event }             # writer change awaiting RoleBase sync
 ```
+
+## Checkpoint Indexes (GraphView)
+
+```
+meta:user:<coreKeyHex>:lastSeq → { seq }
+meta:contextView:<viewCoreKeyHex>:length → { length }
+```
+
+`meta:user:…` is written in the same Hyperbee batch as the index entries it covers (every
+`tuning.INDEX_BATCH` events), so the two can never disagree after a crash.
 
 ## Timestamp Encoding
 

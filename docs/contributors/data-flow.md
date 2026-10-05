@@ -21,6 +21,25 @@
 A separate `graph.update()` call is still what picks up events from *other* peers after
 replication — it's just not required for your own local writes, which self-index synchronously.
 
+## Write Path (Bulk: `graph.batch()`)
+
+```
+1. batch.put() / putContent() / putContentRef() / relate()   (recorded, nothing written)
+   ↓
+2. batch.flush(): validate every operation; reject the whole batch on any error
+   ↓
+3. Under the UserCore write lock: assign entity ids from the core's length,
+   build every entity/content event, ONE core append
+   ↓
+4. Per context touched: build + sign relations, ONE ContextBase.appendBatch()
+   → one Autobase batch, replayed in one apply call by every peer
+   ↓
+5. One view.update()
+```
+Events are built by the same private helpers as the single-item methods, so they are
+byte-for-byte the same kind of event; only the grouping differs. A failure after step 3 throws
+`BulkWriteError` with what was written (`specs/002-scale-indexing/contracts/bulk-write.md`).
+
 ## Write Path (Creating a Relation)
 
 ```

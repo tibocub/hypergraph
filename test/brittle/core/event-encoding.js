@@ -60,3 +60,37 @@ test('event-encoding: decodeEvent never throws on malformed/truncated bytes', as
   t.is(roundTrip.type, 'entity/create', 'a genuinely valid buffer still round-trips correctly')
   console.log('TEST: decodeEvent malformed input - passed')
 })
+
+test('event-encoding: a context stores exactly encodeEvent(event) in its oplog, for every event type', async (t) => {
+  // Guards FR-021 of spec 002: hypergraph now hands Autobase pre-encoded
+  // bytes instead of letting Autobase run our codec, so batched appends
+  // work. The bytes in the oplog (what replicates to every peer, including
+  // peers on older versions) must be exactly what they were before.
+  const { createGraph } = require('../helpers')
+  const { graph } = await createGraph(t, 'oplog-bytes')
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+
+  const a = 'a'.repeat(64)
+  const b = 'b'.repeat(64)
+  const sig = 'c'.repeat(128)
+  const ts = 1791000000000
+  const events = [
+    { type: 'relation/create', from: `post/${a}/0`, to: `post/${b}/1`, relationType: 'reply', author: a, timestamp: ts, signature: sig },
+    { type: 'relation/create', from: `post/${a}/0`, to: `post/${b}/2`, relationType: 'vote', author: a, timestamp: ts, signature: sig, value: 1.5 },
+    { type: 'relation/delete', from: `post/${a}/0`, to: `post/${b}/1`, relationType: 'reply', author: a, createdAt: ts, timestamp: ts + 1, signature: sig },
+    { type: 'tag/add', entityId: `post/${a}/0`, tag: 'news', author: a, timestamp: ts, signature: sig },
+    { type: 'tag/remove', entityId: `post/${a}/0`, tag: 'news', author: a, timestamp: ts, signature: sig },
+    { type: 'moderation/action', version: 1, action: 'content.flag', target: `post/${b}/1`, reason: 'spam', context: ctx, author: a, timestamp: ts, signature: sig },
+    { type: 'message', text: 'hello', username: 'alice', author: a, timestamp: ts },
+    { type: 'roles/addWriter', key: b, timestamp: ts }
+  ]
+
+  const start = context.base.local.length
+  for (const event of events) await context.append(event)
+
+  for (let i = 0; i < events.length; i++) {
+    const block = await context.base.local.get(start + i)
+    t.alike(block.node.value, encodeEvent(events[i]), `${events[i].type} (#${i}) is stored as encodeEvent() output`)
+  }
+})

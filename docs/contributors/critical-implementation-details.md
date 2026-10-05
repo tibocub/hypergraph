@@ -42,7 +42,10 @@ This matches the old hypergraph behavior and avoids "Autobase failed to open" er
 
 ## GraphView Update is Caller-Driven
 
-The application must call `graph.update()` after replication to process new events. GraphView does not automatically update.
+The application must call `graph.update()` after replication to process new events. GraphView
+does not automatically update. (Your own writes index themselves, and `openUserCore()` starts
+downloading the other user's log in the background — but indexing what arrived still waits for
+`update()`.)
 
 ## Restarting the Same Peer Requires the App to Persist deviceKeyPair Itself
 
@@ -75,11 +78,12 @@ see [Index Structure](index-structure.md).
 
 ContextBase verifies cryptographic signatures on relations, moderation actions, and writer
 changes (enabled by default, hard-rejecting anything that fails). This proves `event.author`
-is genuinely whoever signed the event — it does **not** restrict *what* an authorized writer
-can relate. `relate()` deliberately performs no ownership check on `from`/`to` at all (any
-authorized writer can create a relation between any two entity ids, regardless of who created
-them) — this is required for the normal case of commenting on someone else's post, which
-necessarily means relating your own comment to an entity you don't own.
+is genuinely whoever signed the event. On top of that, apply **rejects a `relation/create`
+whose `from` the signer does not own** (the author segment embedded in the `from` id must equal
+the event's `author`), identically on every peer. `to` is unrestricted, which is what the normal
+case needs: commenting on someone else's post means relating your own comment (`from`, yours)
+to an entity you don't own (`to`). `relation/delete` deliberately has no such check — any
+authorized writer can remove a relation. See [Storage Model](../storage-model.md).
 
 Tags work differently: `tag()` **is** author-restricted — only an entity's own author can tag
 it (confirmed directly: hypergraph throws otherwise). If community/moderator-applied labeling

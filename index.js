@@ -6,6 +6,7 @@ const GraphView = require('./src/view')
 const GraphQuery = require('./src/query')
 const HypergraphNetwork = require('./src/networking')
 const { CONTENT_LINK_TYPE } = require('./src/content-ref')
+const { BulkWriteError } = require('./src/batch')
 //const tools = require('./tools')
 
 /**
@@ -42,5 +43,6 @@ module.exports = {
   GraphQuery,
   HypergraphNetwork,
   CONTENT_LINK_TYPE,
+  BulkWriteError,
   // tools
 }

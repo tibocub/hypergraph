@@ -2,6 +2,7 @@ const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const b4a = require('b4a')
 const { toSortableTs, resolveOpenContexts, authorFromEntityId } = require('./utils')
+const tuning = require('./tuning')
 
 /**
  * GraphView manages the materialized view for graph operations.
@@ -20,6 +21,9 @@ module.exports = class GraphView extends ReadyResource {
   #contextCheckpoints
   #userMetaKey
   #deviceToIdentity // Maps device key hex -> identity key hex
+  #writer // the open Hyperbee batch while a user core is being indexed, else null
+  #updating // tail of the chain that serializes update() passes
+  #onIndexEvent // test-only hook, see constructor
 
   /**
    * Create a new GraphView instance.
@@ -27,8 +31,12 @@ module.exports = class GraphView extends ReadyResource {
    * @param {Object} bee - The Hyperbee instance for the view
    * @param {Map} userCores - Map of user core keys to UserCore instances
    * @param {Map} contexts - Map of context names to ContextBase instances
+   * @param {Object} [opts]
+   * @param {Function} [opts.onIndexEvent] - Test-only: called after each
+   *   user-core event is applied, before it is committed. Throwing from it
+   *   simulates a crash mid-pass.
    */
-  constructor (bee, userCores, contexts) {
+  constructor (bee, userCores, contexts, opts = {}) {
     super()
 
     this.#bee = bee
@@ -38,6 +46,9 @@ module.exports = class GraphView extends ReadyResource {
     this.#contextCheckpoints = new Map()
     this.#userMetaKey = null
     this.#deviceToIdentity = new Map()
+    this.#writer = null
+    this.#updating = Promise.resolve()
+    this.#onIndexEvent = opts.onIndexEvent || null
 
     this.ready().catch(safetyCatch)
   }
@@ -87,6 +98,12 @@ module.exports = class GraphView extends ReadyResource {
     // Nothing to close, bee is managed by Hypergraph
   }
 
+  // Where apply functions read and write: the open batch while indexing a
+  // user core (so reads see the batch's own pending entries), else the bee.
+  get #db () {
+    return this.#writer || this.#bee
+  }
+
   /** @returns {Object} The underlying Hyperbee instance */
   get bee () {
     return this.#bee
@@ -108,6 +125,16 @@ module.exports = class GraphView extends ReadyResource {
   async update () {
     if (!this.opened) await this.ready()
 
+    // One pass at a time. Each pass indexes through its own Hyperbee batch,
+    // and two passes over the same range would also both start from the
+    // same progress record. A call made while a pass is running runs after
+    // it, so it still picks up whatever arrived in the meantime.
+    const run = this.#updating.then(() => this.#update())
+    this.#updating = run.catch(safetyCatch)
+    return run
+  }
+
+  async #update () {
     let changed = false
 
     // Ensure replicated data is pulled in before indexing.
@@ -122,40 +149,17 @@ module.exports = class GraphView extends ReadyResource {
     for (const [keyHex, core] of this.#userCores) {
       await core.update({ wait: false })
 
-      const lastSeq = this.#lastProcessedSeq.get(keyHex) ?? -1
+      // addUserCore() loads this in the background; don't race it into
+      // re-indexing from 0.
+      if (!this.#lastProcessedSeq.has(keyHex)) {
+        const meta = await this.#bee.get(`meta:user:${keyHex}:lastSeq`)
+        if (!this.#lastProcessedSeq.has(keyHex)) this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
+      }
+      const lastSeq = this.#lastProcessedSeq.get(keyHex)
       const currentLength = core.length
       if (currentLength <= lastSeq + 1) continue
 
-      let lastProcessed = lastSeq
-      for (let i = lastSeq + 1; i < currentLength; i++) {
-        // core.get(i) with no options blocks indefinitely if the block
-        // hasn't actually arrived yet, even though the core's length
-        // metadata has already synced (confirmed by reading Hypercore's
-        // own get()/_get() implementation: with no timeout, the block
-        // request has no bound at all). A timeout still issues the
-        // request — so the block can still arrive later in the
-        // background — without blocking this whole view update forever.
-        // If it times out, stop processing further events for this core
-        // in this call; a later update() call will pick up where this one
-        // left off once the block has arrived.
-        let event
-        try {
-          event = await core.get(i, { timeout: 5000 })
-        } catch (err) {
-          safetyCatch(err)
-          break
-        }
-        if (event === null) break
-        await this.#applyEvent(event, i, keyHex)
-        lastProcessed = i
-      }
-
-      if (lastProcessed === lastSeq) continue
-      changed = true
-
-      const nextSeq = lastProcessed
-      this.#lastProcessedSeq.set(keyHex, nextSeq)
-      await this.#bee.put(`meta:user:${keyHex}:lastSeq`, { seq: nextSeq })
+      if (await this.#indexUserCore(keyHex, core, lastSeq, currentLength)) changed = true
     }
 
     // Context autobases update themselves via their apply function
@@ -193,6 +197,99 @@ module.exports = class GraphView extends ReadyResource {
     return changed
   }
 
+  /**
+   * Index events [lastSeq + 1, currentLength) of one user core.
+   *
+   * Index entries are written through a Hyperbee batch committed every
+   * `tuning.INDEX_BATCH` events: one hypercore append (one hash, one
+   * signature, one flush) per chunk instead of one per entry, which was the
+   * single largest indexing cost (specs/002-scale-indexing/research.md R1).
+   * The progress record goes into the same batch, so a chunk's entries and
+   * the record that says they exist are committed together - an
+   * interruption loses at most the uncommitted chunk, which the next pass
+   * redoes from the last committed record. Readers see each chunk as it is
+   * committed, not only when the whole pass ends.
+   *
+   * @returns {Promise<boolean>} Whether anything was indexed.
+   */
+  async #indexUserCore (keyHex, core, lastSeq, currentLength) {
+    const metaKey = `meta:user:${keyHex}:lastSeq`
+    let committed = lastSeq
+    let lastProcessed = lastSeq
+    let prefetchedTo = this.#prefetch(core, lastSeq + 1, currentLength)
+
+    const commit = async () => {
+      await this.#writer.put(metaKey, { seq: lastProcessed })
+      await this.#writer.flush()
+      committed = lastProcessed
+      this.#lastProcessedSeq.set(keyHex, committed)
+      this.#writer = this.#bee.batch()
+    }
+
+    this.#writer = this.#bee.batch()
+    try {
+      for (let i = lastSeq + 1; i < currentLength; i++) {
+        if (prefetchedTo < currentLength && i >= prefetchedTo - tuning.PREFETCH_WINDOW / 2) {
+          prefetchedTo = this.#prefetch(core, prefetchedTo, currentLength)
+        }
+
+        // core.get(i) with no options blocks indefinitely if the block
+        // hasn't actually arrived yet, even though the core's length
+        // metadata has already synced (confirmed by reading Hypercore's
+        // own get()/_get() implementation: with no timeout, the block
+        // request has no bound at all). A timeout still issues the
+        // request - so the block can still arrive later in the
+        // background - without blocking this whole view update forever.
+        // If it times out, stop processing further events for this core
+        // in this call; a later update() call will pick up where this one
+        // left off once the block has arrived.
+        let event
+        try {
+          event = await core.get(i, { timeout: 5000 })
+        } catch (err) {
+          safetyCatch(err)
+          break
+        }
+        if (event === null) break
+        await this.#applyEvent(event, i, keyHex)
+        lastProcessed = i
+        if (this.#onIndexEvent) this.#onIndexEvent(i, keyHex)
+
+        if (lastProcessed - committed >= tuning.INDEX_BATCH) await commit()
+      }
+
+      if (lastProcessed > committed) await commit()
+    } finally {
+      // Discards whatever was not committed (only non-empty on a throw).
+      const writer = this.#writer
+      this.#writer = null
+      await writer.close()
+    }
+
+    return lastProcessed > lastSeq
+  }
+
+  /**
+   * Ask peers for up to `tuning.PREFETCH_WINDOW` blocks of another user's
+   * log at once, instead of one network round trip per block as the
+   * indexing loop reaches it. Never awaited: a block no connected peer has
+   * must not hold up the update, and the loop's own get() timeout already
+   * handles a block that doesn't arrive (research R4).
+   *
+   * @returns {number} The end of the requested range.
+   */
+  #prefetch (core, start, currentLength) {
+    const end = Math.min(currentLength, start + tuning.PREFETCH_WINDOW)
+    const hypercore = core.core
+    if (!hypercore || core.writable || start >= end) return end
+    try {
+      hypercore.download({ start, end }).done().catch(safetyCatch)
+    } catch (err) {
+      safetyCatch(err)
+    }
+    return end
+  }
+
   async #applyEvent (event, seq, coreKeyHex) {
     switch (event.type) {
       case 'entity/create':
@@ -214,7 +311,7 @@ module.exports = class GraphView extends ReadyResource {
     if (event.author !== coreKeyHex) return
 
     const key = `id:profile:${event.author}`
-    await this.#bee.put(key, {
+    await this.#db.put(key, {
       author: event.author,
       username: event.username,
       bio: event.bio || null,
@@ -229,13 +326,13 @@ module.exports = class GraphView extends ReadyResource {
     const derivedId = `${event.entityType}/${coreKeyHex}/${seq}`
 
     const key = `n:${derivedId}`
-    const existing = await this.#bee.get(key)
+    const existing = await this.#db.get(key)
 
     // Entities are immutable once created.
     // If it already exists, ignore subsequent creates.
     if (existing && !existing.value.deleted) return
 
-    await this.#bee.put(key, {
+    await this.#db.put(key, {
       id: derivedId,
       type: event.entityType,
       author: event.author,
@@ -247,7 +344,7 @@ module.exports = class GraphView extends ReadyResource {
     // Type index (time sortable): nt:<type>:<createdAt>:<id>
     // This is a secondary index to make by-type scans efficient.
     const typeKey = `nt:${event.entityType}:${toSortableTs(event.timestamp)}:${derivedId}`
-    await this.#bee.put(typeKey, { id: derivedId })
+    await this.#db.put(typeKey, { id: derivedId })
 
     // Type-agnostic time index: nc:<createdAt>:<id>
     // The primary n:<id> key (used by the default, unfiltered scan) is
@@ -257,7 +354,7 @@ module.exports = class GraphView extends ReadyResource {
     // something. This index gives a real, efficient chronological scan
     // across all types, without needing to load-then-sort every entity.
     const timeKey = `nc:${toSortableTs(event.timestamp)}:${derivedId}`
-    await this.#bee.put(timeKey, { id: derivedId })
+    await this.#db.put(timeKey, { id: derivedId })
   }
 
   async #applyEntityTombstone (event, coreKeyHex) {
@@ -269,10 +366,10 @@ module.exports = class GraphView extends ReadyResource {
     if (typeof event.id !== 'string' || !event.id.includes(`/${coreKeyHex}/`)) return
 
     const key = `n:${event.id}`
-    const existing = await this.#bee.get(key)
+    const existing = await this.#db.get(key)
 
     if (existing) {
-      await this.#bee.put(key, {
+      await this.#db.put(key, {
         ...existing.value,
         deleted: true,
         deletedAt: event.timestamp,
@@ -293,7 +390,7 @@ module.exports = class GraphView extends ReadyResource {
     // which made getContent()'s reverse-order scan return stale content
     // once an entity passed 10 revisions.
     const key = `c:${event.entityId}:${toSortableTs(seq)}`
-    await this.#bee.put(key, {
+    await this.#db.put(key, {
       entityId: event.entityId,
       contentType: event.contentType,
       body: event.body,
@@ -327,7 +424,7 @@ module.exports = class GraphView extends ReadyResource {
       if (!this.#lastProcessedSeq.has(keyHex)) {
         this.#lastProcessedSeq.set(keyHex, meta ? meta.value.seq : -1)
       }
-    })
+    }).catch(safetyCatch) // the graph may close before this read finishes
   }
 
   // ========================================
@@ -357,7 +454,7 @@ module.exports = class GraphView extends ReadyResource {
       const metaKey = `meta:contextView:${viewKeyHex}:length`
       const v = await this.#bee.get(metaKey)
       this.#contextCheckpoints.set(viewKeyHex, v ? v.value.length : -1)
-    })
+    }).catch(safetyCatch) // the graph may close before this read finishes
   }
 
   // ========================================

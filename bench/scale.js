@@ -1,6 +1,6 @@
 // Scale benchmark: how does one context behave with N file entities?
 //
-//   node bench/scale.js <N> [--api]
+//   node bench/scale.js <N> [--api] [--sizes]
 //
 // Models a SwarmFS file entry the way it would actually be stored today:
 //
@@ -18,9 +18,9 @@
 //   seed   — reopens it and serves it over a localhost socket
 //   fetch  — a fresh peer that replicates the whole index and lists directories
 //
-// By default the writer appends events in batches (same bytes the API writes,
-// signed the same way) so 1M is reachable. --api goes through put() /
-// putContentRef() / relate() one file at a time, to measure that path.
+// By default the writer uses graph.batch(), 1,000 files per batch. --api goes
+// through put() / putContentRef() / relate() one file at a time, to measure
+// that path.
 
 const path = require('path')
 const fs = require('fs')
@@ -31,9 +31,6 @@ const { spawn } = require('child_process')
 const Corestore = require('corestore')
 const hypercoreCrypto = require('hypercore-crypto')
 const { Hypergraph } = require('../index.js')
-const { encodeEvent } = require('../src/encodings/event.js')
-const { stableRelationHash } = require('../src/utils.js')
-const { formatReference } = require('../src/content-ref.js')
 
 const PER_DIR = 1000
 const BATCH = 1000
@@ -48,13 +45,39 @@ function retained () {
 
 function memSampler () {
   const peak = { rss: 0, heap: 0 }
+  const start = Date.now()
+  let lastLog = 0
   const sample = () => {
     const m = process.memoryUsage()
+    // RSS_LIMIT_MB: stop the joining peer cleanly rather than let it swap the machine
+    // to a crawl. Reported as an aborted result, not a crash.
+    if (process.env.RSS_LIMIT_MB && process.argv[2] === 'fetch-child' && m.rss > Number(process.env.RSS_LIMIT_MB) * 1e6) {
+      process.stdout.write(JSON.stringify({
+        aborted: `rss ${Math.round(m.rss / 1e6)} MB > RSS_LIMIT_MB`,
+        afterMs: Date.now() - start,
+        heap: m.heapUsed,
+        progress: global.__benchProbe ? global.__benchProbe() : null
+      }) + '\n', () => process.exit(3))
+      clearInterval(timer)
+      return
+    }
+    // MEMLOG=1: a memory timeline on stderr, one line a second.
+    if (process.env.MEMLOG && Date.now() - lastLog >= 1000) {
+      lastLog = Date.now()
+      const mb = (x) => Math.round(x / 1e6)
+      if (process.env.HEAPSNAP && !global.__snapped && m.heapUsed > Number(process.env.HEAPSNAP) * 1e6) {
+        global.__snapped = require('v8').writeHeapSnapshot()
+        console.error('mem heap snapshot', global.__snapped)
+      }
+      const probe = global.__benchProbe ? ' ' + JSON.stringify(global.__benchProbe()) : ''
+      console.error(`mem ${process.argv[2]} t=${Math.round((lastLog - start) / 1000)}s rss=${mb(m.rss)} heap=${mb(m.heapUsed)} external=${mb(m.external)} arrayBuffers=${mb(m.arrayBuffers)}${probe}`)
+    }
     if (m.rss > peak.rss) peak.rss = m.rss
     if (m.heapUsed > peak.heap) peak.heap = m.heapUsed
   }
+  let timer = null
   sample()
-  const timer = setInterval(sample, 50)
+  timer = setInterval(sample, 50)
   return { peak, stop () { sample(); clearInterval(timer); return peak } }
 }
 
@@ -66,6 +89,39 @@ function dirSize (dir) {
     else total += fs.statSync(p).size
   }
   return total
+}
+
+// Per-index-prefix breakdown of a Hyperbee: count, key bytes, value bytes.
+// Keys are grouped by their prefix up to the first ':' (two segments for the
+// multi-part prefixes), or by their first byte for binary keys.
+async function beeBreakdown (bee) {
+  const out = {}
+  const twoPart = /^(cnt|meta|i|m|w):/
+  for await (const { key, value } of bee.createReadStream({ keyEncoding: 'binary', valueEncoding: 'binary' })) {
+    const text = key.toString('utf-8')
+    const printable = /^[ -~]+$/.test(text)
+    const prefix = printable
+      ? text.split(':').slice(0, twoPart.test(text) ? 2 : 1).join(':')
+      : '0x' + key[0].toString(16).padStart(2, '0')
+    const o = out[prefix] || (out[prefix] = { count: 0, keyBytes: 0, valueBytes: 0 })
+    o.count++
+    o.keyBytes += key.byteLength
+    o.valueBytes += value ? value.byteLength : 0
+  }
+  return out
+}
+
+const coreSize = (c) => c ? { length: c.length, byteLength: c.byteLength } : null
+
+async function sizesOf (graph, context) {
+  return {
+    userCore: coreSize(graph.core),
+    graphView: coreSize(graph.viewCore),
+    contextView: coreSize(context.view.core),
+    contextOplog: coreSize(context.base.local),
+    graphViewIndexes: await beeBreakdown(graph.view.bee),
+    contextViewIndexes: await beeBreakdown(context.view)
+  }
 }
 
 const ms = (start) => Number(process.hrtime.bigint() - start) / 1e6
@@ -119,7 +175,7 @@ async function listingStats (graph, ctx, dirIds) {
 
 // ── write ────────────────────────────────────────────────────────────────────
 
-async function write (n, dir, api) {
+async function write (n, dir, api, withSizes) {
   const mem = memSampler()
   const deviceKeyPair = hypercoreCrypto.keyPair()
   const store = new Corestore(dir)
@@ -134,7 +190,6 @@ async function write (n, dir, api) {
   for (let d = 0; d < dirCount; d++) dirIds.push((await graph.put({ type: 'dir' })).id)
 
   const baselineDiskBytes = dirSize(dir)
-  const split = { buildSign: 0, coreAppend: 0, ctxAppend: 0, ctxApply: 0, viewIndex: 0 }
   const t0 = now()
   if (api) {
     for (let i = 0; i < n; i++) {
@@ -143,31 +198,17 @@ async function write (n, dir, api) {
       await graph.relate({ from: f.id, to: dirIds[Math.floor(i / PER_DIR)], type: 'in', context: ctx })
     }
   } else {
+    // graph.batch(): one user-core append and one context append per
+    // BATCH files.
     for (let start = 0; start < n; start += BATCH) {
       const end = Math.min(n, start + BATCH)
-      let tt = now()
-      let seq = graph.core.length
-      const coreEvents = []
-      const relations = []
+      const batch = graph.batch()
       for (let i = start; i < end; i++) {
-        const ts = Date.now()
-        const fileId = `file/${author}/${seq}`
-        coreEvents.push({ type: 'entity/create', id: '', entityType: 'file', author, timestamp: ts })
-        coreEvents.push({ type: 'content/append', entityId: fileId, contentType: 'link', body: formatReference(refFor(i)), timestamp: ts })
-        seq += 2
-        const rel = { type: 'relation/create', from: fileId, to: dirIds[Math.floor(i / PER_DIR)], relationType: 'in', author, timestamp: ts, signature: null }
-        rel.signature = hypercoreCrypto.sign(stableRelationHash(rel, ctx), deviceKeyPair.secretKey).toString('hex')
-        relations.push(rel)
+        const file = batch.put({ type: 'file' })
+        batch.putContentRef(file, refFor(i))
+        batch.relate({ from: file, to: dirIds[Math.floor(i / PER_DIR)], type: 'in', context: ctx })
       }
-      split.buildSign += ms(tt); tt = now()
-      await graph.core.append(coreEvents.map(encodeEvent))
-      split.coreAppend += ms(tt); tt = now()
-      for (const r of relations) await context.base.append(r, { optimistic: true })
-      split.ctxAppend += ms(tt); tt = now()
-      await context.base.update()
-      split.ctxApply += ms(tt); tt = now()
-      await graph.update()
-      split.viewIndex += ms(tt)
+      await batch.flush()
     }
   }
   const writeMs = ms(t0)
@@ -175,19 +216,20 @@ async function write (n, dir, api) {
   const listing = await listingStats(graph, ctx, dirIds)
   const peak = mem.stop()
   const held = retained()
+  const sizes = withSizes ? await sizesOf(graph, context) : undefined
 
   await graph.close()
   await store.close()
 
   return {
     n,
+    sizes,
     retained: held,
     mode: api ? 'api' : 'batch',
     writeMs: Math.round(writeMs),
     filesPerSec: Math.round(n / (writeMs / 1000)),
     diskBytes: dirSize(dir),
     baselineDiskBytes,
-    splitMs: Object.fromEntries(Object.entries(split).map(([k, v]) => [k, Math.round(v)])),
     userCoreLength: n * 2 + dirCount,
     contextLength: n,
     listing,
@@ -243,8 +285,24 @@ async function fetchIndex (dir, port, keys, n) {
   socket.on('error', () => {})
 
   const t0 = now()
-  await graph.openContext(keys.ctx)
-  await graph.openUserCore(keys.author)
+  // FETCH_ONLY=ctx|log: replicate just one half of the index (diagnostics).
+  const only = process.env.FETCH_ONLY
+  const context = await graph.openContext(keys.ctx)
+  const authorCore = only === 'ctx' ? { core: { length: 0, contiguousLength: 0 } } : await graph.openUserCore(keys.author)
+  if (only === 'log') await context.close()
+  global.__benchProbe = () => ({
+    ctxApplied: context.base.length,
+    ctxView: context.view.core.length,
+    log: authorCore.core.length,
+    logHeld: authorCore.core.contiguousLength
+  })
+
+  // How many times Autobase called apply: one per writer batch. Bench-only
+  // peek at a private handler, to show how the writer's grouping carries over.
+  let applyCalls = 0
+  const handlers = context.base._handlers
+  const apply = handlers.apply
+  handlers.apply = (...args) => { applyCalls++; return apply(...args) }
 
   const lastDir = keys.dirIds[keys.dirIds.length - 1]
   const lastDirSize = n - (keys.dirIds.length - 1) * PER_DIR
@@ -258,14 +316,19 @@ async function fetchIndex (dir, port, keys, n) {
     if (firstListable === null && await graph.countEdgesIn(keys.dirIds[0], 'in', { context: keys.ctx }) === Math.min(PER_DIR, n)) {
       firstListable = ms(t0)
     }
-    const ready = await graph.countEdgesIn(lastDir, 'in', { context: keys.ctx }) === lastDirSize &&
-      await graph.getContent(lastFile)
+    const ready = only === 'ctx'
+      ? await graph.countEdgesIn(lastDir, 'in', { context: keys.ctx }) === lastDirSize
+      : only === 'log'
+        ? await graph.getContent(lastFile)
+        : await graph.countEdgesIn(lastDir, 'in', { context: keys.ctx }) === lastDirSize && await graph.getContent(lastFile)
     if (ready) break
     await new Promise(resolve => setTimeout(resolve, 20))
   }
   const replicateMs = ms(t0)
+  if (process.env.MEMLOG) console.error(`mem fetch-child phase: joined after ${Math.round(replicateMs / 1000)}s`)
 
   const listing = await listingStats(graph, keys.ctx, keys.dirIds)
+  if (process.env.MEMLOG) console.error('mem fetch-child phase: listing done')
   const peak = mem.stop()
   const held = retained()
 
@@ -275,6 +338,7 @@ async function fetchIndex (dir, port, keys, n) {
 
   return {
     retained: held,
+    applyCalls,
     replicateMs: Math.round(replicateMs),
     firstDirListableMs: Math.round(firstListable),
     rounds,
@@ -301,16 +365,22 @@ function child (args, onLine) {
         if (line.trim()) onLine(JSON.parse(line), p)
       }
     })
-    p.on('exit', (code) => code === 0 || code === null ? resolve(p) : reject(new Error(`${args[0]} exited ${code}`)))
+    // 3 = stopped by RSS_LIMIT_MB after reporting; anything else non-zero is a crash.
+    p.on('exit', (code) => code === 0 || code === null || code === 3 ? resolve(p) : reject(new Error(`${args[0]} exited ${code}`)))
   })
 }
 
 async function main () {
   const [cmd, ...rest] = process.argv.slice(2)
 
+  // HG_INDEX_BATCH / HG_PREFETCH_WINDOW: override src/tuning.js (for sweeps).
+  const tuning = require('../src/tuning.js')
+  if (process.env.HG_INDEX_BATCH) tuning.INDEX_BATCH = Number(process.env.HG_INDEX_BATCH)
+  if (process.env.HG_PREFETCH_WINDOW) tuning.PREFETCH_WINDOW = Number(process.env.HG_PREFETCH_WINDOW)
+
   if (cmd === 'write-child') {
-    const [n, dir, api] = rest
-    const r = await write(Number(n), dir, api === 'api')
+    const [n, dir, api, sizes] = rest
+    const r = await write(Number(n), dir, api === 'api', sizes === 'sizes')
     process.stdout.write(JSON.stringify(r) + '\n')
     return
   }
@@ -327,38 +397,56 @@ async function main () {
   }
 
   const n = Number(cmd)
-  if (!n) throw new Error('usage: node bench/scale.js <N> [--api]')
+  if (!n) throw new Error('usage: node bench/scale.js <N> [--api] [--sizes]')
   const api = rest.includes('--api')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), `hg-scale-${n}-`))
+  const withSizes = rest.includes('--sizes')
+  const root = fs.mkdtempSync(path.join(process.env.BENCH_DIR || os.tmpdir(), `hg-scale-${n}-`)) // BENCH_DIR: where the stores go (1M needs ~15 GB)
   const aDir = path.join(root, 'a')
   const bDir = path.join(root, 'b')
   const keysFile = path.join(root, 'keys.json')
 
+  const out = path.join(__dirname, 'results')
+  fs.mkdirSync(out, { recursive: true })
+  const resultFile = path.join(out, `scale-${n}${api ? '-api' : ''}.json`)
+  const result = { n, write: null, seedReopenMs: null, fetch: null }
+  // Saved after every phase, so a crash later on (a 1M join, say) does not
+  // lose what was already measured.
+  const save = () => fs.writeFileSync(resultFile, JSON.stringify(result, null, 2))
+
+  let seeder = null
+  let ok = false
   try {
     let written
-    await child(['write-child', String(n), aDir, api ? 'api' : 'batch'], (r) => { written = r })
+    await child(['write-child', String(n), aDir, api ? 'api' : 'batch', withSizes ? 'sizes' : ''], (r) => { written = r })
     fs.writeFileSync(keysFile, JSON.stringify(written.keys))
     delete written.keys
+    result.write = written
+    save()
 
-    let seeder
     let seedInfo
     let seedExit
     await new Promise((resolve) => {
       seedExit = child(['seed-child', aDir, keysFile], (r, p) => { seedInfo = r; seeder = p; resolve() }).catch(() => {})
     })
+    result.seedReopenMs = seedInfo.reopenMs
+    save()
 
-    let fetched
-    await child(['fetch-child', bDir, String(seedInfo.port), keysFile, String(n)], (r) => { fetched = r })
+    try {
+      await child(['fetch-child', bDir, String(seedInfo.port), keysFile, String(n)], (r) => { result.fetch = r })
+    } catch (err) {
+      result.fetch = { crashed: err.message }
+    }
     seeder.kill()
+    seeder = null
     await seedExit
+    save()
 
-    const result = { n, write: written, seedReopenMs: seedInfo.reopenMs, fetch: fetched }
     process.stdout.write(JSON.stringify(result, null, 2) + '\n')
-    const out = path.join(__dirname, 'results')
-    fs.mkdirSync(out, { recursive: true })
-    fs.writeFileSync(path.join(out, `scale-${n}${api ? '-api' : ''}.json`), JSON.stringify(result, null, 2))
+    ok = !result.fetch.crashed && !result.fetch.aborted
   } finally {
-    if (process.env.KEEP) console.error('kept', root)
+    if (seeder) seeder.kill()
+    // Stores are kept whenever something went wrong: they are the evidence.
+    if (process.env.KEEP || !ok) console.error('kept', root)
     else fs.rmSync(root, { recursive: true, force: true, maxRetries: 10 })
   }
 }

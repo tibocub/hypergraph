@@ -43,16 +43,9 @@ signed and permission-checked in closed mode, same as `addWriter()`.
 
 ## DHT Announcement Timing
 
-**Critical**: Peers must announce on DHT BEFORE creating data:
-
-```js
-const d = swarm.join(topic, { server: true, client: true })
-await d.flushed()  // Wait for DHT announcement
-// Now safe to create data
-await graph.put({ type: 'message' })
-```
-
-If data is created before announcement, other peers won't discover it.
+Announcing is about peers finding each other, not about data: once connected, peers replicate
+everything either side holds, whenever it was written. `await d.flushed()` after
+`swarm.join()` only guarantees this peer is findable. See [Networking](../networking.md).
 
 ## See Also
 

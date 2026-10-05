@@ -34,6 +34,12 @@ encodeEvent(event) → Buffer
 decodeEvent(Buffer) → event
 ```
 
+User cores store `encodeEvent()` output directly. Context events reach Autobase already
+encoded (ContextBase sets no Autobase `valueEncoding`) and are decoded in apply; the bytes in the
+oplog are the same either way. Keys inside events (authors, entity ids) are hex text, which
+makes events roughly twice the size a binary layout would need — changing that is a wire-format
+change (see `specs/research/scaling-study.md`).
+
 ## Backward Compatibility for Optional Fields
 
 Several event types have grown optional trailing fields over time (e.g. `relation/create`'s

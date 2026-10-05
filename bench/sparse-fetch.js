@@ -1,0 +1,27 @@
+// How long does it take to fetch K specific blocks of a remote core on demand
+// (what a sparse listing would do), vs having the whole core locally?
+const Corestore = require('corestore')
+const os = require('os'), fs = require('fs'), path = require('path')
+;(async () => {
+  const N = 200000, K = 1000
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hg-sparse-'))
+  const a = new Corestore(path.join(root, 'a')), b = new Corestore(path.join(root, 'b'))
+  const core = a.get({ name: 'log' }); await core.ready()
+  for (let i = 0; i < N; i += 10000) await core.append(Array.from({ length: 10000 }, (_, j) => Buffer.alloc(300, (i + j) % 251)))
+  const s1 = a.replicate(true), s2 = b.replicate(false); s1.pipe(s2).pipe(s1)
+  const remote = b.get({ key: core.key }); await remote.ready(); await remote.update({ wait: true })
+  const pick = Array.from({ length: K }, (_, i) => Math.floor((i + 0.5) * N / K))
+  let t = Date.now()
+  await Promise.all(pick.map(i => remote.get(i)))
+  console.log(`parallel: ${K} scattered blocks of a ${N}-block core in ${Date.now() - t} ms; local blocks now ${remote.contiguousLength === N ? N : 'sparse'}`)
+  const pick2 = pick.map(i => i + 1)
+  t = Date.now()
+  for (const i of pick2) await remote.get(i)
+  console.log(`sequential: ${K} blocks one by one in ${Date.now() - t} ms (≈ one round trip each)`)
+  t = Date.now()
+  const pick3 = pick.map(i => i + 2)
+  await remote.download({ blocks: pick3 }).done()
+  console.log(`download({blocks}): ${K} blocks in ${Date.now() - t} ms`)
+  console.log('bytes held by sparse peer: ~', Math.round(remote.byteLength && 3 * K * 300 / 1024), 'KB of', Math.round(N * 300 / 1e6), 'MB')
+  s1.destroy(); s2.destroy(); await a.close(); await b.close(); fs.rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+})()

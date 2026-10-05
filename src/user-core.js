@@ -20,6 +20,7 @@ module.exports = class UserCore extends ReadyResource {
   #length
   #key
   #keyPair
+  #writeLock
 
   /**
    * Create a new UserCore instance.
@@ -40,6 +41,7 @@ module.exports = class UserCore extends ReadyResource {
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#core = null
     this.#length = 0
+    this.#writeLock = Promise.resolve()
 
     this.ready().catch(safetyCatch)
   }
@@ -97,29 +99,61 @@ module.exports = class UserCore extends ReadyResource {
    * @returns {Promise<number>} The sequence number of the appended event
    */
   async append (event) {
-    if (!this.opened) await this.ready()
-
-    const encoded = encodeEvent(event)
-    await this.#core.append(encoded)
-    this.#length = this.#core.length
-
-    return this.#length - 1
+    return this.withWriteLock(() => this.appendBatchUnlocked([event]))
   }
 
   /**
-   * Append multiple events to the user core in a batch.
+   * Append multiple events to the user core in one hypercore append (one
+   * hash, one signature, one flush).
    *
    * @param {Object[]} events - Array of events to append
-   * @returns {Promise<number>} The sequence number of the last appended event
+   * @returns {Promise<number>} The sequence number of the FIRST appended event
    */
   async appendBatch (events) {
+    return this.withWriteLock(() => this.appendBatchUnlocked(events))
+  }
+
+  /**
+   * Run `fn(length)` while holding this core's write lock. `length` is where
+   * the next appended block will land, and stays true for as long as `fn`
+   * runs — which is what lets a caller build events that embed their own
+   * future seq (a bulk write's entity ids) before appending them. Inside
+   * `fn`, append with {@link UserCore#appendBatchUnlocked}; the locked
+   * methods would wait on the lock `fn` itself holds.
+   *
+   * @template T
+   * @param {(length: number) => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  async withWriteLock (fn) {
     if (!this.opened) await this.ready()
 
-    const encoded = events.map(encodeEvent)
-    await this.#core.append(encoded)
-    this.#length = this.#core.length
+    const previous = this.#writeLock
+    let release
+    this.#writeLock = new Promise((resolve) => { release = resolve })
+    try {
+      await previous
+      return await fn(this.#core.length)
+    } finally {
+      release()
+    }
+  }
 
-    return this.#length - events.length
+  /**
+   * Append without taking the write lock. Only for use inside
+   * {@link UserCore#withWriteLock}.
+   *
+   * @param {Object[]} events
+   * @returns {Promise<number>} The sequence number of the first appended event
+   */
+  async appendBatchUnlocked (events) {
+    const encoded = events.map(encodeEvent)
+    // Take the seq from this append's own result rather than reading
+    // core.length afterwards, which another append may already have moved.
+    const { length } = await this.#core.append(encoded)
+    this.#length = length
+
+    return length - events.length
   }
 
   // ========================================

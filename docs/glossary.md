@@ -43,7 +43,7 @@ Multi-writer Autobase instance for role-based (write) access control. Stores rol
 Multi-writer Autobase instance for read-permission scopes — sealed key grants that control who can decrypt a given piece of content. A separate system from RoleBase/write-access; see [Read Permission](read-permission.md).
 
 ### GraphView
-Materialized view built on Hyperbee that indexes data from UserCores and ContextBases for efficient queries. Maintains checkpoints to track progress.
+Materialized view built on Hyperbee that indexes the UserCores a peer follows (entities, content, identity) for efficient queries, and records how far each open context's own view has been processed. Relation, tag and moderation indexes live in each context's own Autobase view, not in GraphView.
 
 ### External Pointer Pattern
 Design pattern where large data is stored in separate Hypercores (UserCores) and Autobases (ContextBases) store pointers/references to this data. Avoids data duplication in Autobase views.
@@ -52,7 +52,7 @@ Design pattern where large data is stored in separate Hypercores (UserCores) and
 Data structure that can be replicated across multiple peers and merged without conflicts. Autobase uses a causal DAG to linearize events.
 
 ### Materialized View
-Pre-computed view of data that is incrementally updated as new events arrive. GraphView is a materialized view that indexes entities, relations, tags, and content.
+Pre-computed view of data that is incrementally updated as new events arrive. GraphView (entities, content, identity) and each context's Autobase view (relations, tags, moderation) are materialized views.
 
 ### Write Modes
 ContextBase supports two write modes:
