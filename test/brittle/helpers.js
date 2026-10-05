@@ -184,6 +184,18 @@ async function destroySwarm (swarm) {
     try { conn.destroy() } catch (err) { /* already closed */ }
   }
   try { await swarm.destroy({ force: true }) } catch (err) { /* already closed */ }
+  // force:true skips each topic's discovery teardown, and with it the
+  // clearing of its ~10-minute refresh timer — which then kept the whole
+  // test process alive for ~10 minutes (measured: the only live handles
+  // left were two PeerDiscovery._refreshLater timers). Destroying each
+  // discovery now clears it; the DHT is already gone, so the unannounce it
+  // attempts fails fast instead of waiting on the network. Bounded anyway.
+  // (`_discovery` is Hyperswarm's own topic map; no public accessor.)
+  const discoveries = swarm._discovery ? [...swarm._discovery.values()] : []
+  await Promise.race([
+    Promise.all(discoveries.map(d => Promise.resolve(d.destroy()).catch(() => {}))),
+    sleep(5000)
+  ])
 }
 
 module.exports = { createGraph, removeDirWithRetry, sleep, waitForConnections, withTeardownTimeout, destroySwarm }

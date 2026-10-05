@@ -85,10 +85,16 @@ test('connect-to-swarm: auto-creates a Hyperswarm when opts.swarm is omitted (no
 
   console.log('  Step 2: let the background connect attempt settle, then close everything in the safe order')
   t.teardown(async () => {
-    const settled = await Promise.race([connectPromise, sleep(15000).then(() => null)])
-    if (settled && settled.networking) {
-      try { await settled.networking.destroy() } catch (err) { /* already closed */ }
-    }
+    // Destroy the network whenever connect() settles, even after this
+    // teardown stopped waiting: a network that resolved late used to be
+    // left alive, and its swarm's DHT kept the whole test process running
+    // ~10 more minutes (its refresh timers were the only live handles).
+    const destroyed = connectPromise.then(async (settled) => {
+      if (settled && settled.networking) {
+        try { await settled.networking.destroy() } catch (err) { /* already closed */ }
+      }
+    })
+    await Promise.race([destroyed, sleep(15000)])
     await peer.close()
   })
   console.log('TEST: connectToSwarm auto-create swarm - passed')

@@ -104,12 +104,7 @@ test('peer-reconnection: a disconnected peer catches up on data created while it
   t.is(content2OnB && content2OnB.body, 'Message 2', 'content of the offline-written message matches exactly')
   console.log('TEST: peer reconnection - passed')
 
-  // TEMPORARY WORKAROUND, not a real fix — same class of issue as
-  // peer-connection.js (see that file's comment): this file is the last
-  // one alphabetically in test/brittle/replication/*.js, and something in
-  // this replication run leaves a resource open that prevents the process
-  // from exiting naturally after this, the last test in the file. Deferring
-  // further investigation for the same reason: prioritizing a test suite
-  // that completes end-to-end over chasing this further right now.
-  setTimeout(() => process.exit(0), 2000)
+  // No process.exit() here, even as the last file: a force-exit also
+  // swallows brittle's final summary, and in networking/ the same
+  // workaround silently skipped other files' tests (see peer-connection.js).
 })
