@@ -85,12 +85,12 @@ holding 1,000,000 file entries (one entity, one content reference and one relati
 
 | | before (2026-10-04) | now |
 |---|---|---|
-| writing them (`graph.batch()`) | ~1.5 h projected | ~11 min |
+| writing them (`graph.batch()`) | ~1.5 h projected | ~9 min, 3.3 GB on disk |
 | a new member can list a folder | joining crashed (out of memory) | **1.2 s** after joining, with names and sizes from relation data |
-| new member's disk | — | 60 MB (context only) / 2.6 GB (full replica of the author's log) |
-| new member's peak memory | > 8 GB | 329 MB (context only) / 751 MB (full) |
+| new member's disk | — | 60 MB (context only) / 1.5 GB (full replica of the author's log) |
+| new member's peak memory | > 8 GB | 329 MB (context only) / 855 MB (full) |
 
-How: bulk writes and batched indexing ([spec 002](specs/002-scale-indexing/)), confirmation and
+How: bulk writes, batched indexing and compact index keys ([spec 002](specs/002-scale-indexing/)), confirmation and
 fast-forward joins ([spec 003](specs/003-fast-forward-contexts/)), data on relations
 ([spec 004](specs/004-relation-data/)). What is left and why:
 [scaling study](specs/research/scaling-study.md).

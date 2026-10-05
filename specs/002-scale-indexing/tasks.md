@@ -129,9 +129,9 @@ at first write.
 ## Phase 6: Polish & Cross-Cutting
 
 - [X] T042 [P] Update `docs/storage-model.md` and `docs/contributors/index-structure.md`: layout 2 keys/values, content pointer, per-view layout choice, GraphView rebuild (doc-sync) — done, plus querying.md, contexts-and-roles.md, component-details.md, event-encoding.md, local data distribution.md
-- [ ] T043 [P] Update `docs/contributors/autobase-integration.md` and `docs/contributors/data-flow.md`: binary Autobase values, batch boundaries set by the writer, batched apply, prefetch window
-- [ ] T044 [P] Update `docs/contributors/component-details.md` (Autobase config block, UserCore lock, `batch.js`) and `docs/local data distribution.md` (new byte figures)
-- [ ] T045 [P] Update `README.md` API section with `graph.batch()` and the folder-import example from `contracts/bulk-write.md`
+- [X] T043 [P] Update `docs/contributors/autobase-integration.md` and `docs/contributors/data-flow.md`: binary Autobase values, batch boundaries set by the writer, batched apply, prefetch window — verified present (written during spec 002 P1 / 003 doc passes)
+- [X] T044 [P] Update `docs/contributors/component-details.md` (Autobase config block, UserCore lock, `batch.js`) and `docs/local data distribution.md` (new byte figures) — verified present (written during spec 002 P1 / 003 doc passes)
+- [X] T045 [P] Update `README.md` API section with `graph.batch()` and the folder-import example from `contracts/bulk-write.md` — verified present (written during spec 002 P1 / 003 doc passes)
 - [X] T046 Add one dated CHANGELOG.md entry linking `specs/002-scale-indexing/`: `graph.batch()`, one-time GraphView rebuild on first open, same-millisecond tie order, new `index-encoder` dependency, context views keep their layout until recreated
 - [X] T047 Run `npm test`, then `cd ../HyperBBS && npm test` and `cd ../hyperDNS && npm test` (SC-008) — 305/305 (all five stages), HyperBBS and hyperDNS green (2026-10-05)
 - [X] T048 Report both Autobase findings upstream (array `normalize` with custom `valueEncoding`; `optimistic` with arrays yielding `undefined` values) with minimal reproductions from `research.md` R3; draft the issue text for the user to file
