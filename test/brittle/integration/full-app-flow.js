@@ -31,7 +31,7 @@ test('full-app-flow: a small forum-like flow works end-to-end on a single graph'
   t.is(await graph.getRole(author), 'owner', 'author is the owner')
 
   console.log('  Step 3: create a post with content, tag it, and comment on it')
-  const context = await graph.createContext()
+  const context = await graph.createContext({ roles: 'rolebase' }) // this flow uses the RoleBase's roles
   const post = await graph.put({ type: 'post' })
   await graph.putContent(post.id, 'Hello, Hypergraph!', 'text')
   await graph.tag(post.id, 'announcement', { context })

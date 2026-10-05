@@ -11,7 +11,7 @@ async function main () {
   const post = await graph.put({ type: 'post' })
   await graph.putContent(post.id, 'Hello!', 'text')
 
-  const moderationContext = await graph.createContext()
+  const moderationContext = await graph.createContext({ roles: 'rolebase' }) // moderators come from the RoleBase
 
   const moderatorKeyPair = crypto.keyPair()
   const moderator = moderatorKeyPair.publicKey.toString('hex')

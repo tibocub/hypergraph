@@ -17,8 +17,8 @@ module.exports = async function moderationPropagation (t, h) {
   await p2.graph.openUserCore(p1.graph.key)
   await p1.graph.openUserCore(p2.graph.key)
 
-  const commentsContextKey = await p1.graph.createContext()
-  const moderationContextKey = await p1.graph.createContext()
+  const commentsContextKey = await p1.graph.createContext({ roles: 'rolebase' })
+  const moderationContextKey = await p1.graph.createContext({ roles: 'rolebase' })
 
   await p1.graph.openContext(commentsContextKey)
   const p1Moderation = await p1.graph.openContext(moderationContextKey)

@@ -7,8 +7,8 @@ module.exports = async function moderationConflict (t, h) {
   await p2.graph.openUserCore(p1.graph.key)
   await p1.graph.openUserCore(p2.graph.key)
 
-  const commentsKey = await p1.graph.createContext()
-  const moderationKey = await p1.graph.createContext()
+  const commentsKey = await p1.graph.createContext({ roles: 'rolebase' })
+  const moderationKey = await p1.graph.createContext({ roles: 'rolebase' })
 
   await p1.graph.openContext(commentsKey)
   const p1Moderation = await p1.graph.openContext(moderationKey)

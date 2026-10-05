@@ -5,8 +5,8 @@ module.exports = async function replyBeforeParent (t, h) {
   const owner = await h.createPeer('rbp-owner')
   const peer = await h.createPeer('rbp-peer')
 
-  const commentsKey = await owner.graph.createContext()
-  const moderationKey = await owner.graph.createContext()
+  const commentsKey = await owner.graph.createContext({ roles: 'rolebase' })
+  const moderationKey = await owner.graph.createContext({ roles: 'rolebase' })
 
   const ownerComments = await owner.graph.openContext(commentsKey)
   await owner.graph.openContext(moderationKey)

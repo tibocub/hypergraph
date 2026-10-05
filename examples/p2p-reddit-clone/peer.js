@@ -107,7 +107,7 @@ async function main () {
     console.log('Creating context...')
     let contextKey
     try {
-      contextKey = await graph.createContext()
+      contextKey = await graph.createContext({ roles: 'rolebase' }) // moderators come from the RoleBase
       console.log('Context created')
     } catch (err) {
       console.error('Error creating context:', err)

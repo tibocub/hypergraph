@@ -6,8 +6,8 @@ module.exports = async function idempotency (t, h) {
 
   await p2.graph.openUserCore(p1.graph.key)
 
-  const commentsKey = await p1.graph.createContext()
-  const moderationKey = await p1.graph.createContext()
+  const commentsKey = await p1.graph.createContext({ roles: 'rolebase' })
+  const moderationKey = await p1.graph.createContext({ roles: 'rolebase' })
 
   await p1.graph.openContext(commentsKey)
   await p1.graph.openContext(moderationKey)

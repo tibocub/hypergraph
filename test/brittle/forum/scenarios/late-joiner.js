@@ -4,8 +4,8 @@ module.exports = async function lateJoiner (t, h) {
   const p1 = await h.createPeer('late-p1')
 
   // Create contexts on p1 and rebind storage to them.
-  const commentsContext = await p1.graph.createContext()
-  const moderationContext = await p1.graph.createContext()
+  const commentsContext = await p1.graph.createContext({ roles: 'rolebase' })
+  const moderationContext = await p1.graph.createContext({ roles: 'rolebase' })
   p1.storage.commentsContext = commentsContext
   p1.storage.moderationContext = moderationContext
 

@@ -7,8 +7,8 @@ module.exports = async function concurrentWrites (t, h) {
   await p2.graph.openUserCore(p1.graph.key)
   await p1.graph.openUserCore(p2.graph.key)
 
-  const commentsContextKey = await p1.graph.createContext()
-  const moderationContextKey = await p1.graph.createContext()
+  const commentsContextKey = await p1.graph.createContext({ roles: 'rolebase' })
+  const moderationContextKey = await p1.graph.createContext({ roles: 'rolebase' })
 
   // Both peers must open the same contexts.
   const p1Comments = await p1.graph.openContext(commentsContextKey)

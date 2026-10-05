@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-05: invite links that carry a role (additive; one replication note)
+
+- `context.createInvite({ role, uses, keyPair })` → `hypergraph://invite/<context>/<secret>`;
+  `graph.redeemInvite(link)` makes the holder's device a writer with that role — indexing if the
+  role does — without anyone acting at that moment (version 3 contexts). `revokeInvite()`,
+  `invites()`, `Hypergraph.parseInvite()`.
+- Every peer checks a redemption against the invite recorded in the context: secret, uses left,
+  not revoked, and whether its minter was allowed to grant that role. Two people racing for the
+  last use: exactly one gets it, the same on every peer; `redeemInvite()` waits for confirmation
+  before answering (~2 s measured).
+- **Replication note**: use `graph.replicate(stream)` (or `HypergraphNetwork`, which now does)
+  rather than `store.replicate(stream)`; only the former carries the writer discovery that lets
+  peers see someone redeeming an invite. `protomux-wakeup` is now a direct dependency.
+- New event types `context/invite`, `context/redeem`.
+
+Details: [`specs/006-role-invites/`](specs/006-role-invites/).
+
 ### 2026-10-05: roles inside the context; several indexers — BREAKING for roles in new contexts
 
 **Breaking**: `createContext()` now creates **version 3** contexts, which take every permission
@@ -28,8 +45,10 @@ roles in its RoleBase, so it now creates authority contexts with `{ roles: 'role
   version 1 or 2 context).
 - New event types `context/writer`, `context/role`, `context/upgrade`; `context/init` carries the
   owner. As before, every peer of a context must run a version that understands them.
-- Hypergraph's own moderation tests, one closed-mode test and one networking test exercise the
-  RoleBase model and now create their contexts with `{ roles: 'rolebase' }`.
+- Hypergraph's own tests that exercise the RoleBase model (moderation, one closed-mode and one
+  networking test, the forum scenarios, the full-app-flow integration test) and the examples that
+  appoint moderators in a RoleBase (`examples/forum`, `examples/moderation.js`,
+  `examples/p2p-reddit-clone`) now create their contexts with `{ roles: 'rolebase' }`.
 
 Details: [`specs/005-context-roles/`](specs/005-context-roles/).
 

@@ -6,8 +6,8 @@ module.exports = async function writerSetConvergence (t, h) {
   const peer2 = await h.createPeer('writers-peer2')
 
   // createContext returns a context key (hex).
-  const commentsKey = await owner.graph.createContext()
-  const moderationKey = await owner.graph.createContext()
+  const commentsKey = await owner.graph.createContext({ roles: 'rolebase' })
+  const moderationKey = await owner.graph.createContext({ roles: 'rolebase' })
 
   const ownerComments = await owner.graph.openContext(commentsKey)
   const ownerModeration = await owner.graph.openContext(moderationKey)
