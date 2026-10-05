@@ -238,13 +238,18 @@ counters, tags) have a layout 2. The context record, roles, invites, moderation,
 messages stay text in every context: a handful of entries each, not worth a second code path.
 GraphView has no layout 1 path at all: it moved wholesale to `graph-view/2`.
 
-Measured at 10k files, after compacting both stores (`bench/README.md`):
+Measured after compacting both stores (`bench/README.md`):
 
-| | layout 1 | layout 2 |
-|---|---|---|
-| GraphView, logical | 12.9 MB | 2.6 MB |
-| writer disk | 51.3 MB | (see bench/README.md) |
-| joining peer disk | 34.8 MB | (see bench/README.md) |
+| | 10k before | 10k after | 100k before | 100k after |
+|---|---|---|---|---|
+| GraphView, logical | 12.9 MB | 2.6 MB | 130.8 MB | 26.9 MB |
+| context view, logical | 12.9 MB | 4.0 MB | 130.1 MB | 41.1 MB |
+| writer disk | 51.3 MB | 31.7 MB | 520 MB | 322 MB |
+| joining peer disk | 34.8 MB | 18.6 MB | 260 MB | 149 MB |
+
+Uncompacted disk sizes are not comparable between runs: the joining peer's store measured 50 MB
+in one run and 22 MB after `compact()`, the difference being an unflushed write-ahead log.
+Listings got ~15% slower (content read back from the author's log; per-call key encodings).
 
 ## R9 — Defaults to tune during implementation
 

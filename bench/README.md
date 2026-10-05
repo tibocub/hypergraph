@@ -95,3 +95,36 @@ the context** and lists from edge data, never opening the author's log.
 | 1,000-entry listing with names | ~1.7 s | **~0.66 s** |
 
 Writer: 10.8 min, 913 MB peak, 5.5 GB disk (edge data adds ~0.25 GB at 1M).
+
+### 2026-10-05 — `specs/002-scale-indexing` US3 (compact index keys)
+
+GraphView in `graph-view/2` with binary keys and content as pointers; new contexts' edges,
+counters and tags in layout 2 (`docs/contributors/index-structure.md`). Disk is measured after
+`compact()` on each store: uncompacted sizes swing by tens of percent with whatever RocksDB has
+not flushed yet (one joining peer: 50 MB uncompacted, 22 MB compacted).
+
+| | before | after |
+|---|---|---|
+| 10k: GraphView / context view, logical | 12.9 / 12.9 MB | 2.6 / 4.0 MB |
+| 10k: disk writer / joiner | 51.3 / 34.8 MB | 31.7 / 18.6 MB |
+| 100k: GraphView / context view, logical | 130.8 / 130.1 MB | 26.9 / 41.1 MB |
+| 100k: disk writer / joiner | 520 / 260 MB | 322 / 149 MB |
+| 100k: write / full join | 56.7 / 42.3 s | 53.2 / 39.0 s |
+| 100k: 1,000-entry listing, writer / joiner | 330 / 712 ms | 402 / 806 ms |
+
+**1,000,000 files** (full join, no edge data; "before" is the spec 003 row above):
+
+| | before | after |
+|---|---|---|
+| write | 11.3 min, 912 MB peak | **9.2 min**, 977 MB peak |
+| writer disk | 5.25 GB | **3.26 GB** |
+| first folder listable on a fresh peer | 10.3 s | **2.5 s** |
+| fresh peer fully indexed | 11.4 min | **8.8 min** |
+| peak memory, fresh peer | 751 MB | 855 MB |
+| fresh peer disk | 2.58 GB | **1.46 GB** |
+| 1,000-entry listing on the fresh peer | ~1.7 s | ~0.9 s |
+
+Listings are ~15% slower at 100k on a peer that holds everything (content is read back from the
+author's log), and faster on a fresh 1M peer (fewer, smaller index blocks to fetch). "First folder
+listable" depends mostly on when Autobase fast-forwards: measured 2.5–3.3 s at 10k on both the old
+and the new code, with an occasional 0.4 s run.

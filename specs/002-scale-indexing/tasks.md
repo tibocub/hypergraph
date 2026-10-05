@@ -120,7 +120,7 @@ at first write.
 - [X] T038 [US3] Create `src/index-layout/index.js`: format record read/write; `layoutForGraphView()` → 2; `layoutForContextView(view)` → 2 if empty or `format = 2`, else 1 (data-model table) — revised: `layoutFor(record)` in `src/index-layout/context.js`, layout from `context/init` (not first apply)
 - [X] T039 [US3] `src/view.js` + `src/hypergraph.js`: GraphView opens core `graph-view/2`; rebuild from seq 0 when new; purge the old `graph-view` core only after every followed log has caught up; `getContent` resolves the body through the author's UserCore at the indexed content seq — done; old core dropped by truncate + compact (Hypercore `purge()` is broken)
 - [X] T040 [US3] `src/context-base.js`: select the layout at open (`layoutForContextView`), write the `format` record in the first apply of an empty view, and use the selected layout in apply and reads — done; layout from the `context/init` record, `status().layout`
-- [ ] T041 [US3] Benchmark checkpoint: `bench/scale.js 100000 --sizes`; check SC-004; then `bench/scale.js 1000000` for SC-005; record both in `bench/README.md`
+- [X] T041 [US3] Benchmark checkpoint: `bench/scale.js 100000 --sizes`; check SC-004; then `bench/scale.js 1000000` for SC-005; record both in `bench/README.md` — done: 100k index bytes ~0.68 KB/entry, writer disk 0.32 GB (SC-004 met); 1M recorded
 
 **Checkpoint**: all three stories done.
 
