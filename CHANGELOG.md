@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-05: faster GraphView reads; docs corrected (no format change)
+
+- GraphView reads no longer open and close a snapshot session per lookup: folder listings ~20%
+  faster. Safe because nothing truncates GraphView's local core.
+- Several docs contradicted the code (tags are indexed; relations are ownership-checked on
+  `from`; relation/tag data is not in GraphView; DHT announcement timing; storage overhead).
+  Corrected; see `specs/research/scaling-study.md` §8 for the list.
+- `specs/research/scaling-study.md`: settings checked, compression, sparse replication, index
+  profiles, and the recommended order of work.
+
 ### 2026-10-04: faster indexing and `graph.batch()` (additive; no format change)
 
 Not a breaking change: event bytes on the wire and on disk are unchanged, so peers on this and

@@ -26,7 +26,8 @@ _open()
   ↓
 2. Create UserCore with device keyPair
   ↓
-3. Create GraphView with Hyperbee
+3. Create GraphView with Hyperbee (`sessions: false`: reads skip per-get snapshot sessions,
+   safe because nothing truncates this local core)
 ```
 
 **Key Methods**:
@@ -34,6 +35,8 @@ _open()
 - `putContent()` - Append content via UserCore (optionally encrypted — pass `opts.scope`, see [Read Permission](../read-permission.md))
 - `getContent()` - Read content back, transparently decrypting if the caller holds the relevant scope key
 - `relate()` - Create relation via ContextBase
+- `batch()` - Bulk writes: entities, content and relations written as one user-core append and
+  one append per context (see [Data Flow](data-flow.md))
 - `tag()` - Create tag via ContextBase (author-only — see [Contexts and Roles](../contexts-and-roles.md))
 - `query()` - Fluent query interface (see [Querying](../querying.md))
 - `getByTag()` / `getByType()` / `getByAuthor()` - Direct iteration helpers, each backed by an index or UserCore scan rather than a full table scan

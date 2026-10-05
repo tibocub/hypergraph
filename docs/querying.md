@@ -114,9 +114,8 @@ for await (const node of graph.getByTag('important', { authors: [author] })) {
 }
 ```
 
-Note: tag lookups currently do a full scan with a per-node check — there's no dedicated tag
-index yet (unlike type/author, below). Worth revisiting if tag-heavy queries become a real
-bottleneck.
+Tag lookups are indexed: a prefix scan of the `t:<tag>:` index in each open context, in time
+order, plus one node lookup per result.
 
 ### Context Scoping
 
@@ -170,7 +169,9 @@ for await (const node of graph.getByAuthor(authorPubkeyHex)) {
 }
 ```
 
-This scans that author's own UserCore directly rather than any shared index — a UserCore
+This reads every event in that author's own UserCore (content versions included) rather than
+any shared index, so its cost grows with everything the author ever wrote — fine for a person's
+posts, slow for an account that imported a million files — a UserCore
 already only contains that person's own entities, so no separate author index is needed at
 all. Returns nothing if that author's core hasn't been opened/replicated locally yet (see
 `openUserCore()`).

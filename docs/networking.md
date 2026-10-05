@@ -87,15 +87,15 @@ await swarm.flush()
 
 ## DHT Announcement Timing
 
-**Critical**: Peers must announce on the DHT BEFORE creating data. If a peer creates data before announcing, other peers will not be able to discover and replicate that data.
-
-Always wait for `d.flushed()` after `swarm.join()` before writing data:
+Announcing on the DHT is about peers **finding each other**, not about data: once two peers are
+connected, everything either side has written replicates, including data written long before
+they connected (the bulk-replay tests write thousands of relations before the peers are linked).
+Waiting for `d.flushed()` after `swarm.join()` only makes sure this peer is findable before you
+rely on someone connecting to it:
 
 ```js
 const d = swarm.join(topic, { server: true, client: true })
-await d.flushed()  // Critical: wait for DHT announcement
-// Now safe to create data
-await graph.put({ type: 'message' })
+await d.flushed()  // this peer is now announced and can be found
 ```
 
 ## Bootstrap Export (for your own custom joining flow)
@@ -115,7 +115,11 @@ descriptor above.
 
 ## Selective Replication
 
-You can replicate specific cores by joining their discovery keys:
+Joining a discovery key decides which peers you **connect** to; what you **download** is
+decided by what you open. Over a connection, `store.replicate()` serves any core both sides
+have open. A peer that never opens a context or user core never downloads it, and opening one
+downloads it in full (contexts are replayed in full; `openUserCore()` downloads the log in the
+background). There is no partial download of one core today. To find peers for one context only:
 
 ```js
 // Replicate only a specific context

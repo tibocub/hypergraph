@@ -45,27 +45,32 @@ names.
 
 4. **Query performance:**
    - GraphView provides fast queries
-   - Type/author (indexed), tag (full-scan today), and edge indexes
+   - Type, tag and edge indexes (author queries scan the author's log)
    - Worth the storage cost for P2P apps
 
 ### Weaknesses
 
-1. **GraphView duplication:**
-   - 2-3x storage overhead vs raw data
-   - Content body fully duplicated
-   - No built-in compaction
+1. **Index and block overhead:**
+   - ~5x the event data per item for small items (measured, see
+     [Storage Model](storage-model.md#storage-estimate-measured)); 2-3x only for large inline
+     content
+   - Content body fully duplicated into GraphView
+   - ~183 bytes of on-disk overhead per stored block, 11 blocks per typical item
+   - No compression at the storage layer
 
-2. **Autobase internal duplication:**
-   - Autobase's linearized view adds another layer
-   - Inherent to CRDT design, unavoidable
+2. **Every peer rebuilds every context view:**
+   - Joining a context means replaying all of it, and Autobase then commits the whole view at
+     once — measured, a 1M-entry context does not fit an 8 GB heap
+   - Fast-forward (download the signed view instead) would remove this; see
+     `specs/002-scale-indexing/research.md` R13
 
 3. **No garbage collection:**
    - Tombstones remain in logs
    - Old content versions persist
    - Could add in future
 
-4. **Tag queries aren't indexed yet** — a full scan with a per-node check, unlike type/author
-   queries which are. Worth revisiting if this becomes a real bottleneck.
+4. **`getByAuthor()` isn't indexed** — it reads every event in the author's log. Fine for a
+   person's posts, slow for an account holding a large archive.
 
 ### Conclusion
 
@@ -82,7 +87,9 @@ Storage efficiency could be improved with:
 - Optional "lightweight" GraphView mode (indexes only, no content body)
 - A dedicated tag index, if tag-heavy queries become common
 
-However, these optimizations would add complexity and may not be worth it for typical P2P use cases where storage is cheap and network latency is the bottleneck.
+Measurement changed that assessment (`specs/002-scale-indexing/`, `bench/README.md`): at
+community-archive scale, local storage and the cost of joining are the bottleneck, not network
+latency. See `specs/research/scaling-study.md` for what can be done.
 
 ## See Also
 
