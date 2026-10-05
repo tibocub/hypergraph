@@ -135,7 +135,7 @@ at first write.
 - [X] T046 Add one dated CHANGELOG.md entry linking `specs/002-scale-indexing/`: `graph.batch()`, one-time GraphView rebuild on first open, same-millisecond tie order, new `index-encoder` dependency, context views keep their layout until recreated
 - [X] T047 Run `npm test`, then `cd ../HyperBBS && npm test` and `cd ../hyperDNS && npm test` (SC-008) — 305/305 (all five stages), HyperBBS and hyperDNS green (2026-10-05)
 - [X] T048 Report both Autobase findings upstream (array `normalize` with custom `valueEncoding`; `optimistic` with arrays yielding `undefined` values) with minimal reproductions from `research.md` R3; draft the issue text for the user to file
-- [ ] T049 Delete the `perf-experiments` branch and `../hypergraph-perf` worktree once their numbers are recorded in `bench/README.md`
+- [X] T049 Delete the `perf-experiments` branch and `../hypergraph-perf` worktree once their numbers are recorded in `bench/README.md` — done 2026-10-05 (branch had no unmerged commits, worktree was clean)
 
 ---
 
