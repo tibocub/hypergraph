@@ -56,8 +56,8 @@ async function main () {
     roleBaseKey = manifest.roleBase || null
     console.log('Loaded manifest:', manifestPath)
   } else {
-    commentsContext = await graph.createContext()
-    moderationContext = await graph.createContext()
+    commentsContext = await graph.createContext({ roles: 'rolebase' }) // moderators come from the shared RoleBase
+    moderationContext = await graph.createContext({ roles: 'rolebase' })
 
     roleBaseKey = await graph.createRoleBase()
     const ownerKey = graph.key.toString('hex')

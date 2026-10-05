@@ -156,6 +156,14 @@ await graph.openContext(ctx, { rules })
 await (await graph.openContext(ctx, { rules })).status() // { version: 2, rules: 'myapp/v1', confirmedLength, ... }
 ```
 
+Invite someone with a link that grants a role, redeemable while you're offline:
+
+```js
+const link = await context.createInvite({ role: 'admin', keyPair: graph.identity.deviceKeyPair })
+// on their device, connected through graph.replicate():
+await graph.redeemInvite(link)
+```
+
 See [Contexts and Roles](docs/contexts-and-roles.md) for the trust model.
 
 ## API Reference

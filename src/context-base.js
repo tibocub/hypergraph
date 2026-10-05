@@ -13,6 +13,22 @@ const { toSortableTs, stableTagHash, stableRelationHash, stableContextHash, auth
 const rolesRegistry = require('./roles-registry')
 const tuning = require('./tuning')
 
+// hypergraph://invite/<contextKeyHex>/<secretSeedHex> (spec 006)
+const INVITE_LINK = /^hypergraph:\/\/invite\/([0-9a-f]{64})\/([0-9a-f]{64})$/
+
+/**
+ * Parse an invite link.
+ *
+ * @param {string} link
+ * @returns {{ context: string, seed: string, inviteKey: string }}
+ */
+function parseInviteLink (link) {
+  const m = typeof link === 'string' ? INVITE_LINK.exec(link.trim()) : null
+  if (!m) throw new Error('Not an invite link (expected hypergraph://invite/<context>/<secret>)')
+  const inviteKey = b4a.toString(hypercoreCrypto.keyPair(b4a.from(m[2], 'hex')).publicKey, 'hex')
+  return { context: m[1], seed: m[2], inviteKey }
+}
+
 // Where a context's topology record lives in its view (spec 003).
 const CONTEXT_RECORD_KEY = 'meta:context'
 // A version 3 context's own role table (spec 005).
@@ -40,7 +56,7 @@ function sleep (ms) {
  *
  * @extends ReadyResource
  */
-module.exports = class ContextBase extends ReadyResource {
+class ContextBase extends ReadyResource {
   #store
   #bootstrap
   #namespace
@@ -51,6 +67,7 @@ module.exports = class ContextBase extends ReadyResource {
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
   #rules // app rules { id, validate } or null (spec 003, US3)
+  #wakeup // shared writer-discovery protocol from Hypergraph, or null (spec 006)
   #interrupted // why this context stopped applying, or null
   #keyEncoding
   #valueEncoding
@@ -97,6 +114,7 @@ module.exports = class ContextBase extends ReadyResource {
     this.#fastForward = opts.fastForward !== false
     this.#fastForwards = 0
     this.#rules = opts.rules || null
+    this.#wakeup = opts.wakeup || null
     this.#interrupted = null
 
     // Use provided keyPair if available
@@ -125,8 +143,16 @@ module.exports = class ContextBase extends ReadyResource {
       // (specs/003-fast-forward-contexts/research.md R1).
       ackInterval: tuning.ACK_INTERVAL,
       ackThreshold: 0,
-      fastForward: this.#fastForward
+      fastForward: this.#fastForward,
+      // A peer that isn't a writer yet may append "optimistic" blocks; apply
+      // accepts only valid invite redemptions among them (spec 006) and
+      // ignores everything else, as it always has for non-writers.
+      optimistic: true
     }
+    // Writer discovery (Autobase's wakeup protocol) shared by every context of
+    // this graph and attached to streams by graph.replicate(): without it a
+    // peer never learns a redeemer's log exists.
+    if (this.#wakeup) autobaseOpts.wakeup = this.#wakeup
 
     // Let Autobase handle local writer creation automatically
     // Closed mode enforcement is at the application level via role checks, not at Autobase level
@@ -227,7 +253,7 @@ module.exports = class ContextBase extends ReadyResource {
 
   async #applyNodes (batch, host, currentView, beforeEvent) {
     let record = null
-    for (const { value, from, length } of batch) {
+    for (const { value, from, length, optimistic } of batch) {
       // Count first: this may flush and open a fresh batch, which is then
       // the one every write for this event must go to.
       await beforeEvent()
@@ -259,6 +285,22 @@ module.exports = class ContextBase extends ReadyResource {
       if (refusal) {
         host.interrupt(refusal)
         return
+      }
+
+      // From a peer that isn't a writer: only an invite redemption may count.
+      if (optimistic) {
+        if (event.type === 'context/redeem') await this.#applyContextRedeem(view, event, host, record, from, true)
+        continue
+      }
+
+      if (event.type === 'context/invite') {
+        await this.#applyContextInvite(view, event, record)
+        continue
+      }
+
+      if (event.type === 'context/redeem') {
+        await this.#applyContextRedeem(view, event, host, record, from, false)
+        continue
       }
 
       if (event.type === 'addWriter') {
@@ -825,6 +867,68 @@ module.exports = class ContextBase extends ReadyResource {
     for (const key of writers) await host.addWriter(key, { indexer: after })
   }
 
+  // context/invite (spec 006): mint (uses > 0) or revoke (uses === 0) an
+  // invite. Minting needs the right to grant its role to a new member at
+  // this point of the context's history; revoking, being its minter or
+  // having that same right.
+  async #applyContextInvite (view, event, record) {
+    if (record.version !== 3) return
+    if (typeof event.inviteKey !== 'string' || event.inviteKey.length !== 64) return
+    if (!this.#verifyContextSignature(event)) return
+    const table = await this.#roleTable(view)
+    const key = `inv:${event.inviteKey}`
+    const existing = await view.get(key)
+
+    if (event.uses === 0) {
+      if (!existing) return
+      const inv = existing.value
+      if (inv.author !== event.author && !this.#mayAssign(table, event.author, '', inv.role)) return
+      await view.put(key, { ...inv, revoked: true })
+      return
+    }
+
+    if (existing) return // an invite key is minted once
+    const role = event.role || 'member'
+    if (role === 'owner') return // ownership is never handed out by link
+    if (!this.#mayAssign(table, event.author, '', role)) return
+    await view.put(key, { role, uses: event.uses, used: 0, revoked: false, author: event.author })
+  }
+
+  // context/redeem (spec 006): proof of an invite's secret (signed with the
+  // invite key) by a member (countersigned), for the writer that appended
+  // it. Counts a use, gives the member the invite's role unless they already
+  // have one (an invite never lowers a role), and makes the writer a writer —
+  // acknowledging it first if it wasn't one yet.
+  async #applyContextRedeem (view, event, host, record, from, optimistic) {
+    if (record.version !== 3) return
+    if (!from || !from.key || event.key !== b4a.toString(from.key, 'hex')) return
+    if (typeof event.member !== 'string' || event.member.length === 0) return
+    const key = `inv:${event.inviteKey}`
+    const entry = await view.get(key)
+    if (!entry || !entry.value) return
+    const inv = entry.value
+    if (inv.revoked || inv.used >= inv.uses) return
+
+    const contextKeyHex = this.key ? this.key.toString('hex') : null
+    const digest = stableContextHash(event, contextKeyHex)
+    try {
+      if (!hypercoreCrypto.verify(digest, b4a.from(event.signature, 'hex'), b4a.from(event.inviteKey, 'hex'))) return
+      if (!hypercoreCrypto.verify(digest, b4a.from(event.memberSignature, 'hex'), b4a.from(event.member, 'hex'))) return
+    } catch {
+      return
+    }
+
+    await view.put(key, { ...inv, used: inv.used + 1 })
+    let table = await this.#roleTable(view)
+    if (!table.members[event.member]) {
+      table = rolesRegistry.applyRoleEvent(table, { type: 'roles/setRole', member: event.member, role: inv.role })
+      await view.put(ROLES_KEY, table)
+    }
+    await this.#linkWriter(view, event.key, event.member)
+    if (optimistic) await host.ackWriter(from.key)
+    await host.addWriter(from.key, { indexer: rolesRegistry.can(table, event.member, 'context.index') })
+  }
+
   async #writersOf (view, member) {
     const prefix = `w:k:${member}:`
     const keys = []
@@ -1068,6 +1172,84 @@ module.exports = class ContextBase extends ReadyResource {
     if (!opts.keyPair || !opts.keyPair.publicKey) throw new Error('opts.keyPair is required')
     const owner = b4a.isBuffer(opts.keyPair.publicKey) ? opts.keyPair.publicKey.toString('hex') : String(opts.keyPair.publicKey)
     await this.append({ type: 'context/upgrade', version: 3, owner, timestamp: Date.now() })
+  }
+
+  /**
+   * Mint an invite link granting `role` in this context (version 3, spec 006).
+   * Whoever holds the link can redeem it up to `uses` times, becoming a writer
+   * with that role, without anyone acting at that moment. Takes effect only
+   * if the signer may grant `role` (see setRole()); `owner` can't be invited.
+   *
+   * @param {{ role?: string, uses?: number, keyPair: Object }} opts
+   * @returns {Promise<string>} `hypergraph://invite/<contextKeyHex>/<secretHex>`
+   */
+  async createInvite (opts = {}) {
+    if (!this.opened) await this.ready()
+    if ((await this.#record()).version !== 3) throw new Error('Invites need a context with its own role table (version 3; see upgrade())')
+    const role = opts.role || 'member'
+    if (role === 'owner') throw new Error('Ownership cannot be handed out by invite')
+    const uses = opts.uses === undefined ? 1 : opts.uses
+    if (!Number.isInteger(uses) || uses < 1) throw new Error('opts.uses must be a positive integer')
+    const author = this.#signer(opts.keyPair, 'an invite')
+    const seed = hypercoreCrypto.randomBytes(32)
+    const inviteKey = b4a.toString(hypercoreCrypto.keyPair(seed).publicKey, 'hex')
+    await this.append(this.#signContext({ type: 'context/invite', inviteKey, role, uses, author, timestamp: Date.now(), signature: null }, opts.keyPair))
+    return `hypergraph://invite/${this.key.toString('hex')}/${b4a.toString(seed, 'hex')}`
+  }
+
+  /**
+   * Revoke an invite: no further redemptions are accepted.
+   *
+   * @param {string} linkOrInviteKey - The link, or the invite's public key (hex)
+   * @param {{ keyPair: Object }} opts
+   */
+  async revokeInvite (linkOrInviteKey, opts = {}) {
+    if (!this.opened) await this.ready()
+    const inviteKey = linkOrInviteKey.startsWith('hypergraph://')
+      ? parseInviteLink(linkOrInviteKey).inviteKey
+      : linkOrInviteKey
+    const author = this.#signer(opts.keyPair, 'an invite revocation')
+    const entry = this.#base.view ? await this.#base.view.get(`inv:${inviteKey}`) : null
+    const role = entry && entry.value ? entry.value.role : ''
+    await this.append(this.#signContext({ type: 'context/invite', inviteKey, role, uses: 0, author, timestamp: Date.now(), signature: null }, opts.keyPair))
+  }
+
+  /**
+   * Invites recorded in this context: `{ inviteKeyHex: { role, uses, used, revoked, author } }`.
+   */
+  async invites () {
+    if (!this.opened) await this.ready()
+    const out = {}
+    const view = this.#base.view
+    if (!view) return out
+    for await (const entry of view.createReadStream({ gte: 'inv:', lt: 'inv:\uffff' })) out[entry.key.slice(4)] = entry.value
+    return out
+  }
+
+  /**
+   * Redeem an invite as this device: append the redemption, as a non-writer
+   * if need be. Used by graph.redeemInvite(), which also waits for the result.
+   *
+   * @param {string} link
+   * @param {{ publicKey: Buffer, secretKey: Buffer }} memberKeyPair
+   */
+  async redeem (link, memberKeyPair) {
+    if (!this.opened) await this.ready()
+    const { seed, inviteKey } = parseInviteLink(link)
+    const invite = hypercoreCrypto.keyPair(b4a.from(seed, 'hex'))
+    const event = {
+      type: 'context/redeem',
+      inviteKey,
+      member: b4a.toString(memberKeyPair.publicKey, 'hex'),
+      key: this.localKey.toString('hex'),
+      timestamp: Date.now(),
+      signature: null,
+      memberSignature: null
+    }
+    const digest = stableContextHash(event, this.key.toString('hex'))
+    event.signature = b4a.toString(hypercoreCrypto.sign(digest, invite.secretKey), 'hex')
+    event.memberSignature = b4a.toString(hypercoreCrypto.sign(digest, memberKeyPair.secretKey), 'hex')
+    await this.#base.append(encodeEvent(event), this.#base.writable ? undefined : { optimistic: true })
   }
 
   /**
@@ -1761,3 +1943,6 @@ module.exports = class ContextBase extends ReadyResource {
     return Array.from(this.#pendingWriterRequests.values())
   }
 }
+
+module.exports = ContextBase
+module.exports.parseInviteLink = parseInviteLink

@@ -26,7 +26,9 @@ const EVENT_TYPES = {
   'context/init': 14,
   'context/writer': 15,
   'context/role': 16,
-  'context/upgrade': 17
+  'context/upgrade': 17,
+  'context/invite': 18,
+  'context/redeem': 19
 }
 
 // Map from code to string
@@ -47,7 +49,9 @@ const EVENT_TYPE_NAMES = {
   14: 'context/init',
   15: 'context/writer',
   16: 'context/role',
-  17: 'context/upgrade'
+  17: 'context/upgrade',
+  18: 'context/invite',
+  19: 'context/redeem'
 }
 
 // Compact encoding for events
@@ -163,6 +167,22 @@ const eventEncoding = {
       case 'context/upgrade':
         c.uint.preencode(state, event.version)
         c.string.preencode(state, event.owner)
+        break
+
+      case 'context/invite':
+        c.string.preencode(state, event.inviteKey)
+        c.string.preencode(state, event.role || '')
+        c.uint.preencode(state, event.uses)
+        c.string.preencode(state, event.author)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/redeem':
+        c.string.preencode(state, event.inviteKey)
+        c.string.preencode(state, event.member)
+        c.string.preencode(state, event.key)
+        c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        c.buffer.preencode(state, event.memberSignature ? b4a.from(event.memberSignature, 'hex') : b4a.alloc(0))
         break
 
       case 'message':
@@ -281,6 +301,22 @@ const eventEncoding = {
       case 'context/upgrade':
         c.uint.encode(state, event.version)
         c.string.encode(state, event.owner)
+        break
+
+      case 'context/invite':
+        c.string.encode(state, event.inviteKey)
+        c.string.encode(state, event.role || '')
+        c.uint.encode(state, event.uses)
+        c.string.encode(state, event.author)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        break
+
+      case 'context/redeem':
+        c.string.encode(state, event.inviteKey)
+        c.string.encode(state, event.member)
+        c.string.encode(state, event.key)
+        c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        c.buffer.encode(state, event.memberSignature ? b4a.from(event.memberSignature, 'hex') : b4a.alloc(0))
         break
 
       case 'message':
@@ -435,6 +471,28 @@ const eventEncoding = {
         event.version = c.uint.decode(state)
         event.owner = c.string.decode(state)
         break
+
+      // Invites (spec 006).
+      case 'context/invite': {
+        event.inviteKey = c.string.decode(state)
+        event.role = c.string.decode(state)
+        event.uses = c.uint.decode(state)
+        event.author = c.string.decode(state)
+        const sig = c.buffer.decode(state)
+        event.signature = sig.length > 0 ? sig.toString('hex') : null
+        break
+      }
+
+      case 'context/redeem': {
+        event.inviteKey = c.string.decode(state)
+        event.member = c.string.decode(state)
+        event.key = c.string.decode(state)
+        const sig = c.buffer.decode(state)
+        event.signature = sig.length > 0 ? sig.toString('hex') : null
+        const msig = c.buffer.decode(state)
+        event.memberSignature = msig.length > 0 ? msig.toString('hex') : null
+        break
+      }
 
       case 'message':
         event.text = c.string.decode(state)

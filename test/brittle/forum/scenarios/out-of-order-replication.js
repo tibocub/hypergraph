@@ -4,8 +4,8 @@ module.exports = async function outOfOrderReplication (t, h) {
   const owner = await h.createPeer('ooo-owner')
   const peer = await h.createPeer('ooo-peer')
 
-  const commentsContextKey = await owner.graph.createContext()
-  const moderationContextKey = await owner.graph.createContext()
+  const commentsContextKey = await owner.graph.createContext({ roles: 'rolebase' })
+  const moderationContextKey = await owner.graph.createContext({ roles: 'rolebase' })
 
   await owner.graph.openContext(commentsContextKey)
   await owner.graph.openContext(moderationContextKey)

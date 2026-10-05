@@ -3,8 +3,8 @@ const { pumpUntil, snapshotCanonical, assertConverged } = require('../harness')
 module.exports = async function partialReplication (t, h) {
   const owner = await h.createPeer('pr-owner')
 
-  const commentsKey = await owner.graph.createContext()
-  const moderationKey = await owner.graph.createContext()
+  const commentsKey = await owner.graph.createContext({ roles: 'rolebase' })
+  const moderationKey = await owner.graph.createContext({ roles: 'rolebase' })
 
   owner.storage.commentsContext = commentsKey
   owner.storage.moderationContext = moderationKey
