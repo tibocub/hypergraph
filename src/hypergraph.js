@@ -25,6 +25,16 @@ const { Batch, EntityRef, BulkWriteError, validateRelateOpts } = require('./batc
 // is the only indexer, writers added later write without indexing.
 const CONTEXT_VERSION = 2
 
+// App rules attached to a context: { id, validate(event, reader) }. Contract:
+// specs/003-fast-forward-contexts/contracts/api.md
+function validateRules (rules) {
+  if (rules === undefined || rules === null) return null
+  if (typeof rules !== 'object') throw new Error('opts.rules must be an object { id, validate }')
+  if (typeof rules.id !== 'string' || rules.id.length === 0) throw new Error('opts.rules.id must be a non-empty string')
+  if (typeof rules.validate !== 'function') throw new Error('opts.rules.validate must be a function')
+  return rules
+}
+
 
 /**
  * Minimal graph database optimised for P2P social apps on the Holepunch stack.
@@ -1468,6 +1478,7 @@ module.exports = class Hypergraph extends ReadyResource {
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
       fastForward: opts.fastForward,
+      rules: validateRules(opts.rules),
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
@@ -1540,6 +1551,7 @@ module.exports = class Hypergraph extends ReadyResource {
       valueEncoding: this.#valueEncoding,
       writeMode: opts.writeMode,
       fastForward: opts.fastForward,
+      rules: validateRules(opts.rules),
       roleBase: {
         getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
         can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
@@ -1549,7 +1561,7 @@ module.exports = class Hypergraph extends ReadyResource {
 
     // The context's first event: its topology record, so every peer applies
     // it the same way (spec 003, data-model.md).
-    await context.append({ type: 'context/init', version: CONTEXT_VERSION, rules: '', timestamp: Date.now() })
+    await context.append({ type: 'context/init', version: CONTEXT_VERSION, rules: opts.rules ? opts.rules.id : '', timestamp: Date.now() })
 
     const keyHex = context.key.toString('hex')
     this.#contexts.set(keyHex, context)
@@ -1568,6 +1580,10 @@ module.exports = class Hypergraph extends ReadyResource {
   async openContext (keyOrHex, opts = {}) {
     if (!this.opened) await this.ready()
     const ctx = await this.#getContext(keyOrHex, opts)
+    // Refuse up front when the context's record is already here and says
+    // this peer would apply it differently (spec 003, FR-016/FR-018).
+    const refusal = await ctx.refusal()
+    if (refusal) throw new Error(refusal)
     return ctx
   }
 

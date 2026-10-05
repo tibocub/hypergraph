@@ -94,3 +94,49 @@ test('fast-forward: fastForward: false replays everything and ends with the same
   t.is((await context.status()).fastForwards, 0, 'it never fast-forwarded')
   for (const d of dirIds) t.alike(await listing(replayer.graph, d, ctx), await listing(writer.graph, d, ctx), 'same listing')
 })
+
+test('fast-forward: events breaking the context\'s rules are absent on replaying and fast-forwarding peers alike', { timeout: 300000 }, async (t) => {
+  const crypto = require('hypercore-crypto')
+  const { stableRelationHash } = require('../../../src/utils')
+
+  const writer = await createGraph(t, 'ff-rules-writer')
+  const locked = await writer.graph.put({ type: 'dir' })
+  const open = await writer.graph.put({ type: 'dir' })
+  const rules = { id: 'locks/v1', validate: (e) => !(e.type === 'relation/create' && e.to === locked.id) }
+  const ctx = await writer.graph.createContext({ rules })
+  const context = await writer.graph.openContext(ctx, { rules })
+  const author = writer.graph.key.toString('hex')
+  const secretKey = writer.graph.identity.deviceKeyPair.secretKey
+
+  // Enough separate writes for a newcomer to be fast-forwarded, each mixing
+  // accepted relations with raw ones a modified client would send.
+  for (let c = 0; c < 30; c++) {
+    const batch = writer.graph.batch()
+    const files = []
+    for (let i = 0; i < 20; i++) { const f = batch.put({ type: 'file' }); files.push(f); batch.relate({ from: f, to: open.id, type: 'in', context: ctx }) }
+    await batch.flush()
+    const raw = files.slice(0, 5).map((f) => {
+      const ev = { type: 'relation/create', from: f.id, to: locked.id, relationType: 'in', author, timestamp: Date.now(), signature: null }
+      ev.signature = crypto.sign(stableRelationHash(ev, ctx), secretKey).toString('hex')
+      return ev
+    })
+    await context.appendBatch(raw)
+  }
+  await until(async () => { await writer.graph.update(); const s = await context.status(); return s.confirmedLength === s.length }, 20000)
+  t.is(await writer.graph.countEdgesIn(locked.id, 'in', { context: ctx }), 0, 'the writer itself never indexed them')
+
+  for (const [label, opts] of [['fast-forwarding', {}], ['replaying', { fastForward: false }]]) {
+    const peer = await createGraph(t, `ff-rules-${opts.fastForward === false ? 'replay' : 'ff'}`)
+    t.teardown(link(writer, peer))
+    const c = await peer.graph.openContext(ctx, { rules, ...opts })
+    t.ok(await until(async () => {
+      await peer.graph.update()
+      return (await peer.graph.countEdgesIn(open.id, 'in', { context: ctx })) === 600
+    }, 60000), `${label} peer has every accepted relation`)
+    t.is(await peer.graph.countEdgesIn(locked.id, 'in', { context: ctx }), 0, `${label} peer has none of the rejected ones`)
+    const into = []
+    for await (const e of peer.graph.edges(locked.id, { direction: 'in', context: ctx })) into.push(e)
+    t.is(into.length, 0, `${label} peer lists nothing in the locked folder`)
+    if (opts.fastForward !== false) t.ok((await c.status()).fastForwards >= 1, 'and it did fast-forward')
+  }
+})

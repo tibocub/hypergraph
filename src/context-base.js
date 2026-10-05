@@ -37,6 +37,8 @@ module.exports = class ContextBase extends ReadyResource {
   #members // every member the system listed at the last update(), see writerKeys()
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
+  #rules // app rules { id, validate } or null (spec 003, US3)
+  #interrupted // why this context stopped applying, or null
   #keyEncoding
   #valueEncoding
   #roleBase
@@ -81,6 +83,8 @@ module.exports = class ContextBase extends ReadyResource {
     // (spec 003). false: replay and verify everything on this peer.
     this.#fastForward = opts.fastForward !== false
     this.#fastForwards = 0
+    this.#rules = opts.rules || null
+    this.#interrupted = null
 
     // Use provided keyPair if available
     // In open mode, we don't generate a keyPair to allow Autobase to handle local core creation
@@ -115,6 +119,12 @@ module.exports = class ContextBase extends ReadyResource {
     // Closed mode enforcement is at the application level via role checks, not at Autobase level
     this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
     this.#base.on('fast-forward', () => { this.#fastForwards++ })
+    // Autobase closes the base after an interrupt (unknown context version,
+    // rules mismatch): remember why, so status() and openContext() can say.
+    this.#base.on('interrupt', (reason) => {
+      this.#interrupted = String(reason)
+      this.#emitter.emit('interrupt', this.#interrupted)
+    })
     await this.#base.ready()
   }
 
@@ -203,6 +213,7 @@ module.exports = class ContextBase extends ReadyResource {
   }
 
   async #applyNodes (batch, host, currentView, beforeEvent) {
+    let record = null
     for (const { value, from, length } of batch) {
       // Count first: this may flush and open a fresh batch, which is then
       // the one every write for this event must go to.
@@ -214,6 +225,22 @@ module.exports = class ContextBase extends ReadyResource {
       if (!value) continue
       const event = decodeEvent(value)
       if (!event || event.decodeError) continue
+
+      if (event.type === 'context/init') {
+        await this.#applyContextInit(view, event, from, host)
+        record = null // re-read: it may have just been written
+        continue
+      }
+
+      // Every peer must apply this context the same way. A version this code
+      // doesn't know, or app rules other than the ones the context was
+      // created with, stop apply rather than build a different index.
+      if (record === null) record = await this.#record(view)
+      const refusal = this.#refusal(record)
+      if (refusal) {
+        host.interrupt(refusal)
+        return
+      }
 
       if (event.type === 'addWriter') {
         if (this.#writeMode !== 'open') continue
@@ -274,9 +301,6 @@ module.exports = class ContextBase extends ReadyResource {
       }
 
       switch (event.type) {
-        case 'context/init':
-          await this.#applyContextInit(view, event, from)
-          break
         case 'relation/create':
           await this.#applyRelation(view, event)
           break
@@ -632,10 +656,90 @@ module.exports = class ContextBase extends ReadyResource {
   // The context's own record of how it is applied (spec 003, data-model.md).
   // Honoured only from the bootstrap writer — the context's creator — and only
   // once, so no other writer can change how every peer applies the context.
-  async #applyContextInit (view, event, from) {
+  async #applyContextInit (view, event, from, host) {
     if (!from || !from.key || !this.#base.key || !from.key.equals(this.#base.key)) return
     if (await view.get(CONTEXT_RECORD_KEY)) return
-    await view.put(CONTEXT_RECORD_KEY, { version: event.version, rules: event.rules || '' })
+    const record = { version: event.version, rules: event.rules || '' }
+    await view.put(CONTEXT_RECORD_KEY, record)
+    const refusal = this.#refusal(record)
+    if (refusal) host.interrupt(refusal)
+  }
+
+  // Why this peer must not apply a context with this record, or null.
+  #refusal (record) {
+    if (record.version !== 1 && record.version !== 2) return `unsupported context version ${record.version}`
+    const mine = this.#rules ? this.#rules.id : ''
+    if (record.rules !== mine) {
+      return `Context rules mismatch: context uses "${record.rules}", this peer provides "${mine}"`
+    }
+    return null
+  }
+
+  /**
+   * Run the app's rules on an app data event. Called after the built-in
+   * checks passed, before anything is written. Only a literal `true`
+   * accepts; a throw, a rejection or any other value rejects — a broken rule
+   * must never crash apply (spec 003, FR-015).
+   */
+  async #passesRules (view, event) {
+    if (!this.#rules) return true
+    try {
+      return (await this.#rules.validate(event, this.#reader(view))) === true
+    } catch (err) {
+      safetyCatch(err)
+      return false
+    }
+  }
+
+  // Read-only, layout-independent access to the index as it stands inside
+  // the current apply chunk (so a rule sees earlier events of the same
+  // batch), for app rules. Contract: specs/003-fast-forward-contexts/contracts/api.md
+  #reader (view) {
+    const counts = this.#counts
+    const count = async (key) => {
+      if (counts && counts.has(key)) return counts.get(key)
+      const entry = await view.get(key)
+      return entry && entry.value ? entry.value.count : 0
+    }
+    const edgeRecord = (value) => ({
+      from: value.from,
+      to: value.to,
+      type: value.type,
+      author: value.author,
+      createdAt: value.createdAt,
+      ...(typeof value.value === 'number' ? { value: value.value } : {})
+    })
+    return Object.freeze({
+      async hasEdge (from, type, to) {
+        const ref = await view.get(`er:${from}:${type}:${to}`)
+        if (!ref || !ref.value || !ref.value.ref) return false
+        const edge = await view.get(ref.value.ref)
+        return !!(edge && edge.value && !edge.value.deleted)
+      },
+      async edges (entityId, opts = {}) {
+        const direction = opts.direction === 'in' ? 'in' : 'out'
+        const limit = typeof opts.limit === 'number' ? opts.limit : Infinity
+        const base = direction === 'in' ? `i:in:${entityId}:` : `e:${entityId}:`
+        const prefix = opts.type ? `${base}${opts.type}:` : base
+        const out = []
+        for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff' })) {
+          if (out.length >= limit) break
+          const edge = direction === 'in' ? await view.get(entry.value.ref) : entry
+          if (!edge || !edge.value || edge.value.deleted) continue
+          out.push(edgeRecord(edge.value))
+        }
+        return out
+      },
+      countIn: (entityId, type) => count(`cnt:in:${entityId}:${type}`),
+      countOut: (entityId, type) => count(`cnt:out:${entityId}:${type}`),
+      async hasTag (entityId, tag) {
+        const prefix = `tref:${tag}:${entityId}:`
+        for await (const entry of view.createReadStream({ gte: prefix, lt: prefix + '\uffff', limit: 1 })) {
+          if (entry) return true
+        }
+        return false
+      }
+    })
   }
 
   /**
@@ -647,6 +751,28 @@ module.exports = class ContextBase extends ReadyResource {
   async #record (view = this.#base.view) {
     const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
     return entry && entry.value ? entry.value : { version: 1, rules: '' }
+  }
+
+  /**
+   * Why this peer can't apply this context, if that is already known locally:
+   * it was interrupted, or the context's record is held locally and refuses
+   * this peer's rules or version. Never waits on the network — a fresh peer
+   * that hasn't received the record yet finds out when it applies.
+   *
+   * @returns {Promise<string|null>}
+   */
+  async refusal () {
+    if (!this.opened) await this.ready()
+    if (this.#interrupted) return this.#interrupted
+    const view = this.#base.view
+    if (!view || !view.core || view.core.length === 0) return null
+    let entry = null
+    try {
+      entry = await view.get(CONTEXT_RECORD_KEY, { wait: false })
+    } catch {
+      return null
+    }
+    return entry && entry.value ? this.#refusal(entry.value) : null
   }
 
   // Whether a writer added now indexes. Decided from the context's own record,
@@ -684,11 +810,11 @@ module.exports = class ContextBase extends ReadyResource {
    * much of its history is confirmed (signed by the indexers, so it can no
    * longer be reordered).
    *
-   * @returns {Promise<{ version: number, rules: string, indexers: string[], fastForwards: number, isIndexer: boolean, writable: boolean, length: number, confirmedLength: number }>}
+   * @returns {Promise<{ version: number, rules: string, indexers: string[], fastForwards: number, interrupted: string|null, isIndexer: boolean, writable: boolean, length: number, confirmedLength: number }>}
    */
   async status () {
     if (!this.opened) await this.ready()
-    const { version, rules } = await this.#record()
+    const { version, rules } = this.#interrupted ? { version: null, rules: null } : await this.#record()
     // The indexer set as the system knows it right now. A writer's own
     // isIndexer flag only flips once that change is itself confirmed.
     const system = this.#base.system
@@ -703,7 +829,8 @@ module.exports = class ContextBase extends ReadyResource {
       writable: !!this.#base.writable,
       length: this.#base.length,
       confirmedLength: this.#base.signedLength,
-      fastForwards: this.#fastForwards
+      fastForwards: this.#fastForwards,
+      interrupted: this.#interrupted
     }
   }
 
@@ -724,6 +851,7 @@ module.exports = class ContextBase extends ReadyResource {
     // rather than iterating and re-checking every edge — never count a
     // spoofed edge in the first place.
     if (authorFromEntityId(event.from) !== event.author) return
+    if (!(await this.#passesRules(view, event))) return
 
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
     const existingRef = await view.get(edgeRefKey)
@@ -774,6 +902,7 @@ module.exports = class ContextBase extends ReadyResource {
   async #applyRelationDelete (view, event) {
     // Verify signature before applying (if enabled)
     if (this.#verifySignatures && !this.#verifyRelationSignature(event)) return
+    if (!(await this.#passesRules(view, event))) return
 
     // NOTE: deliberately no from-ownership check here, unlike
     // #applyRelation above. unrelate() is intentionally permissive — any
@@ -805,6 +934,7 @@ module.exports = class ContextBase extends ReadyResource {
   async #applyTag (view, event) {
     // Verify signature before applying
     if (!this.#verifyTagSignature(event)) return
+    if (!(await this.#passesRules(view, event))) return
 
     const key = `t:${event.tag}:${toSortableTs(event.timestamp)}:${event.entityId}:${event.author}`
     const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
@@ -821,6 +951,7 @@ module.exports = class ContextBase extends ReadyResource {
   async #applyTagDelete (view, event) {
     // Verify signature before applying
     if (!this.#verifyTagSignature(event)) return
+    if (!(await this.#passesRules(view, event))) return
 
     const refKey = `tref:${event.tag}:${event.entityId}:${event.author}`
     const ref = await view.get(refKey)
@@ -829,6 +960,7 @@ module.exports = class ContextBase extends ReadyResource {
   }
 
   async #applyMessage (view, event) {
+    if (!(await this.#passesRules(view, event))) return
     // Store message in the view with a unique key
     const key = `msg:${event.timestamp}:${event.author.slice(0, 8)}`
     await view.put(key, {
@@ -939,7 +1071,15 @@ module.exports = class ContextBase extends ReadyResource {
     // This is required for P2P replication to work correctly
     const opts = this.#writeMode === 'open' ? { optimistic: true } : {}
     
-    await this.#base.append(encodeEvent(event), opts)
+    if (this.#interrupted) throw new Error(this.#interrupted)
+    try {
+      await this.#base.append(encodeEvent(event), opts)
+    } catch (err) {
+      // If this append is what made the context stop (its own record refused
+      // this peer), say why rather than Autobase's generic "closing".
+      if (this.#interrupted) throw new Error(this.#interrupted)
+      throw err
+    }
     await this.#base.update()
     return { length: this.#base.length }
   }
@@ -973,8 +1113,14 @@ module.exports = class ContextBase extends ReadyResource {
       return { length: this.#base.length }
     }
 
-    await this.#base.append(encoded)
-    await this.#base.update()
+    if (this.#interrupted) throw new Error(this.#interrupted)
+    try {
+      await this.#base.append(encoded)
+      await this.#base.update()
+    } catch (err) {
+      if (this.#interrupted) throw new Error(this.#interrupted)
+      throw err
+    }
     return { length: this.#base.length }
   }
 
@@ -1123,6 +1269,7 @@ module.exports = class ContextBase extends ReadyResource {
    * @returns {Promise<void>}
    */
   async update () {
+    if (this.#interrupted) return
     await this.#base.update()
     await this.#refreshMembers()
 
