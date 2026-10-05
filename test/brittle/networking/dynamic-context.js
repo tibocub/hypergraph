@@ -170,7 +170,7 @@ test('dynamic-context: a closed-mode context added dynamically still enforces th
   console.log('  owner\'s own identity lacks context.write — a dynamically-added closed context should refuse the grant the same way a bootstrap one would')
   granted = null
 
-  const ctx2Key = await owner.graph.createContext({ writeMode: 'closed' })
+  const ctx2Key = await owner.graph.createContext({ writeMode: 'closed', roles: 'rolebase' })
   await owner.graph.openContext(ctx2Key, { writeMode: 'closed' })
   await networkingOwner.addContext('privateRoom', ctx2Key, { writeMode: 'closed' })
 
@@ -239,7 +239,7 @@ test('dynamic-context: a CLOSED context is discovered on connect too, same as an
   const owner = await createGraph(t, 'dynctx-closed-announce-owner')
   const peer = await createGraph(t, 'dynctx-closed-announce-peer')
 
-  const ctxKey = await owner.graph.createContext({ writeMode: 'closed' })
+  const ctxKey = await owner.graph.createContext({ writeMode: 'closed', roles: 'rolebase' })
   await owner.graph.openContext(ctxKey, { writeMode: 'closed' })
 
   const topic = crypto.randomBytes(32)

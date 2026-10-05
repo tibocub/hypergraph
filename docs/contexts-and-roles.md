@@ -65,14 +65,56 @@ Every context has **writers** (who may append) and **indexers** (whose devices c
 of everyone's writes and sign the result). Until confirmed, recent writes are already applied
 everywhere but their order can still change; confirmed history never changes.
 
-| context created | indexers | writers added later |
-|---|---|---|
-| by this version (version 2) | the creator only | write, but do not index |
-| before spec 003 (version 1) | every writer | index too |
+| context | roles come from | indexers | writers added later |
+|---|---|---|---|
+| `createContext()` (version 3, default) | the context's own role table | the owner, plus members whose role allows indexing (admins by default) | index iff their member's role allows it |
+| `createContext({ roles: 'rolebase' })` (version 2) | the attached RoleBase, shared across contexts | the creator only | write, don't index |
+| created before spec 003 (version 1) | the attached RoleBase | every writer | index too |
 
 Indexers acknowledge new history about once a second, so a context is confirmed within seconds
-of activity while its creator's device is online. If the creator is offline, writers keep
-writing and see each other's writes; confirmation resumes when the creator is back.
+of activity while enough indexers are online (a majority of them). If they aren't, writers keep
+writing and see each other's writes; confirmation resumes when enough indexers are back. Keep the
+indexer set small and reliable. With several indexers, `confirmedLength` trails `length` by the
+few newest acknowledgements; what matters is that what was written gets confirmed (measured:
+with the owner offline, two admins confirmed everything 4.9 s after it was applied).
+
+### Roles Inside the Context (version 3)
+
+A version 3 context keeps its own role table, changed only by signed role events in the context,
+so every permission decision — adding writers in closed mode, moderation, role changes, who
+indexes — is made from the context's own history and is the same on every peer. (A RoleBase is a
+separate log that reaches each peer at its own pace; decisions taken from it could differ between
+peers, which several indexers cannot tolerate.)
+
+```js
+const ctx = await graph.createContext()            // you are the owner
+const context = await graph.openContext(ctx)
+const keyPair = graph.identity.deviceKeyPair
+
+// Add a member's device as a writer, linked to that member...
+await context.addWriter(theirWriterKey, { keyPair, member: theirPubkeyHex })
+// ...and make them an admin: their device(s) start indexing.
+await context.setRole(theirPubkeyHex, 'admin', { keyPair })
+await context.removeRole(theirPubkeyHex, { keyPair }) // back to a plain writer
+
+await context.roles() // { roles: { owner: ['*'], admin: [...], ... }, members: { pubkey: role } }
+```
+
+Who may change roles: the owner any role (but not give up its own ownership); members holding
+`mod.add` / `mod.remove` (admins by default) the `mod` and `member` roles; nobody a role above
+their own. A writer added with `member` indexes iff that member's role has `context.index` (owner
+via `*`, admin by default), and is promoted or demoted when the role changes; a later device of the
+same member inherits it. An indexer change takes effect once the current indexers have confirmed
+it. Default roles and permissions are the role registry's (see [Role Registry](#role-registry)),
+plus `context.index` for admins.
+
+In version 3, the RoleBase is not consulted for anything in the context (it still serves read
+scopes and `graph.can()`). Apps that want one RoleBase shared by many contexts create them with
+`{ roles: 'rolebase' }` (version 2).
+
+**Converting an older context**: its creator calls `await context.upgrade({ keyPair })`. From that
+point it is version 3 with the creator as owner, and every indexer except the creator's device
+keeps writing without indexing.
 
 The version is recorded in the context itself (a `context/init` event the creator writes first),
 so every peer applies the context the same way. **All peers of one context must run a hypergraph
@@ -80,9 +122,6 @@ version that understands that record**: an older version would make every writer
 build a different index. A peer that finds a version it doesn't know stops applying the context
 and reports `unsupported context version N` (from `context.status().interrupted`, the
 `'interrupt'` event, and any later `append()`).
-
-Appointing further indexers (e.g. trusted admins) and converting version 1 contexts are planned
-(spec 003, phase 2); they need permission decisions in apply to be identical on every peer first.
 
 `await context.status()` returns `{ version, rules, indexers, isIndexer, writable, length,
 confirmedLength, fastForwards, interrupted }`.
@@ -103,13 +142,14 @@ What a peer trusts depends on how it joined:
 
 - **Replaying** (`fastForward: false`, or only slightly behind): it checks every event itself —
   signatures, ownership of `from`, role permissions, app rules — and builds its own index.
-- **Fast-forwarding**: it accepts the index the context's indexers signed, without re-running those
-  checks on the history. In a version 2 context that is the creator's device. After joining, it
-  checks new events itself like any peer.
+- **Fast-forwarding**: it accepts the index the context's indexers signed (a majority of them),
+  without re-running those checks on the history: the creator in version 2, the owner and the
+  members whose role allows indexing in version 3. After joining, it checks new events itself like
+  any peer.
 
 What this protects against: a writer cannot get an event into the confirmed index that the
 indexers' checks reject, and cannot change confirmed history. What it does not: indexers signing a
-bad index (a hostile creator in version 2), and a writer appending junk to its own log — rejected
+bad index (a hostile majority of indexers), and a writer appending junk to its own log — rejected
 events are never indexed, but peers that replay still download their bytes; peers that
 fast-forward don't.
 

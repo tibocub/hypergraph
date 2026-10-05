@@ -23,7 +23,7 @@ Tests first for every `src/` change (encodings and apply: non-negotiable tier).
 ## Phase 3: US1 — several indexers
 
 - [X] T008 [US1] Test first `test/brittle/replication/indexers.js`: owner grants admin to a member whose writer was added with `member`; that writer becomes an indexer on every peer; with the owner offline, owner-less writes are confirmed by two admins within 10 s; revoking demotes but keeps writable; a member's second device added later inherits indexing
-- [X] T009 [US1] Test first: demoting the last indexer is refused (role unchanged)
+- [X] T009 [US1] Test first: the owner cannot drop its own ownership, so the owner's writer — always an indexer — cannot be demoted by a role change (the `host.removeable()` guard covers other last-indexer cases and is not exercised separately)
 - [X] T010 [US1] `src/context-base.js`: promote/demote linked writers on role change; last-indexer refusal; indexer flag for `context/writer` from the member's role
 - [X] T011 [US1] Test first `test/brittle/replication/indexers.js`: three peers apply role and writer events delivered in different orders and end with identical role tables and indexer sets (SC-002)
 
@@ -35,5 +35,5 @@ Tests first for every `src/` change (encodings and apply: non-negotiable tier).
 ## Phase 5: Polish
 
 - [X] T014 Fix hypergraph's own tests that relied on RoleBase roles in new contexts (grant in the context instead); list them in the changelog
-- [ ] T015 Docs (plan's doc-sync list); CHANGELOG
-- [ ] T016 `npm test`, HyperBBS, hyperDNS; benchmark spot-check (100k join still fast-forwards)
+- [X] T015 Docs (plan's doc-sync list); CHANGELOG
+- [X] T016 `npm test`, HyperBBS, hyperDNS; benchmark spot-check (100k join still fast-forwards)

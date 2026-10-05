@@ -94,7 +94,10 @@ and every writer was an indexer: a 3-writer context then confirmed none of its 2
 
 Whether an added writer indexes is decided in apply from the context's record
 (`meta:context`, written from the creator's `context/init` event): version 1 → indexer, version
-2 → not, anything else → `host.interrupt()`. The record is honoured only from the bootstrap
+2 → not, version 3 → iff its member's role in the context's own table (`meta:roles`) has
+`context.index`, re-evaluated (promote/demote by re-adding with the new flag) whenever that role
+changes; anything else → `host.interrupt()`. Autobase applies an indexer change once the current
+indexers have confirmed it. The record is honoured only from the bootstrap
 writer and only once. Before handling any other event, `#applyNodes` checks the record against
 this peer's rules id and version and interrupts on a mismatch (`#refusal`). Autobase closes the
 base after an interrupt; ContextBase keeps the reason (`status().interrupted`) and refuses

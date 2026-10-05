@@ -72,7 +72,7 @@ Nodes in your graph (posts, users, comments). Each entity has a unique ID, type,
 Directed edges connecting entities (reply-to, likes, follows). Stored in collaborative contexts (Autobase) where multiple peers can contribute. A relation can carry an optional numeric `value` and an optional signed `data` string (≤ 4 KB) returned with the edge — put what a listing needs there and nobody has to download authors' logs to browse.
 
 ### Contexts
-Collaborative workspaces for relations, tags, and moderation. Each context is an isolated Autobase instance with two write modes: `open` (anyone can write) and `closed` (role-based). The context's creator confirms everyone's writes (it is the context's **indexer**); a member who joins far behind **fast-forwards** to that confirmed state instead of replaying history; apps can attach **rules** that reject events before they are indexed. See [Contexts and Roles](docs/contexts-and-roles.md).
+Collaborative workspaces for relations, tags, and moderation. Each context is an isolated Autobase instance with two write modes: `open` (anyone can write) and `closed` (role-based). Each context keeps its own **role table**; the owner and trusted members (admins) **index** it, i.e. confirm everyone's writes; a member who joins far behind **fast-forwards** to that confirmed state instead of replaying history; apps can attach **rules** that reject events before they are indexed. See [Contexts and Roles](docs/contexts-and-roles.md).
 
 ### Roles
 Role-based access control for contexts and moderation. RoleBase stores role registry with member→role mappings and role→permission mappings.

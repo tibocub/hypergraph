@@ -128,3 +128,19 @@ test('context-roles: the creator converts a version 1 context — only it indexe
   t.ok(bCtx.writable, 'the other writer still writes')
   t.is((await bCtx.roles()).members[a.graph.identity.deviceKeyPair.publicKey.toString('hex')], 'owner', 'creator is owner')
 })
+
+test('context-roles: the creator converts a version 2 (RoleBase) context; it then has its own table', async (t) => {
+  const { graph, owner } = await createGraph(t, 'roles-upgrade-v2').then(r => ({ ...r, owner: r.graph.identity.deviceKeyPair }))
+  const ctx = await graph.createContext({ roles: 'rolebase' })
+  const context = await graph.openContext(ctx)
+  t.is((await context.status()).version, 2, 'starts as version 2')
+  t.alike((await context.roles()).members, {}, 'no role table of its own yet')
+  await t.exception(context.setRole('ab'.repeat(32), 'mod', { keyPair: owner }), /version 3 only/, 'roles cannot be set in the context before converting')
+
+  await context.upgrade({ keyPair: owner })
+  await graph.update()
+  t.is((await context.status()).version, 3, 'version 3 after conversion')
+  t.is((await context.roles()).members[hex(owner)], 'owner', 'creator is owner')
+  await context.setRole('ab'.repeat(32), 'mod', { keyPair: owner })
+  t.is((await context.roles()).members['ab'.repeat(32)], 'mod', 'roles now live in the context')
+})

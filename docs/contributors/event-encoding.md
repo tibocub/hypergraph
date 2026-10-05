@@ -66,6 +66,12 @@ guard, not just the encode/preencode sides.
   first by `createContext()`; honoured only from the creator, only once (spec 003). Older peers
   decode it as `{ type: undefined }` and ignore it, which is why mixed versions in one context
   are unsupported
+- `context/writer` - Add a writer linked to its member (`key`, `member`, signed by `author`);
+  version 3 contexts (spec 005)
+- `context/role` - Set (`role`) or remove (`role: ''`) a member's role in this context, signed by
+  `author`; version 3 contexts
+- `context/upgrade` - The creator converts a version 1/2 context to version 3 (`version`, `owner`)
+- `context/init` also carries an optional trailing `owner` (version 3)
 - `relation/create` - Create relation (optional `value` field for weighted relations; optional
   `data` string, at most 4,096 bytes of UTF-8, appended after `value` and signed only when present,
   so relations without data keep their old bytes and signatures — spec 004)
