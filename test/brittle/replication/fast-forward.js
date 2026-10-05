@@ -140,3 +140,38 @@ test('fast-forward: events breaking the context\'s rules are absent on replaying
     if (opts.fastForward !== false) t.ok((await c.status()).fastForwards >= 1, 'and it did fast-forward')
   }
 })
+
+test('fast-forward: a peer that opens only the context lists folders with every entry\'s data, never touching the authors\' logs (spec 004)', { timeout: 300000 }, async (t) => {
+  const writer = await createGraph(t, 'ff-data-writer')
+  const ctx = await writer.graph.createContext()
+  const dir = await writer.graph.put({ type: 'dir' })
+  for (let c = 0; c < 30; c++) {
+    const batch = writer.graph.batch()
+    for (let i = 0; i < 100; i++) {
+      const n = c * 100 + i
+      batch.relate({ from: batch.put({ type: 'file' }), to: dir.id, type: 'in', context: ctx, data: JSON.stringify({ name: `file-${n}.bin`, size: n }) })
+    }
+    await batch.flush()
+  }
+  const wctx = await writer.graph.openContext(ctx)
+  await until(async () => { await writer.graph.update(); const s = await wctx.status(); return s.confirmedLength === s.length }, 20000)
+
+  const reader = await createGraph(t, 'ff-data-reader')
+  t.teardown(link(writer, reader))
+  const context = await reader.graph.openContext(ctx) // and nothing else: no openUserCore()
+  t.ok(await until(async () => {
+    await reader.graph.update()
+    return (await reader.graph.countEdgesIn(dir.id, 'in', { context: ctx })) === 3000
+  }, 60000), 'the folder is complete')
+
+  const entries = []
+  for await (const e of reader.graph.edges(dir.id, { direction: 'in', type: 'in', context: ctx })) entries.push(JSON.parse(e.data))
+  t.is(entries.length, 3000, 'every entry listed')
+  t.ok(entries.every(d => typeof d.name === 'string' && typeof d.size === 'number'), 'each with its data')
+  t.ok((await context.status()).fastForwards >= 1, 'joined by fast-forward')
+
+  const writerLog = reader.store.get({ key: writer.graph.key })
+  await writerLog.ready()
+  t.is(writerLog.contiguousLength, 0, 'none of the writer\'s log was downloaded')
+  await writerLog.close()
+})

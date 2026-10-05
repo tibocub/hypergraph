@@ -81,6 +81,10 @@ const stableRelationHash = (event, contextKeyHex) => {
     value: typeof event.value === 'number' ? event.value : null,
     context: contextKeyHex || null
   }
+  // Data on the relation (spec 004) is signed when present. Only then: a
+  // relation without data keeps exactly its pre-spec-004 digest and
+  // signature.
+  if (typeof event.data === 'string') payload.data = event.data
 
   const msg = {
     op: event.type,
@@ -97,7 +101,25 @@ const stableRelationHash = (event, contextKeyHex) => {
   return crypto.createHash('sha256').update(JSON.stringify(msg)).digest()
 }
 
-module.exports = { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts, authorFromEntityId }
+// Largest data a relation may carry, in bytes of UTF-8 (spec 004): every
+// member of a context may fetch it, and it lives in the index.
+const MAX_RELATION_DATA_BYTES = 4096
+
+/**
+ * Whether `data` is acceptable relation data. Shared by the write path
+ * (which throws) and apply (which rejects), so both enforce the same bound.
+ *
+ * @param {*} data
+ * @returns {string|null} Why it is not acceptable, or null.
+ */
+const relationDataProblem = (data) => {
+  if (data === undefined) return null
+  if (typeof data !== 'string') return 'data must be a string'
+  if (Buffer.byteLength(data, 'utf-8') > MAX_RELATION_DATA_BYTES) return `data must be at most ${MAX_RELATION_DATA_BYTES} bytes of UTF-8`
+  return null
+}
+
+module.exports = { toSortableTs, stableTagHash, stableRelationHash, resolveOpenContexts, authorFromEntityId, relationDataProblem, MAX_RELATION_DATA_BYTES }
 
 /**
  * Extract the author (core key hex) embedded in an entity id.

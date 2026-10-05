@@ -116,3 +116,25 @@ test('event-encoding: an event type this version does not know decodes to { type
   t.is(decoded.type, undefined, 'unknown type')
   t.is(decoded.timestamp, 5, 'common fields still read')
 })
+
+test('event-encoding: relation/create carries optional data; without it the bytes are unchanged (spec 004)', async (t) => {
+  const a = 'a'.repeat(64)
+  const base = { type: 'relation/create', from: `file/${a}/1`, to: `dir/${a}/0`, relationType: 'in', author: a, timestamp: 1791000000000, signature: 'c'.repeat(128) }
+
+  const withData = { ...base, data: '{"name":"song.mp3","root":"ab12","size":4096}' }
+  t.alike(decodeEvent(encodeEvent(withData)), { ...withData, value: undefined }, 'data round-trips')
+
+  const both = { ...base, value: 2.5, data: 'x' }
+  t.alike(decodeEvent(encodeEvent(both)), both, 'data and value together')
+
+  const plain = encodeEvent(base)
+  const plainWithUndefined = encodeEvent({ ...base, data: undefined })
+  t.alike(plainWithUndefined, plain, 'no data: identical bytes')
+  t.absent('data' in decodeEvent(plain), 'no data field when there is none')
+
+  // What an older decoder sees: it stops after the value fields.
+  const withDataBytes = encodeEvent(withData)
+  const old = decodeEvent(withDataBytes.subarray(0, plain.length))
+  t.is(old.from, base.from, 'the fields before data still decode')
+  t.absent(old.data, 'and data is simply not there')
+})

@@ -9,7 +9,7 @@ const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
 const { encodeEvent, decodeEvent } = require('./encodings/event')
 const { can: canRole } = require('./roles-registry')
-const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId } = require('./utils')
+const { toSortableTs, stableTagHash, stableRelationHash, authorFromEntityId, relationDataProblem } = require('./utils')
 const tuning = require('./tuning')
 
 // Where a context's topology record lives in its view (spec 003).
@@ -707,7 +707,8 @@ module.exports = class ContextBase extends ReadyResource {
       type: value.type,
       author: value.author,
       createdAt: value.createdAt,
-      ...(typeof value.value === 'number' ? { value: value.value } : {})
+      ...(typeof value.value === 'number' ? { value: value.value } : {}),
+      ...(typeof value.data === 'string' ? { data: value.data } : {})
     })
     return Object.freeze({
       async hasEdge (from, type, to) {
@@ -851,6 +852,7 @@ module.exports = class ContextBase extends ReadyResource {
     // rather than iterating and re-checking every edge — never count a
     // spoofed edge in the first place.
     if (authorFromEntityId(event.from) !== event.author) return
+    if (relationDataProblem(event.data)) return
     if (!(await this.#passesRules(view, event))) return
 
     const edgeRefKey = `er:${event.from}:${event.relationType}:${event.to}`
@@ -873,7 +875,8 @@ module.exports = class ContextBase extends ReadyResource {
       author: event.author,
       createdAt: event.timestamp,
       deleted: false,
-      value: typeof event.value === 'number' ? event.value : undefined
+      value: typeof event.value === 'number' ? event.value : undefined,
+      data: typeof event.data === 'string' ? event.data : undefined
     })
 
     await view.put(edgeRefKey, { ref: key })

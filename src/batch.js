@@ -16,6 +16,7 @@
  */
 
 const { formatReference, CONTENT_LINK_TYPE } = require('./content-ref')
+const { relationDataProblem } = require('./utils')
 
 /**
  * Validate the options shared by `graph.relate()` and `batch.relate()`.
@@ -32,6 +33,8 @@ function validateRelateOpts (opts) {
   if (opts.value !== undefined && (typeof opts.value !== 'number' || !Number.isFinite(opts.value))) {
     throw new Error('opts.value must be a finite number if provided')
   }
+  const dataProblem = relationDataProblem(opts.data)
+  if (dataProblem) throw new Error(`opts.${dataProblem}`)
 }
 
 /**
@@ -143,6 +146,7 @@ class Batch {
       to: this.#target(opts.to, 'opts.to'),
       relationType: opts.type || opts.relationType,
       value: opts.value,
+      data: opts.data,
       context: opts.context
     })
   }

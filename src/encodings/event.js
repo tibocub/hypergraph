@@ -82,6 +82,12 @@ const eventEncoding = {
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         c.uint.preencode(state, typeof event.value === 'number' ? 1 : 0)
         if (typeof event.value === 'number') c.float64.preencode(state, event.value)
+        // Optional trailing data (spec 004). Written only when present, so
+        // relations without data keep exactly their old bytes.
+        if (typeof event.data === 'string') {
+          c.uint.preencode(state, 1)
+          c.string.preencode(state, event.data)
+        }
         break
 
       case 'relation/delete':
@@ -176,6 +182,10 @@ const eventEncoding = {
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         c.uint.encode(state, typeof event.value === 'number' ? 1 : 0)
         if (typeof event.value === 'number') c.float64.encode(state, event.value)
+        if (typeof event.data === 'string') {
+          c.uint.encode(state, 1)
+          c.string.encode(state, event.data)
+        }
         break
 
       case 'relation/delete':
@@ -281,6 +291,9 @@ const eventEncoding = {
         // real deployment hit "Out of bounds" here on already-persisted
         // data the moment this field was added.
         event.value = (state.start < state.end && c.uint.decode(state) === 1) ? c.float64.decode(state) : undefined
+        // Data on the relation (spec 004): same trailing-bytes guard. An older
+        // decoder stops above and never sees it.
+        if (state.start < state.end && c.uint.decode(state) === 1) event.data = c.string.decode(state)
         break
 
       case 'relation/delete':
