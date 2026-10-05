@@ -70,3 +70,39 @@ API:
 - **V**: changelog: apps replicating with `store.replicate()` must use `graph.replicate()` for invites.
 - Doc-sync: contexts-and-roles, networking (graph.replicate carries wakeup), event-encoding,
   index-structure, autobase-integration, README.
+
+## Phase 2 — US3: invites that also give read access (2026-10-06)
+
+**What exists**: a scope's key lives in the ScopeBase, sealed per person (`scope/keyGrant` to a
+device pubkey + the person's encryption public key). Only someone holding the key can seal it,
+and the ScopeBase accepts a grant only if its RoleBase says the granter has `scope.grant`. A peer
+without the RoleBase drops every scope event, so it would never see its own grant.
+
+**R5 — Why the key can't travel in the link**: putting the key (or a sealed copy) in the link
+would make a forwarded link a permanent read pass that survives revocation and key rotation, and
+would bypass the ScopeBase's permission check. So, as the spec says, a key holder has to be
+online: the link only asks for the key; the grant is an ordinary `scope/keyGrant`.
+
+**Design**
+
+| piece | change |
+|---|---|
+| `context/invite` | optional trailing `scope`, `scopeBase`, `roleBase` (scope id + the two keys the redeemer must open); signed |
+| `context/redeem` | optional trailing `encryptionKey` (redeemer's encryption public key, hex); covered by both signatures, so nobody can swap it |
+| `inv:<key>` record | `scope`, `scopeBase`, `roleBase` when present |
+| apply, accepted redemption of a scoped invite with an `encryptionKey` | writes `sg:<scope>:<member>` → `{ scope, scopeBase, member, encryptionKey, minter }` |
+| `graph.update()` | for each `sg:` request in an open context whose `scopeBase` is the attached one: skip if the member already holds the current epoch or is revoked; skip unless the **minter was entitled** (holds the current epoch's key, and the RoleBase allows them `scope.grant`); then `grantKey()` if this peer holds the key and may grant (failures are skipped silently, another holder may do it) |
+| `createInvite({ scope })` | needs the attached ScopeBase and a RoleBase; fails fast unless the minter holds the scope's current key |
+| `redeemInvite()` | opens the invite's RoleBase and ScopeBase when the graph has none attached; resolves when the role is granted (as before) — the key arrives when a holder is online. `opts.scopeTimeout` (ms) makes it wait for the key too |
+
+**Why the minter check**: without it, anyone allowed to mint a member invite could name any
+scope in it and have online key holders hand that scope to whoever redeems: a privilege
+escalation. Checked by the granter, from the ScopeBase/RoleBase it already trusts, so it is the
+same rule as granting directly: "could the minter have granted this themselves?"
+
+**Duplicates**: two key holders online may both grant; the registry keeps one grant per
+(recipient, epoch), so a duplicate is harmless.
+
+**Constitution**: I — the context decides who redeemed (deterministic); granting is an ordinary
+ScopeBase action with its own checks. II — tests first. V — wire fields are optional trailing
+fields; old invites/redemptions keep their bytes and signatures.

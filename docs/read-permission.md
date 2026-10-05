@@ -140,19 +140,52 @@ excluded member simply never resolves the new epoch at all, while every other cu
 does — and everyone can still resolve whatever older epochs they already had access to,
 consistent with the "can't undo past access" property above.
 
-## Onboarding new, not-yet-known peers
+## Invites that give read access
 
-Everything above assumes the granter already knows the recipient's public keys (identity and
-encryption). For *inviting* someone who isn't a known participant yet — e.g. a shareable
-invite link/code — a different primitive is the better fit:
-[`blind-pairing`](https://github.com/holepunchto/blind-pairing) (used by
-[`autopass`](https://github.com/holepunchto/autopass) for exactly this). It solves a
-different problem than `crypto_box_seal` does: proving someone holds a valid invite and
-getting them accepted, without the group owner needing to know their public key in advance.
-The two compose well: `blind-pairing` for bootstrapping trust with a new person via an invite
-code, `crypto_box_seal`-based key grants (as above) for ongoing distribution/rotation once
-someone is already a known member. This isn't implemented in Hypergraph yet — noted here as
-the intended direction, not a currently-available feature.
+Everything above assumes the granter already knows the recipient's public keys. A context
+invite link (see [Contexts and Roles](contexts-and-roles.md#invite-links)) can also ask for a
+scope, so a newcomer gets both the role and the key from one link (spec 006, US3):
+
+```js
+// A member who holds the scope's key and has scope.grant, with the graph's RoleBase and
+// ScopeBase attached
+const link = await context.createInvite({ role: 'member', scope: scopeId, keyPair })
+
+// The newcomer: opens the RoleBase and ScopeBase the invite names (if none is attached yet)
+await graph.redeemInvite(link)                          // resolves with the role
+await graph.redeemInvite(link, { scopeTimeout: 30000 }) // ...or also waits for the key
+```
+
+How the key gets there: the redemption carries the newcomer's encryption public key, signed
+with the rest. Once the context accepts it, every member's `graph.update()` looks at the
+request, and a member who **holds the scope's current key** seals it to the newcomer with an
+ordinary `grantKey()`. So a key holder has to be online at some point after the redemption; the
+role doesn't wait for that, only the key does.
+
+The link never carries the key itself, sealed or not: a forwarded link would otherwise be a read
+pass that survives revocation and key rotation, and it would bypass the ScopeBase's own
+permission check.
+
+A key holder grants only when all of these hold, checked against its own ScopeBase and RoleBase:
+
+- the request names the ScopeBase this graph has attached;
+- the newcomer doesn't hold the current epoch yet and isn't revoked from the scope (so a
+  `revoke()` + `rotateKey()` is not undone by an old invite);
+- **the invite's minter could have granted the scope themselves**: holds its current key, isn't
+  revoked, has `scope.grant`. Without this, anyone allowed to mint a member invite could name any
+  scope and have key holders hand it out. `createInvite({ scope })` checks the same thing up
+  front and throws;
+- this peer can grant it too (holds the key, has `scope.grant`).
+
+Two key holders online may both grant; the registry keeps one grant per member and epoch, so the
+second is harmless. A graph already attached to a different RoleBase or ScopeBase keeps its own,
+and then the invite's key can't arrive.
+
+[`blind-pairing`](https://github.com/holepunchto/blind-pairing) (as in
+[`autopass`](https://github.com/holepunchto/autopass)) solves a related problem — getting a new
+device accepted without knowing its key in advance — over a direct connection. Hypergraph's
+invites do it through the context's own log instead, so no member needs to be online at
+redemption time for the role.
 
 ## A simpler design than the state of the art, deliberately
 

@@ -113,6 +113,28 @@ test('event-encoding: context/init carries an optional index layout, with or wit
   t.absent('layout' in decodeEvent(encodeEvent(old)), 'records from before layouts decode without one')
 })
 
+test('event-encoding: invites and redemptions carry an optional scope request; old ones keep their bytes (spec 006 US3)', async (t) => {
+  const { stableContextHash } = require('../../../src/utils')
+  const a = 'a'.repeat(64)
+  const sig = 'c'.repeat(128)
+  const plainInvite = { type: 'context/invite', inviteKey: a, role: 'member', uses: 1, author: a, timestamp: 1, signature: sig }
+  const scoped = { ...plainInvite, scope: 'private', scopeBase: 'd'.repeat(64), roleBase: 'e'.repeat(64) }
+  t.alike(decodeEvent(encodeEvent(scoped)), scoped, 'scoped invite round-trips')
+  t.alike(decodeEvent(encodeEvent(plainInvite)), plainInvite, 'plain invite round-trips without scope fields')
+  t.ok(encodeEvent(scoped).length > encodeEvent(plainInvite).length, 'scope fields are extra bytes, not a new layout')
+
+  const plainRedeem = { type: 'context/redeem', inviteKey: a, member: a, key: 'b'.repeat(64), timestamp: 1, signature: sig, memberSignature: sig }
+  const withKey = { ...plainRedeem, encryptionKey: 'f'.repeat(64) }
+  t.alike(decodeEvent(encodeEvent(withKey)), withKey, 'redemption with an encryption key round-trips')
+  t.alike(decodeEvent(encodeEvent(plainRedeem)), plainRedeem, 'plain redemption round-trips without one')
+
+  // Signed: changing the requested scope or the encryption key changes the digest,
+  // and plain events hash exactly as before.
+  t.unlike(stableContextHash(scoped, a), stableContextHash({ ...scoped, scope: 'other' }, a), 'scope is signed')
+  t.unlike(stableContextHash(withKey, a), stableContextHash({ ...withKey, encryptionKey: '0'.repeat(64) }, a), 'encryption key is signed')
+  t.alike(stableContextHash(plainRedeem, a), stableContextHash({ ...plainRedeem }, a))
+})
+
 test('event-encoding: an event type this version does not know decodes to { type: undefined } without throwing', async (t) => {
   // What an older peer does with context/init, and what this peer does with
   // a type added after it — the reason mixed versions in one context are

@@ -178,6 +178,12 @@ const eventEncoding = {
         c.uint.preencode(state, event.uses)
         c.string.preencode(state, event.author)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        // Optional trailing scope request (spec 006 US3): plain invites keep their bytes.
+        if (typeof event.scope === 'string' && event.scope.length > 0) {
+          c.string.preencode(state, event.scope)
+          c.string.preencode(state, event.scopeBase || '')
+          c.string.preencode(state, event.roleBase || '')
+        }
         break
 
       case 'context/redeem':
@@ -186,6 +192,8 @@ const eventEncoding = {
         c.string.preencode(state, event.key)
         c.buffer.preencode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         c.buffer.preencode(state, event.memberSignature ? b4a.from(event.memberSignature, 'hex') : b4a.alloc(0))
+        // Optional trailing encryption public key, for an invite's scope.
+        if (typeof event.encryptionKey === 'string' && event.encryptionKey.length > 0) c.string.preencode(state, event.encryptionKey)
         break
 
       case 'message':
@@ -313,6 +321,11 @@ const eventEncoding = {
         c.uint.encode(state, event.uses)
         c.string.encode(state, event.author)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
+        if (typeof event.scope === 'string' && event.scope.length > 0) {
+          c.string.encode(state, event.scope)
+          c.string.encode(state, event.scopeBase || '')
+          c.string.encode(state, event.roleBase || '')
+        }
         break
 
       case 'context/redeem':
@@ -321,6 +334,7 @@ const eventEncoding = {
         c.string.encode(state, event.key)
         c.buffer.encode(state, event.signature ? b4a.from(event.signature, 'hex') : b4a.alloc(0))
         c.buffer.encode(state, event.memberSignature ? b4a.from(event.memberSignature, 'hex') : b4a.alloc(0))
+        if (typeof event.encryptionKey === 'string' && event.encryptionKey.length > 0) c.string.encode(state, event.encryptionKey)
         break
 
       case 'message':
@@ -488,6 +502,11 @@ const eventEncoding = {
         event.author = c.string.decode(state)
         const sig = c.buffer.decode(state)
         event.signature = sig.length > 0 ? sig.toString('hex') : null
+        if (state.start < state.end) {
+          event.scope = c.string.decode(state)
+          event.scopeBase = c.string.decode(state)
+          event.roleBase = c.string.decode(state)
+        }
         break
       }
 
@@ -499,6 +518,7 @@ const eventEncoding = {
         event.signature = sig.length > 0 ? sig.toString('hex') : null
         const msig = c.buffer.decode(state)
         event.memberSignature = msig.length > 0 ? msig.toString('hex') : null
+        if (state.start < state.end) event.encryptionKey = c.string.decode(state)
         break
       }
 

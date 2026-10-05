@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-06: invites that also give read access (additive)
+
+- `context.createInvite({ role, scope, keyPair })`: the link also asks for a scope's key. The
+  redeemer gets the role as before; the key arrives once a member who holds it runs
+  `graph.update()` (an ordinary `scope/keyGrant`). `redeemInvite(link, { scopeTimeout })` can wait
+  for it; `redeemInvite()` opens the RoleBase and ScopeBase the invite names when none is attached.
+- Granted only if the invite's minter could have granted that scope themselves (holds the current
+  key, `scope.grant`), and never to someone revoked from it. `createInvite({ scope })` throws
+  otherwise. The link never carries the key.
+- Wire: optional trailing fields on `context/invite` (`scope`, `scopeBase`, `roleBase`) and
+  `context/redeem` (`encryptionKey`); existing events keep their bytes and signatures. Redemptions
+  now always carry the redeemer's encryption public key.
+- `context.scopeRequests()` lists pending requests.
+- **Fix**: `redeemInvite()` could time out in a context with two or more indexers (owner + an
+  admin): it waited until everything up to "now" was confirmed, but Autobase never confirms the
+  last acks. It now reads the indexers' confirmed view (`context.confirmedInvite()`), which acks
+  don't touch. Seen as an intermittent test failure under load.
+
+Details: [`specs/006-role-invites/`](specs/006-role-invites/) (plan, "Phase 2").
+
 ### 2026-10-05: compact index keys (one-time rebuild of the global index on first open)
 
 - **Global index (GraphView)** moved to a new core, `graph-view/2`, with binary keys

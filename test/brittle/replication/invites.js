@@ -142,3 +142,24 @@ test('invites: two peers racing for the last use — exactly one wins, the same 
   const tables = await Promise.all([owner, p1, p2].map(async p => JSON.stringify((await (await p.graph.openContext(Hypergraph.parseInvite(invite).context)).roles()).members)))
   t.is(new Set(tables).size, 1, 'every peer agrees on who got it')
 })
+
+test('invites: redeemInvite() answers from the confirmed view, even when a context with two indexers has unconfirmed trailing acks', { timeout: 120000 }, async (t) => {
+  // With several indexers, Autobase never confirms the last acks (an ack of
+  // an ack would never end), so "wait until everything up to now is
+  // confirmed" could hang. Acks write nothing to the view; the confirmed view
+  // is what decides.
+  const { owner } = await ownerWithContext(t, 'inv-tail')
+  const invite = await owner.ctx.createInvite({ role: 'admin', keyPair: owner.kp })
+  const b = await peer(t, 'inv-tail-b', owner)
+  const bCtx = await b.graph.redeemInvite(invite, { timeout: 20000 })
+  t.ok(await until(async () => {
+    await owner.graph.update(); await b.graph.update()
+    return (await owner.ctx.status()).indexers.length === 2 && bCtx.base.signedLength < bCtx.base.length
+  }), 'two indexers, and the tail of the context is unconfirmed acks')
+  await sleep(3000) // let it go quiet: nothing new to confirm the tail with
+  t.ok(bCtx.base.signedLength < bCtx.base.length, `still unconfirmed when quiet (${bCtx.base.signedLength}/${bCtx.base.length})`)
+
+  const started = Date.now()
+  await b.graph.redeemInvite(invite, { timeout: 8000 })
+  t.ok(Date.now() - started < 5000, `a member redeeming again gets an answer at once (${Date.now() - started} ms)`)
+})

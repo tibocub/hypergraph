@@ -113,10 +113,17 @@ const stableRelationHash = (event, contextKeyHex) => {
 const stableContextHash = (event, contextKeyHex) => {
   let payload
   if (event.type === 'context/writer') payload = { key: event.key, member: event.member || '' }
-  else if (event.type === 'context/invite') payload = { inviteKey: event.inviteKey, role: event.role || '', uses: event.uses }
-  // context/redeem: signed twice with this same digest, by the invite key
-  // (proves the link) and by the member (binds the redemption to them).
-  else if (event.type === 'context/redeem') payload = { inviteKey: event.inviteKey, member: event.member, key: event.key }
+  else if (event.type === 'context/invite') {
+    payload = { inviteKey: event.inviteKey, role: event.role || '', uses: event.uses }
+    // A scope request (spec 006 US3) is signed too; plain invites hash as before.
+    if (event.scope) Object.assign(payload, { scope: event.scope, scopeBase: event.scopeBase || '', roleBase: event.roleBase || '' })
+  } else if (event.type === 'context/redeem') {
+    // Signed twice with this same digest, by the invite key (proves the
+    // link) and by the member (binds the redemption, and the encryption key
+    // a scope would be sealed to, to them).
+    payload = { inviteKey: event.inviteKey, member: event.member, key: event.key }
+    if (event.encryptionKey) payload.encryptionKey = event.encryptionKey
+  }
   else payload = { member: event.member, role: event.role || '' }
   const msg = {
     op: event.type,

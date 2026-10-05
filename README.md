@@ -165,6 +165,10 @@ const link = await context.createInvite({ role: 'admin', keyPair: graph.identity
 await graph.redeemInvite(link)
 ```
 
+Add `scope: scopeId` and the link also asks for read access to encrypted content: the role
+arrives right away, the key as soon as a member who holds it is online
+([Read Permission](docs/read-permission.md#invites-that-give-read-access)).
+
 See [Contexts and Roles](docs/contexts-and-roles.md) for the trust model.
 
 ## API Reference
