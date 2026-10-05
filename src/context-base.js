@@ -34,6 +34,7 @@ function parseInviteLink (link) {
 const CONTEXT_RECORD_KEY = 'meta:context'
 // A version 3 context's own role table (spec 005).
 const ROLES_KEY = 'meta:roles'
+const HEX64 = /^[0-9a-f]{64}$/
 // Context versions this code can apply.
 const KNOWN_VERSIONS = [1, 2, 3]
 
@@ -66,6 +67,7 @@ class ContextBase extends ReadyResource {
   #counts // edge counters pending for the current apply chunk, else null
   #applyIndex // the index layout apply is writing with (src/index-layout/context.js)
   #index // the index layout readers use, once this view's record says which
+  #scopes // the graph's ScopeBase/RoleBase, for invites that ask for a scope (spec 006 US3)
   #members // every member the system listed at the last update(), see writerKeys()
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
@@ -105,6 +107,7 @@ class ContextBase extends ReadyResource {
     this.#keyEncoding = opts.keyEncoding ? codecs(opts.keyEncoding) : null
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#roleBase = opts.roleBase || null
+    this.#scopes = opts.scopes || null
     this.#writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
     this.#base = null
     this.#viewBee = null
@@ -903,7 +906,15 @@ class ContextBase extends ReadyResource {
     const role = event.role || 'member'
     if (role === 'owner') return // ownership is never handed out by link
     if (!this.#mayAssign(table, event.author, '', role)) return
-    await view.put(key, { role, uses: event.uses, used: 0, revoked: false, author: event.author })
+    const inv = { role, uses: event.uses, used: 0, revoked: false, author: event.author }
+    // A scope request (spec 006 US3) is only recorded here. Whether the
+    // minter could hand out that scope is not something this log can know:
+    // a key holder checks it against the ScopeBase before granting.
+    if (typeof event.scope === 'string' && event.scope.length > 0) {
+      if (!HEX64.test(event.scopeBase || '') || !HEX64.test(event.roleBase || '')) return
+      Object.assign(inv, { scope: event.scope, scopeBase: event.scopeBase, roleBase: event.roleBase })
+    }
+    await view.put(key, inv)
   }
 
   // context/redeem (spec 006): proof of an invite's secret (signed with the
@@ -937,6 +948,18 @@ class ContextBase extends ReadyResource {
       await view.put(ROLES_KEY, table)
     }
     await this.#linkWriter(view, event.key, event.member)
+    // The invite asked for a scope: leave a request for a key holder, with
+    // the encryption key the member signed (spec 006 US3).
+    if (inv.scope && HEX64.test(event.encryptionKey || '')) {
+      await view.put(`sg:${event.member}:${inv.scope}`, {
+        scope: inv.scope,
+        scopeBase: inv.scopeBase,
+        roleBase: inv.roleBase,
+        member: event.member,
+        encryptionKey: event.encryptionKey,
+        minter: inv.author
+      })
+    }
     if (optimistic) await host.ackWriter(from.key)
     await host.addWriter(from.key, { indexer: rolesRegistry.can(table, event.member, 'context.index') })
   }
@@ -1184,7 +1207,12 @@ class ContextBase extends ReadyResource {
    * with that role, without anyone acting at that moment. Takes effect only
    * if the signer may grant `role` (see setRole()); `owner` can't be invited.
    *
-   * @param {{ role?: string, uses?: number, keyPair: Object }} opts
+   * With `scope`, the invite also asks for read access to that scope of the
+   * graph's ScopeBase: once redeemed, a member who holds the scope's key
+   * seals it to the redeemer on their next `graph.update()` (spec 006 US3).
+   * Needs the minter to hold the scope's current key and `scope.grant`.
+   *
+   * @param {{ role?: string, uses?: number, scope?: string, keyPair: Object }} opts
    * @returns {Promise<string>} `hypergraph://invite/<contextKeyHex>/<secretHex>`
    */
   async createInvite (opts = {}) {
@@ -1195,9 +1223,19 @@ class ContextBase extends ReadyResource {
     const uses = opts.uses === undefined ? 1 : opts.uses
     if (!Number.isInteger(uses) || uses < 1) throw new Error('opts.uses must be a positive integer')
     const author = this.#signer(opts.keyPair, 'an invite')
+    const event = { type: 'context/invite', inviteKey: null, role, uses, author, timestamp: Date.now(), signature: null }
+    if (opts.scope !== undefined) {
+      // Ask for read access too (spec 006 US3). A key holder grants it only
+      // if the minter could have granted it themselves, so check that here.
+      if (typeof opts.scope !== 'string' || opts.scope.length === 0) throw new Error('opts.scope must be a scope id')
+      const keys = this.#scopes ? this.#scopes.keys() : {}
+      if (!keys.scopeBase || !keys.roleBase) throw new Error('A scoped invite needs this graph\'s ScopeBase and RoleBase attached')
+      if (!(await this.#scopes.entitled(opts.scope, author))) throw new Error('You do not hold the current key for this scope, or may not grant it')
+      Object.assign(event, { scope: opts.scope, scopeBase: keys.scopeBase, roleBase: keys.roleBase })
+    }
     const seed = hypercoreCrypto.randomBytes(32)
-    const inviteKey = b4a.toString(hypercoreCrypto.keyPair(seed).publicKey, 'hex')
-    await this.append(this.#signContext({ type: 'context/invite', inviteKey, role, uses, author, timestamp: Date.now(), signature: null }, opts.keyPair))
+    event.inviteKey = b4a.toString(hypercoreCrypto.keyPair(seed).publicKey, 'hex')
+    await this.append(this.#signContext(event, opts.keyPair))
     return `hypergraph://invite/${this.key.toString('hex')}/${b4a.toString(seed, 'hex')}`
   }
 
@@ -1219,8 +1257,47 @@ class ContextBase extends ReadyResource {
   }
 
   /**
-   * Invites recorded in this context: `{ inviteKeyHex: { role, uses, used, revoked, author } }`.
+   * Invites recorded in this context: `{ inviteKeyHex: { role, uses, used, revoked, author, scope?, scopeBase?, roleBase? } }`.
    */
+  /**
+   * An invite and a member's role as the indexers have confirmed them: read
+   * from the view at its signed length, so nothing that could still be
+   * reordered counts. (Not `base.signedLength`: with several indexers the
+   * last acks are never confirmed, so "confirmed up to length L" may never
+   * become true; acks write nothing to the view.)
+   *
+   * @returns {Promise<{ invite: Object|null, role: string|null }>}
+   */
+  async confirmedInvite (inviteKey, member) {
+    if (!this.opened) await this.ready()
+    const view = this.#base.view
+    if (!view || !view.core || view.core.signedLength === 0) return { invite: null, role: null }
+    const snap = view.checkout(view.core.signedLength)
+    try {
+      const inv = await snap.get(`inv:${inviteKey}`)
+      const roles = await snap.get(ROLES_KEY)
+      const role = roles && roles.value && roles.value.members ? roles.value.members[member] || null : null
+      return { invite: inv ? inv.value : null, role }
+    } finally {
+      await snap.close()
+    }
+  }
+
+  /**
+   * Scope keys asked for by redeemed invites: `[{ scope, scopeBase, roleBase,
+   * member, encryptionKey, minter }]`. graph.update() grants them when it can.
+   *
+   * @returns {Promise<Object[]>}
+   */
+  async scopeRequests () {
+    if (!this.opened) await this.ready()
+    const out = []
+    const view = this.#base.view
+    if (!view) return out
+    for await (const entry of view.createReadStream({ gte: 'sg:', lt: 'sg:\uffff' })) out.push(entry.value)
+    return out
+  }
+
   async invites () {
     if (!this.opened) await this.ready()
     const out = {}
@@ -1236,8 +1313,10 @@ class ContextBase extends ReadyResource {
    *
    * @param {string} link
    * @param {{ publicKey: Buffer, secretKey: Buffer }} memberKeyPair
+   * @param {Buffer} [encryptionPublicKey] - Where a scope the invite asks
+   *   for gets sealed to; signed along with the rest.
    */
-  async redeem (link, memberKeyPair) {
+  async redeem (link, memberKeyPair, encryptionPublicKey) {
     if (!this.opened) await this.ready()
     const { seed, inviteKey } = parseInviteLink(link)
     const invite = hypercoreCrypto.keyPair(b4a.from(seed, 'hex'))
@@ -1250,6 +1329,7 @@ class ContextBase extends ReadyResource {
       signature: null,
       memberSignature: null
     }
+    if (encryptionPublicKey) event.encryptionKey = b4a.toString(encryptionPublicKey, 'hex')
     const digest = stableContextHash(event, this.key.toString('hex'))
     event.signature = b4a.toString(hypercoreCrypto.sign(digest, invite.secretKey), 'hex')
     event.memberSignature = b4a.toString(hypercoreCrypto.sign(digest, memberKeyPair.secretKey), 'hex')

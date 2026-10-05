@@ -27,4 +27,7 @@ Tests first (encodings and apply: non-negotiable tier).
 
 ## Phase 4 (later): US3 — read-scope invites
 
-- [ ] T010 Invite carries a scope; a member holding the scope key grants it to the redeemer's encryption key on `update()`
+- [X] T010 [US3] Test first `test/brittle/core/event-encoding.js`: scoped `context/invite` and `context/redeem` with `encryptionKey` round-trip; old ones keep their bytes
+- [X] T011 [US3] Test first `test/brittle/replication/scope-invites.js`: owner mints an invite with a scope; a peer with only the link redeems; the owner's `update()` grants the key; the peer reads encrypted content. Also: a minter without the key can't mint; an unentitled minter's scoped invite (forged with append) gets no grant from another key holder; a revoked member is not re-granted; a plain invite grants no key
+- [X] T012 [US3] `src/encodings/event.js`, `src/utils.js` (hash), `src/context-base.js` (apply, `scopeRequests()`, `createInvite({ scope })`, `redeem` with encryption key), `src/hypergraph.js` (`createInvite` pass-through of ScopeBase/RoleBase keys, `#grantInvitedScopes` in `update()`, `redeemInvite` opening bases, `scopeTimeout`)
+- [X] T013 [US3] Docs: read-permission (invites section replaces the blind-pairing note), contexts-and-roles, event-encoding, index-structure; CHANGELOG; full suite, HyperBBS, hyperDNS — 312/312; HyperBBS and hyperDNS green (they use no invite API). Also fixed: redeemInvite() hang with several indexers (waits on the confirmed view now)

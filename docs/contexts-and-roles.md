@@ -141,7 +141,9 @@ two people can race for an invite's last use and only the confirmed history says
 - No expiry: event times are claimed by their authors, so it couldn't be enforced against a
   secret holder. Use `uses` and revocation.
 - Peers must replicate with `graph.replicate()` (or `HypergraphNetwork`).
-- Read access to encrypted (scoped) content by invite is planned separately.
+- **Read access too**: `createInvite({ role, scope, keyPair })` also asks for a scope's key (see
+  [Read Permission](read-permission.md#invites-that-give-read-access)). The role arrives as above;
+  the key arrives once a member who holds it is online.
 
 **Converting an older context**: its creator calls `await context.upgrade({ keyPair })`. From that
 point it is version 3 with the creator as owner, and every indexer except the creator's device

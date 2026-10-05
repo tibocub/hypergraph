@@ -166,6 +166,12 @@ Note: regardless of write mode, `moderateAction()` and writer-change events (`ro
 - `allows(pubkey, action)` - The context's own permission decision (version 3), or null when its
   roles live in the RoleBase
 - `upgrade({ keyPair })` - The creator converts a version 1/2 context to version 3
+- `createInvite({ role, uses, scope?, keyPair })` / `revokeInvite()` / `invites()` /
+  `redeem()` - Invite links (spec 006); `scopeRequests()` lists scope keys asked for by redeemed
+  scoped invites, which `Hypergraph#update()` grants when this peer holds the key;
+  `confirmedInvite(inviteKey, member)` reads an invite and a member's role from the view at its
+  signed length — what `redeemInvite()` waits on (`base.signedLength` can't be used: with several
+  indexers the trailing acks are never confirmed)
 - `relate()` - Create relation (helper method)
 - `tag()` - Create tag (helper method)
 - `handlePeerConnection()` - Auto-add writer in open mode, emit request in closed mode

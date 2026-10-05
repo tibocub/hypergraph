@@ -12,6 +12,7 @@ const ContextBase = require('./context-base')
 const ProtomuxWakeup = require('protomux-wakeup')
 const RoleBase = require('./role-base')
 const ScopeBase = require('./scope-base')
+const { getGrant } = require('./scopes-registry')
 const GraphView = require('./view')
 const graphLayout = require('./index-layout/graph')
 const { NEW_CONTEXT_LAYOUT } = require('./index-layout/context')
@@ -62,6 +63,7 @@ module.exports = class Hypergraph extends ReadyResource {
   #userCoreKey
   #roleBase
   #scopeBase
+  #grantingScopes = false
   #emitter
   #onIndexEvent
   #wakeup
@@ -1125,12 +1127,89 @@ module.exports = class Hypergraph extends ReadyResource {
       await context.update()
     }
 
+    await this.#grantInvitedScopes()
+
     const changed = await this.#view.update()
     if (changed) {
       this.#emitter.emit('change', { type: 'sync', timestamp: Date.now() })
     }
   }
 
+
+// ── Invites that ask for a scope (spec 006 US3) ─────────────────────────
+
+  // What every ContextBase gets from the graph: the RoleBase for closed-mode
+  // checks, and the ScopeBase side of scoped invites.
+  #contextHooks () {
+    return {
+      roleBase: {
+        getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
+        can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
+      },
+      scopes: {
+        keys: () => ({
+          scopeBase: this.#scopeBase && this.#scopeBase.key ? this.#scopeBase.key.toString('hex') : null,
+          roleBase: this.#roleBase && this.#roleBase.key ? this.#roleBase.key.toString('hex') : null
+        }),
+        entitled: (scopeId, pubkeyHex) => this.#mayGrantScope(scopeId, pubkeyHex)
+      }
+    }
+  }
+
+  /**
+   * Whether `pubkeyHex` could grant `scopeId` right now, by the attached
+   * ScopeBase and RoleBase: holds the scope's current key, isn't revoked
+   * from it, and has `scope.grant`. The same rule the ScopeBase applies to a
+   * direct grant, which is why a scoped invite is honoured only when its
+   * minter passes it.
+   *
+   * @returns {Promise<boolean>}
+   */
+  async #mayGrantScope (scopeId, pubkeyHex) {
+    if (!this.#scopeBase || !this.#roleBase) return false
+    const registry = await this.#scopeBase.getRegistry()
+    const scope = registry && registry[scopeId]
+    if (!scope || (scope.revoked && scope.revoked[pubkeyHex])) return false
+    if (!getGrant(registry, scopeId, pubkeyHex, scope.currentEpoch)) return false
+    const roles = await this.#roleBase.getRegistry()
+    return !!roles && canRole(roles, pubkeyHex, 'scope.grant')
+  }
+
+  /**
+   * Seal scope keys asked for by redeemed invites, when this peer can: the
+   * request names the attached ScopeBase, the member doesn't hold the
+   * current epoch and isn't revoked, the invite's minter could have granted
+   * the scope, and so can this peer. Anything else is skipped — another key
+   * holder may grant it, or nobody should. Two holders granting the same
+   * request is harmless: the registry keeps one grant per member and epoch.
+   */
+  async #grantInvitedScopes () {
+    if (!this.#scopeBase || !this.#roleBase || this.#grantingScopes) return
+    this.#grantingScopes = true
+    try {
+      const mine = this.#scopeBase.key.toString('hex')
+      const me = b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex')
+      for (const [, context] of this.#contexts) {
+        if (!context || !context.opened) continue
+        for (const req of await context.scopeRequests()) {
+          if (req.scopeBase !== mine) continue
+          const registry = await this.#scopeBase.getRegistry()
+          const scope = registry && registry[req.scope]
+          if (!scope || (scope.revoked && scope.revoked[req.member])) continue
+          if (getGrant(registry, req.scope, req.member, scope.currentEpoch)) continue
+          if (!(await this.#mayGrantScope(req.scope, req.minter))) continue
+          if (!(await this.#mayGrantScope(req.scope, me))) continue
+          try {
+            await this.#scopeBase.grantKey(req.scope, req.member, b4a.from(req.encryptionKey, 'hex'))
+          } catch (err) {
+            safetyCatch(err)
+          }
+        }
+      }
+    } finally {
+      this.#grantingScopes = false
+    }
+  }
 
 // ── RoleBase ──────────────────────────────────────────────────────────────
 
@@ -1529,10 +1608,7 @@ module.exports = class Hypergraph extends ReadyResource {
       fastForward: opts.fastForward,
       rules: validateRules(opts.rules),
       wakeup: this.#wakeup,
-      roleBase: {
-        getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
-        can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
-      }
+      ...this.#contextHooks()
     }
 
     // Pass through keyPair if explicitly provided (required for closed mode)
@@ -1603,10 +1679,7 @@ module.exports = class Hypergraph extends ReadyResource {
       fastForward: opts.fastForward,
       rules: validateRules(opts.rules),
       wakeup: this.#wakeup,
-      roleBase: {
-        getRegistry: () => (this.#roleBase ? this.#roleBase.getRegistry() : null),
-        can: (pubkeyHex, action) => (this.#roleBase ? this.can(pubkeyHex, action) : false)
-      }
+      ...this.#contextHooks()
     })
     await context.ready()
 
@@ -1910,7 +1983,10 @@ module.exports = class Hypergraph extends ReadyResource {
    * be connected through graph.replicate() (or HypergraphNetwork).
    *
    * @param {string} link
-   * @param {{ timeout?: number }} [opts] - Default 30 s.
+   * @param {{ timeout?: number, scopeTimeout?: number }} [opts] - `timeout`
+   *   (default 30 s) bounds getting the role. For an invite that asks for a
+   *   scope, `scopeTimeout` also waits that long for a key holder to grant
+   *   it; without it, the key arrives on a later update().
    * @returns {Promise<ContextBase>} The context, writable.
    * @throws {Error} If not granted within the timeout (used up, revoked, invalid, or nobody reachable).
    */
@@ -1918,7 +1994,7 @@ module.exports = class Hypergraph extends ReadyResource {
     if (!this.opened) await this.ready()
     const { context: contextKey, inviteKey } = ContextBase.parseInviteLink(link)
     const context = await this.#getContext(contextKey)
-    if (!context.writable) await context.redeem(link, this.identity.deviceKeyPair)
+    if (!context.writable) await context.redeem(link, this.identity.deviceKeyPair, this.identity.encryptionKeyPair.publicKey)
     const timeout = opts.timeout === undefined ? 30000 : opts.timeout
     const deadline = Date.now() + timeout
     const me = b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex')
@@ -1930,23 +2006,43 @@ module.exports = class Hypergraph extends ReadyResource {
 
     // This device applies its own redemption at once, possibly before it has
     // heard of a competing one for the last use. Only the confirmed history
-    // decides: wait until the indexers have confirmed past the point where we
-    // first saw ourselves as a writer, then look again.
-    while (!context.writable) {
-      // Fail fast once the invite's own record, confirmed, says it's spent.
-      const inv = (await context.invites())[inviteKey]
-      if (inv && (inv.revoked || inv.used >= inv.uses) && context.base.signedLength >= context.base.length) {
-        throw new Error(`Invite not granted: ${inv.revoked ? 'it was revoked' : 'it has no uses left'}`)
+    // decides: wait until the indexers' confirmed view gives this device its
+    // role, or says the invite is spent. (Waiting for "confirmed up to the
+    // current length" instead could hang with several indexers: their last
+    // acks are never confirmed.)
+    while (true) {
+      const { invite, role } = await context.confirmedInvite(inviteKey, me)
+      if (role && context.writable) break
+      if (invite && !role && (invite.revoked || invite.used >= invite.uses)) {
+        throw new Error(`Invite not granted: ${invite.revoked ? 'it was revoked' : 'it has no uses left'}`)
       }
       await tick()
     }
-    const seenAt = context.base.length
-    while (context.base.signedLength < seenAt) await tick()
-    if (!context.writable || !(await context.roles()).members[me]) {
-      throw new Error('Invite not granted: another redemption took its last use, or it was revoked')
+
+    // An invite that asks for a scope (spec 006 US3): open the RoleBase and
+    // ScopeBase it names, so the key grant can arrive and be checked here.
+    // A graph already attached to other ones keeps them.
+    const inv = (await context.invites())[inviteKey]
+    if (inv && inv.scope) {
+      if (!this.#roleBase) await this.openRoleBase(inv.roleBase)
+      if (!this.#scopeBase) await this.openScopeBase(inv.scopeBase)
+      if (opts.scopeTimeout) await this.#waitForScopeKey(inv.scope, Date.now() + opts.scopeTimeout)
     }
+
     await this.#view.update()
     return context
+  }
+
+  // Wait until this device can open `scopeId`'s current key.
+  async #waitForScopeKey (scopeId, deadline) {
+    const me = b4a.toString(this.identity.deviceKeyPair.publicKey, 'hex')
+    while (true) {
+      await this.update().catch(safetyCatch)
+      const epoch = await this.#scopeBase.getCurrentEpoch(scopeId)
+      if (epoch !== null && await this.#scopeBase.resolveKey(scopeId, me, this.identity.encryptionKeyPair, epoch)) return
+      if (Date.now() > deadline) throw new Error('Invite granted, but no key holder has granted the scope yet (timed out)')
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
   }
 
   /**

@@ -117,7 +117,8 @@ meta:context → { version, rules, owner?, layout? }   # from the creator's cont
 meta:roles   → { version, roles: { role: [permission] }, members: { pubkey: role } }   # version 3
 w:m:<writerKeyHex>          → { member }   # which member a writer belongs to (version 3)
 w:k:<member>:<writerKeyHex> → {}           # a member's writers, to promote/demote them together
-inv:<inviteKeyHex> → { role, uses, used, revoked, author }   # invites (spec 006)
+inv:<inviteKeyHex> → { role, uses, used, revoked, author, scope?, scopeBase?, roleBase? }   # invites (spec 006)
+sg:<member>:<scope> → { scope, scopeBase, roleBase, member, encryptionKey, minter }   # a redeemed invite asks for a scope key
 
 m:t:<targetId>:<createdAt>:<coreKeyHex>:<seq> → { eventId, action, target, author, reason, createdAt, coreKey, seq, signature }
 m:a:<author>:<createdAt>:<targetId>:<coreKeyHex>:<seq> → (same record)

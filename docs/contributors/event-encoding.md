@@ -75,7 +75,11 @@ guard, not just the encode/preencode sides.
   `uses`, signed by `author` (spec 006)
 - `context/redeem` - Redeem an invite: `inviteKey`, `member`, `key` (the redeeming writer),
   signed with the invite secret and by the member; usually appended by a not-yet-writer as an
-  Autobase optimistic block
+  Autobase optimistic block. Optional trailing `encryptionKey` (the redeemer's encryption public
+  key, for a scoped invite; signed)
+- `context/invite` also carries an optional trailing scope request: `scope`, `scopeBase`,
+  `roleBase` (signed; spec 006 US3). Invites and redemptions without them keep their old bytes
+  and signatures
 - `context/init` also carries an optional trailing `owner` (version 3), then an optional index
   `layout` (spec 002; new contexts write `2`). A layout without an owner writes an empty owner
   first; it decodes as no owner. Records from before layouts decode without one (= layout 1)
