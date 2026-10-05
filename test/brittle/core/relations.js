@@ -651,3 +651,72 @@ test('relations: an unrelate() propagates correctly to other peers over real rep
   console.log('TEST: unrelate cross-peer replication - passed')
 })
 
+
+// ── Data on relations (spec 004) ────────────────────────────────────────────
+
+const hypercoreCrypto = require('hypercore-crypto')
+const { stableRelationHash } = require('../../../src/utils')
+
+test('relations: signatures of relations without data are unchanged by spec 004', async (t) => {
+  const a = 'a'.repeat(64)
+  const ev = { type: 'relation/create', from: `file/${a}/1`, to: `dir/${a}/0`, relationType: 'in', author: a, timestamp: 1791000000000 }
+  // Digests computed with the code from before spec 004.
+  t.is(stableRelationHash(ev, 'b'.repeat(64)).toString('hex'), '9f3ac4368485e535d10cce742ecbb48a33ea36f06703834ec1a19bf0fa67c588', 'no value, no data')
+  t.is(stableRelationHash({ ...ev, value: 1 }, 'b'.repeat(64)).toString('hex'), '1b5f57312c2e0117ba4bede19fed31708a1c62c3ae2f0424490e3959373dc9de', 'with value')
+  t.not(stableRelationHash({ ...ev, data: 'x' }, 'b'.repeat(64)).toString('hex'), '9f3ac4368485e535d10cce742ecbb48a33ea36f06703834ec1a19bf0fa67c588', 'data is signed')
+})
+
+test('relations: relate() stores data on the edge; edges() returns it in both directions; unrelate removes it', async (t) => {
+  const { graph } = await createGraph(t, 'relations-data')
+  const ctx = await graph.createContext()
+  const dir = await graph.put({ type: 'dir' })
+  const file = await graph.put({ type: 'file' })
+  const plain = await graph.put({ type: 'file' })
+  const data = JSON.stringify({ name: 'song.mp3', root: 'ab'.repeat(32), size: 4096 })
+
+  await graph.relate({ from: file.id, to: dir.id, type: 'in', context: ctx, data })
+  await graph.relate({ from: plain.id, to: dir.id, type: 'in', context: ctx })
+
+  const into = {}
+  for await (const e of graph.edges(dir.id, { direction: 'in', type: 'in', context: ctx })) into[e.from] = e
+  t.is(into[file.id].data, data, 'incoming edge carries the data')
+  t.absent('data' in into[plain.id] && into[plain.id].data !== undefined, 'an edge without data has none')
+
+  const out = []
+  for await (const e of graph.edges(file.id, { direction: 'out', context: ctx })) out.push(e)
+  t.is(out[0].data, data, 'outgoing edge carries it too')
+
+  // Renaming: remove and relate again, in one bulk call.
+  const renamed = JSON.stringify({ name: 'renamed.mp3', root: 'ab'.repeat(32), size: 4096 })
+  await graph.unrelate({ from: file.id, to: dir.id, type: 'in', context: ctx })
+  const b = graph.batch()
+  b.relate({ from: file.id, to: dir.id, type: 'in', context: ctx, data: renamed })
+  await b.flush()
+  const after = []
+  for await (const e of graph.edges(dir.id, { direction: 'in', type: 'in', context: ctx })) if (e.from === file.id) after.push(e.data)
+  t.alike(after, [renamed], 'only the new data is listed')
+})
+
+test('relations: data must be a string of at most 4,096 bytes; forged or oversized data is rejected at apply', async (t) => {
+  const { graph } = await createGraph(t, 'relations-data-limits')
+  const ctx = await graph.createContext()
+  const context = await graph.openContext(ctx)
+  const dir = await graph.put({ type: 'dir' })
+  const f = await graph.put({ type: 'file' })
+
+  await t.exception(graph.relate({ from: f.id, to: dir.id, type: 'in', context: ctx, data: 42 }), /data must be a string/, 'non-string refused')
+  await t.exception(graph.relate({ from: f.id, to: dir.id, type: 'in', context: ctx, data: 'é'.repeat(2049) }), /4096 bytes/, 'over 4,096 bytes of UTF-8 refused')
+  t.exception(() => graph.batch().relate({ from: f.id, to: dir.id, type: 'in', context: ctx, data: 'x'.repeat(4097) }), /4096 bytes/, 'batch refuses too')
+
+  const author = graph.key.toString('hex')
+  const sign = (ev) => { ev.signature = hypercoreCrypto.sign(stableRelationHash(ev, ctx), graph.identity.deviceKeyPair.secretKey).toString('hex'); return ev }
+
+  const oversized = sign({ type: 'relation/create', from: f.id, to: dir.id, relationType: 'big', author, timestamp: Date.now(), signature: null, data: 'x'.repeat(5000) })
+  const forged = sign({ type: 'relation/create', from: f.id, to: dir.id, relationType: 'forged', author, timestamp: Date.now(), signature: null, data: 'signed' })
+  forged.data = 'swapped after signing'
+  await context.appendBatch([oversized, forged])
+  await graph.update()
+
+  t.is(await graph.countEdgesIn(dir.id, 'big', { context: ctx }), 0, 'oversized data rejected at apply')
+  t.is(await graph.countEdgesIn(dir.id, 'forged', { context: ctx }), 0, 'data changed after signing rejected')
+})

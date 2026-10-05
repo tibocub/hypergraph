@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-05: data on relations (additive; one compatibility note)
+
+- `relate({ ..., data })` / `batch.relate({ ..., data })`: a relation can carry an app string (at
+  most 4,096 bytes of UTF-8), signed with it and returned by `edges()` in both directions. Put a
+  listing's data there (name, content address, size) and peers can browse a space from the
+  context alone — fast-forwarded and read on demand — without downloading anyone's log.
+- App rules see `event.data` and existing edges' data.
+- Relations without data are byte-for-byte and signature-for-signature unchanged.
+- **Compatibility**: older peers reject relations that carry data (their signature check doesn't
+  include it). Version 2 contexts already require current peers; in version 1 contexts shared with
+  older peers, don't use `data`.
+
+Details: [`specs/004-relation-data/`](specs/004-relation-data/).
+
 ### 2026-10-05: contexts confirm, newcomers fast-forward, apps can add rules — BREAKING for mixed versions
 
 **Breaking**: in contexts created from now on, writers added after the creator **write without

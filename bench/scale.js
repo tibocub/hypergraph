@@ -1,6 +1,6 @@
 // Scale benchmark: how does one context behave with N file entities?
 //
-//   node bench/scale.js <N> [--api] [--sizes]
+//   node bench/scale.js <N> [--api] [--sizes] [--edge-data]
 //
 // Models a SwarmFS file entry the way it would actually be stored today:
 //
@@ -33,6 +33,9 @@ const hypercoreCrypto = require('hypercore-crypto')
 const { Hypergraph } = require('../index.js')
 
 const PER_DIR = 1000
+// --edge-data (spec 004): put { name, root, size } on each file's relation;
+// the joining peer then opens only the context and lists from edge data.
+const EDGE_DATA = process.argv.includes('--edge-data') || process.env.EDGE_DATA === '1'
 const BATCH = 1000
 
 // ── measurement helpers ──────────────────────────────────────────────────────
@@ -146,13 +149,19 @@ function refFor (i) {
 async function listDir (graph, ctx, dirId) {
   const t0 = now()
   const ids = []
-  for await (const edge of graph.edges(dirId, { direction: 'in', type: 'in', context: ctx })) ids.push(edge.from)
+  let named = 0
+  for await (const edge of graph.edges(dirId, { direction: 'in', type: 'in', context: ctx })) {
+    ids.push(edge.from)
+    // --edge-data: the listing's data is on the edge itself (spec 004).
+    if (EDGE_DATA && edge.data && JSON.parse(edge.data).name) named++
+  }
   const edgesMs = ms(t0)
   const t1 = now()
-  let named = 0
-  for (const id of ids) {
-    const c = await graph.getContent(id)
-    if (c && c.reference && c.reference.valid) named++
+  if (!EDGE_DATA) {
+    for (const id of ids) {
+      const c = await graph.getContent(id)
+      if (c && c.reference && c.reference.valid) named++
+    }
   }
   return { count: ids.length, named, edgesMs, contentMs: ms(t1), totalMs: ms(t0) }
 }
@@ -206,7 +215,14 @@ async function write (n, dir, api, withSizes) {
       for (let i = start; i < end; i++) {
         const file = batch.put({ type: 'file' })
         batch.putContentRef(file, refFor(i))
-        batch.relate({ from: file, to: dirIds[Math.floor(i / PER_DIR)], type: 'in', context: ctx })
+        const ref = refFor(i)
+        batch.relate({
+          from: file,
+          to: dirIds[Math.floor(i / PER_DIR)],
+          type: 'in',
+          context: ctx,
+          ...(EDGE_DATA ? { data: JSON.stringify({ name: `file-${i}.bin`, root: ref.digest.slice(7), size: ref.size }) } : {})
+        })
       }
       await batch.flush()
     }
@@ -288,7 +304,8 @@ async function fetchIndex (dir, port, keys, n) {
   // FETCH_ONLY=ctx|log: replicate just one half of the index (diagnostics).
   const only = process.env.FETCH_ONLY
   const context = await graph.openContext(keys.ctx)
-  const authorCore = only === 'ctx' ? { core: { length: 0, contiguousLength: 0 } } : await graph.openUserCore(keys.author)
+  // --edge-data joins with the context alone: listings come from edge data.
+  const authorCore = only === 'ctx' || EDGE_DATA ? { core: { length: 0, contiguousLength: 0 } } : await graph.openUserCore(keys.author)
   if (only === 'log') await context.close()
   global.__benchProbe = () => ({
     ctxApplied: context.base.length,
@@ -322,7 +339,7 @@ async function fetchIndex (dir, port, keys, n) {
   while (true) {
     rounds++
     await graph.update()
-    const ready = only === 'ctx'
+    const ready = only === 'ctx' || EDGE_DATA
       ? await graph.countEdgesIn(lastDir, 'in', { context: keys.ctx }) === lastDirSize
       : only === 'log'
         ? await graph.getContent(lastFile)
@@ -408,9 +425,11 @@ async function main () {
   }
 
   const n = Number(cmd)
-  if (!n) throw new Error('usage: node bench/scale.js <N> [--api] [--sizes]')
+  if (!n) throw new Error('usage: node bench/scale.js <N> [--api] [--sizes] [--edge-data]')
   const api = rest.includes('--api')
   const withSizes = rest.includes('--sizes')
+  // children read the mode from the environment
+  if (rest.includes('--edge-data')) process.env.EDGE_DATA = '1'
   const root = fs.mkdtempSync(path.join(process.env.BENCH_DIR || os.tmpdir(), `hg-scale-${n}-`)) // BENCH_DIR: where the stores go (1M needs ~15 GB)
   const aDir = path.join(root, 'a')
   const bDir = path.join(root, 'b')
@@ -418,7 +437,7 @@ async function main () {
 
   const out = path.join(__dirname, 'results')
   fs.mkdirSync(out, { recursive: true })
-  const resultFile = path.join(out, `scale-${n}${api ? '-api' : ''}.json`)
+  const resultFile = path.join(out, `scale-${n}${api ? '-api' : ''}${EDGE_DATA ? '-edge-data' : ''}.json`)
   const result = { n, write: null, seedReopenMs: null, fetch: null }
   // Saved after every phase, so a crash later on (a 1M join, say) does not
   // lose what was already measured.

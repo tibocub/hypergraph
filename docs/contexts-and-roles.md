@@ -135,6 +135,8 @@ await graph.openContext(ctxKey, { rules })
 
 - Return `true` to accept. Anything else, a throw, or a rejected promise rejects the event; apply
   carries on.
+- Relation events carry their `data` (spec 004), and edges from `reader.edges()` include theirs,
+  so rules can check listing data (formats, names unique in a folder).
 - `reader` is read-only and sees the index as it was just before the event, including earlier
   events of the same batch: `hasEdge(from, type, to)`, `edges(entityId, { direction, type,
   limit })`, `countIn(entityId, type)`, `countOut(entityId, type)`, `hasTag(entityId, tag)`.

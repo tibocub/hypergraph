@@ -61,7 +61,7 @@ rejected, so a hostile peer cannot block apply. See `src/content-ref.js`.
 ## Edge Indexes
 
 ```
-e:<from>:<type>:<createdAt>:<to> → { from, to, type, author, createdAt, deleted, value }
+e:<from>:<type>:<createdAt>:<to> → { from, to, type, author, createdAt, deleted, value, data }
 
 i:in:<to>:<type>:<createdAt>:<from> → { ref: <full e: key> }
 
@@ -76,6 +76,8 @@ cnt:out:<from>:<type> → { count }
 - `value` is an optional numeric field (weighted relations — e.g. a vote's +1/-1) present on
   the event since it's included in the signed digest; absent (`undefined`) on relations that
   never set it
+- `data` is the relation's optional app data (spec 004), returned with the edge in both
+  directions (`i:in` entries point at this `e:` entry), so a listing needs nothing else
 - The `er:` index enforces one active edge per (from, type, to) triple
 - Edge counts are incremented on create and decremented on delete (clamped at 0), accumulated
   in memory per apply chunk and written once per chunk

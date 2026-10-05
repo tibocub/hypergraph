@@ -357,7 +357,7 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   /** A signed relation/create event for `context`. */
-  #relationEvent (context, from, to, relationType, value) {
+  #relationEvent (context, from, to, relationType, value, data) {
     const deviceKeyPair = this.identity.deviceKeyPair
     const author = b4a.isBuffer(deviceKeyPair.publicKey)
       ? deviceKeyPair.publicKey.toString('hex')
@@ -373,6 +373,7 @@ module.exports = class Hypergraph extends ReadyResource {
       signature: null
     }
     if (typeof value === 'number') event.value = value
+    if (typeof data === 'string') event.data = data
 
     const digest = stableRelationHash(event, context.key ? context.key.toString('hex') : null)
     event.signature = hypercoreCrypto.sign(digest, deviceKeyPair.secretKey).toString('hex')
@@ -466,7 +467,7 @@ module.exports = class Hypergraph extends ReadyResource {
       const keyHex = Buffer.isBuffer(o.context) ? o.context.toString('hex') : o.context
       const context = contexts.get(keyHex)
       if (!byContext.has(keyHex)) byContext.set(keyHex, [])
-      byContext.get(keyHex).push(this.#relationEvent(context, idOf(o.from), idOf(o.to), o.relationType, o.value))
+      byContext.get(keyHex).push(this.#relationEvent(context, idOf(o.from), idOf(o.to), o.relationType, o.value, o.data))
     }
 
     for (const [keyHex, events] of byContext) {
@@ -720,7 +721,7 @@ module.exports = class Hypergraph extends ReadyResource {
     validateRelateOpts(opts)
 
     const context = await this.#getContext(opts.context)
-    const event = this.#relationEvent(context, opts.from, opts.to, opts.type || opts.relationType, opts.value)
+    const event = this.#relationEvent(context, opts.from, opts.to, opts.type || opts.relationType, opts.value, opts.data)
     const author = event.author
 
     await context.append(event)

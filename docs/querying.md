@@ -105,6 +105,24 @@ for await (const edge of graph.edges('post/1', { direction: 'in', type: 'reply' 
 Relations can carry an optional numeric `value` (e.g. a vote's +1/-1), included when present
 on the edge object returned here.
 
+### Data on Relations
+
+A relation can carry an app-chosen string (at most 4,096 bytes of UTF-8, signed with the relation),
+returned with the edge in both directions. Put what a listing needs there, and listing a folder is
+a context read only — a peer that joined by fast-forward never needs anyone's log for it:
+
+```js
+await graph.relate({ from: file.id, to: dir.id, type: 'in', context: ctx,
+  data: JSON.stringify({ name: 'song.mp3', root: '9f2c…', size: 4096 }) })
+
+for await (const e of graph.edges(dir.id, { direction: 'in', type: 'in', context: ctx })) {
+  const { name, size } = JSON.parse(e.data)
+}
+```
+
+To change it, `unrelate()` then `relate()` again (one `graph.batch()` can do both). App rules see
+`event.data` and existing edges' data, so they can enforce formats and uniqueness.
+
 ### Tag Queries
 
 ```js

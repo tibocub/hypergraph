@@ -66,7 +66,9 @@ guard, not just the encode/preencode sides.
   first by `createContext()`; honoured only from the creator, only once (spec 003). Older peers
   decode it as `{ type: undefined }` and ignore it, which is why mixed versions in one context
   are unsupported
-- `relation/create` - Create relation (optional `value` field for weighted relations)
+- `relation/create` - Create relation (optional `value` field for weighted relations; optional
+  `data` string, at most 4,096 bytes of UTF-8, appended after `value` and signed only when present,
+  so relations without data keep their old bytes and signatures — spec 004)
 - `relation/delete` - Delete relation
 - `tag/add` - Add tag
 - `tag/remove` - Remove tag

@@ -195,3 +195,30 @@ test('context-rules: a context recorded with an unknown version is refused', asy
   t.ok(interrupted && /unsupported context version 99/.test(interrupted), `status says so too: ${interrupted}`)
   await t.exception(context.append({ type: 'message', text: 'x', username: 'u', author: 'a', timestamp: 1 }), /unsupported context version 99/, 'and later appends are refused with the same reason')
 })
+
+test('context-rules: rules see relation data — "names are unique in a folder" (spec 004)', async (t) => {
+  const { graph } = await createGraph(t, 'rules-data')
+  const nameOf = (data) => { try { return JSON.parse(data).name } catch { return null } }
+  const rules = {
+    id: 'unique-names/v1',
+    async validate (event, reader) {
+      if (event.type !== 'relation/create' || event.relationType !== 'in') return true
+      const name = nameOf(event.data)
+      if (typeof name !== 'string' || name.length === 0) return false
+      const siblings = await reader.edges(event.to, { direction: 'in', type: 'in' })
+      return !siblings.some(e => nameOf(e.data) === name)
+    }
+  }
+  const ctx = await graph.createContext({ rules })
+  await graph.openContext(ctx, { rules })
+  const dir = await graph.put({ type: 'dir' })
+
+  const b = graph.batch()
+  for (const name of ['a.txt', 'b.txt', 'a.txt']) b.relate({ from: b.put({ type: 'file' }), to: dir.id, type: 'in', context: ctx, data: JSON.stringify({ name }) })
+  b.relate({ from: b.put({ type: 'file' }), to: dir.id, type: 'in', context: ctx }) // no data: no name
+  await b.flush()
+
+  const names = []
+  for await (const e of graph.edges(dir.id, { direction: 'in', type: 'in', context: ctx })) names.push(nameOf(e.data))
+  t.alike(names.sort(), ['a.txt', 'b.txt'], 'the duplicate and the nameless entry were rejected')
+})
