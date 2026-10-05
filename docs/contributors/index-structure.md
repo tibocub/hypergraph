@@ -146,6 +146,7 @@ meta:context → { version, rules, owner? }   # from the creator's context/init;
 meta:roles   → { version, roles: { role: [permission] }, members: { pubkey: role } }   # version 3
 w:m:<writerKeyHex>          → { member }   # which member a writer belongs to (version 3)
 w:k:<member>:<writerKeyHex> → {}           # a member's writers, to promote/demote them together
+inv:<inviteKeyHex> → { role, uses, used, revoked, author }   # invites (spec 006)
 ```
 
 ## Message and Pending Indexes (context view)

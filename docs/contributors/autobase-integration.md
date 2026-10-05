@@ -108,6 +108,14 @@ also mid-replay once it learns how far behind it is. Pausing a fresh base to for
 work: the system core does not learn its remote length while paused
 (`specs/003-fast-forward-contexts/research.md` R2).
 
+**Optimistic blocks and writer discovery (spec 006).** Contexts run Autobase with
+`optimistic: true`: a non-writer's block flagged optimistic reaches apply marked `optimistic`, and
+is applied only if apply calls `host.ackWriter()`. ContextBase acknowledges nothing but a valid
+`context/redeem`; every other non-writer block is skipped, as before. A peer only learns of a
+not-yet-writer's log through Autobase's wakeup protocol on the replication stream: Hypergraph
+owns one `ProtomuxWakeup`, passed as `wakeup` to every context, and `graph.replicate()` adds each
+stream to it (`store.replicate()` alone does not — verified, the minter never saw the redemption).
+
 `writerKeys()` lists members from Autobase's system table (`system.list()`, refreshed in
 `update()`, never during apply as Autobase requires), because `activeWriters` only includes a
 non-indexing writer once it has written something.

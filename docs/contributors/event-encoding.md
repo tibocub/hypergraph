@@ -71,6 +71,11 @@ guard, not just the encode/preencode sides.
 - `context/role` - Set (`role`) or remove (`role: ''`) a member's role in this context, signed by
   `author`; version 3 contexts
 - `context/upgrade` - The creator converts a version 1/2 context to version 3 (`version`, `owner`)
+- `context/invite` - Mint (`uses` > 0) or revoke (`uses: 0`) an invite: `inviteKey`, `role`,
+  `uses`, signed by `author` (spec 006)
+- `context/redeem` - Redeem an invite: `inviteKey`, `member`, `key` (the redeeming writer),
+  signed with the invite secret and by the member; usually appended by a not-yet-writer as an
+  Autobase optimistic block
 - `context/init` also carries an optional trailing `owner` (version 3)
 - `relation/create` - Create relation (optional `value` field for weighted relations; optional
   `data` string, at most 4,096 bytes of UTF-8, appended after `value` and signed only when present,

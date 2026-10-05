@@ -22,8 +22,8 @@ Tests first (encodings and apply: non-negotiable tier).
 
 ## Phase 3: Polish
 
-- [ ] T008 Docs: contexts-and-roles (invites), networking (`graph.replicate()` and writer discovery), event-encoding, index-structure, autobase-integration, README; CHANGELOG
-- [ ] T009 `npm test`, HyperBBS, hyperDNS
+- [X] T008 Docs: contexts-and-roles (invites), networking (`graph.replicate()` and writer discovery), event-encoding, index-structure, autobase-integration, README; CHANGELOG
+- [X] T009 `npm test`, HyperBBS, hyperDNS
 
 ## Phase 4 (later): US3 — read-scope invites
 

@@ -112,6 +112,37 @@ In version 3, the RoleBase is not consulted for anything in the context (it stil
 scopes and `graph.can()`). Apps that want one RoleBase shared by many contexts create them with
 `{ roles: 'rolebase' }` (version 2).
 
+### Invite Links
+
+A member allowed to grant a role can mint a link that grants it to whoever redeems it — no need
+to be online at that moment (spec 006):
+
+```js
+// Owner (or an admin, for mod/member invites)
+const link = await context.createInvite({ role: 'admin', uses: 1, keyPair })
+// → 'hypergraph://invite/<context key>/<secret>'
+
+// Anyone holding the link, connected to any peer of the context via graph.replicate()
+const ctx = await graph.redeemInvite(link) // resolves once this device is a writer with the role
+```
+
+How it works: the redeemer's device appends the redemption *before* being a writer (an Autobase
+optimistic block); every peer's apply checks it against the invite recorded in the context —
+proof of the secret, uses left, not revoked — and, if valid, makes the device a writer with the
+invite's role (indexing if the role does). `redeemInvite()` waits until that is confirmed, because
+two people can race for an invite's last use and only the confirmed history says who got it
+(~2 s measured). It rejects when the invite is used up, revoked, or invalid.
+
+- A link is a bearer secret: anyone holding it can redeem it up to `uses` times.
+  `context.revokeInvite(link, { keyPair })` stops it. `await context.invites()` lists them.
+- Minting obeys the role rules above, checked at minting time: an admin can invite mods and
+  members, only the owner can invite admins, nobody can invite an owner.
+- An invite never lowers a role someone already has.
+- No expiry: event times are claimed by their authors, so it couldn't be enforced against a
+  secret holder. Use `uses` and revocation.
+- Peers must replicate with `graph.replicate()` (or `HypergraphNetwork`).
+- Read access to encrypted (scoped) content by invite is planned separately.
+
 **Converting an older context**: its creator calls `await context.upgrade({ keyPair })`. From that
 point it is version 3 with the creator as owner, and every indexer except the creator's device
 keeps writing without indexing.

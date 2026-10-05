@@ -77,8 +77,10 @@ await graph.ready()
 const swarm = new Hyperswarm()
 
 swarm.on('connection', (conn, info) => {
-  // Replicate all cores in the store
-  store.replicate(conn)
+  // Replicate through the graph, not store.replicate(): graph.replicate()
+  // also carries Autobase's writer discovery, without which peers never learn
+  // of a writer they don't know yet - such as someone redeeming an invite.
+  graph.replicate(conn)
 })
 
 swarm.join(graph.discoveryKey, { server: true, client: true })
