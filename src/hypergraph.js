@@ -1119,6 +1119,12 @@ module.exports = class Hypergraph extends ReadyResource {
    */
   async update () {
     if (!this.opened) await this.ready()
+    // Give the event loop a turn first. An update() with nothing new now
+    // completes without any real I/O, so an app polling it in a loop would
+    // otherwise never let Node process incoming replication data or storage
+    // callbacks: live messages stalled until something else wrote to disk
+    // (test/brittle/replication/live-polling.js).
+    await new Promise(resolve => setImmediate(resolve))
     if (this.#roleBase) await this.#roleBase.update()
     if (this.#scopeBase) await this.#scopeBase.update()
 
@@ -1152,6 +1158,12 @@ module.exports = class Hypergraph extends ReadyResource {
           roleBase: this.#roleBase && this.#roleBase.key ? this.#roleBase.key.toString('hex') : null
         }),
         entitled: (scopeId, pubkeyHex) => this.#mayGrantScope(scopeId, pubkeyHex)
+      },
+      // Where a context remembers its index layout on this peer, so reading
+      // it never needs the network (test/brittle/replication/offline-reopen.js).
+      localLayout: {
+        get: (contextKeyHex) => this.#view ? this.#view.getContextLayout(contextKeyHex) : 0,
+        put: (contextKeyHex, layout) => this.#view ? this.#view.putContextLayout(contextKeyHex, layout) : null
       }
     }
   }

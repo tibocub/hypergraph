@@ -128,3 +128,30 @@ Listings are ~15% slower at 100k on a peer that holds everything (content is rea
 author's log), and faster on a fresh 1M peer (fewer, smaller index blocks to fetch). "First folder
 listable" depends mostly on when Autobase fast-forwards: measured 2.5–3.3 s at 10k on both the old
 and the new code, with an occasional 0.4 s run.
+
+## Chat and many-channel benchmarks (2026-10-06)
+
+Usage-shaped benchmarks for the scaling-v2 research (`specs/research/scaling-v2.md`, which has
+the full tables and what they mean).
+
+```
+node bench/chat.js <N> [--writers W] [--model edge|content] [--live M]
+node --expose-gc bench/channels.js <C> [--messages M] [--authors A]
+```
+
+- `chat.js`: one channel, W writers, N short messages (text on the relation, or entity + content
+  + relation). Reports write rate, live arrival between two members, and for a fresh peer: time
+  and bytes to the latest 50 messages, the oldest page, memory, disk, and a cold reopen offline
+  and online. `CHATLOG=1` traces each phase.
+- `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
+  memory, cold reopen.
+
+Headline numbers:
+
+| | result |
+|---|---|
+| newcomer, latest page, text on relation, 10k → 100k → 1M messages | 1.9 s → 1.2 s → 1.5 s, 0.7 MB each (flat) |
+| newcomer, latest page, text in author logs, 10k → 100k | 5.5 s → 44 s, 4.2 → 36 MB (grows) |
+| idle `update()`, 10 → 200 open channels | 8 → 121 ms (grows) |
+| memory per open channel | ~3 MB |
+| offline reopen after showing the latest page (100k, edge) | stuck |

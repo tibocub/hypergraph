@@ -1,0 +1,176 @@
+# Scaling v2: cost proportional to what a peer holds
+
+**Status**: research, 2026-10-06. Not a spec yet. Measurements: `bench/chat.js`,
+`bench/channels.js` (results at the end).
+
+## The goal, in one sentence
+
+Opening, reading and writing in a community should cost the same whether its history holds 10
+entries or 100 million: **cost follows what a peer holds and reads, not how old or big the
+community is.** "Infinitely scalable" then means: nobody has to hold everything; what is available
+is what someone online (a member or a helper server) still holds.
+
+## Diagnosis: where the cost comes from today
+
+Specs 002–006 made the existing design about 3–7× cheaper per entry, but four design choices
+still make cost grow with history:
+
+1. **One context is one history that grows forever.** Every event since the context was created
+   is in one Autobase: one ordered log, one view. Indexers process all of it; the view never
+   shrinks; there is no "old part" a peer can leave behind.
+2. **Everything goes through order agreement.** Posts, replies, votes and messages are all
+   ordered by the indexers. Only membership, roles and moderation need one agreed order;
+   a message needs an author, a time and a place.
+3. **The global index wants each author's whole log.** GraphView indexes every opened user core
+   from seq 0. The 8.8 min "full join" at 1M (`bench/README.md`) is a newcomer downloading and
+   indexing all 2M entries of the author's log. With relation data and the context alone, the
+   same 1M join is 1.2 s / 60 MB (spec 004): the cost is in the "replicate everything" path.
+4. **Every index entry is a permanent, signed log block** (~183 B overhead on disk each, never
+   deleted). GraphView is a private cache and does not need to be a log.
+
+## What comparable systems do
+
+| system | approach | lesson for hypergraph |
+|---|---|---|
+| IRC | servers keep no history | live chat works without history |
+| Matrix | full room history; joining large rooms was notoriously slow; added lazy loading of members and "sliding sync" (sync only what the client shows) | same wall; fixed by syncing the visible window |
+| Discord | messages stored by channel and time bucket | partition by time so "recent" stays small |
+| Nostr | per-author signed events kept by relays; clients query "kind, since, until, limit"; no shared order | messages need no order agreement; reads are time-window queries |
+| Bluesky (AT Protocol) | per-user signed repositories; separate indexing services (AppViews) build feeds | separate data (per author) from indexes (built by whoever needs them) |
+| Secure Scuttlebutt | replicated full feeds of everyone followed; onboarding took hours and GBs; moved to partial replication | the "replicate everything" trap |
+| Willow / Earthstar | entries addressed by subspace (author), path and time; sync only an area of interest; a newer entry can delete everything under its path | partial sync and forgetting built into the data model |
+
+Already in the Holepunch stack:
+- **blind-peer / blind-peering**: servers that keep Hypercores and Autobases available (the
+  "availability helpers" a community would run).
+- **HyperDB**: an indexed database that runs either on Hyperbee (shared) or on plain local
+  RocksDB (local only), the right home for private indexes.
+- **hyperbee2**: a rewrite of Hyperbee, "scalable P2P BTree", in progress.
+- Hypercore is natively sparse: a peer can hold any subset of a log.
+
+## Goals
+
+1. **Flat cost.** Time to the latest page, memory, and per-message write/apply cost stay flat
+   from 10k to 100M entries. Disk equals what the peer chose to keep.
+2. **Nothing grows forever in one piece.** Contexts become a chain of time segments (per period
+   or per N events). Old segments are closed, fetched only on scrollback, and can be dropped.
+3. **Order agreement only where needed.** A small control log per community (members, roles,
+   moderation, list of segments) that every member keeps in full. Content lives in authors' signed
+   logs plus small per-segment indexes.
+4. **Local indexes in a local database** (deletable, compactable, no log overhead). Shared
+   indexes only per segment, to make joining fast.
+5. **Replication is a setting, `auto` by default.**
+   - `replicate: 'all'` — hold everything (small communities: availability matters more than
+     disk; everyone is a backup).
+   - `replicate: 'sparse'` — hold what you read, plus a recent window (large communities).
+   - `replicate: 'auto'` (default) — hold everything while the community's projected size per
+     member fits a disk budget (configurable, e.g. a share of free disk or a fixed MB), switch to
+     sparse (keeping the most recent part that fits) when it doesn't. Decided per community from
+     sizes the peer can see (segment lengths and byte lengths), re-evaluated as it grows.
+6. **Forgetting is a feature.** Per-peer retention (e.g. keep 30 days); "available" = held by
+   someone online; communities run blind peers with longer retention for what matters.
+7. **Moderation works on partial data.** Bans, hides and roles live in the control log, which is
+   always complete, so a peer holding only today's messages still applies them.
+8. **Offline-first holds.** What a peer has shown must stay readable offline after a restart
+   (today it doesn't; see findings).
+9. **The easy API stays.** `put`, `relate`, `query`, invites keep working; segments, retention
+   and replication mode are options with sensible defaults.
+
+## Measuring before redesigning
+
+New benchmark `bench/chat.js` (one channel, W writers, N short messages; two message models:
+text on the relation, or entity + content + relation). It reports, per history size:
+write rate, live arrival time between two members, a newcomer's time and bytes to the latest
+page, the oldest page, memory, disk, and cold reopen offline and online.
+
+Planned next: many contexts per peer (a community with hundreds of channels), many writers per
+context (10 → 100+), a forum shape (threads, replies, votes), and a long-running peer's growth.
+
+### Findings so far (2026-10-06, Windows 10, 16 GB, one machine)
+
+**Chat channel** (`bench/chat.js`, 10 writers, owner is the only indexer, ~85-byte messages):
+
+| | 10k edge | 100k edge | 10k content | 100k content |
+|---|---|---|---|---|
+| newcomer: latest 50 messages shown | 1.9 s | 1.2 s | 5.5 s | **44 s** |
+| newcomer: bytes downloaded by then | 0.73 MB | 0.71 MB | 4.2 MB | **36 MB** |
+| newcomer: disk / peak memory | 5 MB / 192 MB | 5 MB / 139 MB | 20 MB / 261 MB | 128 MB / 363 MB |
+| newcomer: oldest page | 49 ms | 75 ms | 50 ms | 66 ms |
+| newcomer: cold reopen, offline | 151 ms | **stuck** | 400 ms | 274 ms |
+| live: arrival between two members, p50 / p95 | 24 / 52 ms | 24 / 40 ms | 31 / 97 ms | 28 / 38 ms |
+| holder of everything (owner): disk | 41 MB | 215 MB | 30 MB | 307 MB |
+| owner: reopen | 0.5 s | 0.8 s | 0.2 s | 1.0 s |
+
+("edge" = text on the relation; "content" = entity + content + relation, text in the author's log.)
+
+**1M messages** (edge model, 2 writers, 21 min to write at ~780 messages/s): newcomer shows the
+latest page in **1.5 s after downloading 0.74 MB** (170 MB memory, 13 MB disk); oldest page 119 ms;
+offline reopen **stuck** again; the owner holding everything: 2.36 GB on disk, 1.5 s to reopen.
+(Live arrival is not meaningful in this run: with 2 writers the receiver is the sender.) So with
+the text on the relation, a newcomer's cost is flat from 10k to 1M.
+
+**Many channels** (`bench/channels.js`, one member owning C channels of 200 messages):
+
+| channels | 10 | 50 | 200 |
+|---|---|---|---|
+| idle `update()` (nothing new), p50 | 8 ms | 34 ms | **121 ms** |
+| live arrival in one channel, p50 | 17 ms | 44 ms | **138 ms** |
+| memory with all open | 173 MB | 282 MB | **625 MB** |
+| cold reopen of all channels | 0.4 s | 1.1 s | 4.3 s |
+| first page after reopen | 22 ms | 12 ms | 14 ms |
+
+**Many members** (`bench/members.js`, one channel, M members added as writers who never write,
+200 messages):
+
+| members | 10 | 100 | 1,000 | 5,000 |
+|---|---|---|---|---|
+| owner: idle `update()` for this one channel | 0.8 ms | 1.2 ms | 8 ms | **39 ms** |
+| owner: memory | 99 MB | 115 MB | 253 MB | **447 MB** |
+| newcomer: latest page | 0.43 s | 0.49 s | 0.46 s | 0.45 s |
+| newcomer: bytes | 0.17 MB | 0.25 MB | 0.33 MB | 0.34 MB |
+| adding one member | 7 ms | 5 ms | 5 ms | 5 ms |
+
+**What this says**
+
+1. **Reading recent messages is already flat when the text is on the relation**: same time and
+   bytes at 10k, 100k and 1M (fast-forward + lazy blocks). The design direction holds; the defaults
+   don't use it.
+2. **Text in authors' logs makes a newcomer's cost grow with history** (×8 time, ×9 bytes from 10k
+   to 100k): GraphView indexes each opened author log from the start. This is how most apps write
+   today (`put` + `putContent` + `relate`).
+3. **Idle cost grows with the number of open channels** (~0.6 ms per channel per `update()`, and
+   live messages wait for it): every `update()` asks every context for news, re-reads its full
+   member list, and scans its moderation queue, whether anything arrived or not. The member-list
+   re-read also grows with members.
+4. **Memory ~3 MB per open channel**: a member of 1,000 channels would need ~3 GB.
+5. **A full holder pays ~2–3 KB of disk per message** (215 MB at 100k, so ~200 GB at 100M): fine for
+   a helper server, not for every phone. Hence `replicate: 'auto'`.
+6. **Offline reopen can lose the latest page** (100k edge): the page was shown, then after a restart
+   with no peer it never loaded. The view's newest root had moved on after the read and was never
+   downloaded. Violates goal 8.
+7. **Live arrival is fine at chat scale** when few channels are open (p50 ~25 ms, p95 < 100 ms).
+8. **Members cost memory and idle time even when silent**: ~70 KB of memory per member on a peer
+   that applies the context, and every `update()` re-reads the whole member list (39 ms at 5,000
+   members, for one channel). A 50,000-member community would need ~3.5 GB on every applying peer.
+   A newcomer is unaffected (0.45 s, 0.34 MB at 5,000).
+9. Writing: 10 writers in one process reach ~120–140 messages/s in total, each peer applying
+   everyone's messages; a single bulk writer does ~1,800 files/s. Needs a per-peer measurement on
+   separate machines before reading too much into it.
+
+### Quick fixes applied (2026-10-06, on the current design)
+
+| finding | fix | after |
+|---|---|---|
+| 3. idle cost grows with open channels | `update()` touches only what changed; members re-read only on change; moderation queue scanned only when non-empty | 200 channels: idle `update()` 121 → 0.8 ms, live arrival 138 → 13 ms, memory 625 → 348 MB |
+| 8. member list re-read each update | same | 5,000 members: idle `update()` 39 → 0 ms (memory per member unchanged: it's Autobase's) |
+| 6. offline reopen stuck | a context's index layout remembered locally; control records prefetched when the view grows | 100k chat: offline reopen stuck → 121 ms |
+
+Found on the way: once an idle `update()` did no I/O, an app polling it in a tight loop starved
+replication (live messages stalled until something else wrote to disk). `update()` now yields to
+the event loop once.
+
+Still open from the findings: text in authors' logs (2), memory per channel and per member (4, 8),
+full-holder disk (5): these need the v2 design.
+
+Still to measure: a
+forum shape (threads, votes), a long-running peer's growth, many writers on separate machines.

@@ -173,8 +173,12 @@ module.exports = class GraphView extends ReadyResource {
       if (await this.#indexUserCore(keyHex, core, lastSeq, currentLength)) changed = true
     }
 
-    // Context autobases update themselves via their apply function
-    // We just need to ensure they're synced
+    // Contexts apply on their own: Autobase applies as data arrives, and
+    // Hypergraph.update() and local appends call context.update(). Here we
+    // only note which context views grew, for the 'change' signal. This
+    // runs after every local write too, so it must cost nothing for a
+    // context that didn't change: no context.update(), no write
+    // (bench/channels.js: 200 idle channels cost 121 ms per update before).
     for (const [, context] of this.#contexts) {
       if (!context.opened) continue
 
@@ -190,19 +194,12 @@ module.exports = class GraphView extends ReadyResource {
         this.#contextCheckpoints.set(viewKeyHex, v ? L.decodeCount(v.value) : -1)
       }
 
-      const lastIndexedLen = this.#contextCheckpoints.get(viewKeyHex)
       const viewLen = viewCore.length
-      const baseLen = context.core?.length ?? -1
+      if (viewLen === this.#contextCheckpoints.get(viewKeyHex)) continue
 
-      // Skip update if Autobase core and view core are in sync and we already indexed this length.
-      if (baseLen !== -1 && viewLen === baseLen && viewLen === lastIndexedLen) continue
-
-      await context.update()
-
-      const nextViewLen = viewCore.length
-      if (nextViewLen !== lastIndexedLen) changed = true
-      this.#contextCheckpoints.set(viewKeyHex, nextViewLen)
-      await this.#bee.put(metaKey, L.encodeCount(nextViewLen))
+      changed = true
+      this.#contextCheckpoints.set(viewKeyHex, viewLen)
+      await this.#bee.put(metaKey, L.encodeCount(viewLen))
     }
 
     return changed
@@ -731,6 +728,29 @@ module.exports = class GraphView extends ReadyResource {
       const node = await this.getNode(id)
       if (node) yield node
     }
+  }
+
+  /**
+   * The index layout recorded locally for a context, or 0 if unknown.
+   *
+   * @param {string} contextKeyHex
+   * @returns {Promise<number>}
+   */
+  async getContextLayout (contextKeyHex) {
+    if (!this.opened) await this.ready()
+    const entry = await this.#bee.get(L.contextLayoutKey(contextKeyHex))
+    return entry ? L.decodeCount(entry.value) : 0
+  }
+
+  /**
+   * Record a context's index layout locally (see getContextLayout()).
+   *
+   * @param {string} contextKeyHex
+   * @param {number} layout
+   */
+  async putContextLayout (contextKeyHex, layout) {
+    if (!this.opened) await this.ready()
+    await this.#bee.put(L.contextLayoutKey(contextKeyHex), L.encodeCount(layout))
   }
 
   /**

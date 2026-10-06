@@ -68,9 +68,14 @@ class ContextBase extends ReadyResource {
   #applyIndex // the index layout apply is writing with (src/index-layout/context.js)
   #index // the index layout readers use, once this view's record says which
   #scopes // the graph's ScopeBase/RoleBase, for invites that ask for a scope (spec 006 US3)
+  #localLayout // where this peer remembers the context's index layout, outside the shared view
+  #prefetchedAt = -1 // view length when the control records were last fetched
   #members // every member the system listed at the last update(), see writerKeys()
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
+  #membersDirty = true // the member list may have changed since writerKeys() last read it
+  #membersCount = -1 // the system's member count when it was last read
+  #moderationQueued = true // pending moderation may exist (checked once after open)
   #rules // app rules { id, validate } or null (spec 003, US3)
   #wakeup // shared writer-discovery protocol from Hypergraph, or null (spec 006)
   #interrupted // why this context stopped applying, or null
@@ -108,6 +113,7 @@ class ContextBase extends ReadyResource {
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#roleBase = opts.roleBase || null
     this.#scopes = opts.scopes || null
+    this.#localLayout = opts.localLayout || null
     this.#writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
     this.#base = null
     this.#viewBee = null
@@ -163,7 +169,7 @@ class ContextBase extends ReadyResource {
     // Let Autobase handle local writer creation automatically
     // Closed mode enforcement is at the application level via role checks, not at Autobase level
     this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
-    this.#base.on('fast-forward', () => { this.#fastForwards++ })
+    this.#base.on('fast-forward', () => { this.#fastForwards++; this.#membersDirty = true })
     // Autobase closes the base after an interrupt (unknown context version,
     // rules mismatch): remember why, so status() and openContext() can say.
     this.#base.on('interrupt', (reason) => {
@@ -222,7 +228,17 @@ class ContextBase extends ReadyResource {
     return this.#viewBee
   }
 
-  async #applyView (batch, rawView, host) {
+  async #applyView (batch, rawView, rawHost) {
+    // Every membership change goes through these two calls: noting it lets
+    // update() skip re-reading the member list when nothing changed
+    // (bench/members.js: the re-read cost 39 ms per update at 5,000 members).
+    const host = {
+      addWriter: (key, opts) => { this.#membersDirty = true; return rawHost.addWriter(key, opts) },
+      removeWriter: (key) => { this.#membersDirty = true; return rawHost.removeWriter(key) },
+      ackWriter: (key) => rawHost.ackWriter(key),
+      removeable: (key) => rawHost.removeable(key),
+      interrupt: (reason) => rawHost.interrupt(reason)
+    }
     // Index writes go through a Hyperbee batch: one view append per chunk of
     // `tuning.INDEX_BATCH` events instead of one per entry (research R1/R2).
     // Chunked rather than one batch per apply call, so memory stays bounded
@@ -685,6 +701,7 @@ class ContextBase extends ReadyResource {
 
     const allowed = await this.#isModerationAllowed(event)
     if (allowed === null) {
+      this.#moderationQueued = true
       await view.put(`m:p:${eventId}`, {
         eventId,
         coreKey: coreKeyHex,
@@ -1114,6 +1131,9 @@ class ContextBase extends ReadyResource {
   async #refreshMembers () {
     const system = this.#base && this.#base.system
     if (!system || typeof system.list !== 'function') return
+    // Cleared before reading: a change applied meanwhile sets it again.
+    this.#membersDirty = false
+    this.#membersCount = system.members
     const members = []
     try {
       for await (const { key, value } of system.list()) {
@@ -1122,6 +1142,7 @@ class ContextBase extends ReadyResource {
       }
     } catch (err) {
       safetyCatch(err)
+      this.#membersDirty = true
       return
     }
     this.#members = members
@@ -1767,11 +1788,28 @@ class ContextBase extends ReadyResource {
    */
   async #readIndex () {
     if (this.#index) return this.#index
+    const keyHex = this.key.toString('hex')
+
+    // Known locally: no read of the shared view at all. On a peer that holds
+    // only part of the view, the record's path at the latest version may not
+    // be held, and offline such a read waits forever, although the page the
+    // app wants is held.
+    const known = this.#localLayout ? await this.#localLayout.get(keyHex) : 0
+    if (known && layoutFor({ layout: known })) {
+      this.#index = layoutFor({ layout: known })
+      return this.#index
+    }
+
     const view = this.#base.view
     const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
+    // No record in a non-empty view: a context from before records, layout 1
+    // for good. (A new context's record is in its very first apply.)
+    const settled = !!entry || (view && view.core && view.core.length > 0)
     const index = layoutFor(entry && entry.value)
-    if (entry && index) this.#index = index
-    return index || layoutFor(null)
+    if (!settled || !index) return index || layoutFor(null)
+    this.#index = index
+    if (this.#localLayout) await Promise.resolve(this.#localLayout.put(keyHex, index.id)).catch(safetyCatch)
+    return index
   }
 
   /**
@@ -1877,14 +1915,30 @@ class ContextBase extends ReadyResource {
   async update () {
     if (this.#interrupted) return
     await this.#base.update()
-    await this.#refreshMembers()
+    // Only re-read the member list when it may have changed: an apply
+    // added or removed a writer, a fast-forward replaced the system, or the
+    // system's own member count moved (a reorder can drop a writer without
+    // any call we see).
+    const system = this.#base.system
+    if (this.#membersDirty || (system && system.members !== this.#membersCount)) await this.#refreshMembers()
 
     const view = this.#viewBee || this.#base?.view
     if (!view) return
 
+    // On a peer holding only part of the view, fetch the small control
+    // records whenever the view grew, while a peer is likely reachable, so
+    // role checks and the record stay readable offline. Not awaited.
+    if (view.core && view.core.length !== this.#prefetchedAt && view.core.contiguousLength < view.core.length) {
+      this.#prefetchedAt = view.core.length
+      for (const key of [CONTEXT_RECORD_KEY, ROLES_KEY]) view.get(key).catch(safetyCatch)
+    }
+
+    if (!this.#moderationQueued) return
+
     try {
       await this.#drainPendingModeration(view)
     } catch (err) {
+      this.#moderationQueued = true // try again next time
       if (err && err.code === 'SESSION_NOT_WRITABLE') return
       throw err
     }
@@ -1903,6 +1957,8 @@ class ContextBase extends ReadyResource {
 
     if (!registry) return
 
+    // Cleared before the scan: anything queued meanwhile sets it again.
+    this.#moderationQueued = false
     const stream = view.createReadStream({ gte: 'm:p:', lt: 'm:p:' + '\uffff' })
     for await (const entry of stream) {
       const v = entry.value

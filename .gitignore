@@ -17,3 +17,4 @@ bench/results
 # generated on every /speckit-* invocation, not something to commit.
 __pycache__/
 *.pyc
+bench/tmp/
