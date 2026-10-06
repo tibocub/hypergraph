@@ -71,10 +71,10 @@ big sizes with few processes, one at a time).
 
 - [X] T025 Test `test/brittle/v2/offline.js`: a page shown, then a restart with no peer: `latest()` shows it again in under 1 s; scrollback to a segment never fetched reports it unavailable without waiting forever
 - [X] T026 ~~Implement `src/v2/local.js` (RocksDB: shown pages per segment, budget decisions) and use it in the reader when peers are unreachable~~ not needed: T025 passed without it (research R6, revised); SC-007 measured: 3 ms in the test, 0.2–0.7 s in `bench/v2-chat.js`
-- [ ] T027 [P] Write `docs/v2-prototype.md` (what it is, how it differs from v1, how to run it, measured numbers, open questions incl. compaction FR-010); link it from `README.md` and `docs/` index
-- [ ] T028 [P] Update `specs/research/scaling-v2.md` with the v1 vs v2 comparison table; `bench/README.md` with v2 results; one dated `CHANGELOG.md` entry ("prototype, unstable")
-- [ ] T029 Run `npm test`, HyperBBS and hyperDNS suites (SC-009)
-- [ ] T030 Decide, from the numbers: compaction by archivers (FR-010) now, later, or not needed; record the decision in research.md
+- [X] T027 [P] Write `docs/v2-prototype.md` (what it is, how it differs from v1, how to run it, measured numbers, open questions incl. compaction FR-010); link it from `README.md` and `docs/` index
+- [X] T028 [P] Update `specs/research/scaling-v2.md` with the v1 vs v2 comparison table; `bench/README.md` with v2 results; one dated `CHANGELOG.md` entry ("prototype, unstable")
+- [X] T029 Run `npm test`, HyperBBS and hyperDNS suites (SC-009)
+- [X] T030 Decide, from the numbers: compaction by archivers (FR-010) now, later, or not needed; record the decision in research.md
 
 ## Dependencies & Execution Order
 

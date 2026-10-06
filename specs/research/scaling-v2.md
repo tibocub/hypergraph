@@ -179,6 +179,18 @@ forum shape (threads, votes), a long-running peer's growth, many writers on sepa
 
 ### v2 prototype measured (2026-10-06, `specs/007-scaling-v2-prototype`)
 
+Summary against v1 (details below and in the tables above):
+
+| | v1 | v2 |
+|---|---|---|
+| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (edge); 44 s, 36 MB at 100k (content) | 0.61 / 0.69 / 0.67 s, 412 / 455 / 490 KB at 10k / 1M / 10M |
+| channel write throughput | ~300 msg/s (one indexer) | ~9,300 msg/s posted by 100 writers, all delivered |
+| live arrival p50 / p95 | 24–34 / 40–159 ms | 2–14 / 20–23 ms |
+| full holder's disk | ~2–3 KB per message | ~211 B per message |
+| silent members | ~70 KB memory each, every applying peer | nothing |
+| idle, followed channels | 0.8 ms per `update()` at 200 channels (after fixes) | 0 ms CPU, 0 bytes per 10 s |
+| offline restart, shown page | 121 ms (after a fix) | 3 ms – 0.7 s |
+
 `bench/v2-chat.js`: one channel, history written in bulk (10,000 messages per one-hour segment,
 50 active authors per segment out of 1,000), served by the owner, who keeps the roster. A fresh
 peer then reads it. Same machine as above; one run at a time, 3–4 processes.

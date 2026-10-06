@@ -103,6 +103,7 @@ fast-forward joins ([spec 003](specs/003-fast-forward-contexts/)), data on relat
 - [Contexts and Roles](docs/contexts-and-roles.md) - Collaborative contexts, write modes, role-based access control
 - [Networking](docs/networking.md) - Replication patterns, Hyperswarm integration, what joining downloads
 - [Querying](docs/querying.md) - Query API, edges and their data, indexes
+- [v2 prototype](docs/v2-prototype.md) - Unstable `hypergraph/v2`: communities whose cost follows what a member reads and holds, with measurements
 - [Benchmarks](bench/README.md) - How to measure, and every result so far
 - [Scaling study](specs/research/scaling-study.md) - Where the bytes and time go, what is left to do
 - [Glossary](docs/glossary.md) - P2P/Holepunch terminology explained
