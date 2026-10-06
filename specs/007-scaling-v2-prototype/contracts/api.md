@@ -48,9 +48,12 @@ const page = await community.latest(channelId, { limit = 50 })
 
 const older = await community.before(channelId, { t, limit = 50 })   // scrollback
 
-const stop = community.follow(channelId, (message) => {})            // live, newest only
+const stop = community.follow(channelId, (message) => {}, { pollMs = 500 })   // live, newest only
 stop()
 ```
+
+`follow` re-reads the rosters as soon as one grows (an author's first post in a segment), and
+also every `pollMs` (a keeper that joined later has a roster nobody watches yet).
 
 Order: by `t`, then author key, then seq (identical on every peer). Messages from banned authors
 after their ban and messages claiming a time more than 5 minutes ahead are left out; hidden messages
@@ -61,4 +64,9 @@ come back with `hidden: true` and no text.
 ```js
 await community.stats()
 // { openLogs, rosterKeepers, heldBytes, budget, mode, controlLength }
+
+await community.postAs(identity, channelId, text)   // post as another identity through this peer
 ```
+
+`postAs` exists so one benchmark process can post as many authors (same log and roster entry as
+that identity's own `post()`); prototype only.

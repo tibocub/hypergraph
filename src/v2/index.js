@@ -458,7 +458,7 @@ class Community extends ReadyResource {
    *
    * @returns {() => void} stop
    */
-  follow (channel, onmessage) {
+  follow (channel, onmessage, opts = {}) {
     const me = toHex(this.#identity.keyPair.publicKey)
     const watched = new Map() // log hex -> { author, next, log, onappend, range }
     let stopped = false
@@ -479,6 +479,11 @@ class Community extends ReadyResource {
     }
 
     let scanning = false
+    let rescan = false
+    // A roster that grows means someone may have posted for the first time
+    // in this segment: scan right away instead of waiting for the poll.
+    const hooked = new Set()
+    const onroster = () => scan().catch(safetyCatch)
     const watch = async (e, first) => {
       const log = await this.#log(e.log)
       if (first) await within(log.update({ wait: true }).catch(safetyCatch), 2000)
@@ -495,11 +500,17 @@ class Community extends ReadyResource {
     const scan = async () => {
       // One scan at a time (the timer would otherwise overlap a slow one and
       // watch the same author twice); new authors are set up in parallel.
-      if (stopped || scanning) return
+      if (stopped) return
+      if (scanning) { rescan = true; return } // once this one ends
       scanning = true
       try {
         const record = this.channel(channel)
         if (!record) return
+        for (const roster of (await this.#keeperRosters(channel)).values()) {
+          if (hooked.has(roster)) continue
+          hooked.add(roster)
+          roster.core.on('append', onroster)
+        }
         const seg = segmentOf(Date.now(), record.segmentMs)
         const fresh = []
         for (const s of [seg - 1, seg]) {
@@ -509,20 +520,27 @@ class Community extends ReadyResource {
           }
         }
         const first = initial
+        initial = false
         for (const e of fresh) watched.set(e.log, null) // claimed
         await Promise.all(fresh.map(e => watch(e, first).catch(err => { watched.delete(e.log); safetyCatch(err) })))
       } finally {
         scanning = false
+        if (rescan && !stopped) {
+          rescan = false
+          scan().catch(safetyCatch)
+        }
       }
     }
 
-    scan().then(() => { initial = false }, safetyCatch)
-    const timer = setInterval(() => scan().catch(safetyCatch), 500)
+    scan().catch(safetyCatch)
+    // Still polled: a keeper that joins later has a roster nobody hooked yet.
+    const timer = setInterval(() => scan().catch(safetyCatch), opts.pollMs || 500)
     if (timer.unref) timer.unref()
     const stop = () => {
       if (stopped) return
       stopped = true
       clearInterval(timer)
+      for (const roster of hooked) roster.core.off('append', onroster)
       for (const w of watched.values()) {
         if (!w) continue
         w.log.core.off('append', w.onappend)

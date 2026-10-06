@@ -2,6 +2,7 @@
 // at 10k and 10M messages?
 //
 //   node bench/v2-chat.js <N> [--active A] [--pool P] [--per-segment S] [--segment-ms MS] [--live L]
+//                             [--writers W] [--procs K] [--seconds D] [--rate R]
 //
 // History is generated in bulk (research R9): S messages per segment, from A
 // authors active in it (drawn from a pool of P), written straight into the
@@ -9,6 +10,9 @@
 //   seed     — reopens the host store and serves the community
 //   newcomer — a fresh peer: latest page (time, bytes, memory, open logs),
 //              one segment back, restart offline, live arrival from the host.
+//   writers  — K processes posting as W authors in all (W/K each, through
+//              postAs) for D seconds, R messages/s per author (0: as fast as
+//              they can); the newcomer follows: throughput and arrival.
 // Few processes, below-normal priority (CLAUDE.md on machine load).
 
 const path = require('path')
@@ -138,9 +142,65 @@ async function seed (dir, key, channel) {
   })
 }
 
-// ── newcomer ─────────────────────────────────────────────────────────────────
-async function newcomer (dir, port, key, channel, lastMessage, live) {
+// ── writers: K processes posting as W authors in all ───────────────────────
+async function writer (dir, seedPort, key, channel, from, count) {
   const say = (m) => process.stdout.write(JSON.stringify(m) + '\n')
+  const store = new Corestore(dir)
+  const community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key })
+  await community.ready()
+  const toSeed = net.connect(seedPort, '127.0.0.1')
+  const s0 = community.replicate(true)
+  s0.pipe(toSeed).pipe(s0)
+  s0.on('error', () => {})
+  toSeed.on('error', () => {})
+  // The newcomer connects here to fetch these authors' logs.
+  const server = net.createServer((socket) => {
+    const s = community.replicate(false)
+    s.pipe(socket).pipe(s)
+    s.on('error', () => {})
+    socket.on('error', () => {})
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  while (!community.channel(channel) || community.keepers(channel).length === 0) { await community.update(); await sleep(20) }
+  const authors = []
+  for (let i = from; i < from + count; i++) authors.push({ i, identity: identityOf(`writer-${i}`) })
+  say({ type: 'ready', port: server.address().port })
+
+  let buf = ''
+  process.stdin.on('data', async (d) => {
+    buf += d
+    let i
+    while ((i = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, i)
+      buf = buf.slice(i + 1)
+      if (!line.trim()) continue
+      const cmd = JSON.parse(line)
+      if (cmd.type !== 'go') continue
+      const deadline = Date.now() + cmd.seconds * 1000
+      const gap = cmd.rate > 0 ? 1000 / cmd.rate : 0
+      let posted = 0
+      const t0 = now()
+      // One loop per author: each appends to its own log, nothing shared.
+      await Promise.all(authors.map(async (a, k) => {
+        if (gap) await sleep((k / authors.length) * gap) // spread the starts
+        let seq = 0
+        while (Date.now() < deadline) {
+          const started = Date.now()
+          await community.postAs(a.identity, channel, `tp ${a.i} ${seq++} ${Date.now()}`)
+          posted++
+          if (gap) await sleep(Math.max(0, gap - (Date.now() - started)))
+          else if (seq % 64 === 0) await new Promise(setImmediate) // let replication run
+        }
+      }))
+      say({ type: 'posted', posted, ms: Math.round(ms(t0)) })
+    }
+  })
+}
+
+// ── newcomer ─────────────────────────────────────────────────────────────────
+async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts, tp) {
+  const say = (m) => process.stdout.write(JSON.stringify(m) + '\n')
+  const next = stdinReader()
   const startRss = rss()
   let store = new Corestore(dir)
   let community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key })
@@ -190,6 +250,57 @@ async function newcomer (dir, port, key, channel, lastMessage, live) {
     stop()
   }
 
+  // Throughput: W authors post at once from other processes.
+  let throughput = null
+  if (writerPorts.length) {
+    const sockets = writerPorts.map((p) => {
+      const so = net.connect(p, '127.0.0.1')
+      so.on('data', (d) => { bytes += d.length })
+      const st = community.replicate(true)
+      st.pipe(so).pipe(st)
+      st.on('error', () => {})
+      so.on('error', () => {})
+      return so
+    })
+    const seen = new Set()
+    const lat = []
+    let lastArrival = 0
+    const stop = community.follow(channel, (m) => {
+      const match = /^tp (\d+) (\d+) (\d+)$/.exec(m.text || '')
+      if (!match) return
+      const id = `${match[1]}:${match[2]}`
+      if (seen.has(id)) return
+      seen.add(id)
+      lastArrival = Date.now()
+      lat.push({ sent: Number(match[3]), ms: lastArrival - Number(match[3]) })
+    })
+    await sleep(1500)
+    const b0 = bytes
+    const t3 = Date.now()
+    say({ type: 'tp-go', seconds: tp.seconds, rate: tp.rate })
+    const { posted, postMs } = await next('tp-total')
+    // Whatever is still in flight: until everything arrived, or 15 s of nothing new.
+    while (seen.size < posted && Date.now() - Math.max(lastArrival, t3 + postMs) < 15000) await sleep(50)
+    stop()
+    for (const so of sockets) so.destroy()
+    throughput = {
+      writers: tp.writers,
+      procs: writerPorts.length,
+      seconds: tp.seconds,
+      rate: tp.rate,
+      posted,
+      postedPerSec: Math.round(posted / (postMs / 1000)),
+      delivered: seen.size,
+      deliveredPerSec: Math.round(seen.size / ((Math.max(lastArrival, t3 + 1) - t3) / 1000)),
+      p50: Math.round(pct(lat.map(x => x.ms), 0.5)),
+      p95: Math.round(pct(lat.map(x => x.ms), 0.95)),
+      // After the first 3 s: authors already found through the roster.
+      steadyP50: Math.round(pct(lat.filter(x => x.sent >= t3 + 3000).map(x => x.ms), 0.5)),
+      steadyP95: Math.round(pct(lat.filter(x => x.sent >= t3 + 3000).map(x => x.ms), 0.95)),
+      bytes: bytes - b0
+    }
+  }
+
   socket.destroy()
   await community.close()
   await store.close()
@@ -209,8 +320,33 @@ async function newcomer (dir, port, key, channel, lastMessage, live) {
   await store.close()
 
   const got = arrivals.filter(x => x !== Infinity)
-  say({ type: 'result', result: { latest, scrollback, disk, offline, live: live ? { sent: live, lost: live - got.length, p50: Math.round(pct(got, 0.5)), p95: Math.round(pct(got, 0.95)) } : null } })
+  say({ type: 'result', result: { latest, scrollback, disk, offline, live: live ? { sent: live, lost: live - got.length, p50: Math.round(pct(got, 0.5)), p95: Math.round(pct(got, 0.95)) } : null, throughput } })
   process.exit(0)
+}
+
+// Messages from the orchestrator, one JSON per line: next(type) waits for one.
+function stdinReader () {
+  const queue = []
+  const waiters = []
+  let buf = ''
+  process.stdin.on('data', (d) => {
+    buf += d
+    let i
+    while ((i = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, i)
+      buf = buf.slice(i + 1)
+      if (!line.trim()) continue
+      const msg = JSON.parse(line)
+      const w = waiters.findIndex(x => x.type === msg.type)
+      if (w !== -1) waiters.splice(w, 1)[0].resolve(msg)
+      else queue.push(msg)
+    }
+  })
+  return (type) => {
+    const i = queue.findIndex(m => m.type === type)
+    if (i !== -1) return Promise.resolve(queue.splice(i, 1)[0])
+    return new Promise(resolve => waiters.push({ type, resolve }))
+  }
 }
 
 // ── orchestration ────────────────────────────────────────────────────────────
@@ -256,7 +392,8 @@ async function main () {
     process.exit(0)
   }
   if (cmd === 'seed') return seed(rest[0], rest[1], rest[2])
-  if (cmd === 'newcomer') return newcomer(rest[0], Number(rest[1]), rest[2], rest[3], JSON.parse(rest[4]), Number(rest[5]))
+  if (cmd === 'newcomer') return newcomer(rest[0], Number(rest[1]), rest[2], rest[3], JSON.parse(rest[4]), Number(rest[5]), JSON.parse(rest[6]), JSON.parse(rest[7]))
+  if (cmd === 'writer') return writer(rest[0], Number(rest[1]), rest[2], rest[3], Number(rest[4]), Number(rest[5]))
 
   const n = Number(cmd)
   if (!n) throw new Error('usage: node bench/v2-chat.js <N> [--active A] [--pool P] [--per-segment S] [--segment-ms MS] [--live L]')
@@ -265,6 +402,7 @@ async function main () {
   const perSegment = argValue('--per-segment', 10000)
   const segmentMs = argValue('--segment-ms', 3600000)
   const live = argValue('--live', 20)
+  const tp = { writers: argValue('--writers', 0), procs: argValue('--procs', 2), seconds: argValue('--seconds', 10), rate: argValue('--rate', 0) }
   const root = fs.mkdtempSync(path.join(process.env.BENCH_DIR || os.tmpdir(), `hg-v2chat-${n}-`))
   const result = { n }
   let ok = false
@@ -276,16 +414,36 @@ async function main () {
     const sd = proc(['seed', path.join(root, 'host'), key, channel])
     const ready = await sd.next('ready')
     result.seedReopenMs = ready.reopenMs
-    const nc = proc(['newcomer', path.join(root, 'new'), String(ready.port), key, channel, JSON.stringify(lastMessage), String(live)])
-    nc.on((m) => { if (m.type === 'post') sd.send(m) })
+    const writers = []
+    if (tp.writers) {
+      const procs = Math.max(1, Math.min(tp.procs, tp.writers))
+      for (let k = 0; k < procs; k++) {
+        const from = Math.floor((k * tp.writers) / procs)
+        const to = Math.floor(((k + 1) * tp.writers) / procs)
+        writers.push(proc(['writer', path.join(root, `writer-${k}`), String(ready.port), key, channel, String(from), String(to - from)]))
+      }
+    }
+    const writerPorts = []
+    for (const w of writers) writerPorts.push((await w.next('ready')).port)
+    const nc = proc(['newcomer', path.join(root, 'new'), String(ready.port), key, channel, JSON.stringify(lastMessage), String(live), JSON.stringify(writerPorts), JSON.stringify(tp)])
+    nc.on((m) => {
+      if (m.type === 'post') sd.send(m)
+      if (m.type === 'tp-go') {
+        for (const w of writers) w.send({ type: 'go', seconds: m.seconds, rate: m.rate })
+        Promise.all(writers.map(w => w.next('posted'))).then((all) => {
+          nc.send({ type: 'tp-total', posted: all.reduce((a, x) => a + x.posted, 0), postMs: Math.max(...all.map(x => x.ms)) })
+        })
+      }
+    })
     result.newcomer = (await nc.next('result')).result
     sd.kill()
-    await Promise.all([nc.exited, sd.exited])
+    for (const w of writers) w.kill()
+    await Promise.all([nc.exited, sd.exited, ...writers.map(w => w.exited)])
     delete result.history.key
     delete result.history.lastMessage
     const out = path.join(__dirname, 'results')
     fs.mkdirSync(out, { recursive: true })
-    fs.writeFileSync(path.join(out, `v2-chat-${n}.json`), JSON.stringify(result, null, 2))
+    fs.writeFileSync(path.join(out, `v2-chat-${n}${tp.writers ? `-w${tp.writers}` : ''}.json`), JSON.stringify(result, null, 2))
     console.log(JSON.stringify(result, null, 2))
     ok = true
   } finally {

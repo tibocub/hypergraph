@@ -176,3 +176,57 @@ full-holder disk (5): these need the v2 design.
 
 Still to measure: a
 forum shape (threads, votes), a long-running peer's growth, many writers on separate machines.
+
+### v2 prototype measured (2026-10-06, `specs/007-scaling-v2-prototype`)
+
+`bench/v2-chat.js`: one channel, history written in bulk (10,000 messages per one-hour segment,
+50 active authors per segment out of 1,000), served by the owner, who keeps the roster. A fresh
+peer then reads it. Same machine as above; one run at a time, 3–4 processes.
+
+| | 10k | 1M | 10M |
+|---|---|---|---|
+| newcomer: latest 50 messages shown | 0.61 s | 0.69 s | 0.67 s |
+| newcomer: bytes downloaded by then | 412 KB | 455 KB | 490 KB |
+| newcomer: memory added | 36 MB | 37 MB | 37 MB |
+| newcomer: author logs open | 50 | 50 | 50 |
+| newcomer: one page back (previous segment) | — (one segment) | 1.2 s / 1.1 MB | 1.1 s / 1.0 MB |
+| newcomer: restart offline, page shown again | 173 ms | 247 ms | 426 ms |
+| newcomer: disk | 11 MB | 42 MB | 40 MB |
+| host holding everything: disk | 2.4 MB | 218 MB | 2.1 GB |
+| host: disk per message | 237 B | 218 B | 211 B |
+| host: reopen | 117 ms | 374 ms | 870 ms |
+
+v1 for the same shape (above, 10k, 10 writers): latest page 1.7 s / 0.73 MB; full holder ~2.4 KB
+per message; 1M newcomer full join 8.8 min.
+
+Throughput (`--writers 100 --procs 2 --seconds 10`, 10k history, one follower):
+
+| | 100 writers, 5 msg/s each | 100 writers, as fast as they can |
+|---|---|---|
+| posted | 476 msg/s | 9,300 msg/s |
+| delivered to the follower | 100% (486 msg/s) | 100% (6,700 msg/s: the follower is the limit) |
+| arrival p50 / p95, authors already known | 14 / 20 ms | 4.6 / 9.3 s (backlog) |
+| arrival p95, including each author's first posts | 1.4 s | — |
+
+v1: one indexer applies ~300 msg/s for the whole channel.
+
+Against the spec's success criteria:
+
+- **SC-001** (same 2 s budget, memory and download within 10% at every size): time and memory
+  pass. **Download misses: +19% from 10k to 10M** (412 → 490 KB). Two candidates, both
+  logarithmic, neither measured yet: each author log is ~50× longer, so each block's proof
+  covers a deeper tree; and the roster holds 1,000 segments instead of one, so reaching the
+  latest segment reads more Hyperbee nodes.
+- **SC-002** (under 2 MB for 50 messages from 50 authors): pass, 0.49 MB.
+- **SC-003** (≥ 5× v1's ~300 msg/s with 100 writers): pass, ~30× posted; one follower reads
+  ~22× v1.
+- **SC-004** (p50 < 100 ms, p95 < 500 ms): p50 2–14 ms, pass. p95 was 511–527 ms at every
+  size: an author's first post in a segment waited for the reader's 500 ms roster poll. Fixed:
+  `follow()` now re-reads the rosters as soon as one grows (test `v2 reader: follow finds a new
+  author when the roster grows`). After the fix: one author posting p95 22 ms; 100 authors at
+  5 msg/s p95 20 ms once known. **Still a miss when 100 authors all post for the first time
+  in the same second (p95 1.4 s)**: each announcement goes to the keeper, which lists it, and
+  the roster then has to replicate to the reader.
+- Newcomer disk grows from 11 MB (10k) to ~40 MB (1M, 10M) for the same page: not explained
+  yet.
+

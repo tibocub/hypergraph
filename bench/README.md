@@ -157,6 +157,20 @@ Chat, 10k messages, 10 writers, edge model, multi-process (2026-10-06): whole ru
 was 90 s alone in-process); 33.5 s to write, each writer done in 6–8 s, i.e. the owner, the only
 indexer, applies ~300 messages/s while serving 9 peers; live arrival p50 34 ms, p95 159 ms;
 newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
+- `v2-chat.js` (spec 007 prototype): one channel of N messages written in bulk across one-hour
+  segments, served by the owner; a fresh peer measures the latest page, one page back, offline
+  restart and live arrival. `--writers W --procs K --seconds D --rate R` adds a throughput phase:
+  K processes post as W authors (R msg/s each, 0 = as fast as they can) while the newcomer
+  follows. Results in `bench/results/v2-chat-<N>[-w<W>].json`.
+
+  ```
+  node bench/v2-chat.js 10000 --writers 100 --procs 2 --seconds 10 --rate 5
+  ```
+
+  Measured 2026-10-06 (full table in `specs/research/scaling-v2.md`): latest page 0.61 / 0.69 /
+  0.67 s, 412 / 455 / 490 KB, +36 MB memory at 10k / 1M / 10M messages; host disk ~211 B per
+  message; 100 writers post ~9,300 msg/s (v1: ~300) and all of it reaches a follower; at 5 msg/s
+  each, arrival p50 14 ms, p95 20 ms. The 10M history takes 134 s to write, whole run 144 s.
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 

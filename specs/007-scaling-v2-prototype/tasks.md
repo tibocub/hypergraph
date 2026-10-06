@@ -44,8 +44,8 @@ big sizes with few processes, one at a time).
 - [X] T013 [US1] Implement `src/v2/reader.js` (open only the logs listed for the segments read, read tails/ranges, merge) and `post`, `latest`, `before` in `src/v2/index.js`
 - [X] T014 [US2] Test (extend `test/brittle/v2/reader.js`): `follow()` delivers a new post from another member within 1 s, newest only, no duplicates; following resumes after a reconnect
 - [X] T015 [US2] Implement `follow()` (live download of the current segment's listed logs; new authors picked up as the roster grows)
-- [ ] T016 [US1] Create `bench/v2-chat.js`: history generated in bulk per R9 (authors' logs appended in large batches across segments, roster entries in bulk), a seed process, a newcomer process measuring `latest` (time, bytes, memory), `before` one segment back, reopen offline/online; live phase with up to ~100 writers in a few processes measuring throughput and arrival. Same JSON shape as `bench/chat.js` where it applies
-- [ ] T017 [US1] Measure at 10k, 1M, 10M (one run at a time, few processes) and v1 `bench/chat.js` at 10k for comparison; record in `specs/research/scaling-v2.md` and `bench/README.md`; check SC-001..SC-004 and write down any miss with its cause
+- [X] T016 [US1] Create `bench/v2-chat.js`: history generated in bulk per R9 (authors' logs appended in large batches across segments, roster entries in bulk), a seed process, a newcomer process measuring `latest` (time, bytes, memory), `before` one segment back, reopen offline/online; live phase with up to ~100 writers in a few processes measuring throughput and arrival. Same JSON shape as `bench/chat.js` where it applies
+- [X] T017 [US1] Measure at 10k, 1M, 10M (one run at a time, few processes) and v1 `bench/chat.js` at 10k for comparison; record in `specs/research/scaling-v2.md` and `bench/README.md`; check SC-001..SC-004 and write down any miss with its cause
 
 **Checkpoint**: P1 shape validated or invalidated by numbers.
 

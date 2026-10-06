@@ -102,3 +102,23 @@ test('v2 reader: follow delivers new posts from other members, once each', async
   await sleep(300)
   t.alike(seen, ['live0', 'live1', 'live2'], 'in order, no duplicates')
 })
+
+test('v2 reader: follow finds a new author when the roster grows, not on the next poll', async (t) => {
+  // A new author's first post used to wait for the 500 ms roster poll
+  // (bench/v2-chat.js: live p95 521 ms at 10M, 2.4 s with 100 new writers).
+  // With the poll pushed out of reach, only reacting to the roster finds it.
+  const { owner, peers, channel } = await setup(t, 'rd-follow-roster')
+  const [a, b] = peers
+  t.teardown(link(a, b))
+  const atKeeper = []
+  const atReader = []
+  const stops = [
+    owner.community.follow(channel, (m) => atKeeper.push(m.text), { pollMs: 600000 }),
+    b.community.follow(channel, (m) => atReader.push(m.text), { pollMs: 600000 })
+  ]
+  t.teardown(() => stops.forEach(stop => stop()))
+  await sleep(300) // the first scans are done: nobody listed yet
+  await a.community.post(channel, 'first')
+  t.ok(await until(() => atKeeper.includes('first'), 3000), 'the keeper sees the new author')
+  t.ok(await until(() => atReader.includes('first'), 3000), 'another member sees the new author')
+})
