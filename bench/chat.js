@@ -14,9 +14,10 @@
 //           Reading a message needs its author's log: what apps write today.
 //
 // Three processes, so each peer's memory is its own:
-//   history  — W writers fill the channel in interleaved rounds (owner is the
-//              only indexer, writers are members), then a live phase: one
-//              writer posts M messages, another member measures arrival.
+//   history  — the owner (the only indexer) plus W-1 writer processes (one
+//              process per writer, as on separate machines) fill the channel
+//              concurrently, then a live phase: one writer posts M messages,
+//              another member's process reports when each arrives.
 //   seed     — reopens the owner's store (which holds every writer's data)
 //              and serves it on a localhost socket.
 //   newcomer — a fresh peer: time and bytes until the latest page shows,
@@ -65,6 +66,7 @@ const now = () => process.hrtime.bigint()
 const ms = (start) => Number(process.hrtime.bigint() - start) / 1e6
 const sleep = (t) => new Promise(resolve => setTimeout(resolve, t))
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(s.length * p))] }
+const log = (...a) => { if (process.env.CHATLOG) console.error('[chat]', ...a) }
 const text = (w, i) => `message ${i} from writer ${w}: the quick brown fox jumps over the lazy dog`
 
 async function collect (it) {
@@ -85,148 +87,273 @@ async function latestPage (graph, ctx, channel, model) {
   return out
 }
 
-function link (a, b) {
-  const s1 = a.replicate(true)
-  const s2 = b.replicate(false)
-  s1.pipe(s2).pipe(s1)
-  s1.on('error', () => {})
-  s2.on('error', () => {})
+// ── history ──────────────────────────────────────────────────────────────────
+//
+// The owner (the only indexer) runs here and serves replication on a local
+// port; every other writer is its own process, as on separate machines: each
+// applies everyone's messages on its own core instead of all of them sharing
+// one (10 in-process writers made the history ~10x slower and the measured
+// write rate meaningless). Writers talk to this process over stdin/stdout
+// (JSON lines).
+
+function spawnWriter (args) {
+  // Capped heap and below-normal priority: a runaway writer fails on its own
+  // instead of taking the machine down with it.
+  const p = spawn(process.execPath, ['--max-old-space-size=2048', __filename, 'writer-child', ...args], { stdio: ['pipe', 'pipe', 'inherit'] })
+  try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL) } catch {}
+  const listeners = []
+  const unread = [] // messages nobody waited for yet, kept for next()
+  let buf = ''
+  p.stdout.on('data', (d) => {
+    buf += d
+    let i
+    while ((i = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, i)
+      buf = buf.slice(i + 1)
+      if (!line.trim()) continue
+      const msg = JSON.parse(line)
+      let taken = false
+      for (const l of [...listeners]) taken = l(msg) || taken
+      if (!taken) unread.push(msg)
+    }
+  })
+  return {
+    proc: p,
+    send (msg) { p.stdin.write(JSON.stringify(msg) + '\n') },
+    next (type) {
+      const i = unread.findIndex(m => m.type === type)
+      if (i !== -1) return Promise.resolve(unread.splice(i, 1)[0])
+      return new Promise((resolve) => {
+        const l = (msg) => {
+          if (msg.type !== type) return false
+          listeners.splice(listeners.indexOf(l), 1)
+          resolve(msg)
+          return true
+        }
+        listeners.push(l)
+      })
+    },
+    on (fn) { listeners.push(fn) },
+    exited: new Promise((resolve) => p.on('exit', resolve))
+  }
 }
 
-// ── history ──────────────────────────────────────────────────────────────────
-
-const log = (...a) => { if (process.env.CHATLOG) console.error('[chat]', ...a) }
+async function postMessages (graph, ctx, channel, model, writer, count) {
+  for (let start = 0; start < count; start += ROUND) {
+    const b = graph.batch()
+    for (let i = start; i < Math.min(count, start + ROUND); i++) {
+      const msg = b.put({ type: 'msg' })
+      if (model === 'content') b.putContent(msg, text(writer, i))
+      b.relate({ from: msg, to: channel, type: 'msg', context: ctx, data: model === 'edge' ? text(writer, i) : undefined })
+    }
+    await b.flush()
+  }
+}
 
 async function history (n, w, model, live, root) {
   const mem = memSampler()
-  const peers = []
-  for (let i = 0; i < w; i++) {
-    const store = new Corestore(path.join(root, `w${i}`))
-    const graph = new Hypergraph(store)
-    await graph.ready()
-    peers.push({ i, store, graph, pub: graph.identity.deviceKeyPair.publicKey.toString('hex') })
-  }
-  const owner = peers[0]
-  for (const p of peers.slice(1)) link(owner.graph, p.graph) // a star: every member talks to the owner
+  const ownerStore = new Corestore(path.join(root, 'w0'))
+  const owner = new Hypergraph(ownerStore)
+  await owner.ready()
+  const ownerKp = owner.identity.deviceKeyPair
+  const ctx = await owner.createContext()
+  const ownerCtx = await owner.openContext(ctx)
+  const channel = (await owner.put({ type: 'channel' })).id
 
-  const ctx = await owner.graph.createContext()
-  owner.ctx = await owner.graph.openContext(ctx)
-  const channel = (await owner.graph.put({ type: 'channel' })).id
-  for (const p of peers.slice(1)) {
-    p.ctx = await p.graph.openContext(ctx)
-    await owner.ctx.addWriter(p.ctx.localKey, { keyPair: owner.graph.identity.deviceKeyPair, member: p.pub })
-  }
-  log('writers added')
-  for (const p of peers.slice(1)) {
-    while (!p.ctx.writable) { await p.graph.update(); await sleep(50) }
-    log('writable', p.i)
-    if (model === 'content') await owner.graph.openUserCore(p.graph.key) // the owner keeps everyone's messages
-  }
+  const server = net.createServer((socket) => {
+    const s = owner.replicate(false)
+    s.pipe(socket).pipe(s)
+    s.on('error', () => {})
+    socket.on('error', () => {})
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
 
-  // Fill the channel in rounds: every writer posts ROUND messages per round,
-  // concurrently, so the history interleaves writers as a real channel does.
   const perWriter = Math.ceil(n / w)
-  const t0 = now()
-  let written = 0
-  let last = null
-  for (let start = 0; start < perWriter; start += ROUND) {
-    await Promise.all(peers.map(async (p) => {
-      const b = p.graph.batch()
-      const end = Math.min(perWriter, start + ROUND)
-      for (let i = start; i < end && written < n; i++, written++) {
-        const msg = b.put({ type: 'msg' })
-        if (model === 'content') b.putContent(msg, text(p.i, i))
-        b.relate({ from: msg, to: channel, type: 'msg', context: ctx, data: model === 'edge' ? text(p.i, i) : undefined })
-      }
-      await b.flush()
-    }))
+  const counts = Array.from({ length: w }, (_, i) => Math.max(0, Math.min(perWriter, n - i * perWriter)))
+  const writers = []
+  for (let i = 1; i < w; i++) {
+    const wr = spawnWriter([path.join(root, `w${i}`), String(port), ctx, channel, model, String(i), String(counts[i])])
+    log('waiting for writer', i)
+    const hello = await wr.next('hello')
+    log('hello from writer', i)
+    await ownerCtx.addWriter(Buffer.from(hello.localKey, 'hex'), { keyPair: ownerKp, member: hello.member })
+    if (model === 'content') await owner.openUserCore(hello.key) // the owner keeps everyone's messages
+    wr.key = hello.key
+    writers.push(wr)
   }
-  const writeMs = ms(t0)
-  log('written', written, Math.round(writeMs))
+  await Promise.all(writers.map(wr => wr.next('ready')))
+  log('writers ready', writers.length)
 
-  // The owner (the only indexer) has applied and confirmed everything.
+  // Stop cleanly, writers included, if the machine runs short of memory
+  // (reported as an aborted run, exit code 3).
+  const guard = setInterval(() => {
+    if (os.freemem() > 1e9) return
+    for (const wr of writers) wr.proc.kill()
+    process.stdout.write(JSON.stringify({ aborted: `free memory ${Math.round(os.freemem() / 1e6)} MB` }) + '\n', () => process.exit(3))
+  }, 500)
+
+  // Everyone posts their share at once, in batches of ROUND.
+  const t0 = now()
+  for (const wr of writers) wr.send({ type: 'go' })
+  const writerDone = writers.map(wr => wr.next('done'))
+  await postMessages(owner, ctx, channel, model, 0, counts[0])
+  const perWriterMs = (await Promise.all(writerDone)).map(d => d.ms)
+  const writeMs = ms(t0)
+  log('written', n, Math.round(writeMs))
+
+  // The owner has applied and confirmed everything.
   const t1 = now()
   while (true) {
-    await owner.graph.update()
-    const count = await owner.graph.countEdgesIn(channel, 'msg', { context: ctx })
-    const vc = owner.ctx.view.core
-    log('settle', count, vc.signedLength, vc.length)
-    if (count >= written && vc.signedLength === vc.length) break
+    await owner.update()
+    const count = await owner.countEdgesIn(channel, 'msg', { context: ctx })
+    const vc = ownerCtx.view.core
+    if (count >= n && vc.signedLength === vc.length) break
     await sleep(100)
   }
   const settleMs = ms(t1)
 
-  // Live: writer 1 posts, writer 2 (another member, through the owner) waits
-  // for it. Arrival = it is the newest message in writer 2's channel.
-  const sender = peers[1]
-  const receiver = peers[Math.min(2, peers.length - 1)]
-  if (model === 'content') await receiver.graph.openUserCore(sender.graph.key)
+  // Live: writer 1 posts, another member (writer 2, a separate process
+  // receiving through the owner) reports when each message shows as the
+  // newest. The message carries its send time; both are on this machine.
+  const sender = writers[0]
+  const receiver = writers[1] || null
   const latencies = []
-  for (let k = 0; k < live; k++) {
-    const t = now()
-    const msg = await sender.graph.put({ type: 'msg' })
-    if (model === 'content') await sender.graph.putContent(msg.id, `live ${k}`)
-    await sender.graph.relate({ from: msg.id, to: channel, type: 'msg', context: ctx, data: model === 'edge' ? `live ${k}` : undefined })
-    const sentMs = ms(t)
-    while (true) {
-      if (model === 'content') await receiver.graph.update()
-      const page = await collect(receiver.graph.edges(channel, { direction: 'in', type: 'msg', context: ctx, reverse: true, limit: 1 }))
-      if (page[0] && page[0].from === msg.id) break
-      if (ms(t) > 30000) { latencies.push(Infinity); break }
-      await sleep(5)
+  if (live && sender && receiver) {
+    receiver.send({ type: 'watch', model, senderKey: sender.key })
+    await receiver.next('watching')
+    const seen = new Map()
+    receiver.on((msg) => { if (msg.type !== 'arrived') return false; seen.set(msg.k, msg.ms); return true })
+    for (let k = 0; k < live; k++) {
+      sender.send({ type: 'send', k })
+      const deadline = Date.now() + 30000
+      while (!seen.has(k) && Date.now() < deadline) await sleep(5)
+      latencies.push(seen.has(k) ? seen.get(k) : Infinity)
+      await sleep(50)
     }
-    latencies.push({ send: sentMs, arrive: ms(t) })
-    log('live', k, Math.round(ms(t)))
-    await sleep(50)
+    receiver.send({ type: 'unwatch' })
   }
 
-  // The newest message once the live phase is over, as the owner has it.
+  // The newest message once everything is in, as the owner has it.
+  let last
   while (true) {
-    await owner.graph.update()
-    last = (await latestPage(owner.graph, ctx, channel, model))[0]
-    if (await owner.graph.countEdgesIn(channel, 'msg', { context: ctx }) >= written + live) break
+    await owner.update()
+    last = (await latestPage(owner, ctx, channel, model))[0]
+    if (await owner.countEdgesIn(channel, 'msg', { context: ctx }) >= n + latencies.length) break
     await sleep(50)
   }
 
   const peak = mem.stop()
   const sizes = {
-    ownerContextView: owner.ctx.view.core.byteLength,
-    ownerContextViewBlocks: owner.ctx.view.core.length,
-    ownerUserCore: owner.graph.core.byteLength,
-    writerUserCore: sender.graph.core.byteLength
+    ownerContextView: ownerCtx.view.core.byteLength,
+    ownerContextViewBlocks: ownerCtx.view.core.length,
+    ownerUserCore: owner.core.byteLength
   }
   const keys = {
     ctx,
     channel,
     lastMessage: last.id,
-    owner: {
-      publicKey: owner.graph.identity.deviceKeyPair.publicKey.toString('hex'),
-      secretKey: owner.graph.identity.deviceKeyPair.secretKey.toString('hex')
-    },
-    writers: peers.map(p => p.graph.key.toString('hex'))
+    owner: { publicKey: ownerKp.publicKey.toString('hex'), secretKey: ownerKp.secretKey.toString('hex') },
+    writers: [owner.key.toString('hex'), ...writers.map(wr => wr.key)]
   }
-  for (const p of peers) { await p.graph.close(); await p.store.close() }
-  const arrive = latencies.filter(l => l !== Infinity).map(l => l.arrive)
+  clearInterval(guard)
+  for (const wr of writers) wr.send({ type: 'exit' })
+  await Promise.all(writers.map(wr => wr.exited))
+  server.close()
+  await owner.close()
+  await ownerStore.close()
+  const arrived = latencies.filter(l => l !== Infinity)
   return {
-    n: written,
+    n,
     writers: w,
+    processes: w,
     writeMs: Math.round(writeMs),
-    messagesPerSec: Math.round(written / (writeMs / 1000)),
+    messagesPerSec: Math.round(n / (writeMs / 1000)),
+    perWriterMs: { min: Math.min(...perWriterMs), max: Math.max(...perWriterMs) },
     ownerSettleMs: Math.round(settleMs),
-    live: live
-      ? {
-          sent: live,
-          lost: latencies.filter(l => l === Infinity).length,
-          arriveP50: Math.round(pct(arrive, 0.5)),
-          arriveP95: Math.round(pct(arrive, 0.95)),
-          sendP50: Math.round(pct(latencies.filter(l => l !== Infinity).map(l => l.send), 0.5))
-        }
+    live: latencies.length
+      ? { sent: latencies.length, lost: latencies.length - arrived.length, arriveP50: Math.round(pct(arrived, 0.5)), arriveP95: Math.round(pct(arrived, 0.95)) }
       : null,
     sizes,
     ownerDisk: dirSize(path.join(root, 'w0')),
-    writerDisk: dirSize(path.join(root, 'w1')),
+    writerDisk: w > 1 ? dirSize(path.join(root, 'w1')) : null,
     peakRss: peak.rss,
     keys
+  }
+}
+
+// One writer, in its own process (see history()).
+async function writerProcess (dir, port, ctx, channel, model, index, count) {
+  const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n')
+  const store = new Corestore(dir)
+  const graph = new Hypergraph(store)
+  await graph.ready()
+  const socket = net.connect(port, '127.0.0.1')
+  const s = graph.replicate(true)
+  s.pipe(socket).pipe(s)
+  s.on('error', () => {})
+  socket.on('error', () => {})
+  const context = await graph.openContext(ctx)
+  send({ type: 'hello', localKey: context.localKey.toString('hex'), member: graph.identity.deviceKeyPair.publicKey.toString('hex'), key: graph.key.toString('hex') })
+  while (!context.writable) { await graph.update(); await sleep(20) }
+  send({ type: 'ready' })
+
+  let watching = false
+  const commands = []
+  let wake = null
+  let buf = ''
+  process.stdin.on('data', (d) => {
+    buf += d
+    let i
+    while ((i = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, i)
+      buf = buf.slice(i + 1)
+      if (line.trim()) commands.push(JSON.parse(line))
+    }
+    if (wake) { wake(); wake = null }
+  })
+  const nextCommand = async () => {
+    while (!commands.length) await new Promise(resolve => { wake = resolve })
+    return commands.shift()
+  }
+
+  while (true) {
+    const cmd = await nextCommand()
+    if (cmd.type === 'go') {
+      const t = now()
+      await postMessages(graph, ctx, channel, model, index, count)
+      send({ type: 'done', ms: Math.round(ms(t)) })
+    } else if (cmd.type === 'send') {
+      const msg = await graph.put({ type: 'msg' })
+      const body = `live ${cmd.k} ${Date.now()}`
+      if (model === 'content') await graph.putContent(msg.id, body)
+      await graph.relate({ from: msg.id, to: channel, type: 'msg', context: ctx, data: model === 'edge' ? body : undefined })
+    } else if (cmd.type === 'watch') {
+      if (cmd.model === 'content') await graph.openUserCore(cmd.senderKey)
+      watching = true
+      send({ type: 'watching' })
+      ;(async () => {
+        let lastK = -1
+        while (watching) {
+          if (cmd.model === 'content') await graph.update()
+          const page = await latestPage(graph, ctx, channel, cmd.model).catch(() => [])
+          const m = page[0] && typeof page[0].text === 'string' && /^live (\d+) (\d+)$/.exec(page[0].text)
+          if (m && Number(m[1]) > lastK) {
+            lastK = Number(m[1])
+            send({ type: 'arrived', k: lastK, ms: Date.now() - Number(m[2]) })
+          }
+          await sleep(5)
+        }
+      })()
+    } else if (cmd.type === 'unwatch') {
+      watching = false
+    } else if (cmd.type === 'exit') {
+      watching = false
+      socket.destroy()
+      await graph.close()
+      await store.close()
+      process.exit(0)
+    }
   }
 }
 
@@ -348,6 +475,7 @@ async function newcomer (dir, port, keys, model) {
 function child (args, onLine) {
   return new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['--max-old-space-size=8192', __filename, ...args], { stdio: ['ignore', 'pipe', 'inherit'] })
+    try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL) } catch {}
     let buf = ''
     p.stdout.on('data', (d) => {
       buf += d
@@ -358,7 +486,8 @@ function child (args, onLine) {
         if (line.trim()) onLine(JSON.parse(line), p)
       }
     })
-    p.on('exit', (code) => code === 0 || code === null ? resolve(p) : reject(new Error(`${args[0]} exited ${code}`)))
+    // 3 = stopped by the memory guard after reporting; anything else non-zero is a crash.
+    p.on('exit', (code) => code === 0 || code === null || code === 3 ? resolve(p) : reject(new Error(`${args[0]} exited ${code}`)))
   })
 }
 
@@ -367,6 +496,11 @@ async function main () {
   if (cmd === 'history-child') {
     const [n, w, model, live, root] = rest
     process.stdout.write(JSON.stringify(await history(Number(n), Number(w), model, Number(live), root)) + '\n')
+    return
+  }
+  if (cmd === 'writer-child') {
+    const [dir, port, ctx, channel, model, index, count] = rest
+    await writerProcess(dir, Number(port), ctx, channel, model, Number(index), Number(count))
     return
   }
   if (cmd === 'seed-child') {
@@ -397,6 +531,11 @@ async function main () {
   let ok = false
   try {
     await child(['history-child', String(n), String(w), model, String(live), root], (r) => { result.history = r })
+    if (result.history.aborted) {
+      save()
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n')
+      return
+    }
     fs.writeFileSync(keysFile, JSON.stringify(result.history.keys))
     delete result.history.keys
     save()

@@ -135,14 +135,28 @@ Usage-shaped benchmarks for the scaling-v2 research (`specs/research/scaling-v2.
 the full tables and what they mean).
 
 ```
+npm run bench:quick        # chat 10k + 50 channels + 1,000 members, ~2 min
 node bench/chat.js <N> [--writers W] [--model edge|content] [--live M]
 node --expose-gc bench/channels.js <C> [--messages M] [--authors A]
+node --expose-gc bench/members.js <M> [--messages N]
 ```
 
 - `chat.js`: one channel, W writers, N short messages (text on the relation, or entity + content
-  + relation). Reports write rate, live arrival between two members, and for a fresh peer: time
-  and bytes to the latest 50 messages, the oldest page, memory, disk, and a cold reopen offline
-  and online. `CHATLOG=1` traces each phase.
+  + relation). Since 2026-10-06 every writer is its own process connected to the owner over
+  localhost TCP, as on separate machines (before, 10 in-process writers shared one core and each
+  applied everyone's messages: the history took ~3x longer and the write rate was meaningless).
+  Reports write rate, live arrival between two writer processes, and for a fresh peer: time and
+  bytes to the latest 50 messages, the oldest page, memory, disk, and a cold reopen offline and
+  online. `CHATLOG=1` traces each phase; `CHAT_STOP_AFTER_CLOSE=1` keeps the newcomer's store as
+  its first session left it. Processes run at below-normal priority, writers with a 2 GB heap
+  cap, and the run stops (exit 3, `aborted`) if free memory drops under 1 GB.
+- **Machine load**: a 100k run with 10 writers pins every core for minutes; the dev machine
+  rebooted hard during one (2026-10-06). Prefer `bench:quick`, and fewer writers for big sizes.
+
+Chat, 10k messages, 10 writers, edge model, multi-process (2026-10-06): whole run 56 s (history
+was 90 s alone in-process); 33.5 s to write, each writer done in 6–8 s, i.e. the owner, the only
+indexer, applies ~300 messages/s while serving 9 peers; live arrival p50 34 ms, p95 159 ms;
+newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 

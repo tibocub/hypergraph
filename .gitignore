@@ -6,6 +6,8 @@ examples/p2p-reddit-clone/.reddit-storage/**/*
 out
 lib
 test-*
+# ...but not the test tooling (the rule above hid the runner from git for a day)
+!scripts/test-*.js
 bench/results
 
 # Claude Code local state (may contain machine-local permissions/session data).

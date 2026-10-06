@@ -154,10 +154,16 @@ node scripts/test-timeline.js <file> [re]  # one file, each line with seconds el
 npm run test:serial                        # the old way: groups one after another, one process per group
 ```
 
-`npm test` (`scripts/test-runner.js`) starts the longest files first (by their last run, in the
-gitignored `.test-times.json`), fails a file that doesn't print its own `# tests = n/n` line, and
-prints the slowest files. While iterating, run only the affected files or group; run the full
+`npm test` (`scripts/test-runner.js`) uses all cores but two (`HG_TEST_JOBS=n` to change), runs
+test processes at below-normal priority, waits while free memory is under 1.5 GB, starts the
+longest files first (by their last run, in the gitignored `.test-times.json`), fails a file that
+doesn't print its own `# tests = n/n` line, and prints the slowest files. While iterating, run only the affected files or group; run the full
 suite once before committing. Tests use `brittle`, run via `npx brittle <file>`.
 
-Measured 2026-10-06 (8 cores): `npm test` 57 s wall for 319 tests (the old serial `npm test`:
-514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s.
+Measured 2026-10-06 (8 cores): `npm test` 63 s wall with 6 jobs (57 s with 8) for 320 tests (the
+old serial `npm test`: 514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s.
+
+**Don't load the machine at 100% for long.** The dev machine rebooted hard (no crash dump, no
+low-memory event) during a 100k-message `bench/chat.js` run with 11 Node processes pinning every
+core. Benchmarks: start with `npm run bench:quick` (~2 min); run big sizes only when needed, with
+fewer writers, and check the machine copes.

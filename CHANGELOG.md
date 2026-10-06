@@ -12,7 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm test` runs every test file in its own process, in parallel, longest first
   (`scripts/test-runner.js`): 514 s → 57 s for the full suite (319 tests, 8 cores). The old
   sequence is `npm run test:serial`. Network tests now use a local DHT (`testSwarm(t)`), not the
-  public one; `HG_TEST_PUBLIC_DHT=1` switches back.
+  public one; `HG_TEST_PUBLIC_DHT=1` switches back. It uses all cores but two by default
+  (`HG_TEST_JOBS`), at below-normal priority, and waits while free memory is low (63 s with 6
+  jobs). `npm run bench:quick` runs the chat, channels and members benchmarks at small sizes;
+  `bench/chat.js` runs each writer in its own process.
 - `HypergraphNetwork.connect()`: when no peer is found at once, it waits 3, 6, 12, 24 s (was 3 x 8 s),
   and refreshes the same discovery after a random 0–0.5 s pause instead of leaving and rejoining.
   Two peers that start together now connect on the first retry (~3 s, was ~8 s, or never on a fast

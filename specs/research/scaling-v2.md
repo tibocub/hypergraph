@@ -153,9 +153,11 @@ the text on the relation, a newcomer's cost is flat from 10k to 1M.
    that applies the context, and every `update()` re-reads the whole member list (39 ms at 5,000
    members, for one channel). A 50,000-member community would need ~3.5 GB on every applying peer.
    A newcomer is unaffected (0.45 s, 0.34 MB at 5,000).
-9. Writing: 10 writers in one process reach ~120–140 messages/s in total, each peer applying
-   everyone's messages; a single bulk writer does ~1,800 files/s. Needs a per-peer measurement on
-   separate machines before reading too much into it.
+9. **One indexer caps a channel's write rate.** With each writer in its own process (2026-10-06):
+   10 writers post 1,000 messages each in 6–8 s, but the owner, the only indexer, applies
+   everyone's messages at ~300/s while serving 9 peers, so 10k messages take 33.5 s to be in. (The
+   earlier ~120–140/s was 10 in-process writers sharing one core.) A busy channel needs its
+   apply work spread, which the v2 per-segment indexes would allow.
 
 ### Quick fixes applied (2026-10-06, on the current design)
 

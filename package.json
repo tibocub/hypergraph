@@ -8,6 +8,8 @@
   },
   "scripts": {
     "test": "node scripts/test-runner.js",
+    "bench:quick": "node bench/chat.js 10000 --writers 10 --live 30 && node --expose-gc bench/channels.js 50 && node --expose-gc bench/members.js 1000",
+    "bench:chat": "node bench/chat.js 100000 --writers 10 --live 30",
     "test:serial": "npm run test:core && npm run test:networking && npm run test:replication && npm run test:forum && npm run test:integration",
     "test:entities": "npx brittle test/brittle/core/entities.js",
     "test:events": "npx brittle test/brittle/core/events.js",
