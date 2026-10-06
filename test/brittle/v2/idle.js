@@ -51,3 +51,45 @@ test('v2 idle: closing a channel a member keeps leaves its own roster and log al
   t.ok(second.seq === 1, 'its own log stays open and writable')
   t.ok((await owner.community.rosterEntries(id, Math.floor(second.t / 60000))).length === 1, 'and it still keeps the roster')
 })
+
+test('v2 idle: an idle follow does not re-read rosters', async (t) => {
+  // It polled every 500 ms: bench/v2-community.js, 5 channels followed,
+  // nothing posted: 734 ms of CPU per 10 s and +35 MB, against 31 ms and
+  // nothing with the poll out of reach.
+  const owner = await member(t, 'idle-follow-owner')
+  const channels = []
+  for (let i = 0; i < 3; i++) {
+    const id = await owner.community.createChannel({ name: `c${i}`, segmentMs: 60000 })
+    await owner.community.keep(id)
+    await owner.community.post(id, 'hello')
+    channels.push(id)
+  }
+  const reader = await member(t, 'idle-follow-reader', { key: owner.community.key })
+  t.teardown(link(owner, reader))
+  await until(async () => { await reader.community.update(); return reader.community.channels().length === 3 })
+  const stops = channels.map(id => reader.community.follow(id, () => {}))
+  t.teardown(() => stops.forEach(stop => stop()))
+  await sleep(500)
+  const settled = (await reader.community.stats()).scans
+  await sleep(2000)
+  t.is((await reader.community.stats()).scans, settled, 'no roster scans while nothing happens')
+})
+
+test('v2 idle: follow finds a keeper added later, without the app calling update()', async (t) => {
+  const owner = await member(t, 'idle-keeper-late-owner')
+  const channel = await owner.community.createChannel({ name: 'general', segmentMs: 60000 })
+  const author = await member(t, 'idle-keeper-late-author', { key: owner.community.key })
+  const reader = await member(t, 'idle-keeper-late-reader', { key: owner.community.key })
+  t.teardown(link(owner, author))
+  t.teardown(link(owner, reader))
+  t.teardown(link(author, reader))
+  await until(async () => { await reader.community.update(); return reader.community.channels().length === 1 })
+  const seen = []
+  const stop = reader.community.follow(channel, (m) => seen.push(m.text))
+  t.teardown(stop)
+
+  await owner.community.keep(channel) // the channel's first keeper, after following began
+  await until(async () => { await author.community.update(); return author.community.keepers(channel).length === 1 })
+  await author.community.post(channel, 'found')
+  t.ok(await until(() => seen.includes('found'), 5000), 'the reader picks up the new keeper and the post')
+})

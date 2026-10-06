@@ -48,14 +48,18 @@ const page = await community.latest(channelId, { limit = 50 })
 
 const older = await community.before(channelId, { t, limit = 50 })   // scrollback
 
-const stop = community.follow(channelId, (message) => {}, { pollMs = 500 })   // live, newest only
+const stop = community.follow(channelId, (message) => {}, { pollMs })   // live, newest only
 stop()
 
 await community.closeChannel(channelId)   // stop reading: follows end, its rosters and logs close
 ```
 
-`follow` re-reads the rosters as soon as one grows (an author's first post in a segment), and
-also every `pollMs` (a keeper that joined later has a roster nobody watches yet).
+`follow` re-reads the rosters when one grows (an author's first post in a segment) and when the
+control log changes (a keeper added later); nothing while idle. `pollMs` adds a periodic re-read
+(off by default: polling every 500 ms was the whole idle cost of a follow).
+
+The control state (roles, channels, bans, hides, keepers) follows the control log by itself;
+`update()` only waits for it to catch up.
 
 Order: by `t`, then author key, then seq (identical on every peer). Messages from banned authors
 after their ban and messages claiming a time more than 5 minutes ahead are left out; hidden messages

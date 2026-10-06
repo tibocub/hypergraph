@@ -58,9 +58,9 @@ big sizes with few processes, one at a time).
 
 ## Phase 5: User Story 5 — the rest of the community stays out of the way (P2)
 
-- [ ] T020 [US5] Extend `bench/v2-chat.js` (or `bench/v2-community.js`): communities of 1,000 and 50,000 members (roles/keepers in the control log, members only in rosters) and 10 vs 500 channels; a member with 5 channels open: memory, idle cost, startup
+- [X] T020 [US5] Extend `bench/v2-chat.js` (or `bench/v2-community.js`): communities of 1,000 and 50,000 members (roles/keepers in the control log, members only in rosters) and 10 vs 500 channels; a member with 5 channels open: memory, idle cost, startup
 - [X] T021 [US5] Test `test/brittle/v2/idle.js`: with 50 channels, only the open channels' logs are open (`stats().openLogs`); closing a channel's reader releases its logs
-- [ ] T022 [US5] Implement whatever T020/T021 show is needed (lazy open/close of channel readers); measure SC-005
+- [X] T022 [US5] Implement whatever T020/T021 show is needed (lazy open/close of channel readers); measure SC-005
 
 ## Phase 6: User Story 4 — replication all | sparse | auto (P2)
 

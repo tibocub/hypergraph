@@ -230,3 +230,41 @@ Against the spec's success criteria:
 - Newcomer disk grows from 11 MB (10k) to ~40 MB (1M, 10M) for the same page: not explained
   yet.
 
+**Community size** (`bench/v2-community.js`, T020): the member opens 5 channels, each with 100
+one-hour segments of history, 50 active authors per segment drawn from all members. The other
+channels each have a little activity. The host serves from a fresh reopen.
+
+| | 10 ch, 1k members | 10 ch, 50k members | 500 ch, 1k members | 500 ch, 50k members |
+|---|---|---|---|---|
+| distinct authors in the 5 channels | 1,000 | 25,000 | 1,000 | 25,000 |
+| control log events | 43 | 43 | 2,003 | 2,003 |
+| startup: control log caught up | 0.36 s, 34 KB | 0.27 s, 34 KB | 0.60 s, 693 KB | 0.64 s, 690 KB |
+| 5 channels opened (latest page + follow) | 1.66 s, 516 KB | 1.61 s, 507 KB | 1.55 s, 523 KB | 1.58 s, 510 KB |
+| memory with 5 channels open | 59–63 MB | 60 MB | 67–80 MB | 85 MB |
+| author logs open | 500 | 500 | 500 | 500 |
+| idle, 10 s: CPU / bytes | 0 ms / 0 | 0 ms / 0 | 0–94 ms / 0 | 0 ms / 0 |
+
+(500 logs open: a follow watches the authors of the current and the previous segment, 100 per
+channel here.)
+
+- **Member count: no effect.** A member who never posted appears nowhere; 25× more distinct
+  authors in the open channels' history changes nothing a reader does now.
+- **Channel count: the control log.** Every member holds the channel list in full (by design):
+  two events per channel (the channel, its keeper), ~1.4 KB downloaded per channel. At 500
+  channels startup is 0.6 s and 0.7 MB, and memory with the same 5 channels open is ~10–35%
+  higher (noise between runs is ±10 MB). **SC-005 misses on memory for 10 vs 500 channels.**
+  Of the +28 MB right after joining, the JS heap is +2 MB and buffers +0.6 MB; the rest is
+  native, RocksDB (a plain Hypercore: 2,000 small appends add 16 MB, 10,000 add 55 MB; its write
+  buffer holds up to 2 × 64 MB, not configurable through hypercore-storage). Flushing gives it
+  back in that plain test (55.6 → 7.8 MB, 131 ms), but flushing when activity goes quiet made
+  the 500-channel member *worse* (idle 74–81 MB against 67–70 MB without, two runs each), so it
+  was not kept. Left: fewer control events per channel (one keeper event for many channels),
+  Autobase fast-forward for newcomers; both untested.
+- **Fixed on the way**: following channels polled the rosters every 500 ms. Idle with 5
+  channels followed: 734 ms CPU and +35 MB per 10 s; now 0 ms and nothing (scan on roster
+  growth and on control log change only). Closing a channel releases its logs and rosters
+  (`closeChannel`). Serving right after a bulk build, Corestore offered every just-closed core
+  to each new connection (~87 B each: 5,032 cores, +170 KB at startup); the benchmark now
+  serves from a reopened store, and the same holds for a long-running helper with many cores
+  open.
+

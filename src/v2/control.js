@@ -4,6 +4,7 @@ const crypto = require('crypto')
 const hcrypto = require('hypercore-crypto')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
+const { EventEmitter } = require('events')
 
 // The community control log (spec 007, data-model.md): one Autobase written
 // only by the owner, admins, mods and keepers. Every member applies it in
@@ -45,8 +46,9 @@ function verify (communityHex, event) {
   }
 }
 
-class Control {
+class Control extends EventEmitter {
   constructor (store, key, { wakeup } = {}) {
+    super()
     this.base = new Autobase(store, key || null, {
       valueEncoding: 'json',
       ackInterval: 1000,
@@ -56,6 +58,11 @@ class Control {
       apply: this._apply.bind(this)
     })
     this.state = emptyState()
+    this._reloading = null
+    this._again = false
+    // The view moves when anyone's event arrives, not only when this peer
+    // calls update(): keep the state current and say so ('change').
+    this.base.on('update', () => this.reload().catch(safetyCatch))
   }
 
   get key () { return this.base.key }
@@ -87,7 +94,27 @@ class Control {
   // Rebuild the in-memory state from the view: a few hundred small records
   // at most (roles, channels, bans, hides, keepers), so a full read is cheap
   // and always matches the view, even after Autobase reorders.
+  // One reload at a time; a call during one runs another after it.
   async reload () {
+    if (this._reloading) {
+      this._again = true
+      return this._reloading
+    }
+    this._reloading = (async () => {
+      do {
+        this._again = false
+        await this._read()
+      } while (this._again)
+    })()
+    try {
+      await this._reloading
+    } finally {
+      this._reloading = null
+    }
+    this.emit('change')
+  }
+
+  async _read () {
     const state = emptyState()
     const view = this.base.view
     if (!view) return

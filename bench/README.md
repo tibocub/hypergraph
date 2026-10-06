@@ -171,6 +171,17 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
   0.67 s, 412 / 455 / 490 KB, +36 MB memory at 10k / 1M / 10M messages; host disk ~211 B per
   message; 100 writers post ~9,300 msg/s (v1: ~300) and all of it reaches a follower; at 5 msg/s
   each, arrival p50 14 ms, p95 20 ms. The 10M history takes 134 s to write, whole run 144 s.
+- `v2-community.js` (spec 007 prototype, T020): a community of C channels and M members; the
+  member opens 5 channels (100 one-hour segments of history each) and measures startup, the
+  5 pages + follows (time, bytes, memory, open logs) and 10 s idle (CPU, bytes).
+
+  ```
+  node bench/v2-community.js --channels 500 --members 50000 --segments 100
+  ```
+
+  Measured 2026-10-06 (table in `specs/research/scaling-v2.md`): 1,000 vs 50,000 members makes
+  no difference; 10 vs 500 channels costs startup 34 → 690 KB (the channel list in the control
+  log) and ~10–35% memory; idle is 0 ms CPU, 0 bytes. About 1–2 min per run.
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 

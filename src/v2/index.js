@@ -47,6 +47,7 @@ class Community extends ReadyResource {
   #retry = null
   #unreachable = 0 // logs a read gave up on (last page)
   #follows = new Map() // stop function of a live follow -> its channel
+  #scans = 0 // roster scans by follows (idle-cost introspection)
 
   /**
    * @param {Object} store - Corestore
@@ -562,6 +563,7 @@ class Community extends ReadyResource {
       if (stopped) return
       if (scanning) { rescan = true; return } // once this one ends
       scanning = true
+      this.#scans++
       try {
         const record = this.channel(channel)
         if (!record) return
@@ -592,13 +594,18 @@ class Community extends ReadyResource {
     }
 
     scan().catch(safetyCatch)
-    // Still polled: a keeper that joins later has a roster nobody hooked yet.
-    const timer = setInterval(() => scan().catch(safetyCatch), opts.pollMs || 500)
-    if (timer.unref) timer.unref()
+    // A keeper added later shows up in the control log: scan then. No
+    // polling by default (it was the whole idle cost of a follow); pollMs
+    // adds one.
+    const oncontrol = () => scan().catch(safetyCatch)
+    this.#control.on('change', oncontrol)
+    const timer = opts.pollMs ? setInterval(() => scan().catch(safetyCatch), opts.pollMs) : null
+    if (timer && timer.unref) timer.unref()
     const stop = () => {
       if (stopped) return
       stopped = true
-      clearInterval(timer)
+      if (timer) clearInterval(timer)
+      this.#control.off('change', oncontrol)
       for (const roster of hooked) roster.core.off('append', onroster)
       for (const w of watched.values()) {
         if (!w) continue
@@ -617,6 +624,7 @@ class Community extends ReadyResource {
     return {
       openLogs: this.#logs.size + this.#ownLogs.size,
       follows: this.#follows.size,
+      scans: this.#scans,
       rosterKeepers,
       unreachable: this.#unreachable,
       controlLength: this.#control.base.length
