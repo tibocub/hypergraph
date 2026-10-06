@@ -38,6 +38,7 @@ class Community extends ReadyResource {
   #control = null
   #ns = null
   #logs = new Map() // log key hex -> AuthorLog (others' logs, opened by key)
+  #logChannels = new Map() // log key hex -> Set of channel ids reading it
   #ownLogs = new Map() // channel id -> this member's AuthorLog
   #rosters = new Map() // channel id -> Map(keeper pubkey hex -> Roster)
   #kept = new Set() // channels this member keeps
@@ -45,7 +46,7 @@ class Community extends ReadyResource {
   #pending = new Map() // `${channel}:${segment}` -> announcement, until listed
   #retry = null
   #unreachable = 0 // logs a read gave up on (last page)
-  #follows = new Set() // stop functions of live follows
+  #follows = new Map() // stop function of a live follow -> its channel
 
   /**
    * @param {Object} store - Corestore
@@ -85,7 +86,7 @@ class Community extends ReadyResource {
 
   async _close () {
     if (this.#retry) clearInterval(this.#retry)
-    for (const stop of this.#follows) stop()
+    for (const stop of [...this.#follows.keys()]) stop()
     for (const rosters of this.#rosters.values()) for (const r of rosters.values()) await r.close().catch(safetyCatch)
     for (const log of this.#logs.values()) await log.close().catch(safetyCatch)
     for (const log of this.#ownLogs.values()) await log.close().catch(safetyCatch)
@@ -161,15 +162,17 @@ class Community extends ReadyResource {
   async #banCut (author) {
     const cut = {}
     for (const { id, segmentMs } of this.channels()) {
+      const wasOpen = this.#rosters.has(id)
       const seg = segmentOf(Date.now(), segmentMs)
       for (const s of [seg - 1, seg]) {
         for (const e of await this.rosterEntries(id, s)) {
           if (e.author !== author || cut[e.log] !== undefined) continue
-          const log = await this.#log(e.log)
+          const log = await this.#log(e.log, id)
           await within(log.update({ wait: true }).catch(safetyCatch), 1000)
           cut[e.log] = log.length
         }
       }
+      if (!wasOpen) await this.closeChannel(id) // opened only for this
     }
     return cut
   }
@@ -382,7 +385,7 @@ class Community extends ReadyResource {
 
   // ── reading ──────────────────────────────────────────────────────────────
 
-  async #log (logHex) {
+  async #log (logHex, channel = null) {
     for (const own of this.#ownLogs.values()) if (toHex(own.key) === logHex) return own
     let log = this.#logs.get(logHex)
     if (!log) {
@@ -390,7 +393,38 @@ class Community extends ReadyResource {
       await log.ready()
       this.#logs.set(logHex, log)
     }
+    if (channel !== null) {
+      let users = this.#logChannels.get(logHex)
+      if (!users) this.#logChannels.set(logHex, (users = new Set()))
+      users.add(channel)
+    }
     return log
+  }
+
+  /**
+   * Stop reading a channel: its follows end, and the rosters and author logs
+   * opened for it are closed (unless another open channel reads them). The
+   * data stays on disk; reading the channel again reopens them. A roster this
+   * member keeps and its own log are left alone.
+   */
+  async closeChannel (channel) {
+    for (const [stop, ch] of [...this.#follows]) if (ch === channel) stop()
+    const rosters = this.#rosters.get(channel)
+    if (rosters) {
+      for (const [keeper, roster] of [...rosters]) {
+        if (roster.writable) continue
+        rosters.delete(keeper)
+        await roster.close().catch(safetyCatch)
+      }
+      if (rosters.size === 0) this.#rosters.delete(channel)
+    }
+    for (const [logHex, users] of [...this.#logChannels]) {
+      if (!users.delete(channel) || users.size > 0) continue
+      this.#logChannels.delete(logHex)
+      const log = this.#logs.get(logHex)
+      this.#logs.delete(logHex)
+      if (log) await log.close().catch(safetyCatch)
+    }
   }
 
   // A log's length as far as peers say within `timeout` (its local length if
@@ -432,7 +466,7 @@ class Community extends ReadyResource {
       if (seg < 0) break
       const entries = await this.rosterEntries(channel, seg)
       await Promise.all(entries.map(async (e) => {
-        const log = await this.#log(e.log)
+        const log = await this.#log(e.log, channel)
         const end = later.has(e.author) ? later.get(e.author) : await this.#length(log, timeout)
         let got = 0
         for (let i = end - 1; i >= e.start && got < limit; i--) {
@@ -510,7 +544,7 @@ class Community extends ReadyResource {
     const hooked = new Set()
     const onroster = () => scan().catch(safetyCatch)
     const watch = async (e, first) => {
-      const log = await this.#log(e.log)
+      const log = await this.#log(e.log, channel)
       if (first) await within(log.update({ wait: true }).catch(safetyCatch), 2000)
       // Authors found by the first scan: their messages so far are history.
       // Authors listed later: everything from their entry, as long as it was
@@ -573,7 +607,7 @@ class Community extends ReadyResource {
       }
       this.#follows.delete(stop)
     }
-    this.#follows.add(stop)
+    this.#follows.set(stop, channel)
     return stop
   }
 
@@ -582,6 +616,7 @@ class Community extends ReadyResource {
     for (const m of this.#rosters.values()) rosterKeepers += m.size
     return {
       openLogs: this.#logs.size + this.#ownLogs.size,
+      follows: this.#follows.size,
       rosterKeepers,
       unreachable: this.#unreachable,
       controlLength: this.#control.base.length

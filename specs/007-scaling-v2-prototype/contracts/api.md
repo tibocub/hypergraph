@@ -50,6 +50,8 @@ const older = await community.before(channelId, { t, limit = 50 })   // scrollba
 
 const stop = community.follow(channelId, (message) => {}, { pollMs = 500 })   // live, newest only
 stop()
+
+await community.closeChannel(channelId)   // stop reading: follows end, its rosters and logs close
 ```
 
 `follow` re-reads the rosters as soon as one grows (an author's first post in a segment), and
@@ -63,7 +65,7 @@ come back with `hidden: true` and no text.
 
 ```js
 await community.stats()
-// { openLogs, rosterKeepers, heldBytes, budget, mode, controlLength }
+// { openLogs, follows, rosterKeepers, unreachable, controlLength }  (+ heldBytes, budget, mode with US4)
 
 await community.postAs(identity, channelId, text)   // post as another identity through this peer
 ```
