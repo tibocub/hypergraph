@@ -64,6 +64,7 @@ module.exports = class Hypergraph extends ReadyResource {
   #roleBase
   #scopeBase
   #grantingScopes = false
+  #networks = new Set() // created by connectToSwarm(); destroyed by close()
   #emitter
   #onIndexEvent
   #wakeup
@@ -200,6 +201,8 @@ module.exports = class Hypergraph extends ReadyResource {
   }
 
   async _close () {
+    for (const networking of this.#networks) await networking.destroy().catch(safetyCatch)
+    this.#networks.clear()
     if (this.#wakeup) this.#wakeup.destroy()
     if (this.#view) await this.#view.close()
     if (this.#userCore) await this.#userCore.close()
@@ -2064,6 +2067,8 @@ module.exports = class Hypergraph extends ReadyResource {
    * @param {Buffer|string} topic - Hyperswarm topic (Buffer or hex string)
    * @param {Object} [opts] - Connection options
    * @param {Object} [opts.swarm] - Hyperswarm instance (optional, will create if not provided)
+   * @param {Array<{ host: string, port: number }>} [opts.bootstrap] - DHT bootstrap nodes for the
+   *   swarm created when `opts.swarm` is omitted (a private DHT; default: the public one)
    * @param {string} [opts.role='peer'] - Role: 'owner' or 'peer'
    * @param {Object<string, string|Buffer>} [opts.contexts] - Context keys for writer authorization (key-value pairs)
    * @param {number} [opts.maxPeers=16] - Maximum peers per swarm
@@ -2072,13 +2077,17 @@ module.exports = class Hypergraph extends ReadyResource {
   async connectToSwarm (topic, opts = {}) {
     const HypergraphNetwork = require('./networking')
     const Hyperswarm = require('hyperswarm')
-    const swarm = opts.swarm || new Hyperswarm()
+    const swarm = opts.swarm || new Hyperswarm(opts.bootstrap ? { bootstrap: opts.bootstrap } : {})
     const networking = new HypergraphNetwork(this, this.#store, swarm, {
       topic,
       role: opts.role || 'peer',
       contexts: opts.contexts || {},
       maxPeers: opts.maxPeers || 16
     })
+    // Tracked before connecting: with nobody else on the topic, connect()
+    // retries for up to ~45 s before returning, and close() must be able to
+    // stop it rather than leave the process running.
+    this.#networks.add(networking)
     await networking.connect()
     return networking
   }

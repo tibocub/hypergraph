@@ -10,7 +10,7 @@ const test = require('brittle')
 const path = require('path')
 const Corestore = require('corestore')
 const { Hypergraph } = require('../../../index.js')
-const { createGraph, sleep } = require('../helpers')
+const { createGraph, sleep, within } = require('../helpers')
 
 async function page (graph, ctx, channel) {
   const out = []
@@ -48,8 +48,11 @@ test('offline-reopen: the latest page a newcomer showed loads again offline afte
     return () => { s1.destroy(); s2.destroy() }
   }
   const showLatest = async (last) => {
+    // Up to 60 s: with every test file running in parallel, catching up
+    // can take well over the ~1 s it takes alone.
     let shown = []
-    for (let i = 0; i < 600; i++) {
+    const deadline = Date.now() + 60000
+    while (Date.now() < deadline) {
       shown = await page(graph, ctx, channel).catch(() => [])
       if (shown[0] && shown[0].data === last) break
       await sleep(25)
@@ -78,7 +81,7 @@ test('offline-reopen: the latest page a newcomer showed loads again offline afte
   graph = new Hypergraph(store)
   await graph.ready()
   await graph.openContext(ctx)
-  const again = await Promise.race([page(graph, ctx, channel), sleep(5000).then(() => null)])
+  const again = await within(page(graph, ctx, channel), 5000, null)
   t.ok(again, 'the page loads offline (not stuck waiting for a peer)')
   t.alike(again && again.map(e => e.from), shown.map(e => e.from), 'and it is the same page')
   await graph.close(); await store.close()

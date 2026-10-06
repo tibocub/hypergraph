@@ -16,7 +16,7 @@ const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
 const { HypergraphNetwork } = require('../../../index.js')
 const crypto = require('crypto')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm } = require('../helpers')
 
 test('hypergraph-network: swarm parameter is required', async (t) => {
   const { graph, store } = await createGraph(t, 'hn-swarm-param')
@@ -229,8 +229,8 @@ test('hypergraph-network: two peers connect over the DHT (needs real network)', 
   await peer1.graph.openContext(contextKey1, { writeMode: 'open' })
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
 
-  const swarm1 = new Hyperswarm()
-  const swarm2 = new Hyperswarm()
+  const swarm1 = await testSwarm(t)
+  const swarm2 = await testSwarm(t)
 
   const topic = crypto.randomBytes(32)
   const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, { topic, role: 'owner', contexts: { chat: contextKey1 } })
@@ -260,8 +260,8 @@ test('hypergraph-network: a single connection carries multiple contexts (needs r
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
   await peer2.graph.openContext(contextKey2, { writeMode: 'open' })
 
-  const swarm1 = new Hyperswarm()
-  const swarm2 = new Hyperswarm()
+  const swarm1 = await testSwarm(t)
+  const swarm2 = await testSwarm(t)
 
   const topic = crypto.randomBytes(32)
   const contexts = { chat: contextKey1, moderation: contextKey2 }
@@ -291,8 +291,8 @@ test('hypergraph-network: peer role receives a writer grant from owner (needs re
   await peer1.graph.openContext(contextKey1, { writeMode: 'open' })
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
 
-  const swarm1 = new Hyperswarm()
-  const swarm2 = new Hyperswarm()
+  const swarm1 = await testSwarm(t)
+  const swarm2 = await testSwarm(t)
 
   const topic = crypto.randomBytes(32)
   const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, { topic, role: 'owner', contexts: { chat: contextKey1 } })
@@ -329,8 +329,8 @@ test('hypergraph-network: emits peer-join via Hyperswarm connection events (need
   await peer1.graph.openContext(contextKey1, { writeMode: 'open' })
   await peer2.graph.openContext(contextKey1, { writeMode: 'open' })
 
-  const swarm1 = new Hyperswarm()
-  const swarm2 = new Hyperswarm()
+  const swarm1 = await testSwarm(t)
+  const swarm2 = await testSwarm(t)
 
   const topic = crypto.randomBytes(32)
   const networking1 = new HypergraphNetwork(peer1.graph, peer1.store, swarm1, { topic, role: 'owner', contexts: { chat: contextKey1 } })

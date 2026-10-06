@@ -18,3 +18,4 @@ bench/results
 __pycache__/
 *.pyc
 bench/tmp/
+.test-times.json

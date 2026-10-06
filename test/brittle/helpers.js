@@ -1,4 +1,6 @@
 const Corestore = require('corestore')
+const Hyperswarm = require('hyperswarm')
+const createTestnet = require('hyperdht/testnet')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
@@ -72,6 +74,22 @@ function sleep (ms) {
 }
 
 /**
+ * Whichever comes first: `promise`, or `fallback` after `ms`. The timer is
+ * cleared either way. A plain Promise.race against sleep() leaves the timer
+ * running, which keeps the test process alive until it fires (measured: up
+ * to 20 s idle at the end of a file).
+ */
+async function within (promise, ms, fallback = null) {
+  let timer = null
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(fallback), ms) })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Wait until every given Hyperswarm instance reports at least one live
  * connection. `discovery.flushed()` only proves the local side's own DHT
  * announce/lookup round finished — it does NOT prove an actual peer-to-peer
@@ -100,9 +118,18 @@ function sleep (ms) {
  * @returns {Promise<Array<{ name: string, count: number }>>}
  */
 async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
-  const { topic = null, retries = 1, joinOpts = { server: true, client: true } } = opts
+  const { topic = null, joinOpts = { server: true, client: true } } = opts
+  // Measured: when every peer joins at once, the first lookup usually runs
+  // before the others have announced, finds nobody, and Hyperswarm only
+  // looks again ~10 minutes later. A rejoin connects in ~2 s. So wait short
+  // and rejoin (one peer after another), doubling the wait each time (1, 2,
+  // 4 ... 32 s), within
+  // about the same total budget, instead of waiting out timeoutMs first
+  // (multi-peer.js spent 60 s per test in the first wait).
+  const retries = topic ? Math.max(opts.retries || 1, 6) : (opts.retries || 1)
 
   for (let attempt = 0; ; attempt++) {
+    const attemptMs = topic ? Math.min(timeoutMs, 1000 * 2 ** attempt) : timeoutMs
     const start = Date.now()
     let timedOut = false
     let counts = []
@@ -113,11 +140,11 @@ async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
         console.log(`    connections established (attempt ${attempt + 1}): ${counts.map((c) => `${c.name}=${c.count}`).join(', ')}`)
         return counts
       }
-      if (Date.now() - start > timeoutMs) {
+      if (Date.now() - start > attemptMs) {
         timedOut = true
         break
       }
-      await sleep(1000)
+      await sleep(100)
     }
 
     console.log(`    TIMEOUT waiting for connections (attempt ${attempt + 1}): ${counts.map((c) => `${c.name}=${c.count}`).join(', ')}`)
@@ -128,7 +155,7 @@ async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
     for (const { swarm } of swarms) {
       try { await swarm.leave(topic) } catch (err) { /* may already have left */ }
     }
-    await sleep(1000)
+    await sleep(200)
     for (const { swarm } of swarms) {
       const disc = swarm.join(topic, joinOpts)
       // swarm.flush() deliberately not awaited here — per hyperswarm's own
@@ -153,10 +180,11 @@ async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
  * @param {string} label - what's being torn down, for the log line
  */
 async function withTeardownTimeout (promise, ms, label) {
-  const result = await Promise.race([
+  const result = await within(
     Promise.resolve(promise).then((value) => ({ timedOut: false, value, error: null })).catch((error) => ({ timedOut: false, value: null, error })),
-    sleep(ms).then(() => ({ timedOut: true, value: null, error: null }))
-  ])
+    ms,
+    { timedOut: true, value: null, error: null }
+  )
   if (result.timedOut) {
     console.log(`    [teardown] ${label} did not finish within ${ms}ms — abandoning it so the rest of teardown can proceed`)
   } else if (result.error) {
@@ -192,10 +220,34 @@ async function destroySwarm (swarm) {
   // attempts fails fast instead of waiting on the network. Bounded anyway.
   // (`_discovery` is Hyperswarm's own topic map; no public accessor.)
   const discoveries = swarm._discovery ? [...swarm._discovery.values()] : []
+  let timer = null
   await Promise.race([
     Promise.all(discoveries.map(d => Promise.resolve(d.destroy()).catch(() => {}))),
-    sleep(5000)
+    new Promise(resolve => { timer = setTimeout(resolve, 5000) })
   ])
+  clearTimeout(timer) // a pending 5 s timer would itself keep the process alive
 }
 
-module.exports = { createGraph, removeDirWithRetry, sleep, waitForConnections, withTeardownTimeout, destroySwarm }
+// One small local DHT (3 nodes on 127.0.0.1) per test, created on first use
+// and destroyed after the test's own teardowns. Network tests use real
+// Hyperswarm/UDP through it, without the public DHT: on the public DHT,
+// lookups and shutdowns cost seconds each, and running files in parallel
+// made them flaky. HG_TEST_PUBLIC_DHT=1 runs them on the public DHT instead.
+const testnets = new WeakMap()
+
+async function testBootstrap (t) {
+  if (process.env.HG_TEST_PUBLIC_DHT) return undefined
+  let testnet = testnets.get(t)
+  if (!testnet) {
+    testnet = createTestnet(3, t.teardown)
+    testnets.set(t, testnet)
+  }
+  return (await testnet).bootstrap
+}
+
+async function testSwarm (t, opts = {}) {
+  const bootstrap = await testBootstrap(t)
+  return new Hyperswarm(bootstrap ? { ...opts, bootstrap } : opts)
+}
+
+module.exports = { createGraph, removeDirWithRetry, sleep, within, waitForConnections, withTeardownTimeout, destroySwarm, testSwarm, testBootstrap }

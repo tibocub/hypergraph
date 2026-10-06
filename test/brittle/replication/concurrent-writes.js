@@ -26,7 +26,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm } = require('../helpers')
 
 test('concurrent-writes: two peers each write, both replicate, and content matches exactly (needs real network)', async (t) => {
   console.log('TEST: sequential writes, both peers write - starting (requires DHT access)')
@@ -39,7 +39,7 @@ test('concurrent-writes: two peers each write, both replicate, and content match
   const aUserCoreOnB = await b.graph.openUserCore(a.graph.key)
 
   const topic = a.graph.discoveryKey
-  const swarmA = new Hyperswarm()
+  const swarmA = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
 
   const discA = swarmA.join(topic, { server: true, client: true })
@@ -49,7 +49,7 @@ test('concurrent-writes: two peers each write, both replicate, and content match
   const msg1 = await a.graph.put({ type: 'message' })
   await a.graph.putContent(msg1.id, 'Message from Peer A', 'text')
 
-  const swarmB = new Hyperswarm()
+  const swarmB = await testSwarm(t)
   swarmB.on('connection', (conn) => b.store.replicate(conn))
 
   const discB = swarmB.join(topic, { server: true, client: true })

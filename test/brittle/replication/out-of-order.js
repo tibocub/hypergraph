@@ -21,7 +21,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, waitForConnections, destroySwarm } = require('../helpers')
+const { createGraph, sleep, waitForConnections, destroySwarm, testSwarm } = require('../helpers')
 
 test('out-of-order: a relation referencing a not-yet-replicated entity still converges correctly (needs real network)', { timeout: 340000 }, async (t) => {
   console.log('TEST: out-of-order replication over real network - starting (requires DHT access)')
@@ -53,8 +53,8 @@ test('out-of-order: a relation referencing a not-yet-replicated entity still con
   await remoteAOnB.ready()
 
   const topic = a.graph.discoveryKey
-  const swarmA = new Hyperswarm()
-  const swarmB = new Hyperswarm()
+  const swarmA = await testSwarm(t)
+  const swarmB = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
   swarmB.on('connection', (conn) => b.store.replicate(conn))
 

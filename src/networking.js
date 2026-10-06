@@ -37,10 +37,15 @@ function sleep (ms) {
  * instead of only ever seeing an unconditional `connected: true`.
  */
 async function withTimeoutWarn (emitter, label, promise, ms) {
+  // The timer is cleared as soon as the promise settles: left running, it
+  // kept the process alive for up to `ms` after connect() (60 s), so an app
+  // that connected and then closed could not exit for a minute.
+  let timer = null
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ timedOut: true, value: null }), ms) })
   const result = await Promise.race([
     promise.then((value) => ({ timedOut: false, value })),
-    sleep(ms).then(() => ({ timedOut: true, value: null }))
-  ])
+    timeout
+  ]).finally(() => clearTimeout(timer))
   if (result.timedOut) {
     emitter.emit('flush-timeout', { step: label, timeoutMs: ms })
   }
@@ -95,6 +100,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
   #topic
   #maxPeers
   #connected = false
+  #destroyed = false // set by destroy(): stops a connect() still retrying
   #autoReplicate = true
   #contexts = new Map() // name -> contextKey
   #contextInstances = new Map() // name -> contextInstance
@@ -552,9 +558,10 @@ module.exports = class HypergraphNetwork extends EventEmitter {
     // why this no longer waits nearly as long as it used to before
     // considering that necessary.
     if (this.#dataSwarm.connections.size === 0) {
-      await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data')
+      await this._ensureConnectionWithRetry(this.#dataSwarm, this.#topic, 'data', discovery)
     }
 
+    if (this.#destroyed) return
     this.#connected = true
     this.emit('connected')
   }
@@ -568,8 +575,8 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * calls this if a connection hasn't already appeared by the time its own
    * role-appropriate wait (see connect()) has finished.
    *
-   * waitMs is deliberately much shorter than earlier versions of this
-   * method used (15s): that value was calibrated around the assumption
+   * The waits are deliberately much shorter than earlier versions of this
+   * method used (15s, then 8s): that value was calibrated around the assumption
    * that waiting on flush()/flushed() was what made a connection "ready",
    * which turned out to be wrong (see connect()) — real connections
    * complete in a few seconds once the announce/join sequencing itself is
@@ -591,18 +598,28 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * @param {Object} swarm - A Hyperswarm instance
    * @param {Buffer} topic
    * @param {string} label - 'data' or 'control', for event/log purposes
+   * @param {Object} [discovery] - The topic's discovery session, refreshed
+   *   instead of leaving and rejoining when given
    */
-  async _ensureConnectionWithRetry (swarm, topic, label) {
-    const retries = 2
-    const waitMs = 8000
+  async _ensureConnectionWithRetry (swarm, topic, label, discovery = null) {
+    // Short first, doubling: 3, 6, 12, 24 s (45 s in all, was 3 x 8 s).
+    // Measured on a local DHT: when peers join together the first lookup
+    // usually finds nobody, and a rejoin connects within half a second, so
+    // a fixed 8 s first wait was mostly idle time.
+    const retries = 3
     const joinOpts = { server: true, client: true }
 
     for (let attempt = 0; ; attempt++) {
+      const waitMs = 3000 * 2 ** attempt
       const start = Date.now()
-      while (swarm.connections.size === 0 && Date.now() - start < waitMs) {
-        await sleep(500)
+      while (swarm.connections.size === 0 && Date.now() - start < waitMs && !this.#destroyed) {
+        await sleep(100)
       }
 
+      // destroy() was called meanwhile: stop, rather than keep the process
+      // alive retrying for up to 45 s (seen in tests as a 15 s teardown and
+      // a 31 s wait for the process to exit).
+      if (this.#destroyed) return
       if (swarm.connections.size > 0) return
 
       if (attempt >= retries) {
@@ -611,16 +628,31 @@ module.exports = class HypergraphNetwork extends EventEmitter {
       }
 
       this.emit('connection-retry', { label, attempt: attempt + 1 })
+
+      // A random pause first: two peers that started together would
+      // otherwise retry in lockstep and miss each other again (measured on
+      // a local DHT: every attempt failed until the retries were desynced).
+      await sleep(Math.floor(Math.random() * 500))
+
+      // Run the announce and lookup again on the same session; a peer that
+      // announced in the meantime is found now.
+      if (discovery && !discovery.destroyed) {
+        try {
+          await discovery.refresh()
+        } catch (err) {
+          safetyCatch(err)
+        }
+        continue
+      }
+
       try {
         await swarm.leave(topic)
       } catch (err) {
         safetyCatch(err)
       }
-      await sleep(1000)
-
-      const discovery = swarm.join(topic, joinOpts)
+      const rejoined = swarm.join(topic, joinOpts)
       try {
-        await discovery.flushed()
+        await rejoined.flushed()
       } catch (err) {
         safetyCatch(err)
       }
@@ -740,6 +772,7 @@ module.exports = class HypergraphNetwork extends EventEmitter {
    * call with no visible internal timeout).
    */
   async destroy () {
+    this.#destroyed = true
     if (this.#connected) {
       this.#connected = false
       this.emit('disconnected')

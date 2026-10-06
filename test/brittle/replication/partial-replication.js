@@ -39,7 +39,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, waitForConnections, destroySwarm } = require('../helpers')
+const { createGraph, sleep, waitForConnections, destroySwarm, testSwarm } = require('../helpers')
 
 test('partial-replication: a peer only receives data for contexts it has opened (needs real network)', { timeout: 480000 }, async (t) => {
   console.log('TEST: partial replication over real network - starting (requires DHT access)')
@@ -69,8 +69,8 @@ test('partial-replication: a peer only receives data for contexts it has opened 
   const ownerUserCore = await peer.graph.openUserCore(owner.graph.key)
 
   const topic = owner.graph.discoveryKey
-  const swarmOwner = new Hyperswarm()
-  const swarmPeer = new Hyperswarm()
+  const swarmOwner = await testSwarm(t)
+  const swarmPeer = await testSwarm(t)
   swarmOwner.on('connection', (conn) => owner.store.replicate(conn))
   swarmPeer.on('connection', (conn) => peer.store.replicate(conn))
 

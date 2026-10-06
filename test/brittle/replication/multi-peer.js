@@ -41,7 +41,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, waitForConnections, destroySwarm } = require('../helpers')
+const { createGraph, sleep, waitForConnections, destroySwarm, testSwarm } = require('../helpers')
 
 test('multi-peer: data written by one peer replicates to two others, with content verified (needs real network)', { timeout: 320000 }, async (t) => {
   console.log('TEST: 3-peer replication - starting (requires DHT access)')
@@ -55,9 +55,9 @@ test('multi-peer: data written by one peer replicates to two others, with conten
   const aUserCoreOnC = await c.graph.openUserCore(a.graph.key)
 
   const topic = a.graph.discoveryKey
-  const swarmA = new Hyperswarm()
-  const swarmB = new Hyperswarm()
-  const swarmC = new Hyperswarm()
+  const swarmA = await testSwarm(t)
+  const swarmB = await testSwarm(t)
+  const swarmC = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
   swarmB.on('connection', (conn) => b.store.replicate(conn))
   swarmC.on('connection', (conn) => c.store.replicate(conn))
@@ -145,9 +145,9 @@ test('multi-peer: three peers each write, and all three converge on all writes w
   const bUserCoreOnC = await c.graph.openUserCore(b.graph.key)
 
   const topic = a.graph.discoveryKey
-  const swarmA = new Hyperswarm()
-  const swarmB = new Hyperswarm()
-  const swarmC = new Hyperswarm()
+  const swarmA = await testSwarm(t)
+  const swarmB = await testSwarm(t)
+  const swarmC = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
   swarmB.on('connection', (conn) => b.store.replicate(conn))
   swarmC.on('connection', (conn) => c.store.replicate(conn))

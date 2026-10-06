@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-06: faster tests, connecting and shutdown (additive)
+
+- `npm test` runs every test file in its own process, in parallel, longest first
+  (`scripts/test-runner.js`): 514 s → 57 s for the full suite (319 tests, 8 cores). The old
+  sequence is `npm run test:serial`. Network tests now use a local DHT (`testSwarm(t)`), not the
+  public one; `HG_TEST_PUBLIC_DHT=1` switches back.
+- `HypergraphNetwork.connect()`: when no peer is found at once, it waits 3, 6, 12, 24 s (was 3 x 8 s),
+  and refreshes the same discovery after a random 0–0.5 s pause instead of leaving and rejoining.
+  Two peers that start together now connect on the first retry (~3 s, was ~8 s, or never on a fast
+  local network, where their retries stayed in lockstep).
+- Shutdown: `connect()` no longer leaves a 60 s timer running after it resolves (an app that
+  connected then closed could not exit for a minute); `destroy()` stops a `connect()` still
+  retrying; `graph.close()` destroys the networks `connectToSwarm()` created.
+- `connectToSwarm(topic, { bootstrap })`: bootstrap nodes for the swarm it creates.
+- Moderation: a moderation event whose permissions can't be checked yet (no RoleBase, or not synced)
+  is queued at once instead of retrying for 10 s inside apply, which held up every later event of
+  that context on every peer. The next `update()` decides it, as before.
+
 ### 2026-10-06: idle `update()` costs almost nothing (no API change)
 
 - `graph.update()` with nothing new no longer re-reads every context's member list, rescans its

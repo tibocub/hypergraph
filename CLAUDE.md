@@ -129,20 +129,33 @@ found: cross-peer usercore discovery (`openUserCore()`) is the application's job
 and it's easy to forget one direction of it.
 
 **Real-network test files: never call `process.exit()` to work around a slow-to-exit process.**
-`test:networking`/`test:replication` glob-match and run every file in *one* brittle process — a
-force-exit in one file can kill sibling files' still-running tests before they get to report,
-silently truncating the suite (confirmed directly: this happened when tried here). If a DHT/swarm
-test leaves something alive for a while after finishing, that's an accepted, already-known
-cost — slow-but-correct, not fast-but-truncates-siblings.
+`npm run test:serial` (and the per-group scripts) run every file of a group in *one* brittle
+process — a force-exit in one file kills sibling files' still-running tests before they report,
+silently truncating the suite (it hid 8 never-run networking tests from 2026-07 to 2026-10). If a
+file is slow to exit, something is left open: find it (a preload that lists live timers did it
+every time: uncancelled `Promise.race` timers, Hyperswarm discovery timers, a `connect()` still
+retrying) and close it.
+
+**Network tests use a local DHT, not the internet.** `testSwarm(t)` / `testBootstrap(t)` from
+`test/brittle/helpers.js` give each test a 3-node DHT on 127.0.0.1 (real Hyperswarm/UDP, torn
+down with the test); `HG_TEST_PUBLIC_DHT=1` runs them on the public DHT instead. Use `within()`
+from the same file, not `Promise.race([x, sleep(n)])`, which leaves a timer keeping the process
+alive.
 
 ## Running tests
 
 ```bash
-npm test                    # full suite: core, networking, replication, forum, integration
-npm run test:core           # test/brittle/core/*.js
-npm run test:networking     # test/brittle/networking/*.js
-npm run test:replication    # test/brittle/replication/*.js
+npm test                                   # full suite, one process per file, in parallel (~1 min)
+node scripts/test-runner.js core           # one group (core, networking, replication, forum, integration)
+node scripts/test-runner.js test/brittle/replication/invites.js   # given files
+node scripts/test-timeline.js <file> [re]  # one file, each line with seconds elapsed: where it waits
+npm run test:serial                        # the old way: groups one after another, one process per group
 ```
 
-See `package.json` for granular per-file scripts (e.g. `test:contexts`, `test:roles`,
-`test:late-joiner`). Tests use `brittle`, run via `npx brittle <file>`.
+`npm test` (`scripts/test-runner.js`) starts the longest files first (by their last run, in the
+gitignored `.test-times.json`), fails a file that doesn't print its own `# tests = n/n` line, and
+prints the slowest files. While iterating, run only the affected files or group; run the full
+suite once before committing. Tests use `brittle`, run via `npx brittle <file>`.
+
+Measured 2026-10-06 (8 cores): `npm test` 57 s wall for 319 tests (the old serial `npm test`:
+514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s.
