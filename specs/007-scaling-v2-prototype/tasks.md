@@ -53,8 +53,8 @@ big sizes with few processes, one at a time).
 
 **Independent test**: hides and bans applied by a peer holding only the latest segment and by a late joiner.
 
-- [ ] T018 [US3] Test `test/brittle/v2/moderation.js`: a hidden message comes back `hidden: true` without text for (a) a peer holding everything, (b) a peer holding only the latest segment, (c) a newcomer who joined after the hide; a banned author's posts after the ban are left out everywhere, earlier ones stay; keepers refuse the banned author's new segments; unban restores
-- [ ] T019 [US3] Implement the moderation filter in `src/v2/reader.js` and ban checks in `src/v2/roster.js`; measure SC-006 (100% of members apply)
+- [X] T018 [US3] Test `test/brittle/v2/moderation.js`: a hidden message comes back `hidden: true` without text for (a) a peer holding everything, (b) a peer holding only the latest segment, (c) a newcomer who joined after the hide; a banned author's posts after the ban are left out everywhere, earlier ones stay; keepers refuse the banned author's new segments; unban restores
+- [X] T019 [US3] Implement the moderation filter in `src/v2/reader.js` and ban checks in `src/v2/roster.js`; measure SC-006 (100% of members apply)
 
 ## Phase 5: User Story 5 — the rest of the community stays out of the way (P2)
 

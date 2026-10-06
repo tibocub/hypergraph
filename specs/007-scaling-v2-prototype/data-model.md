@@ -13,7 +13,7 @@ layout is not worth it here).
 | `meta:community` | `{ version: 'v2-prototype', name, createdAt }` | owner, once |
 | `role:<pubkey>` | `{ role: 'owner' \| 'admin' \| 'mod' \| 'keeper', by }` | owner (admin, mod, keeper), admin (mod, keeper) |
 | `channel:<channelId>` | `{ name, segmentMs, createdAt, by }` | admin |
-| `ban:<pubkey>` | `{ at, reason, by }` (absent = not banned; unban deletes) | mod and up |
+| `ban:<pubkey>` | `{ at, reason, by, cut: { <logHex>: length } }` (absent = not banned; unban deletes) | mod and up |
 | `hide:<authorPub>:<logKey>:<seq>` | `{ reason, by, at }` | mod and up |
 | `keeper:<channelId>:<keeperPub>` | `{ rosterKey }` | the keeper itself (role `keeper` required) |
 
@@ -71,4 +71,7 @@ the current or the previous one (by the keeper's clock), and the entry isn't alr
 - Segment: open (current time inside it) → closed (time past it). Closed segments receive no new
   roster entries; their logs can be dropped locally (`core.clear` of that range) without affecting
   others.
-- Ban: absent → present (entries after `at` hidden, new roster entries refused) → absent (unban).
+- Ban: absent → present (new roster entries refused; in a log named in `cut`, messages from that
+  seq on are hidden; in any other log, messages claiming a time after `at`) → absent (unban).
+  `cut` holds the author's logs listed in the current or previous segment of each channel, with
+  the length the mod saw: a claimed time can be backdated, a length can't.

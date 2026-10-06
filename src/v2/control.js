@@ -157,7 +157,7 @@ class Control {
           break
         case 'ban':
           if (!atLeast(authorRole, 'mod') || (await roleOf(event.member)) === 'owner') break
-          await view.put(`ban:${event.member}`, { at: event.timestamp, reason: event.reason || '', by: event.author })
+          await view.put(`ban:${event.member}`, { at: event.timestamp, reason: event.reason || '', by: event.author, cut: banCut(event.cut) })
           break
         case 'unban':
           if (!atLeast(authorRole, 'mod')) break
@@ -178,6 +178,24 @@ class Control {
 
 function emptyState () {
   return { meta: null, roles: {}, channels: {}, bans: {}, hides: {}, keepers: {} }
+}
+
+// A ban's cut: { logHex: length } for the banned author's logs, as the mod
+// saw them. Readers show those logs only below the cut, whatever times the
+// author claims (a claimed time can be backdated). Anything malformed is
+// dropped, leaving the time rule.
+const MAX_CUT = 1000
+function banCut (cut) {
+  const out = {}
+  if (!cut || typeof cut !== 'object' || Array.isArray(cut)) return out
+  let n = 0
+  for (const [log, length] of Object.entries(cut)) {
+    if (n >= MAX_CUT) break
+    if (!/^[0-9a-f]{64}$/.test(log) || !Number.isInteger(length) || length < 0) continue
+    out[log] = length
+    n++
+  }
+  return out
 }
 
 module.exports = { Control, sign, verify, mayAssign, RANK }

@@ -115,6 +115,14 @@ Bans and hides are control log entries (admins/mods only), so every member has t
   hide the author's messages claiming a time after the ban (a banned author backdating messages
   can still appear in a past segment's roster if a keeper had listed them: stated, and keepers
   refuse announcements for segments older than the current one).
+- **Ban, revised (2026-10-06, found by `test/brittle/v2/moderation.js`)**: the time rule alone
+  let a banned author who was already listed in the current segment keep posting: no new roster
+  entry is needed to append to a listed log, and dating each post like the last one before the
+  ban passes the rule. The ban now also records, for the author's logs listed in the current or
+  previous segment of each channel, the length the mod sees (`cut`); readers show those logs only
+  below it, the same on every peer. The time rule remains for other logs; the remaining gap is a
+  log last listed in an older segment, where backdated posts can show on scrollback to that
+  segment.
 
 ## R9 — Measuring at 10M without running 10M live posts (decision)
 

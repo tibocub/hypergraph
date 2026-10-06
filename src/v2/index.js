@@ -148,7 +148,30 @@ class Community extends ReadyResource {
   }
 
   async ban (pubkey, { reason = '' } = {}) {
-    await this.#moderate({ type: 'ban', member: toHex(pubkey), reason })
+    if (!this.opened) await this.ready()
+    await this.#moderate({ type: 'ban', member: toHex(pubkey), reason, cut: await this.#banCut(toHex(pubkey)) })
+  }
+
+  // The author's logs listed in the current or previous segment of each
+  // channel, with the length this peer sees now. An author already listed
+  // can keep appending to that log with times dated before the ban; the cut
+  // stops those. (A log last listed in an older segment isn't found: there
+  // the time rule alone applies, so backdated posts can show on scrollback
+  // to that segment.)
+  async #banCut (author) {
+    const cut = {}
+    for (const { id, segmentMs } of this.channels()) {
+      const seg = segmentOf(Date.now(), segmentMs)
+      for (const s of [seg - 1, seg]) {
+        for (const e of await this.rosterEntries(id, s)) {
+          if (e.author !== author || cut[e.log] !== undefined) continue
+          const log = await this.#log(e.log)
+          await within(log.update({ wait: true }).catch(safetyCatch), 1000)
+          cut[e.log] = log.length
+        }
+      }
+    }
+    return cut
   }
 
   async unban (pubkey) {
@@ -383,10 +406,12 @@ class Community extends ReadyResource {
     return { author, log: logHex, seq: m.seq, t: m.t, text: hidden ? null : m.text, hidden }
   }
 
-  #visible (author, m) {
+  #visible (author, logHex, m) {
     if (isFuture(m.t)) return false
     const ban = this.banned(author)
-    return !(ban && m.t > ban.at)
+    if (!ban) return true
+    const cut = ban.cut && ban.cut[logHex]
+    return cut !== undefined ? m.seq < cut : m.t <= ban.at
   }
 
   // Newest messages with t < beforeT, at most `limit`, newest first. Walks
@@ -418,7 +443,7 @@ class Community extends ReadyResource {
             safetyCatch(err)
           }
           if (!m) { unreachable++; break }
-          if (m.t >= beforeT || !this.#visible(e.author, m)) continue
+          if (m.t >= beforeT || !this.#visible(e.author, e.log, m)) continue
           out.push(this.#shape(e.author, e.log, m))
           got++
         }
@@ -474,7 +499,7 @@ class Community extends ReadyResource {
         } catch (err) {
           safetyCatch(err)
         }
-        if (m && m.t >= since && this.#visible(w.author, m)) onmessage(this.#shape(w.author, toHex(w.log.key), m))
+        if (m && m.t >= since && this.#visible(w.author, toHex(w.log.key), m)) onmessage(this.#shape(w.author, toHex(w.log.key), m))
       }
     }
 
@@ -599,6 +624,13 @@ class Community extends ReadyResource {
   }
 
   /** Post with a given time, announcing for its segment (tests). */
+  /** Length of an author log as this peer knows it (after a short update). */
+  async logLength (logKey) {
+    const log = await this.#log(toHex(logKey))
+    await within(log.update({ wait: true }).catch(safetyCatch), 1000)
+    return log.length
+  }
+
   async postRaw (channel, { t, text }) {
     const record = this.channel(channel)
     const log = await this.#ownLog(channel)
