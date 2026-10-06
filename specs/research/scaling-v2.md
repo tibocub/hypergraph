@@ -113,6 +113,17 @@ context (10 → 100+), a forum shape (threads, replies, votes), and a long-runni
 | cold reopen of all channels | 0.4 s | 1.1 s | 4.3 s |
 | first page after reopen | 22 ms | 12 ms | 14 ms |
 
+**Many members** (`bench/members.js`, one channel, M members added as writers who never write,
+200 messages):
+
+| members | 10 | 100 | 1,000 | 5,000 |
+|---|---|---|---|---|
+| owner: idle `update()` for this one channel | 0.8 ms | 1.2 ms | 8 ms | **39 ms** |
+| owner: memory | 99 MB | 115 MB | 253 MB | **447 MB** |
+| newcomer: latest page | 0.43 s | 0.49 s | 0.46 s | 0.45 s |
+| newcomer: bytes | 0.17 MB | 0.25 MB | 0.33 MB | 0.34 MB |
+| adding one member | 7 ms | 5 ms | 5 ms | 5 ms |
+
 **What this says**
 
 1. **Reading recent messages is already flat when the text is on the relation**: same time and
@@ -132,9 +143,13 @@ context (10 → 100+), a forum shape (threads, replies, votes), and a long-runni
    with no peer it never loaded. The view's newest root had moved on after the read and was never
    downloaded. Violates goal 8.
 7. **Live arrival is fine at chat scale** when few channels are open (p50 ~25 ms, p95 < 100 ms).
-8. Writing: 10 writers in one process reach ~120–140 messages/s in total, each peer applying
+8. **Members cost memory and idle time even when silent**: ~70 KB of memory per member on a peer
+   that applies the context, and every `update()` re-reads the whole member list (39 ms at 5,000
+   members, for one channel). A 50,000-member community would need ~3.5 GB on every applying peer.
+   A newcomer is unaffected (0.45 s, 0.34 MB at 5,000).
+9. Writing: 10 writers in one process reach ~120–140 messages/s in total, each peer applying
    everyone's messages; a single bulk writer does ~1,800 files/s. Needs a per-peer measurement on
    separate machines before reading too much into it.
 
-Still to measure: many members in one context (member-list cost), 1M+ messages (flatness), a
+Still to measure: 1M+ messages (flatness), a
 forum shape (threads, votes), a long-running peer's growth, many writers on separate machines.
