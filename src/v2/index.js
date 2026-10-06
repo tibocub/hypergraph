@@ -1,4 +1,5 @@
 const ReadyResource = require('ready-resource')
+const nodeCrypto = require('crypto')
 const ProtomuxWakeup = require('protomux-wakeup')
 const hcrypto = require('hypercore-crypto')
 const b4a = require('b4a')
@@ -13,6 +14,11 @@ const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 // docs/v2-prototype.md and specs/007-scaling-v2-prototype/.
 
 const toHex = (k) => (b4a.isBuffer(k) ? b4a.toString(k, 'hex') : String(k))
+
+function rosterKeyPair (identity, communityKey, channel) {
+  const seed = identity.seed || nodeCrypto.createHash('sha256').update(identity.keyPair.secretKey).digest()
+  return hcrypto.keyPair(nodeCrypto.createHash('sha256').update('hg-v2-roster\0').update(seed).update(communityKey).update(b4a.from(channel)).digest())
+}
 
 // Whichever first: the promise, or `ms`; the timer is cleared either way.
 async function within (promise, ms) {
@@ -166,7 +172,11 @@ class Community extends ReadyResource {
     const me = toHex(this.#identity.keyPair.publicKey)
     const rosters = this.#rostersOf(channel)
     if (rosters.has(me) && rosters.get(me).writable) return rosters.get(me)
-    const roster = new Roster(this.#ns.get({ name: `roster:${channel}` }), {
+    // Derived from the identity, community and channel, like author logs:
+    // the same roster after a restart and on any device. (Named in the
+    // storage namespace, it came back empty under a new key after the
+    // community was reopened by key, which every reader missed.)
+    const roster = new Roster(this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel) }), {
       onAnnouncement: (ann) => this.acceptAnnouncement(ann)
     })
     await roster.ready()
@@ -468,26 +478,41 @@ class Community extends ReadyResource {
       }
     }
 
+    let scanning = false
+    const watch = async (e, first) => {
+      const log = await this.#log(e.log)
+      if (first) await within(log.update({ wait: true }).catch(safetyCatch), 2000)
+      // Authors found by the first scan: their messages so far are history.
+      // Authors listed later: everything from their entry, as long as it was
+      // posted since following began.
+      const w = { author: e.author, log, next: first ? Math.max(e.start, log.length) : e.start }
+      w.onappend = () => drain(w).catch(safetyCatch)
+      log.core.on('append', w.onappend)
+      w.range = log.core.download({ start: w.next, end: -1 })
+      watched.set(e.log, w)
+      w.onappend() // anything already there since following began
+    }
     const scan = async () => {
-      if (stopped) return
-      const record = this.channel(channel)
-      if (!record) return
-      const seg = segmentOf(Date.now(), record.segmentMs)
-      for (const s of [seg - 1, seg]) {
-        for (const e of await this.rosterEntries(channel, s)) {
-          if (e.author === me || watched.has(e.log)) continue
-          const log = await this.#log(e.log)
-          await within(log.update({ wait: true }).catch(safetyCatch), 2000)
-          // Authors found by the first scan: their messages so far are
-          // history. Authors listed later: everything from their entry, as
-          // long as it was posted since following began.
-          const w = { author: e.author, log, next: initial ? Math.max(e.start, log.length) : e.start }
-          w.onappend = () => drain(w).catch(safetyCatch)
-          log.core.on('append', w.onappend)
-          w.range = log.core.download({ start: log.length, end: -1 })
-          watched.set(e.log, w)
-          w.onappend() // anything already there since following began
+      // One scan at a time (the timer would otherwise overlap a slow one and
+      // watch the same author twice); new authors are set up in parallel.
+      if (stopped || scanning) return
+      scanning = true
+      try {
+        const record = this.channel(channel)
+        if (!record) return
+        const seg = segmentOf(Date.now(), record.segmentMs)
+        const fresh = []
+        for (const s of [seg - 1, seg]) {
+          for (const e of await this.rosterEntries(channel, s)) {
+            if (e.author === me || watched.has(e.log) || fresh.some(f => f.log === e.log)) continue
+            fresh.push(e)
+          }
         }
+        const first = initial
+        for (const e of fresh) watched.set(e.log, null) // claimed
+        await Promise.all(fresh.map(e => watch(e, first).catch(err => { watched.delete(e.log); safetyCatch(err) })))
+      } finally {
+        scanning = false
       }
     }
 
@@ -499,6 +524,7 @@ class Community extends ReadyResource {
       stopped = true
       clearInterval(timer)
       for (const w of watched.values()) {
+        if (!w) continue
         w.log.core.off('append', w.onappend)
         try { w.range.destroy() } catch (err) { safetyCatch(err) }
       }

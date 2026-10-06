@@ -34,6 +34,35 @@ test('v2 roster: an author is listed after its first post in a segment, once', a
   t.ok(await until(async () => (await listed(author, channel, author, seg)).length === 1), 'and the author reads it too')
 })
 
+test('v2 roster: a keeper that restarts keeps listing in the same roster', async (t) => {
+  // Reopening a community by key opens it in another storage namespace than
+  // the one it was created in; a roster named in the namespace came back as
+  // a new, empty roster under a key no reader knew (bench/v2-chat.js: every
+  // live post after the host restarted was invisible).
+  const { Community } = require('../../../src/v2')
+  const owner = await member(t, 'ros-restart-owner')
+  const channel = await owner.community.createChannel({ name: 'general', segmentMs: 60000 })
+  await owner.community.keep(channel)
+  const key = owner.community.key
+  const rosterKey = owner.community.keepers(channel)[0].rosterKey
+  await owner.community.close()
+
+  const reopened = new Community(owner.store, { identity: owner.identity, key })
+  await reopened.ready()
+  t.teardown(() => reopened.close())
+  const post = await reopened.post(channel, 'after a restart')
+  t.is(reopened.keepers(channel)[0].rosterKey, rosterKey, 'the control log still names the original roster')
+
+  // Another member reads the roster the control log names.
+  const reader = await member(t, 'ros-restart-reader', { key })
+  const s1 = reopened.replicate(true); const s2 = reader.community.replicate(false); s1.pipe(s2).pipe(s1)
+  t.teardown(() => { s1.destroy(); s2.destroy() })
+  t.ok(await until(async () => {
+    await reader.community.update()
+    return (await reader.community.rosterEntries(channel, segmentOf(post.t, 60000))).some(e => e.author === owner.pub)
+  }), 'another member sees the post listed')
+})
+
 test('v2 roster: a keeper refuses bad signatures, banned authors and old segments', async (t) => {
   const { owner, author, channel } = await setup(t, 'ros-refuse')
   const keeper = owner.community
