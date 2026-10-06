@@ -138,7 +138,9 @@ retrying) and close it.
 
 **Network tests use a local DHT, not the internet.** `testSwarm(t)` / `testBootstrap(t)` from
 `test/brittle/helpers.js` give each test a 3-node DHT on 127.0.0.1 (real Hyperswarm/UDP, torn
-down with the test); `HG_TEST_PUBLIC_DHT=1` runs them on the public DHT instead. Use `within()`
+down with the test); `HG_TEST_PUBLIC_DHT=1` runs them on the public DHT instead — with
+`--jobs 1`: eight files bootstrapping on the internet DHT at once time out (measured; one at a
+time they pass, and faster than before the retry change). Use `within()`
 from the same file, not `Promise.race([x, sleep(n)])`, which leaves a timer keeping the process
 alive.
 
