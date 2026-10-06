@@ -7,7 +7,8 @@
     "hypergraph-inspect": "bin/hypergraph-inspector.js"
   },
   "scripts": {
-    "test": "npm run test:core && npm run test:networking && npm run test:replication && npm run test:forum && npm run test:integration",
+    "test": "node scripts/test-runner.js",
+    "test:serial": "npm run test:core && npm run test:networking && npm run test:replication && npm run test:forum && npm run test:integration",
     "test:entities": "npx brittle test/brittle/core/entities.js",
     "test:events": "npx brittle test/brittle/core/events.js",
     "test:identity-manager": "npx brittle test/brittle/core/identity-manager.js test/brittle/core/identity-graph.js",
@@ -59,6 +60,7 @@
   },
   "devDependencies": {
     "brittle": "^3.0.0",
+    "hyperdht": "^6.34.1",
     "hyperswarm": "^4.17.0",
     "random-access-memory": "^3.0.0"
   },

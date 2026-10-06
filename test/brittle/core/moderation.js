@@ -132,11 +132,9 @@ test('moderation: a moderation event that arrives before its author\'s RoleBase 
   // concurrently — a peer's own apply function only evaluates a given
   // moderation event once, at the moment it first arrives, so if the
   // RoleBase data hasn't caught up yet at that exact moment, the
-  // permission check has nothing to evaluate against. Confirms the
-  // bounded retry inside #isModerationAllowed resolves this within the
-  // SAME update() call that first sees the event, rather than requiring
-  // the caller to keep calling update() until some later call happens to
-  // land after the RoleBase catches up.
+  // permission check has nothing to evaluate against. Confirms the event
+  // is queued and decided by an update() once the RoleBase has caught up,
+  // rather than lost.
   console.log('TEST: moderation RoleBase-sync race - starting')
 
   const { store: storeA, graph: a } = await createGraph(t, 'moderation-race-a')
@@ -187,9 +185,8 @@ test('moderation: a moderation event that arrives before its author\'s RoleBase 
     try { s2.destroy() } catch (err) { /* already closed */ }
   })
 
-  // A single settle-then-check, not a long polling loop — the point is
-  // that the bounded retry inside the permission check itself does the
-  // waiting, not repeated calls from here.
+  // Settle, then check: update() decides queued events once the RoleBase
+  // has arrived.
   for (let i = 0; i < 20; i++) {
     await sleep(200)
     await b.update()
@@ -367,4 +364,18 @@ test.skip('moderation: stress scenarios (many flags/removes, competing trust pol
   // moderator spam, competing trust sets). Per project decision, only
   // correctness/reliability tests are in scope right now, not stress/perf
   // testing. Revisit once the moderation event model has stabilized.
+})
+
+test('moderation: a moderation event with no RoleBase to check against does not stall the context', async (t) => {
+  // It used to retry the permission check for 10 s inside apply, holding up
+  // every later event of the context on every peer. Now it is queued at once.
+  const { graph } = await createGraph(t, 'moderation-no-stall')
+  const ctx = await graph.createContext({ roles: 'rolebase' })
+  const post = await graph.put({ type: 'post' })
+  const started = Date.now()
+  await graph.moderateAction({ context: ctx, action: 'content.flag', target: post.id, keyPair: crypto.keyPair() })
+  await graph.relate({ from: post.id, to: post.id, type: 'after', context: ctx })
+  await graph.update()
+  t.ok(Date.now() - started < 3000, `the moderation event and the next write took ${Date.now() - started} ms`)
+  t.is(await graph.countEdgesIn(post.id, 'after', { context: ctx }), 1, 'the next event was applied')
 })

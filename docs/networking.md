@@ -41,12 +41,22 @@ always goes through `HypergraphNetwork` as above, not through `Hypergraph` direc
 `connect()` waits differently depending on role: `role: 'owner'` awaits the discovery session's
 own `.flushed()` (not the heavyweight, since-removed `swarm.flush()`) before proceeding; `role:
 'peer'` awaits nothing upfront and relies on a retry safety net (`_ensureConnectionWithRetry`)
-that re-attempts the connection for the genuine race where two peers connect nearly
-simultaneously, before DHT propagation has caught up. Listen for `'connection-retry'` /
-`'connection-retry-exhausted'` if you need visibility into that retry path, and
-`waitForPeer()`/`waitForWriterGrant()` if you want to await specific milestones instead of just
-resolving `connect()`. `destroy()` tears down the underlying Hyperswarm instance
-(`dataSwarm.destroy()`) — call it once, at teardown, not expecting to reuse the swarm afterward.
+for the race where two peers join nearly together: the first lookup runs before the other's
+announce has landed, finds nobody, and Hyperswarm would only look again ~10 minutes later. The
+retry waits 3 s, then 6, 12 and 24 s (45 s in all) for a connection, and between waits pauses a
+random 0–0.5 s and refreshes the same discovery session (announce + lookup again). The random
+pause matters: two peers retrying on the same schedule kept missing each other (measured on a
+local DHT: every attempt failed until the retries were desynced; with them, peers connect on the
+first retry, ~3 s). Listen for `'connection-retry'` / `'connection-retry-exhausted'` if you need
+visibility into that retry path, and `waitForPeer()`/`waitForWriterGrant()` if you want to await
+specific milestones instead of just resolving `connect()`.
+
+`destroy()` stops a `connect()` that is still retrying and tears down the underlying Hyperswarm
+instance (`dataSwarm.destroy()`) — call it once, at teardown, not expecting to reuse the swarm
+afterward. `graph.close()` destroys every network `graph.connectToSwarm()` created, including
+one still connecting (it used to keep retrying, and the process alive, for up to 45 s).
+`connectToSwarm(topic, { bootstrap })` creates its swarm on a private DHT (by default, the public
+one).
 
 ### Peer Discovery Events
 

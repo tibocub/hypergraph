@@ -22,9 +22,9 @@ const { Hypergraph } = require('../../../index.js')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
-const { sleep, waitForConnections, withTeardownTimeout, destroySwarm } = require('../helpers')
+const { sleep, waitForConnections, withTeardownTimeout, destroySwarm, testSwarm } = require('../helpers')
 
-async function createPeer (name) {
+async function createPeer (t, name) {
   const dir = path.join(os.tmpdir(), `hypergraph-forum-flow-${name}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   fs.mkdirSync(dir, { recursive: true })
 
@@ -32,7 +32,7 @@ async function createPeer (name) {
   const graph = new Hypergraph(store)
   await graph.ready()
 
-  const swarm = new Hyperswarm()
+  const swarm = await testSwarm(t)
   swarm.on('connection', (conn) => { store.replicate(conn) })
 
   return { name, dir, store, graph, swarm }
@@ -62,8 +62,8 @@ async function createPostWithReply (author, { postBody, replyBody, replyToId, co
 
 test('forum-flow: two peers over a real Hyperswarm connection each post and reply to the other\'s post, and both converge on everything (needs real network)', { timeout: 180000 }, async (t) => {
   console.log('TEST: forum flow real network - starting (requires DHT access)')
-  const a = await createPeer('a') // owner
-  const b = await createPeer('b') // peer
+  const a = await createPeer(t, 'a') // owner
+  const b = await createPeer(t, 'b') // peer
 
   t.teardown(async () => { await cleanup([a, b]) })
 

@@ -33,7 +33,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm } = require('../helpers')
 
 test('late-joiner: a peer that joins after data was created still catches up, with content verified (needs real network)', async (t) => {
   console.log('TEST: catch-up replication - starting (requires DHT access)')
@@ -42,7 +42,7 @@ test('late-joiner: a peer that joins after data was created still catches up, wi
   const a = await createGraph(t, 'late-joiner-a')
 
   const topic = a.graph.discoveryKey
-  const swarmA = new Hyperswarm()
+  const swarmA = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
 
   const discA = swarmA.join(topic, { server: true, client: true })
@@ -57,7 +57,7 @@ test('late-joiner: a peer that joins after data was created still catches up, wi
   const b = await createGraph(t, 'late-joiner-b')
   const remoteUserCoreOnB = await b.graph.openUserCore(a.graph.key)
 
-  const swarmB = new Hyperswarm()
+  const swarmB = await testSwarm(t)
   swarmB.on('connection', (conn) => b.store.replicate(conn))
 
   const discB = swarmB.join(topic, { server: true, client: true })

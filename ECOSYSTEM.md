@@ -194,9 +194,9 @@ a `CLAUDE.md`. Beyond that they differ, and the differences are mostly deliberat
 
 | Project | `npm test` | What green actually means |
 |---|---|---|
-| hypergraph | 305 tests in 5 stages (core 226, networking 37, replication 29, forum 12, integration 1) | Real coverage, incl. real-Hyperswarm two-peer replication. Every stage must print its own `# tests = n/n` line: until 2026-10-05 a `process.exit(0)` workaround cut networking short (8 tests silently never ran) while still exiting 0 |
-| hyperDNS | 46 tests / 103 asserts | Real coverage |
-| HyperBBS | sandbox + db + network + identity | Real coverage, incl. 4 real-swarm suites |
+| hypergraph | 319 tests in 50 files, ~1 min (`npm test` runs files in parallel; `npm run test:serial` is the old staged run) | Real coverage, incl. real-Hyperswarm replication on a local DHT (`HG_TEST_PUBLIC_DHT=1` for the public one). Every file must print its own `# tests = n/n` line: until 2026-10-05 a `process.exit(0)` workaround cut networking short (8 tests silently never ran) while still exiting 0 |
+| hyperDNS | 46 tests / 103 asserts, ~15 s | Real coverage |
+| HyperBBS | sandbox + db + network + identity + media, ~40 s | Real coverage, incl. 4 real-swarm suites |
 | **HyperMD** | **smoke only** | **Nothing.** `test/*.js` are `console.log` probe scripts reporting **0 asserts**. Green means "did not throw." Cover format changes from HyperBBS's side. |
 
 **Backlogs**: hypergraph keeps `API_PROBLEMS.md` / `TODO.md` as minimal bullet lists of genuinely

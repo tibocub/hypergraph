@@ -30,8 +30,10 @@ async function listing (graph, dirId, ctx) {
 
 // A writer with `calls` bulk calls of `per` files each, spread over `dirs`
 // folders. Many bulk calls = many Autobase nodes, so a newcomer is far enough
-// behind for Autobase to fast-forward it (it does at >= 16 nodes).
-async function bigContext (t, label, { calls = 40, per = 500, dirs = 4 } = {}) {
+// behind for Autobase to fast-forward it (it does at >= 16 nodes). The
+// number of calls is what matters, not their size: 40 x 100 checks the same
+// as 40 x 500 did, in a fraction of the time.
+async function bigContext (t, label, { calls = 40, per = 100, dirs = 4 } = {}) {
   const writer = await createGraph(t, `${label}-writer`)
   const ctx = await writer.graph.createContext()
   const dirIds = []

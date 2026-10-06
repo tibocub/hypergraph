@@ -23,7 +23,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm } = require('../helpers')
 const { CONTENT_LINK_TYPE } = require('../../../src/content-ref.js')
 
 const REF = {
@@ -42,12 +42,12 @@ async function connect (t, a, b) {
 
   const topic = a.graph.discoveryKey
 
-  const swarmA = new Hyperswarm()
+  const swarmA = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
   const discA = swarmA.join(topic, { server: true, client: true })
   await discA.flushed()
 
-  const swarmB = new Hyperswarm()
+  const swarmB = await testSwarm(t)
   swarmB.on('connection', (conn) => b.store.replicate(conn))
   const discB = swarmB.join(topic, { server: true, client: true })
   await discB.flushed()

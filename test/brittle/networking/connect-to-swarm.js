@@ -24,13 +24,13 @@
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
 const crypto = require('crypto')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm, testBootstrap } = require('../helpers')
 
 test('connect-to-swarm: connectToSwarm no longer throws "Topic is required" (no network needed)', async (t) => {
   console.log('TEST: connectToSwarm argument fix - starting')
   const peer = await createGraph(t, 'connect-to-swarm-args')
 
-  const swarm = new Hyperswarm()
+  const swarm = await testSwarm(t)
   const topic = crypto.randomBytes(32)
 
   console.log('  Step 1: race connect() against a short timeout (no DHT needed to prove the arg bug is gone)')
@@ -40,7 +40,7 @@ test('connect-to-swarm: connectToSwarm no longer throws "Topic is required" (no 
 
   const result = await Promise.race([
     connectPromise,
-    sleep(3000).then(() => ({ ok: true, timedOut: true }))
+    sleep(500).then(() => ({ ok: true, timedOut: true }))
   ])
 
   if (!result.ok) {
@@ -51,11 +51,10 @@ test('connect-to-swarm: connectToSwarm no longer throws "Topic is required" (no 
 
   console.log('  Step 2: let the background connect attempt settle, then close everything in the safe order')
   t.teardown(async () => {
-    const settled = await Promise.race([connectPromise, sleep(15000).then(() => null)])
-    if (settled && settled.networking) {
-      try { await settled.networking.destroy() } catch (err) { /* already closed */ }
-    }
+    // close() destroys the networks connectToSwarm() created, including
+    // one still trying to connect, so the attempt settles right away.
     await peer.close()
+    await connectPromise
     await destroySwarm(swarm)
   })
   console.log('TEST: connectToSwarm argument fix - passed')
@@ -68,13 +67,13 @@ test('connect-to-swarm: auto-creates a Hyperswarm when opts.swarm is omitted (no
   const topic = crypto.randomBytes(32)
 
   console.log('  Step 1: call connectToSwarm with no swarm option at all')
-  const connectPromise = peer.graph.connectToSwarm(topic, { role: 'owner' })
+  const connectPromise = peer.graph.connectToSwarm(topic, { role: 'owner', bootstrap: await testBootstrap(t) })
     .then((networking) => ({ ok: true, networking }))
     .catch((err) => ({ ok: false, err }))
 
   const result = await Promise.race([
     connectPromise,
-    sleep(3000).then(() => ({ ok: true, timedOut: true }))
+    sleep(500).then(() => ({ ok: true, timedOut: true }))
   ])
 
   if (!result.ok) {
@@ -85,17 +84,11 @@ test('connect-to-swarm: auto-creates a Hyperswarm when opts.swarm is omitted (no
 
   console.log('  Step 2: let the background connect attempt settle, then close everything in the safe order')
   t.teardown(async () => {
-    // Destroy the network whenever connect() settles, even after this
-    // teardown stopped waiting: a network that resolved late used to be
-    // left alive, and its swarm's DHT kept the whole test process running
-    // ~10 more minutes (its refresh timers were the only live handles).
-    const destroyed = connectPromise.then(async (settled) => {
-      if (settled && settled.networking) {
-        try { await settled.networking.destroy() } catch (err) { /* already closed */ }
-      }
-    })
-    await Promise.race([destroyed, sleep(15000)])
+    // close() destroys the network and the swarm it auto-created, even
+    // while it is still connecting (it used to keep retrying for ~45 s and
+    // keep the process alive).
     await peer.close()
+    await connectPromise
   })
   console.log('TEST: connectToSwarm auto-create swarm - passed')
 })
@@ -106,8 +99,8 @@ test('connect-to-swarm: two peers connect end-to-end via connectToSwarm/disconne
   const b = await createGraph(t, 'connect-to-swarm-e2e-b')
 
   const topic = crypto.randomBytes(32)
-  const swarmA = new Hyperswarm()
-  const swarmB = new Hyperswarm()
+  const swarmA = await testSwarm(t)
+  const swarmB = await testSwarm(t)
 
   console.log('  Step 1: connect both peers to the same topic in parallel')
   const [networkingA, networkingB] = await Promise.all([
@@ -130,4 +123,15 @@ test('connect-to-swarm: two peers connect end-to-end via connectToSwarm/disconne
   t.ok(networkingA.connected, 'peer A is connected')
   t.ok(networkingB.connected, 'peer B is connected')
   console.log('TEST: connectToSwarm end-to-end - passed')
+})
+
+test('connect-to-swarm: graph.close() stops a connectToSwarm() that is still trying to connect', async (t) => {
+  const { graph, close } = await createGraph(t, 'connect-to-swarm-close')
+  const topic = crypto.randomBytes(32) // nobody else here: connect() keeps retrying
+  const connecting = graph.connectToSwarm(topic, { role: 'peer', bootstrap: await testBootstrap(t) })
+  await sleep(500)
+  const started = Date.now()
+  await close()
+  await connecting
+  t.ok(Date.now() - started < 3000, `the attempt stopped within ${Date.now() - started} ms of close()`)
 })

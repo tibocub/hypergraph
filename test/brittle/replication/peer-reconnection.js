@@ -30,7 +30,7 @@
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm } = require('../helpers')
 
 test('peer-reconnection: a disconnected peer catches up on data created while it was offline, with content verified (needs real network)', async (t) => {
   console.log('TEST: peer reconnection - starting (requires DHT access)')
@@ -41,10 +41,10 @@ test('peer-reconnection: a disconnected peer catches up on data created while it
   const remoteUserCoreOnB = await b.graph.openUserCore(a.graph.key)
 
   const topic = a.graph.discoveryKey
-  const swarmA = new Hyperswarm()
+  const swarmA = await testSwarm(t)
   swarmA.on('connection', (conn) => a.store.replicate(conn))
 
-  let swarmB = new Hyperswarm()
+  let swarmB = await testSwarm(t)
   swarmB.on('connection', (conn) => b.store.replicate(conn))
 
   console.log('  Step 1: both peers join and connect')
@@ -69,7 +69,7 @@ test('peer-reconnection: a disconnected peer catches up on data created while it
   await a.graph.putContent(msg2.id, 'Message 2', 'text')
 
   console.log('  Step 5: peer B reconnects with a fresh swarm')
-  swarmB = new Hyperswarm()
+  swarmB = await testSwarm(t)
   swarmB.on('connection', (conn) => b.store.replicate(conn))
 
   const discBReconnect = swarmB.join(topic, { server: true, client: true })

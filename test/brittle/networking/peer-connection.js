@@ -28,9 +28,9 @@ const { Hypergraph } = require('../../../index.js')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
-const { sleep, withTeardownTimeout, destroySwarm } = require('../helpers')
+const { sleep, withTeardownTimeout, destroySwarm, testSwarm, within } = require('../helpers')
 
-async function createPeer (name, { userCoreKey = null, identity = null } = {}) {
+async function createPeer (t, name, { userCoreKey = null, identity = null } = {}) {
   const dir = path.join(os.tmpdir(), `hypergraph-peer-connection-${name}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   fs.mkdirSync(dir, { recursive: true })
 
@@ -38,7 +38,7 @@ async function createPeer (name, { userCoreKey = null, identity = null } = {}) {
   const graph = new Hypergraph(store, { userCoreKey, identity })
   await graph.ready()
 
-  const swarm = new Hyperswarm()
+  const swarm = await testSwarm(t)
   let connectedResolve
   const connected = new Promise((resolve) => { connectedResolve = resolve })
 
@@ -75,14 +75,14 @@ async function cleanup (peers) {
 
 test('peer-connection: replicates a user core over a real Hyperswarm connection (needs real network)', async (t) => {
   console.log('TEST: hyperswarm replication (user core) - starting (requires DHT access)')
-  const a = await createPeer('a')
+  const a = await createPeer(t, 'a')
 
   console.log('  Step 1: peer A creates a post with content')
   const post = await a.graph.put({ type: 'post' })
   await a.graph.putContent(post.id, 'hello over hyperswarm', 'text')
 
   console.log('  Step 2: peer B opens peer A user core for replication')
-  const b = await createPeer('b', { userCoreKey: a.graph.key })
+  const b = await createPeer(t, 'b', { userCoreKey: a.graph.key })
 
   const topic = a.graph.discoveryKey
   const discA = a.swarm.join(topic, { server: true, client: false })
@@ -102,10 +102,7 @@ test('peer-connection: replicates a user core over a real Hyperswarm connection 
   })
 
   console.log('  Step 3: wait for the swarm connection')
-  const connected = await Promise.race([
-    Promise.any([a.connected, b.connected]),
-    sleep(20000).then(() => false)
-  ])
+  const connected = await within(Promise.any([a.connected, b.connected]), 20000, false)
   t.ok(connected, 'peers connected')
 
   console.log('  Step 4: pump peer B until the post + content replicate')

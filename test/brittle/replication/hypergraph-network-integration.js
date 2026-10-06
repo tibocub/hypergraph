@@ -32,7 +32,7 @@
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
 const { HypergraphNetwork } = require('../../../index.js')
-const { createGraph, sleep, destroySwarm } = require('../helpers')
+const { createGraph, sleep, destroySwarm, testSwarm } = require('../helpers')
 
 test('hypergraph-network-integration: data written by one peer replicates to the other via HypergraphNetwork, with content verified (needs real network)', { timeout: 240000 }, async (t) => {
   console.log('TEST: HypergraphNetworking integration - starting (requires DHT access)')
@@ -46,8 +46,8 @@ test('hypergraph-network-integration: data written by one peer replicates to the
   const aUserCoreOnB = await b.graph.openUserCore(a.graph.key)
 
   console.log('  Step 2: create HypergraphNetwork helpers with real swarms and connect (in parallel)')
-  const swarmA = new Hyperswarm()
-  const swarmB = new Hyperswarm()
+  const swarmA = await testSwarm(t)
+  const swarmB = await testSwarm(t)
 
   const networkingA = new HypergraphNetwork(a.graph, a.store, swarmA, { topic, role: 'owner' })
   const networkingB = new HypergraphNetwork(b.graph, b.store, swarmB, { topic, role: 'peer' })

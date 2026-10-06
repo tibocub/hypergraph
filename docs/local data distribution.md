@@ -8,8 +8,9 @@ content in two places.
 ## Moderation & Access Control Flow
 
 1. ContextBase receives a moderation event
-2. ContextBase consults the attached RoleBase (`#isModerationAllowed`, with a bounded retry
-   for the case where the RoleBase hasn't synced yet)
+2. ContextBase consults the attached RoleBase (`#isModerationAllowed`); if the RoleBase hasn't
+   synced yet, the event is queued and the next `update()` decides it (it no longer waits inside
+   apply, which held up the whole context)
 3. RoleBase checks if the author has permission for that action
 4. Unauthorized attempts are hard-rejected at the apply layer — confirmed directly that the
    fact is never recorded at all in that case, not "recorded but filtered later"
