@@ -165,5 +165,5 @@ old serial `npm test`: 514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s.
 
 **Don't load the machine at 100% for long.** The dev machine rebooted hard (no crash dump, no
 low-memory event) during a 100k-message `bench/chat.js` run with 11 Node processes pinning every
-core. Benchmarks: start with `npm run bench:quick` (~2 min); run big sizes only when needed, with
+core. Benchmarks: start with `npm run bench:quick` (~1 min); run big sizes only when needed, with
 fewer writers, and check the machine copes.

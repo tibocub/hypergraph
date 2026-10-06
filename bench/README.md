@@ -135,7 +135,7 @@ Usage-shaped benchmarks for the scaling-v2 research (`specs/research/scaling-v2.
 the full tables and what they mean).
 
 ```
-npm run bench:quick        # chat 10k + 50 channels + 1,000 members, ~2 min
+npm run bench:quick        # chat 10k + 50 channels + 1,000 members, ~1 min
 node bench/chat.js <N> [--writers W] [--model edge|content] [--live M]
 node --expose-gc bench/channels.js <C> [--messages M] [--authors A]
 node --expose-gc bench/members.js <M> [--messages N]
