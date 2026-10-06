@@ -157,6 +157,36 @@ Chat, 10k messages, 10 writers, edge model, multi-process (2026-10-06): whole ru
 was 90 s alone in-process); 33.5 s to write, each writer done in 6–8 s, i.e. the owner, the only
 indexer, applies ~300 messages/s while serving 9 peers; live arrival p50 34 ms, p95 159 ms;
 newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
+- `v2-chat.js` (spec 007 prototype): one channel of N messages written in bulk across one-hour
+  segments, served by the owner; a fresh peer measures the latest page, one page back, offline
+  restart and live arrival. `--writers W --procs K --seconds D --rate R` adds a throughput phase:
+  K processes post as W authors (R msg/s each, 0 = as fast as they can) while the newcomer
+  follows. Results in `bench/results/v2-chat-<N>[-w<W>].json`.
+
+  ```
+  node bench/v2-chat.js 10000 --writers 100 --procs 2 --seconds 10 --rate 5
+  node bench/v2-chat.js 1000000 --live 0 --replicate auto --budget 50000000
+  ```
+
+  The newcomer is `sparse` unless `--replicate` says otherwise (the page numbers are about
+  reading). With `auto`/`all` it then waits for replication to go quiet and reports what it holds
+  against the budget (`hold`), and its disk. `HG_V2_TRACE=1` traces each replication pass.
+
+  Measured 2026-10-06 (full table in `specs/research/scaling-v2.md`): latest page 0.61 / 0.69 /
+  0.67 s, 412 / 455 / 490 KB, +36 MB memory at 10k / 1M / 10M messages; host disk ~211 B per
+  message; 100 writers post ~9,300 msg/s (v1: ~300) and all of it reaches a follower; at 5 msg/s
+  each, arrival p50 14 ms, p95 20 ms. The 10M history takes 134 s to write, whole run 144 s.
+- `v2-community.js` (spec 007 prototype, T020): a community of C channels and M members; the
+  member opens 5 channels (100 one-hour segments of history each) and measures startup, the
+  5 pages + follows (time, bytes, memory, open logs) and 10 s idle (CPU, bytes).
+
+  ```
+  node bench/v2-community.js --channels 500 --members 50000 --segments 100
+  ```
+
+  Measured 2026-10-06 (table in `specs/research/scaling-v2.md`): 1,000 vs 50,000 members makes
+  no difference; 10 vs 500 channels costs startup 34 → 690 KB (the channel list in the control
+  log) and ~10–35% memory; idle is 0 ms CPU, 0 bytes. About 1–2 min per run.
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 

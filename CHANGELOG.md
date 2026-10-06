@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-06: v2 prototype, `require('hypergraph/v2')` (additive, unstable)
+
+- New, separate API: `Community` (control log, per-author channel logs, time segments, keeper
+  rosters, `post` / `latest` / `before` / `follow` / `closeChannel`, moderation, `replicate:
+  'all' | 'sparse' | 'auto'` with a `budget`). Prototype: names and shapes may change. The v1 API
+  is untouched; nothing migrates. See [docs/v2-prototype.md](docs/v2-prototype.md) and
+  [specs/007-scaling-v2-prototype](specs/007-scaling-v2-prototype/).
+- Measured: latest page 0.6–0.7 s and ~0.4–0.5 MB from 10k to 10M messages; ~9,300 msg/s from 100
+  writers (v1: ~300); ~211 B on disk per message for a full holder (v1: ~2–3 KB).
+- `package.json` `exports` now lists `.`, `./v2`, `./package.json` and `./*`.
+
 ### 2026-10-06: faster tests, connecting and shutdown (additive)
 
 - `npm test` runs every test file in its own process, in parallel, longest first

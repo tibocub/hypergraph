@@ -176,3 +176,117 @@ full-holder disk (5): these need the v2 design.
 
 Still to measure: a
 forum shape (threads, votes), a long-running peer's growth, many writers on separate machines.
+
+### v2 prototype measured (2026-10-06, `specs/007-scaling-v2-prototype`)
+
+Summary against v1 (details below and in the tables above):
+
+| | v1 | v2 |
+|---|---|---|
+| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (edge); 44 s, 36 MB at 100k (content) | 0.61 / 0.69 / 0.67 s, 412 / 455 / 490 KB at 10k / 1M / 10M |
+| channel write throughput | ~300 msg/s (one indexer) | ~9,300 msg/s posted by 100 writers, all delivered |
+| live arrival p50 / p95 | 24–34 / 40–159 ms | 2–14 / 20–23 ms |
+| full holder's disk | ~2–3 KB per message | ~211 B per message |
+| silent members | ~70 KB memory each, every applying peer | nothing |
+| idle, followed channels | 0.8 ms per `update()` at 200 channels (after fixes) | 0 ms CPU, 0 bytes per 10 s |
+| offline restart, shown page | 121 ms (after a fix) | 3 ms – 0.7 s |
+
+`bench/v2-chat.js`: one channel, history written in bulk (10,000 messages per one-hour segment,
+50 active authors per segment out of 1,000), served by the owner, who keeps the roster. A fresh
+peer then reads it. Same machine as above; one run at a time, 3–4 processes.
+
+| | 10k | 1M | 10M |
+|---|---|---|---|
+| newcomer: latest 50 messages shown | 0.61 s | 0.69 s | 0.67 s |
+| newcomer: bytes downloaded by then | 412 KB | 455 KB | 490 KB |
+| newcomer: memory added | 36 MB | 37 MB | 37 MB |
+| newcomer: author logs open | 50 | 50 | 50 |
+| newcomer: one page back (previous segment) | — (one segment) | 1.2 s / 1.1 MB | 1.1 s / 1.0 MB |
+| newcomer: restart offline, page shown again | 173 ms | 247 ms | 426 ms |
+| newcomer: disk | 11 MB | 42 MB | 40 MB |
+| host holding everything: disk | 2.4 MB | 218 MB | 2.1 GB |
+| host: disk per message | 237 B | 218 B | 211 B |
+| host: reopen | 117 ms | 374 ms | 870 ms |
+
+v1 for the same shape (above, 10k, 10 writers): latest page 1.7 s / 0.73 MB; full holder ~2.4 KB
+per message; 1M newcomer full join 8.8 min.
+
+Throughput (`--writers 100 --procs 2 --seconds 10`, 10k history, one follower):
+
+| | 100 writers, 5 msg/s each | 100 writers, as fast as they can |
+|---|---|---|
+| posted | 476 msg/s | 9,300 msg/s |
+| delivered to the follower | 100% (486 msg/s) | 100% (6,700 msg/s: the follower is the limit) |
+| arrival p50 / p95, authors already known | 14 / 20 ms | 4.6 / 9.3 s (backlog) |
+| arrival p95, including each author's first posts | 1.4 s | — |
+
+v1: one indexer applies ~300 msg/s for the whole channel.
+
+Against the spec's success criteria:
+
+- **SC-001** (same 2 s budget, memory and download within 10% at every size): time and memory
+  pass. **Download misses: +19% from 10k to 10M** (412 → 490 KB). Two candidates, both
+  logarithmic, neither measured yet: each author log is ~50× longer, so each block's proof
+  covers a deeper tree; and the roster holds 1,000 segments instead of one, so reaching the
+  latest segment reads more Hyperbee nodes.
+- **SC-002** (under 2 MB for 50 messages from 50 authors): pass, 0.49 MB.
+- **SC-003** (≥ 5× v1's ~300 msg/s with 100 writers): pass, ~30× posted; one follower reads
+  ~22× v1.
+- **SC-004** (p50 < 100 ms, p95 < 500 ms): p50 2–14 ms, pass. p95 was 511–527 ms at every
+  size: an author's first post in a segment waited for the reader's 500 ms roster poll. Fixed:
+  `follow()` now re-reads the rosters as soon as one grows (test `v2 reader: follow finds a new
+  author when the roster grows`). After the fix: one author posting p95 22 ms; 100 authors at
+  5 msg/s p95 20 ms once known. **Still a miss when 100 authors all post for the first time
+  in the same second (p95 1.4 s)**: each announcement goes to the keeper, which lists it, and
+  the roster then has to replicate to the reader.
+- Newcomer disk grows from 11 MB (10k) to ~40 MB (1M, 10M) for the same page: not explained
+  yet.
+
+**Community size** (`bench/v2-community.js`, T020): the member opens 5 channels, each with 100
+one-hour segments of history, 50 active authors per segment drawn from all members. The other
+channels each have a little activity. The host serves from a fresh reopen.
+
+| | 10 ch, 1k members | 10 ch, 50k members | 500 ch, 1k members | 500 ch, 50k members |
+|---|---|---|---|---|
+| distinct authors in the 5 channels | 1,000 | 25,000 | 1,000 | 25,000 |
+| control log events | 43 | 43 | 2,003 | 2,003 |
+| startup: control log caught up | 0.36 s, 34 KB | 0.27 s, 34 KB | 0.60 s, 693 KB | 0.64 s, 690 KB |
+| 5 channels opened (latest page + follow) | 1.66 s, 516 KB | 1.61 s, 507 KB | 1.55 s, 523 KB | 1.58 s, 510 KB |
+| memory with 5 channels open | 59–63 MB | 60 MB | 67–80 MB | 85 MB |
+| author logs open | 500 | 500 | 500 | 500 |
+| idle, 10 s: CPU / bytes | 0 ms / 0 | 0 ms / 0 | 0–94 ms / 0 | 0 ms / 0 |
+
+(500 logs open: a follow watches the authors of the current and the previous segment, 100 per
+channel here.)
+
+- **Member count: no effect.** A member who never posted appears nowhere; 25× more distinct
+  authors in the open channels' history changes nothing a reader does now.
+- **Channel count: the control log.** Every member holds the channel list in full (by design):
+  two events per channel (the channel, its keeper), ~1.4 KB downloaded per channel. At 500
+  channels startup is 0.6 s and 0.7 MB, and memory with the same 5 channels open is ~10–35%
+  higher (noise between runs is ±10 MB). **SC-005 misses on memory for 10 vs 500 channels.**
+  Of the +28 MB right after joining, the JS heap is +2 MB and buffers +0.6 MB; the rest is
+  native, RocksDB (a plain Hypercore: 2,000 small appends add 16 MB, 10,000 add 55 MB; its write
+  buffer holds up to 2 × 64 MB, not configurable through hypercore-storage). Flushing gives it
+  back in that plain test (55.6 → 7.8 MB, 131 ms), but flushing when activity goes quiet made
+  the 500-channel member *worse* (idle 74–81 MB against 67–70 MB without, two runs each), so it
+  was not kept. Left: fewer control events per channel (one keeper event for many channels),
+  Autobase fast-forward for newcomers; both untested.
+- **Replication (T023–T024, SC-008)**, `bench/v2-chat.js --replicate auto`: at 10k with the
+  default 1 GB budget, a newcomer holds everything (`holding: 'all'`). At 1M (218 MB on the host)
+  with a 50 MB budget: a window of the newest ~23 segments, 49.6 MB counted, 50.2 MB downloaded,
+  disk 86 MB (a sparse newcomer's store alone is 11–55 MB, mostly RocksDB log files), filled in
+  38–57 s while the latest page still showed in 0.6–0.7 s. Budget accounting counts stored bytes
+  (block + 130 B), measured against disk. Two faults found by the benchmark and fixed: with the
+  host itself on `auto`, some downloads hung with 0 peers (window 13 MB after 515 s; now a stall
+  is detected in 5 s and retried with fresh sessions), and segments planned while their logs were
+  out of reach were kept as empty and never fetched (regression test). SC-008 holds on these
+  runs; reads beyond the window are not counted yet.
+- **Fixed on the way**: following channels polled the rosters every 500 ms. Idle with 5
+  channels followed: 734 ms CPU and +35 MB per 10 s; now 0 ms and nothing (scan on roster
+  growth and on control log change only). Closing a channel releases its logs and rosters
+  (`closeChannel`). Serving right after a bulk build, Corestore offered every just-closed core
+  to each new connection (~87 B each: 5,032 cores, +170 KB at startup); the benchmark now
+  serves from a reopened store, and the same holds for a long-running helper with many cores
+  open.
+
