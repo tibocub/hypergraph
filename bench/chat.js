@@ -309,6 +309,8 @@ async function newcomer (dir, port, keys, model) {
   await store.close()
 
   log('newcomer: closed')
+  // Diagnostics: stop here, keeping the store exactly as the first session left it.
+  if (process.env.CHAT_STOP_AFTER_CLOSE) return { latest, oldestPage, updateMs, peakRss: peak.rss, disk, bytesTotal: bytesIn, reopen: null }
 
   // Cold reopen: how soon is the latest page back on screen? First offline
   // (what this peer held), bounded; then with the seed reachable again.

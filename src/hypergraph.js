@@ -1158,6 +1158,12 @@ module.exports = class Hypergraph extends ReadyResource {
           roleBase: this.#roleBase && this.#roleBase.key ? this.#roleBase.key.toString('hex') : null
         }),
         entitled: (scopeId, pubkeyHex) => this.#mayGrantScope(scopeId, pubkeyHex)
+      },
+      // Where a context remembers its index layout on this peer, so reading
+      // it never needs the network (test/brittle/replication/offline-reopen.js).
+      localLayout: {
+        get: (contextKeyHex) => this.#view ? this.#view.getContextLayout(contextKeyHex) : 0,
+        put: (contextKeyHex, layout) => this.#view ? this.#view.putContextLayout(contextKeyHex, layout) : null
       }
     }
   }

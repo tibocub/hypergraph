@@ -45,6 +45,7 @@ One visible effect: entities with the same type and author now sort by seq as a 
 | 0x05 | profile | author | `{ seq, username, bio? }` |
 | 0x06 | user log progress | core key | last indexed seq |
 | 0x07 | context view progress | view key | indexed length |
+| 0x08 | context layout | context key | its index layout (1 or 2), once known |
 
 - **Derived on read**, never stored: a node's `id`, `type`, `author` and `version` (= seq), all
   from its key.
@@ -57,6 +58,11 @@ One visible effect: entities with the same type and author now sort by seq as a 
   encrypted, scope, epoch, nonce }`. If that log isn't open here or the block is no longer
   held, it returns `null` without throwing. External content references
   (`contentType: 'link'`) are ordinary content versions and need nothing extra.
+- **Context layout** (0x08): a context's layout never changes, so the first time it is known it
+  is remembered here. Readers then never look it up in the context's shared view, which on a
+  peer holding only part of that view can need the network: before this, a newcomer that had
+  shown a channel's latest page could not show it again offline after a restart
+  (`test/brittle/replication/offline-reopen.js`).
 - **Progress** (0x06) is written in the same Hyperbee batch as the entries it covers (every
   `tuning.INDEX_BATCH` events), so the two can never disagree after a crash.
 - **Upgrade**: a store from before layout 2 has its index in a core named `graph-view`. On first

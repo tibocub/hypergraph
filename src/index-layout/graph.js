@@ -21,7 +21,8 @@ const TAG = {
   CONTENT: 0x04,
   PROFILE: 0x05,
   USER_PROGRESS: 0x06,
-  CONTEXT_PROGRESS: 0x07
+  CONTEXT_PROGRESS: 0x07,
+  CONTEXT_LAYOUT: 0x08
 }
 
 const FORMAT_VERSION = 2
@@ -34,7 +35,8 @@ const enc = {
   content: new IndexEncoder([STRING, BUFFER, UINT, UINT], { prefix: TAG.CONTENT }),
   profile: new IndexEncoder([BUFFER], { prefix: TAG.PROFILE }),
   userProgress: new IndexEncoder([BUFFER], { prefix: TAG.USER_PROGRESS }),
-  contextProgress: new IndexEncoder([BUFFER], { prefix: TAG.CONTEXT_PROGRESS })
+  contextProgress: new IndexEncoder([BUFFER], { prefix: TAG.CONTEXT_PROGRESS }),
+  contextLayout: new IndexEncoder([BUFFER], { prefix: TAG.CONTEXT_LAYOUT })
 }
 
 const EMPTY = b4a.alloc(0)
@@ -144,6 +146,9 @@ module.exports = {
   // Progress: how far each user log / context view has been indexed.
   userProgressKey: (coreKeyHex) => enc.userProgress.encode([hexBytes(coreKeyHex)]),
   contextProgressKey: (viewKeyHex) => enc.contextProgress.encode([hexBytes(viewKeyHex)]),
+  // A context's index layout, once known: it never changes, and reading it
+  // from the context's own view can need the network on a sparse peer.
+  contextLayoutKey: (contextKeyHex) => enc.contextLayout.encode([hexBytes(contextKeyHex)]),
   encodeCount: (n) => c.encode(c.uint, n),
   decodeCount: (buf) => c.decode(c.uint, buf),
 

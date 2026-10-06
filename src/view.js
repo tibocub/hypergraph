@@ -731,6 +731,29 @@ module.exports = class GraphView extends ReadyResource {
   }
 
   /**
+   * The index layout recorded locally for a context, or 0 if unknown.
+   *
+   * @param {string} contextKeyHex
+   * @returns {Promise<number>}
+   */
+  async getContextLayout (contextKeyHex) {
+    if (!this.opened) await this.ready()
+    const entry = await this.#bee.get(L.contextLayoutKey(contextKeyHex))
+    return entry ? L.decodeCount(entry.value) : 0
+  }
+
+  /**
+   * Record a context's index layout locally (see getContextLayout()).
+   *
+   * @param {string} contextKeyHex
+   * @param {number} layout
+   */
+  async putContextLayout (contextKeyHex, layout) {
+    if (!this.opened) await this.ready()
+    await this.#bee.put(L.contextLayoutKey(contextKeyHex), L.encodeCount(layout))
+  }
+
+  /**
    * Create a readable stream from the underlying Hyperbee. Keys and values
    * are raw layout-2 buffers (src/index-layout/graph.js).
    *

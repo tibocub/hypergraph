@@ -68,6 +68,8 @@ class ContextBase extends ReadyResource {
   #applyIndex // the index layout apply is writing with (src/index-layout/context.js)
   #index // the index layout readers use, once this view's record says which
   #scopes // the graph's ScopeBase/RoleBase, for invites that ask for a scope (spec 006 US3)
+  #localLayout // where this peer remembers the context's index layout, outside the shared view
+  #prefetchedAt = -1 // view length when the control records were last fetched
   #members // every member the system listed at the last update(), see writerKeys()
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
@@ -111,6 +113,7 @@ class ContextBase extends ReadyResource {
     this.#valueEncoding = opts.valueEncoding ? codecs(opts.valueEncoding) : null
     this.#roleBase = opts.roleBase || null
     this.#scopes = opts.scopes || null
+    this.#localLayout = opts.localLayout || null
     this.#writeMode = opts.writeMode === 'closed' ? 'closed' : 'open'
     this.#base = null
     this.#viewBee = null
@@ -1785,11 +1788,28 @@ class ContextBase extends ReadyResource {
    */
   async #readIndex () {
     if (this.#index) return this.#index
+    const keyHex = this.key.toString('hex')
+
+    // Known locally: no read of the shared view at all. On a peer that holds
+    // only part of the view, the record's path at the latest version may not
+    // be held, and offline such a read waits forever, although the page the
+    // app wants is held.
+    const known = this.#localLayout ? await this.#localLayout.get(keyHex) : 0
+    if (known && layoutFor({ layout: known })) {
+      this.#index = layoutFor({ layout: known })
+      return this.#index
+    }
+
     const view = this.#base.view
     const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
+    // No record in a non-empty view: a context from before records, layout 1
+    // for good. (A new context's record is in its very first apply.)
+    const settled = !!entry || (view && view.core && view.core.length > 0)
     const index = layoutFor(entry && entry.value)
-    if (entry && index) this.#index = index
-    return index || layoutFor(null)
+    if (!settled || !index) return index || layoutFor(null)
+    this.#index = index
+    if (this.#localLayout) await Promise.resolve(this.#localLayout.put(keyHex, index.id)).catch(safetyCatch)
+    return index
   }
 
   /**
@@ -1903,7 +1923,17 @@ class ContextBase extends ReadyResource {
     if (this.#membersDirty || (system && system.members !== this.#membersCount)) await this.#refreshMembers()
 
     const view = this.#viewBee || this.#base?.view
-    if (!view || !this.#moderationQueued) return
+    if (!view) return
+
+    // On a peer holding only part of the view, fetch the small control
+    // records whenever the view grew, while a peer is likely reachable, so
+    // role checks and the record stay readable offline. Not awaited.
+    if (view.core && view.core.length !== this.#prefetchedAt && view.core.contiguousLength < view.core.length) {
+      this.#prefetchedAt = view.core.length
+      for (const key of [CONTEXT_RECORD_KEY, ROLES_KEY]) view.get(key).catch(safetyCatch)
+    }
+
+    if (!this.#moderationQueued) return
 
     try {
       await this.#drainPendingModeration(view)

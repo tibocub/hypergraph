@@ -157,5 +157,20 @@ the text on the relation, a newcomer's cost is flat from 10k to 1M.
    everyone's messages; a single bulk writer does ~1,800 files/s. Needs a per-peer measurement on
    separate machines before reading too much into it.
 
+### Quick fixes applied (2026-10-06, on the current design)
+
+| finding | fix | after |
+|---|---|---|
+| 3. idle cost grows with open channels | `update()` touches only what changed; members re-read only on change; moderation queue scanned only when non-empty | 200 channels: idle `update()` 121 → 0.8 ms, live arrival 138 → 13 ms, memory 625 → 348 MB |
+| 8. member list re-read each update | same | 5,000 members: idle `update()` 39 → 0 ms (memory per member unchanged: it's Autobase's) |
+| 6. offline reopen stuck | a context's index layout remembered locally; control records prefetched when the view grows | 100k chat: offline reopen stuck → 121 ms |
+
+Found on the way: once an idle `update()` did no I/O, an app polling it in a tight loop starved
+replication (live messages stalled until something else wrote to disk). `update()` now yields to
+the event loop once.
+
+Still open from the findings: text in authors' logs (2), memory per channel and per member (4, 8),
+full-holder disk (5): these need the v2 design.
+
 Still to measure: a
 forum shape (threads, votes), a long-running peer's growth, many writers on separate machines.
