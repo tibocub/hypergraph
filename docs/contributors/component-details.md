@@ -266,22 +266,26 @@ update()
      blocks ahead (one request, not one round trip per block)
    - Process each event (GraphView's own #applyEvent: entity/create,
      entity/tombstone, content/append, identity/update)
-   - Write indexes (n:, nt:, nc:, c:, id:profile:) through a Hyperbee batch,
+   - Write indexes (nodes, nodes by type/time, content pointers, profiles;
+     see index-structure.md) through a Hyperbee batch,
      committed every tuning.INDEX_BATCH events TOGETHER with lastProcessedSeq,
      so an interruption never leaves indexes and progress out of step
   ↓
 2. For each ContextBase:
    - Compare context.view.length against the stored checkpoint
-   - If changed, call context.update() — this delegates entirely to
-     ContextBase's own Autobase apply function, which processes
-     relation/tag/moderation events and writes edge, counter, tag and
-     moderation indexes (in the context's own index layout, see
-     index-structure.md) into the CONTEXT's OWN separate Hyperbee (context.view), not
-     GraphView's #bee
-   - Update the stored checkpoint
+   - If it grew, report a change and store the new length. Nothing else:
+     no context.update(), no write for a context that didn't change
 ```
-GraphView itself never applies relation/tag/moderation events or writes their indexes — it only
-tracks *whether* each context has new data and forwards to that context's own view. Reads that
+GraphView itself never applies relation/tag/moderation events or writes their indexes. Each
+context applies them in its own Autobase apply function (Autobase applies as data arrives;
+`Hypergraph.update()` and local appends call `context.update()` to wait for it). GraphView only
+tracks *whether* each context's view grew, for the `'change'` event. This loop also runs after
+every local write, so it must cost nothing per unchanged context (`bench/channels.js`: 200 idle
+channels cost 121 ms per `update()` when it updated every context again).
+
+`ContextBase.update()` likewise skips work when nothing changed: it re-reads the member list
+(`writerKeys()`) only after an apply added or removed a writer, a fast-forward, or a change in the
+system's member count, and scans the pending-moderation queue only when something was queued. Reads that
 need relation/tag data (`getEdges`, `getByTag`, etc.) go to `context.view` directly, not `#bee`.
 
 **Key Methods**:

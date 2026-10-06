@@ -71,6 +71,9 @@ class ContextBase extends ReadyResource {
   #members // every member the system listed at the last update(), see writerKeys()
   #fastForward
   #fastForwards // how many times this peer fast-forwarded, reported by status()
+  #membersDirty = true // the member list may have changed since writerKeys() last read it
+  #membersCount = -1 // the system's member count when it was last read
+  #moderationQueued = true // pending moderation may exist (checked once after open)
   #rules // app rules { id, validate } or null (spec 003, US3)
   #wakeup // shared writer-discovery protocol from Hypergraph, or null (spec 006)
   #interrupted // why this context stopped applying, or null
@@ -163,7 +166,7 @@ class ContextBase extends ReadyResource {
     // Let Autobase handle local writer creation automatically
     // Closed mode enforcement is at the application level via role checks, not at Autobase level
     this.#base = new Autobase(ns, this.#bootstrap, autobaseOpts)
-    this.#base.on('fast-forward', () => { this.#fastForwards++ })
+    this.#base.on('fast-forward', () => { this.#fastForwards++; this.#membersDirty = true })
     // Autobase closes the base after an interrupt (unknown context version,
     // rules mismatch): remember why, so status() and openContext() can say.
     this.#base.on('interrupt', (reason) => {
@@ -222,7 +225,17 @@ class ContextBase extends ReadyResource {
     return this.#viewBee
   }
 
-  async #applyView (batch, rawView, host) {
+  async #applyView (batch, rawView, rawHost) {
+    // Every membership change goes through these two calls: noting it lets
+    // update() skip re-reading the member list when nothing changed
+    // (bench/members.js: the re-read cost 39 ms per update at 5,000 members).
+    const host = {
+      addWriter: (key, opts) => { this.#membersDirty = true; return rawHost.addWriter(key, opts) },
+      removeWriter: (key) => { this.#membersDirty = true; return rawHost.removeWriter(key) },
+      ackWriter: (key) => rawHost.ackWriter(key),
+      removeable: (key) => rawHost.removeable(key),
+      interrupt: (reason) => rawHost.interrupt(reason)
+    }
     // Index writes go through a Hyperbee batch: one view append per chunk of
     // `tuning.INDEX_BATCH` events instead of one per entry (research R1/R2).
     // Chunked rather than one batch per apply call, so memory stays bounded
@@ -685,6 +698,7 @@ class ContextBase extends ReadyResource {
 
     const allowed = await this.#isModerationAllowed(event)
     if (allowed === null) {
+      this.#moderationQueued = true
       await view.put(`m:p:${eventId}`, {
         eventId,
         coreKey: coreKeyHex,
@@ -1114,6 +1128,9 @@ class ContextBase extends ReadyResource {
   async #refreshMembers () {
     const system = this.#base && this.#base.system
     if (!system || typeof system.list !== 'function') return
+    // Cleared before reading: a change applied meanwhile sets it again.
+    this.#membersDirty = false
+    this.#membersCount = system.members
     const members = []
     try {
       for await (const { key, value } of system.list()) {
@@ -1122,6 +1139,7 @@ class ContextBase extends ReadyResource {
       }
     } catch (err) {
       safetyCatch(err)
+      this.#membersDirty = true
       return
     }
     this.#members = members
@@ -1877,14 +1895,20 @@ class ContextBase extends ReadyResource {
   async update () {
     if (this.#interrupted) return
     await this.#base.update()
-    await this.#refreshMembers()
+    // Only re-read the member list when it may have changed: an apply
+    // added or removed a writer, a fast-forward replaced the system, or the
+    // system's own member count moved (a reorder can drop a writer without
+    // any call we see).
+    const system = this.#base.system
+    if (this.#membersDirty || (system && system.members !== this.#membersCount)) await this.#refreshMembers()
 
     const view = this.#viewBee || this.#base?.view
-    if (!view) return
+    if (!view || !this.#moderationQueued) return
 
     try {
       await this.#drainPendingModeration(view)
     } catch (err) {
+      this.#moderationQueued = true // try again next time
       if (err && err.code === 'SESSION_NOT_WRITABLE') return
       throw err
     }
@@ -1903,6 +1927,8 @@ class ContextBase extends ReadyResource {
 
     if (!registry) return
 
+    // Cleared before the scan: anything queued meanwhile sets it again.
+    this.#moderationQueued = false
     const stream = view.createReadStream({ gte: 'm:p:', lt: 'm:p:' + '\uffff' })
     for await (const entry of stream) {
       const v = entry.value
