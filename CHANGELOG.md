@@ -38,8 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix: a newcomer that had shown a channel's latest page could not show it again after a restart
   without network (seen at 30k–1M messages). Reading a channel first looked up the context's
   record in its shared view, whose blocks a fast-forwarded peer only partly holds. The context's
-  index layout is now remembered locally (GraphView, tag 0x08), and the small control records
-  (record, role table) are fetched in the background whenever the view grows.
+  index layout is now remembered locally (GraphView, tag 0x08) once its record has been read,
+  and the small control records (record, role table) are fetched in the background whenever the
+  view grows. (A first version also inferred layout 1 from a missing record; a peer reading
+  while joining could see that for a moment and then read nothing, 3 newcomers in 5 in
+  `bench/chat.js`. Fixed the same day; `test/brittle/replication/join-polling.js`.)
 - `writerKeys()` still reflects every membership change (refreshed when an apply adds or removes a
   writer, after a fast-forward, or when the member count moves).
 

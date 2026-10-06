@@ -1795,11 +1795,14 @@ class ContextBase extends ReadyResource {
 
     const view = this.#base.view
     const entry = view ? await view.get(CONTEXT_RECORD_KEY) : null
-    // No record in a non-empty view: a context from before records, layout 1
-    // for good. (A new context's record is in its very first apply.)
-    const settled = !!entry || (view && view.core && view.core.length > 0)
     const index = layoutFor(entry && entry.value)
-    if (!settled || !index) return index || layoutFor(null)
+    // Remembered only once the record itself was read. A missing record
+    // proves nothing: a joining peer can see a view that holds only its
+    // header block for a moment, and concluding "layout 1" from that made
+    // it read the wrong keys for good (test/brittle/replication/join-polling.js).
+    // Contexts from before records (version 1) are layout 1 and simply
+    // keep reading the view each time.
+    if (!entry || !index) return index || layoutFor(null)
     this.#index = index
     if (this.#localLayout) await Promise.resolve(this.#localLayout.put(keyHex, index.id)).catch(safetyCatch)
     return index

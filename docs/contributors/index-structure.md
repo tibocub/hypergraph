@@ -58,8 +58,9 @@ One visible effect: entities with the same type and author now sort by seq as a 
   encrypted, scope, epoch, nonce }`. If that log isn't open here or the block is no longer
   held, it returns `null` without throwing. External content references
   (`contentType: 'link'`) are ordinary content versions and need nothing extra.
-- **Context layout** (0x08): a context's layout never changes, so the first time it is known it
-  is remembered here. Readers then never look it up in the context's shared view, which on a
+- **Context layout** (0x08): a context's layout never changes, so the first time its record is
+  read it is remembered here (never inferred from a missing record: a joining peer briefly sees a
+  view holding only its header block). Readers then never look it up in the context's shared view, which on a
   peer holding only part of that view can need the network: before this, a newcomer that had
   shown a channel's latest page could not show it again offline after a restart
   (`test/brittle/replication/offline-reopen.js`).
