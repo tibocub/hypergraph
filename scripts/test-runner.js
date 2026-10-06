@@ -4,7 +4,8 @@
 //
 //   node scripts/test-runner.js [--jobs N] [--slowest K] [group|file ...]
 //
-// Groups: core, networking, replication, forum, integration (default: all).
+// Groups: core, networking, replication, forum, integration, v2 (default: all).
+// Files starting with _ (shared helpers) are not run.
 // --jobs defaults to the number of CPU cores minus two (HG_TEST_JOBS overrides);
 // test processes run at below-normal priority, and a file waits to start
 // while free memory is under 1.5 GB. Files start longest first
@@ -27,13 +28,14 @@ const GROUPS = {
   networking: 'test/brittle/networking',
   replication: 'test/brittle/replication',
   forum: ['test/brittle/forum/index.js'],
-  integration: 'test/brittle/integration'
+  integration: 'test/brittle/integration',
+  v2: 'test/brittle/v2'
 }
 
 function filesOf (group) {
   const g = GROUPS[group]
   if (Array.isArray(g)) return g
-  return fs.readdirSync(path.join(ROOT, g)).filter(f => f.endsWith('.js')).sort().map(f => `${g}/${f}`)
+  return fs.readdirSync(path.join(ROOT, g)).filter(f => f.endsWith('.js') && !f.startsWith('_')).sort().map(f => `${g}/${f}`)
 }
 
 function parseArgs (argv) {

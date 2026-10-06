@@ -19,18 +19,18 @@ big sizes with few processes, one at a time).
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `"exports": { ".": "./index.js", "./v2": "./src/v2/index.js" }` and `rocksdb-native` (the version Corestore already installs) as a direct dependency in `package.json`; add the `v2` group (`test/brittle/v2`) to `scripts/test-runner.js`
-- [ ] T002 Create `src/v2/` and `test/brittle/v2/` with a placeholder test that loads `require('../../../src/v2')`, so the group runs
+- [X] T001 Add `"exports": { ".": "./index.js", "./v2": "./src/v2/index.js" }` and `rocksdb-native` (the version Corestore already installs) as a direct dependency in `package.json`; add the `v2` group (`test/brittle/v2`) to `scripts/test-runner.js`
+- [X] T002 Create `src/v2/` and `test/brittle/v2/` with a placeholder test that loads `require('../../../src/v2')`, so the group runs
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T003 [P] Test `test/brittle/v2/encodings.js`: message block `{ t, text, reply? }`, roster value `{ log, start, sig }`, announcement round-trip; text over 4 KB rejected
-- [ ] T004 [P] Test `test/brittle/v2/segments.js`: `segment(t, segmentMs)` boundaries (a time exactly on a boundary belongs to the later segment), future bound (`t > now + 5 min` not shown)
-- [ ] T005 [P] Implement `src/v2/encodings.js` and `src/v2/segments.js`
-- [ ] T006 Test `test/brittle/v2/control.js`: create a community (owner), set roles (owner → admin/mod/keeper; admin → mod/keeper; a mod can't appoint), create a channel, ban/unban, hide, keeper registration; two peers converge to the same state; an event signed by someone without the role is ignored on every peer; a forged signature is ignored
-- [ ] T007 Implement `src/v2/control.js` (Autobase apply, records per data-model, signature + role checks) and the control part of `src/v2/index.js` (`Community` constructor, `ready`, `replicate`, `setRole`, `createChannel`, `ban`, `unban`, `hide`, `channels`, `role`, `close`)
-- [ ] T008 Test `test/brittle/v2/author-log.js`: the log key is the same from the same identity seed on another store; `post()` appends `{ t, text }`; non-decreasing time enforced on read; a block from another key pair is rejected
-- [ ] T009 Implement `src/v2/author-log.js` (key derivation per R5, append, read range, tail)
+- [X] T003 [P] Test `test/brittle/v2/encodings.js`: message block `{ t, text, reply? }`, roster value `{ log, start, sig }`, announcement round-trip; text over 4 KB rejected
+- [X] T004 [P] Test `test/brittle/v2/segments.js`: `segment(t, segmentMs)` boundaries (a time exactly on a boundary belongs to the later segment), future bound (`t > now + 5 min` not shown)
+- [X] T005 [P] Implement `src/v2/encodings.js` and `src/v2/segments.js`
+- [X] T006 Test `test/brittle/v2/control.js`: create a community (owner), set roles (owner → admin/mod/keeper; admin → mod/keeper; a mod can't appoint), create a channel, ban/unban, hide, keeper registration; two peers converge to the same state; an event signed by someone without the role is ignored on every peer; a forged signature is ignored
+- [X] T007 Implement `src/v2/control.js` (Autobase apply, records per data-model, signature + role checks) and the control part of `src/v2/index.js` (`Community` constructor, `ready`, `replicate`, `setRole`, `createChannel`, `ban`, `unban`, `hide`, `channels`, `role`, `close`)
+- [X] T008 Test `test/brittle/v2/author-log.js`: the log key is the same from the same identity seed on another store; `post()` appends `{ t, text }`; non-decreasing time enforced on read; a block from another key pair is rejected
+- [X] T009 Implement `src/v2/author-log.js` (key derivation per R5, append, read range, tail)
 
 ## Phase 3: User Stories 1 + 2 — a huge channel opens like a small one; many writers, no bottleneck (P1) 🎯 MVP
 

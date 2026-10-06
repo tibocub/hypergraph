@@ -3,6 +3,12 @@
   "version": "0.0.1",
   "description": "P2P graph store built on Hypercore/Autobase with a focus on ease of use.",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./v2": "./src/v2/index.js",
+    "./package.json": "./package.json",
+    "./*": "./*"
+  },
   "bin": {
     "hypergraph-inspect": "bin/hypergraph-inspector.js"
   },
@@ -58,6 +64,7 @@
     "keet-identity-key": "^3.2.0",
     "protomux": "^3.11.0",
     "protomux-wakeup": "^2.9.0",
+    "rocksdb-native": "^3.18.1",
     "sodium-universal": "^5.0.1"
   },
   "devDependencies": {
