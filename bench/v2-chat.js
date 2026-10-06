@@ -3,6 +3,7 @@
 //
 //   node bench/v2-chat.js <N> [--active A] [--pool P] [--per-segment S] [--segment-ms MS] [--live L]
 //                             [--writers W] [--procs K] [--seconds D] [--rate R]
+//                             [--replicate sparse|auto|all] [--budget BYTES]
 //
 // History is generated in bulk (research R9): S messages per segment, from A
 // authors active in it (drawn from a pool of P), written straight into the
@@ -13,6 +14,9 @@
 //   writers  — K processes posting as W authors in all (W/K each, through
 //              postAs) for D seconds, R messages/s per author (0: as fast as
 //              they can); the newcomer follows: throughput and arrival.
+//   hold     — with --replicate auto|all (the newcomer is sparse by default,
+//              so the page numbers are about reading): what it ends up
+//              holding against --budget, and its disk.
 // Few processes, below-normal priority (CLAUDE.md on machine load).
 
 const path = require('path')
@@ -32,6 +36,10 @@ const { segmentOf, segmentStart } = require('../src/v2/segments')
 const argValue = (name, def) => {
   const i = process.argv.indexOf(name)
   return i === -1 ? def : Number(process.argv[i + 1])
+}
+const argString = (name, def) => {
+  const i = process.argv.indexOf(name)
+  return i === -1 ? def : process.argv[i + 1]
 }
 const now = () => process.hrtime.bigint()
 const ms = (t) => Number(process.hrtime.bigint() - t) / 1e6
@@ -55,7 +63,7 @@ function dirSize (dir) {
 async function history (dir, n, active, pool, perSegment, segmentMs) {
   const store = new Corestore(dir)
   const owner = identityOf('owner')
-  const community = new Community(store, { identity: owner })
+  const community = new Community(store, { identity: owner, replicate: 'sparse' })
   await community.ready()
   const segments = Math.ceil(n / perSegment)
   const current = segmentOf(Date.now(), segmentMs)
@@ -203,7 +211,8 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
   const next = stdinReader()
   const startRss = rss()
   let store = new Corestore(dir)
-  let community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key })
+  const repOpts = { replicate: tp.replicate || 'sparse', ...(tp.budget ? { budget: tp.budget } : {}) }
+  let community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key, ...repOpts })
   await community.ready()
   let bytes = 0
   const found = store.findingPeers()
@@ -301,6 +310,21 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
     }
   }
 
+  // What auto/all ends up holding, once replication goes quiet.
+  let hold = null
+  if (repOpts.replicate !== 'sparse') {
+    const t4 = now()
+    const b4 = bytes
+    let quiet = 0
+    const deadline = Date.now() + 10 * 60 * 1000
+    while (quiet < 3 && Date.now() < deadline) {
+      await sleep(1000)
+      quiet = (await community.stats()).replicating ? 0 : quiet + 1
+    }
+    const st = await community.stats()
+    hold = { mode: st.mode, holding: st.holding, heldBytes: st.heldBytes, budget: st.budget, ms: Math.round(ms(t4)) - 3000, bytes: bytes - b4, passes: st.replicationPasses, disk: dirSize(dir) }
+  }
+
   socket.destroy()
   await community.close()
   await store.close()
@@ -309,7 +333,7 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
   // Restart offline: is what was shown still there?
   const t2 = now()
   store = new Corestore(dir)
-  community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key })
+  community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key, ...repOpts })
   await community.ready()
   let again = []
   try {
@@ -320,7 +344,7 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
   await store.close()
 
   const got = arrivals.filter(x => x !== Infinity)
-  say({ type: 'result', result: { latest, scrollback, disk, offline, live: live ? { sent: live, lost: live - got.length, p50: Math.round(pct(got, 0.5)), p95: Math.round(pct(got, 0.95)) } : null, throughput } })
+  say({ type: 'result', result: { latest, scrollback, disk, offline, live: live ? { sent: live, lost: live - got.length, p50: Math.round(pct(got, 0.5)), p95: Math.round(pct(got, 0.95)) } : null, throughput, hold } })
   process.exit(0)
 }
 
@@ -402,7 +426,7 @@ async function main () {
   const perSegment = argValue('--per-segment', 10000)
   const segmentMs = argValue('--segment-ms', 3600000)
   const live = argValue('--live', 20)
-  const tp = { writers: argValue('--writers', 0), procs: argValue('--procs', 2), seconds: argValue('--seconds', 10), rate: argValue('--rate', 0) }
+  const tp = { writers: argValue('--writers', 0), procs: argValue('--procs', 2), seconds: argValue('--seconds', 10), rate: argValue('--rate', 0), replicate: argString('--replicate', 'sparse'), budget: argValue('--budget', 0) }
   const root = fs.mkdtempSync(path.join(process.env.BENCH_DIR || os.tmpdir(), `hg-v2chat-${n}-`))
   const result = { n }
   let ok = false
@@ -443,7 +467,7 @@ async function main () {
     delete result.history.lastMessage
     const out = path.join(__dirname, 'results')
     fs.mkdirSync(out, { recursive: true })
-    fs.writeFileSync(path.join(out, `v2-chat-${n}${tp.writers ? `-w${tp.writers}` : ''}.json`), JSON.stringify(result, null, 2))
+    fs.writeFileSync(path.join(out, `v2-chat-${n}${tp.writers ? `-w${tp.writers}` : ''}${tp.replicate !== 'sparse' ? `-${tp.replicate}` : ''}.json`), JSON.stringify(result, null, 2))
     console.log(JSON.stringify(result, null, 2))
     ok = true
   } finally {

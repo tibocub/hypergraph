@@ -260,6 +260,16 @@ channel here.)
   the 500-channel member *worse* (idle 74–81 MB against 67–70 MB without, two runs each), so it
   was not kept. Left: fewer control events per channel (one keeper event for many channels),
   Autobase fast-forward for newcomers; both untested.
+- **Replication (T023–T024, SC-008)**, `bench/v2-chat.js --replicate auto`: at 10k with the
+  default 1 GB budget, a newcomer holds everything (`holding: 'all'`). At 1M (218 MB on the host)
+  with a 50 MB budget: a window of the newest ~23 segments, 49.6 MB counted, 50.2 MB downloaded,
+  disk 86 MB (a sparse newcomer's store alone is 11–55 MB, mostly RocksDB log files), filled in
+  38–57 s while the latest page still showed in 0.6–0.7 s. Budget accounting counts stored bytes
+  (block + 130 B), measured against disk. Two faults found by the benchmark and fixed: with the
+  host itself on `auto`, some downloads hung with 0 peers (window 13 MB after 515 s; now a stall
+  is detected in 5 s and retried with fresh sessions), and segments planned while their logs were
+  out of reach were kept as empty and never fetched (regression test). SC-008 holds on these
+  runs; reads beyond the window are not counted yet.
 - **Fixed on the way**: following channels polled the rosters every 500 ms. Idle with 5
   channels followed: 734 ms CPU and +35 MB per 10 s; now 0 ms and nothing (scan on roster
   growth and on control log change only). Closing a channel releases its logs and rosters

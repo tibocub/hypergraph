@@ -106,6 +106,25 @@ a handful of keys; plain key/value is enough for the prototype.
   else `sparse` plus the most recent segments that fit. Re-evaluated when rosters grow.
 - Budget default: a fixed figure per community (e.g. 1 GB), configurable. Disk-free-based defaults
   are left for later (platform differences).
+- **As built (2026-10-06, `src/v2/replication.js`)**:
+  - `sparse` holds only what is read; the current segment's logs are downloaded live only for
+    channels being followed (downloading every channel's current logs would make a sparse member's
+    cost grow with the community, against US5).
+  - `all`/`auto` run a pass: segments newest first across channels, each author's range from the
+    roster (entry start up to that author's next entry, or the log's end), downloaded one segment
+    at a time with sessions closed after it. Only the current segment's logs stay open, live. In
+    `all`, rosters are downloaded in full, so a helper can serve any segment's entries.
+  - Passes run when a roster grows or the control log changes, not on a timer. The replicator
+    uses its own roster sessions, apart from the reader's (holding a community is not having its
+    channels open: `stats().openLogs`, `closeChannel`).
+  - Sizes count stored bytes, not content: each block plus 130 B (Merkle nodes, bitfield, RocksDB
+    keys). Counting content only, a 50 MB budget took 125 MB of disk at 1M.
+  - A segment whose download stops with the log at 0 peers is a stall: the pass stops, its
+    sessions close, and it retries from 10 s. Seen with a serving peer that runs `auto` itself;
+    the exact trigger in Hypercore wasn't isolated (a minimal two-store setup didn't reproduce
+    it). A segment whose logs no peer could describe yet (length unknown) isn't cached as planned
+    and is retried from 2 s (it used to be kept as empty, never fetched).
+  - Not counted yet: what is read beyond the window (scrollback stays on disk until cleared).
 
 ## R8 — Moderation on partial data (decision)
 

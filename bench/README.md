@@ -165,7 +165,12 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
 
   ```
   node bench/v2-chat.js 10000 --writers 100 --procs 2 --seconds 10 --rate 5
+  node bench/v2-chat.js 1000000 --live 0 --replicate auto --budget 50000000
   ```
+
+  The newcomer is `sparse` unless `--replicate` says otherwise (the page numbers are about
+  reading). With `auto`/`all` it then waits for replication to go quiet and reports what it holds
+  against the budget (`hold`), and its disk. `HG_V2_TRACE=1` traces each replication pass.
 
   Measured 2026-10-06 (full table in `specs/research/scaling-v2.md`): latest page 0.61 / 0.69 /
   0.67 s, 412 / 455 / 490 KB, +36 MB memory at 10k / 1M / 10M messages; host disk ~211 B per

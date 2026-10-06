@@ -20,15 +20,19 @@ class Roster {
    * @param {Object} core - the roster's Hypercore (writable for its keeper)
    * @param {Object} opts
    * @param {(ann: Object) => Promise<boolean>} [opts.onAnnouncement] - keeper only
+   * @param {boolean} [opts.extension] - false: read only (a second session on
+   *   the same core must not register the announcement extension again)
    */
-  constructor (core, { onAnnouncement = null } = {}) {
+  constructor (core, { onAnnouncement = null, extension = true } = {}) {
     this.core = core
     this.bee = new Hyperbee(core, { ...BIN, extension: false })
     this.onAnnouncement = onAnnouncement
-    this.ext = core.registerExtension(EXTENSION, {
-      encoding: announcement.enc,
-      onmessage: (msg) => { if (this.onAnnouncement) this.onAnnouncement(msg).catch(safetyCatch) }
-    })
+    this.ext = extension
+      ? core.registerExtension(EXTENSION, {
+        encoding: announcement.enc,
+        onmessage: (msg) => { if (this.onAnnouncement) this.onAnnouncement(msg).catch(safetyCatch) }
+      })
+      : null
   }
 
   get key () { return this.core.key }
@@ -45,7 +49,7 @@ class Roster {
   }
 
   announce (ann) {
-    this.ext.broadcast(ann)
+    if (this.ext) this.ext.broadcast(ann)
   }
 
   async has (segment, author) {

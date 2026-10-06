@@ -64,8 +64,8 @@ big sizes with few processes, one at a time).
 
 ## Phase 6: User Story 4 — replication all | sparse | auto (P2)
 
-- [ ] T023 [US4] Test `test/brittle/v2/replication.js`: `all` downloads every listed log fully; `sparse` only what was read plus the current segment; `auto` holds everything under budget, switches to recent segments when over, never exceeds the budget (control log aside); a helper with `all` serves old segments to a sparse member
-- [ ] T024 [US4] Implement `src/v2/replication.js` (size estimate from roster + log metadata, download ranges, re-evaluation as rosters grow, dropping old segments with `core.clear`); measure SC-008
+- [X] T023 [US4] Test `test/brittle/v2/replication.js`: `all` downloads every listed log fully; `sparse` only what was read plus the current segment; `auto` holds everything under budget, switches to recent segments when over, never exceeds the budget (control log aside); a helper with `all` serves old segments to a sparse member
+- [X] T024 [US4] Implement `src/v2/replication.js` (size estimate from roster + log metadata, download ranges, re-evaluation as rosters grow, dropping old segments with `core.clear`); measure SC-008
 
 ## Phase 7: Offline and polish
 

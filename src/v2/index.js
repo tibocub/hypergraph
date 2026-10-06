@@ -8,11 +8,13 @@ const { Control, sign, mayAssign, RANK } = require('./control')
 const { Roster, verifyEntry, signEntry } = require('./roster')
 const { AuthorLog } = require('./author-log')
 const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
+const { Replicator } = require('./replication')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
 // peer holds and reads. Unstable; not part of the v1 API. See
 // docs/v2-prototype.md and specs/007-scaling-v2-prototype/.
 
+const ROSTER_WAIT_MS = 2000
 const toHex = (k) => (b4a.isBuffer(k) ? b4a.toString(k, 'hex') : String(k))
 
 function rosterKeyPair (identity, communityKey, channel) {
@@ -48,6 +50,9 @@ class Community extends ReadyResource {
   #unreachable = 0 // logs a read gave up on (last page)
   #follows = new Map() // stop function of a live follow -> its channel
   #scans = 0 // roster scans by follows (idle-cost introspection)
+  #mode = 'auto'
+  #budget = 1e9
+  #replicator = null
 
   /**
    * @param {Object} store - Corestore
@@ -61,6 +66,14 @@ class Community extends ReadyResource {
     this.#store = store
     this.#identity = opts.identity
     this.#key = opts.key ? b4a.from(toHex(opts.key), 'hex') : null
+    if (opts.replicate !== undefined) {
+      if (!['all', 'sparse', 'auto'].includes(opts.replicate)) throw new Error("opts.replicate must be 'all', 'sparse' or 'auto'")
+      this.#mode = opts.replicate
+    }
+    if (opts.budget !== undefined) {
+      if (!(Number.isFinite(opts.budget) && opts.budget >= 0)) throw new Error('opts.budget must be a number of bytes')
+      this.#budget = opts.budget
+    }
     this.#wakeup = new ProtomuxWakeup()
     this.ready().catch(() => {})
   }
@@ -83,9 +96,21 @@ class Community extends ReadyResource {
     for (const [channel, keepers] of Object.entries(this.#control.state.keepers)) {
       if (keepers.some(k => k.keeper === me)) await this.#openOwnRoster(channel)
     }
+    this.#replicator = new Replicator({
+      mode: this.#mode,
+      budget: this.#budget,
+      store: this.#store,
+      channels: () => Object.entries(this.#state.channels).map(([id, c]) => ({ id, segmentMs: c.segmentMs, createdAt: c.createdAt })),
+      keepers: (channel) => this.keepers(channel),
+      entriesFrom: (rosters, channel, segment) => this.#entriesFrom(rosters, channel, segment),
+      latestFrom: (rosters, max) => this.#latestFrom(rosters, max)
+    })
+    this.#control.on('change', () => this.#replicator.schedule())
+    this.#replicator.schedule()
   }
 
   async _close () {
+    if (this.#replicator) await this.#replicator.close()
     if (this.#retry) clearInterval(this.#retry)
     for (const stop of [...this.#follows.keys()]) stop()
     for (const rosters of this.#rosters.values()) for (const r of rosters.values()) await r.close().catch(safetyCatch)
@@ -226,6 +251,9 @@ class Community extends ReadyResource {
       if (rosters.has(keeper)) continue
       const roster = new Roster(this.#store.get({ key: b4a.from(rosterKey, 'hex') }))
       await roster.ready()
+      // Never seen: wait for its length from peers, or a newcomer's first
+      // page comes back empty. (Seen before, e.g. offline: no wait.)
+      if (roster.core.length === 0) await within(roster.core.update({ wait: true }).catch(safetyCatch), ROSTER_WAIT_MS)
       rosters.set(keeper, roster)
     }
     return rosters
@@ -273,7 +301,12 @@ class Community extends ReadyResource {
    */
   async rosterEntries (channel, segment, opts = {}) {
     if (!this.opened) await this.ready()
-    const rosters = await this.#keeperRosters(channel)
+    return this.#entriesFrom(await this.#keeperRosters(channel), channel, segment, opts)
+  }
+
+  // The union of these rosters' entries for a segment: signature checked,
+  // lowest start per author.
+  async #entriesFrom (rosters, channel, segment, opts = {}) {
     const byAuthor = new Map()
     for (const [keeper, roster] of rosters) {
       if (opts.keeper && keeper !== opts.keeper) continue
@@ -296,7 +329,10 @@ class Community extends ReadyResource {
 
   /** The highest segment ≤ max with any roster entry, across keepers, or -1. */
   async latestSegment (channel, max) {
-    const rosters = await this.#keeperRosters(channel)
+    return this.#latestFrom(await this.#keeperRosters(channel), max)
+  }
+
+  async #latestFrom (rosters, max) {
     let best = -1
     for (const roster of rosters.values()) {
       try {
@@ -624,6 +660,14 @@ class Community extends ReadyResource {
     return {
       openLogs: this.#logs.size + this.#ownLogs.size,
       follows: this.#follows.size,
+      mode: this.#mode,
+      holding: this.#replicator.holding,
+      heldBytes: this.#replicator.heldBytes,
+      budget: this.#budget,
+      replicationPasses: this.#replicator.passes,
+      replicating: !!(this.#replicator.running || this.#replicator.timer || this.#replicator.retryTimer),
+      replicationRosters: this.#replicator.rosters.size,
+      replicationLiveLogs: this.#replicator.live.size,
       scans: this.#scans,
       rosterKeepers,
       unreachable: this.#unreachable,
@@ -672,6 +716,17 @@ class Community extends ReadyResource {
     const log = await this.#log(toHex(logKey))
     await within(log.update({ wait: true }).catch(safetyCatch), 1000)
     return log.length
+  }
+
+  /** Whether this peer holds blocks [start, end) of a log, locally. */
+  async holds (logKey, start, end = start + 1) {
+    const core = this.#store.get({ key: b4a.from(toHex(logKey), 'hex') })
+    try {
+      await core.ready()
+      return await core.has(start, end)
+    } finally {
+      await core.close().catch(safetyCatch)
+    }
   }
 
   async postRaw (channel, { t, text }) {

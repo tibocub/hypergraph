@@ -69,7 +69,11 @@ come back with `hidden: true` and no text.
 
 ```js
 await community.stats()
-// { openLogs, follows, rosterKeepers, unreachable, controlLength }  (+ heldBytes, budget, mode with US4)
+// { openLogs, follows, scans, rosterKeepers, unreachable, controlLength,
+//   mode, holding: 'all' | 'window' | 'read', heldBytes, budget, replicating,
+//   replicationPasses, replicationRosters, replicationLiveLogs }
+
+await community.holds(logKey, start, end)   // whether blocks [start, end) of a log are held locally
 
 await community.postAs(identity, channelId, text)   // post as another identity through this peer
 ```

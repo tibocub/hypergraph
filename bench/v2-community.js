@@ -141,7 +141,9 @@ async function memberRun (dir, port, key, open, last, channels) {
   let bytes = 0
   const t0 = now()
   const store = new Corestore(dir)
-  const community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key })
+  // Sparse: this measures what reading costs; holding (auto/all) is
+  // bench/v2-chat.js --replicate.
+  const community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key, replicate: 'sparse' })
   await community.ready()
   const found = store.findingPeers()
   const socket = net.connect(port, '127.0.0.1')
