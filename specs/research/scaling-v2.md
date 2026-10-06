@@ -103,6 +103,12 @@ context (10 → 100+), a forum shape (threads, replies, votes), and a long-runni
 
 ("edge" = text on the relation; "content" = entity + content + relation, text in the author's log.)
 
+**1M messages** (edge model, 2 writers, 21 min to write at ~780 messages/s): newcomer shows the
+latest page in **1.5 s after downloading 0.74 MB** (170 MB memory, 13 MB disk); oldest page 119 ms;
+offline reopen **stuck** again; the owner holding everything: 2.36 GB on disk, 1.5 s to reopen.
+(Live arrival is not meaningful in this run: with 2 writers the receiver is the sender.) So with
+the text on the relation, a newcomer's cost is flat from 10k to 1M.
+
 **Many channels** (`bench/channels.js`, one member owning C channels of 200 messages):
 
 | channels | 10 | 50 | 200 |
@@ -127,7 +133,7 @@ context (10 → 100+), a forum shape (threads, replies, votes), and a long-runni
 **What this says**
 
 1. **Reading recent messages is already flat when the text is on the relation**: same time and
-   bytes at 10k and 100k (fast-forward + lazy blocks). The design direction holds; the defaults
+   bytes at 10k, 100k and 1M (fast-forward + lazy blocks). The design direction holds; the defaults
    don't use it.
 2. **Text in authors' logs makes a newcomer's cost grow with history** (×8 time, ×9 bytes from 10k
    to 100k): GraphView indexes each opened author log from the start. This is how most apps write
@@ -151,5 +157,5 @@ context (10 → 100+), a forum shape (threads, replies, votes), and a long-runni
    everyone's messages; a single bulk writer does ~1,800 files/s. Needs a per-peer measurement on
    separate machines before reading too much into it.
 
-Still to measure: 1M+ messages (flatness), a
+Still to measure: a
 forum shape (threads, votes), a long-running peer's growth, many writers on separate machines.

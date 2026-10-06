@@ -150,7 +150,7 @@ Headline numbers:
 
 | | result |
 |---|---|
-| newcomer, latest page, text on relation, 10k → 100k messages | 1.9 s → 1.2 s, 0.7 MB both (flat) |
+| newcomer, latest page, text on relation, 10k → 100k → 1M messages | 1.9 s → 1.2 s → 1.5 s, 0.7 MB each (flat) |
 | newcomer, latest page, text in author logs, 10k → 100k | 5.5 s → 44 s, 4.2 → 36 MB (grows) |
 | idle `update()`, 10 → 200 open channels | 8 → 121 ms (grows) |
 | memory per open channel | ~3 MB |
