@@ -547,6 +547,39 @@ class Community extends ReadyResource {
 
   // ── test hooks (prototype only) ──────────────────────────────────────────
 
+  /**
+   * Post as another identity through this peer (benchmarks: many authors in
+   * one process without one control log replica each). Same log and
+   * announcement as that identity's own post() would produce.
+   */
+  async postAs (identity, channel, text) {
+    const record = this.channel(channel)
+    if (!record) throw new Error('Unknown channel')
+    const author = toHex(identity.keyPair.publicKey)
+    const id = `${author}:${channel}`
+    let log = this.#ownLogs.get(id)
+    if (!log) {
+      log = new AuthorLog(this.#store, { keyPair: AuthorLog.keyPairFor(identity, this.key, channel) })
+      await log.ready()
+      this.#ownLogs.set(id, log)
+    }
+    const { seq, t } = await log.append({ text })
+    const segment = segmentOf(t, record.segmentMs)
+    const announced = `${author}:${channel}:${segment}`
+    if (!this.#announced.has(announced)) {
+      this.#announced.add(announced)
+      const ann = { channel, segment, author: identity.keyPair.publicKey, log: log.key, start: seq, sig: signEntry(this.key, channel, segment, log.key, seq, identity.keyPair) }
+      this.#pending.set(announced, ann)
+      if (this.#kept.has(channel)) await this.acceptAnnouncement(ann)
+      await this.#sendPending()
+      if (!this.#retry) {
+        this.#retry = setInterval(() => this.#sendPending().catch(safetyCatch), 500)
+        if (this.#retry.unref) this.#retry.unref()
+      }
+    }
+    return { author, log: toHex(log.key), seq, t }
+  }
+
   /** Post with a given time, announcing for its segment (tests). */
   async postRaw (channel, { t, text }) {
     const record = this.channel(channel)
