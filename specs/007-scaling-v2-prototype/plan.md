@@ -119,4 +119,4 @@ files are not modified except `package.json` and the runner.
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| A local RocksDB beside Corestore (not one of the composed primitives listed in III) | A peer's private state must be deletable and readable offline without depending on a replicated structure's latest version (v1 offline bug, R6) | A local Hyperbee: every entry is a signed, permanent block (~183 B overhead, never deletable); HyperDB: a schema build step for a few keys |
+| A local RocksDB beside Corestore (not one of the composed primitives listed in III) — **not built: the offline test passed without it (research R6, revised)** | A peer's private state must be deletable and readable offline without depending on a replicated structure's latest version (v1 offline bug, R6) | A local Hyperbee: every entry is a signed, permanent block (~183 B overhead, never deletable); HyperDB: a schema build step for a few keys |

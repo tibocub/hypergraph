@@ -97,6 +97,14 @@ it and from blocks the peer holds, never from a structure whose latest version m
 HyperDB's RocksDB engine was considered: it needs a generated schema (hyperschema build step) for
 a handful of keys; plain key/value is enough for the prototype.
 
+**Revised (2026-10-06): not built.** `test/brittle/v2/offline.js`, written first, passed without
+it: after a restart with no peer, the page shown comes back in 3 ms (`bench/v2-chat.js`: 0.2–0.7 s
+from 10k to 10M), and scrollback to a segment never fetched answers empty, reported unreachable, in
+2 s. v2 reads pages straight from the author logs' blocks and the roster nodes the peer already
+holds; there is no shared index whose newest version would need fetching, which is what broke v1
+offline. The replication decisions are recomputed by each pass from the rosters. `rocksdb-native`
+was dropped as a direct dependency again.
+
 ## R7 — Replication `all | sparse | auto` (decision)
 
 - `all`: download every author log listed in every roster, from the start, and follow them.

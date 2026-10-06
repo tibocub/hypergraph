@@ -64,7 +64,6 @@
     "keet-identity-key": "^3.2.0",
     "protomux": "^3.11.0",
     "protomux-wakeup": "^2.9.0",
-    "rocksdb-native": "^3.18.1",
     "sodium-universal": "^5.0.1"
   },
   "devDependencies": {
