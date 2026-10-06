@@ -2,7 +2,11 @@ const ReadyResource = require('ready-resource')
 const ProtomuxWakeup = require('protomux-wakeup')
 const hcrypto = require('hypercore-crypto')
 const b4a = require('b4a')
+const safetyCatch = require('safety-catch')
 const { Control, sign, mayAssign, RANK } = require('./control')
+const { Roster, verifyEntry, signEntry } = require('./roster')
+const { AuthorLog } = require('./author-log')
+const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
 // peer holds and reads. Unstable; not part of the v1 API. See
@@ -10,12 +14,32 @@ const { Control, sign, mayAssign, RANK } = require('./control')
 
 const toHex = (k) => (b4a.isBuffer(k) ? b4a.toString(k, 'hex') : String(k))
 
+// Whichever first: the promise, or `ms`; the timer is cleared either way.
+async function within (promise, ms) {
+  let timer = null
+  try {
+    return await Promise.race([promise, new Promise(resolve => { timer = setTimeout(resolve, ms) })])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 class Community extends ReadyResource {
   #store
   #identity
   #key
   #wakeup
   #control = null
+  #ns = null
+  #logs = new Map() // log key hex -> AuthorLog (others' logs, opened by key)
+  #ownLogs = new Map() // channel id -> this member's AuthorLog
+  #rosters = new Map() // channel id -> Map(keeper pubkey hex -> Roster)
+  #kept = new Set() // channels this member keeps
+  #announced = new Set() // `${channel}:${segment}` this member is listed in
+  #pending = new Map() // `${channel}:${segment}` -> announcement, until listed
+  #retry = null
+  #unreachable = 0 // logs a read gave up on (last page)
+  #follows = new Set() // stop functions of live follows
 
   /**
    * @param {Object} store - Corestore
@@ -42,12 +66,23 @@ class Community extends ReadyResource {
     // One namespace per community: two Autobases opened from the same
     // namespace get the same local writer key (bench/roster.js).
     const ns = this.#store.namespace('hg-v2:' + (this.#key ? toHex(this.#key) : toHex(hcrypto.randomBytes(16))))
+    this.#ns = ns
     this.#control = new Control(ns, this.#key, { wakeup: this.#wakeup })
     await this.#control.ready()
     if (!this.#key) await this.#control.append(this.#sign({ type: 'init', name: '' }))
+    // Rosters this member keeps, from an earlier session.
+    const me = toHex(this.#identity.keyPair.publicKey)
+    for (const [channel, keepers] of Object.entries(this.#control.state.keepers)) {
+      if (keepers.some(k => k.keeper === me)) await this.#openOwnRoster(channel)
+    }
   }
 
   async _close () {
+    if (this.#retry) clearInterval(this.#retry)
+    for (const stop of this.#follows) stop()
+    for (const rosters of this.#rosters.values()) for (const r of rosters.values()) await r.close().catch(safetyCatch)
+    for (const log of this.#logs.values()) await log.close().catch(safetyCatch)
+    for (const log of this.#ownLogs.values()) await log.close().catch(safetyCatch)
     if (this.#control) await this.#control.close()
     this.#wakeup.destroy()
   }
@@ -125,7 +160,382 @@ class Community extends ReadyResource {
     await this.#control.append(this.#sign(event))
   }
 
+  // ── keepers and rosters ──────────────────────────────────────────────────
+
+  async #openOwnRoster (channel) {
+    const me = toHex(this.#identity.keyPair.publicKey)
+    const rosters = this.#rostersOf(channel)
+    if (rosters.has(me) && rosters.get(me).writable) return rosters.get(me)
+    const roster = new Roster(this.#ns.get({ name: `roster:${channel}` }), {
+      onAnnouncement: (ann) => this.acceptAnnouncement(ann)
+    })
+    await roster.ready()
+    rosters.set(me, roster)
+    this.#kept.add(channel)
+    return roster
+  }
+
+  #rostersOf (channel) {
+    let m = this.#rosters.get(channel)
+    if (!m) this.#rosters.set(channel, (m = new Map()))
+    return m
+  }
+
+  // Open (lazily) every keeper's roster for a channel, as the control log
+  // lists them.
+  async #keeperRosters (channel) {
+    const rosters = this.#rostersOf(channel)
+    for (const { keeper, rosterKey } of this.keepers(channel)) {
+      if (rosters.has(keeper)) continue
+      const roster = new Roster(this.#store.get({ key: b4a.from(rosterKey, 'hex') }))
+      await roster.ready()
+      rosters.set(keeper, roster)
+    }
+    return rosters
+  }
+
+  /** As a keeper (role keeper or above): start keeping the channel's roster. */
+  async keep (channel) {
+    if (!this.opened) await this.ready()
+    if (!this.channel(channel)) throw new Error('Unknown channel')
+    if (!((RANK[this.#myRole()] || 0) >= RANK.keeper)) throw new Error('Keeping a roster is not allowed for this member')
+    this.#requireWriter()
+    const roster = await this.#openOwnRoster(channel)
+    const me = toHex(this.#identity.keyPair.publicKey)
+    if (!this.keepers(channel).some(k => k.keeper === me)) {
+      await this.#control.append(this.#sign({ type: 'keeper', channel, rosterKey: toHex(roster.key) }))
+    }
+  }
+
+  /**
+   * Keeper side: list an author if the announcement checks out. Returns
+   * whether the author is (now) listed.
+   */
+  async acceptAnnouncement (ann) {
+    if (!this.opened) await this.ready()
+    const channel = this.channel(ann.channel)
+    if (!channel || !this.#kept.has(ann.channel)) return false
+    const me = toHex(this.#identity.keyPair.publicKey)
+    const roster = this.#rostersOf(ann.channel).get(me)
+    if (!roster || !roster.writable) return false
+    const current = segmentOf(Date.now(), channel.segmentMs)
+    if (ann.segment < current - 1 || ann.segment > current + 1) return false
+    if (this.banned(ann.author)) return false
+    if (!verifyEntry(this.key, ann.channel, ann.segment, ann)) return false
+    if (!(await roster.has(ann.segment, ann.author))) {
+      await roster.put(ann.segment, ann.author, { log: ann.log, start: ann.start, sig: ann.sig })
+    }
+    return true
+  }
+
+  /**
+   * A segment's roster across every keeper: entries whose signature checks
+   * out, one per author (the lowest start). `opts.keeper` reads one keeper.
+   *
+   * @returns {Promise<Array<{ author: string, log: string, start: number }>>}
+   */
+  async rosterEntries (channel, segment, opts = {}) {
+    if (!this.opened) await this.ready()
+    const rosters = await this.#keeperRosters(channel)
+    const byAuthor = new Map()
+    for (const [keeper, roster] of rosters) {
+      if (opts.keeper && keeper !== opts.keeper) continue
+      let entries = []
+      try {
+        entries = await roster.segment(segment)
+      } catch (err) {
+        safetyCatch(err)
+        continue
+      }
+      for (const e of entries) {
+        if (!verifyEntry(this.key, channel, segment, e)) continue
+        const author = toHex(e.author)
+        const known = byAuthor.get(author)
+        if (!known || e.start < known.start) byAuthor.set(author, { author, log: toHex(e.log), start: e.start })
+      }
+    }
+    return [...byAuthor.values()]
+  }
+
+  /** The highest segment ≤ max with any roster entry, across keepers, or -1. */
+  async latestSegment (channel, max) {
+    const rosters = await this.#keeperRosters(channel)
+    let best = -1
+    for (const roster of rosters.values()) {
+      try {
+        best = Math.max(best, await roster.latestSegment(max))
+      } catch (err) {
+        safetyCatch(err)
+      }
+    }
+    return best
+  }
+
+  // ── posting ──────────────────────────────────────────────────────────────
+
+  async #ownLog (channel) {
+    let log = this.#ownLogs.get(channel)
+    if (!log) {
+      log = new AuthorLog(this.#store, { keyPair: AuthorLog.keyPairFor(this.#identity, this.key, channel) })
+      await log.ready()
+      this.#ownLogs.set(channel, log)
+    }
+    return log
+  }
+
+  /**
+   * Post a message to a channel: appended to this member's own log for the
+   * channel, no agreement with anyone needed. The first post in a segment
+   * announces this member to the channel's keepers.
+   *
+   * @returns {Promise<{ author: string, log: string, seq: number, t: number }>}
+   */
+  async post (channel, text, opts = {}) {
+    if (!this.opened) await this.ready()
+    const record = this.channel(channel)
+    if (!record) throw new Error('Unknown channel')
+    if (this.banned(this.#identity.keyPair.publicKey)) throw new Error('This member is banned')
+    const log = await this.#ownLog(channel)
+    const reply = opts.reply ? { log: b4a.from(toHex(opts.reply.log), 'hex'), seq: opts.reply.seq } : null
+    const { seq, t } = await log.append({ text, reply })
+    const segment = segmentOf(t, record.segmentMs)
+    if (!this.#announced.has(`${channel}:${segment}`)) await this.#announce(channel, segment, log, seq)
+    return { author: toHex(this.#identity.keyPair.publicKey), log: toHex(log.key), seq, t }
+  }
+
+  async #announce (channel, segment, log, start) {
+    const id = `${channel}:${segment}`
+    const ann = {
+      channel,
+      segment,
+      author: this.#identity.keyPair.publicKey,
+      log: log.key,
+      start,
+      sig: signEntry(this.key, channel, segment, log.key, start, this.#identity.keyPair)
+    }
+    this.#announced.add(id)
+    this.#pending.set(id, ann)
+    if (this.#kept.has(channel)) await this.acceptAnnouncement(ann)
+    await this.#sendPending()
+    if (!this.#retry) {
+      // Until a keeper lists it: a keeper may not be connected yet.
+      this.#retry = setInterval(() => this.#sendPending().catch(safetyCatch), 500)
+      if (this.#retry.unref) this.#retry.unref()
+    }
+  }
+
+  async #sendPending () {
+    for (const [id, ann] of this.#pending) {
+      const rosters = await this.#keeperRosters(ann.channel)
+      let listed = false
+      for (const roster of rosters.values()) {
+        try {
+          if (await roster.has(ann.segment, ann.author)) { listed = true; break }
+        } catch (err) {
+          safetyCatch(err)
+        }
+      }
+      if (listed) {
+        this.#pending.delete(id)
+        continue
+      }
+      for (const roster of rosters.values()) if (!roster.writable) roster.announce(ann)
+    }
+    if (this.#pending.size === 0 && this.#retry) {
+      clearInterval(this.#retry)
+      this.#retry = null
+    }
+  }
+
+  // ── reading ──────────────────────────────────────────────────────────────
+
+  async #log (logHex) {
+    for (const own of this.#ownLogs.values()) if (toHex(own.key) === logHex) return own
+    let log = this.#logs.get(logHex)
+    if (!log) {
+      log = new AuthorLog(this.#store, { key: b4a.from(logHex, 'hex') })
+      await log.ready()
+      this.#logs.set(logHex, log)
+    }
+    return log
+  }
+
+  // A log's length as far as peers say within `timeout` (its local length if
+  // nobody answers).
+  async #length (log, timeout) {
+    if (log.writable) return log.length
+    await within(log.update({ wait: true }).catch(safetyCatch), timeout)
+    return log.length
+  }
+
+  #shape (author, logHex, m) {
+    const hidden = !!this.hidden(author, logHex, m.seq)
+    return { author, log: logHex, seq: m.seq, t: m.t, text: hidden ? null : m.text, hidden }
+  }
+
+  #visible (author, m) {
+    if (isFuture(m.t)) return false
+    const ban = this.banned(author)
+    return !(ban && m.t > ban.at)
+  }
+
+  // Newest messages with t < beforeT, at most `limit`, newest first. Walks
+  // back from the newest segment that has roster entries; each listed
+  // author's messages in a segment are read from their newest down. Older
+  // segments only hold older messages, so it stops once a page is full.
+  async #page (channel, beforeT, limit, timeout) {
+    const record = this.channel(channel)
+    if (!record) throw new Error('Unknown channel')
+    const first = segmentOf(record.createdAt, record.segmentMs)
+    const startT = Number.isFinite(beforeT) ? beforeT : Date.now() + FUTURE_MS
+    let seg = segmentOf(startT, record.segmentMs)
+    const later = new Map() // author -> where their entry in a later segment starts
+    const out = []
+    let unreachable = 0
+    while (seg >= first) {
+      seg = await this.latestSegment(channel, seg)
+      if (seg < 0) break
+      const entries = await this.rosterEntries(channel, seg)
+      await Promise.all(entries.map(async (e) => {
+        const log = await this.#log(e.log)
+        const end = later.has(e.author) ? later.get(e.author) : await this.#length(log, timeout)
+        let got = 0
+        for (let i = end - 1; i >= e.start && got < limit; i--) {
+          let m = null
+          try {
+            m = await log.get(i, { timeout })
+          } catch (err) {
+            safetyCatch(err)
+          }
+          if (!m) { unreachable++; break }
+          if (m.t >= beforeT || !this.#visible(e.author, m)) continue
+          out.push(this.#shape(e.author, e.log, m))
+          got++
+        }
+      }))
+      for (const e of entries) later.set(e.author, e.start)
+      if (out.length >= limit) break
+      seg--
+    }
+    this.#unreachable = unreachable
+    // Newest first: by time, then author, then seq, all descending: the
+    // exact reverse of the order every peer agrees on.
+    out.sort((x, y) => (y.t - x.t) || (y.author < x.author ? -1 : y.author > x.author ? 1 : 0) || (y.seq - x.seq))
+    return out.slice(0, limit)
+  }
+
+  /**
+   * The latest messages of a channel, newest first.
+   *
+   * @param {string} channel
+   * @param {{ limit?: number, timeout?: number }} [opts] - timeout: ms to
+   *   wait for an author's log before leaving it out (stats().unreachable)
+   */
+  async latest (channel, { limit = 50, timeout = 5000 } = {}) {
+    if (!this.opened) await this.ready()
+    return this.#page(channel, Infinity, limit, timeout)
+  }
+
+  /** Scrollback: the messages before time `t`, newest first. */
+  async before (channel, { t, limit = 50, timeout = 5000 } = {}) {
+    if (!this.opened) await this.ready()
+    return this.#page(channel, t, limit, timeout)
+  }
+
+  /**
+   * Follow a channel live: `onmessage` gets other members' new posts in the
+   * current segment, once each, in each author's order.
+   *
+   * @returns {() => void} stop
+   */
+  follow (channel, onmessage) {
+    const me = toHex(this.#identity.keyPair.publicKey)
+    const watched = new Map() // log hex -> { author, next, log, onappend, range }
+    let stopped = false
+    let initial = true // the first scan: what is already there is history
+    const since = Date.now()
+
+    const drain = async (w) => {
+      while (!stopped && w.next < w.log.length) {
+        const seq = w.next++
+        let m = null
+        try {
+          m = await w.log.get(seq)
+        } catch (err) {
+          safetyCatch(err)
+        }
+        if (m && m.t >= since && this.#visible(w.author, m)) onmessage(this.#shape(w.author, toHex(w.log.key), m))
+      }
+    }
+
+    const scan = async () => {
+      if (stopped) return
+      const record = this.channel(channel)
+      if (!record) return
+      const seg = segmentOf(Date.now(), record.segmentMs)
+      for (const s of [seg - 1, seg]) {
+        for (const e of await this.rosterEntries(channel, s)) {
+          if (e.author === me || watched.has(e.log)) continue
+          const log = await this.#log(e.log)
+          await within(log.update({ wait: true }).catch(safetyCatch), 2000)
+          // Authors found by the first scan: their messages so far are
+          // history. Authors listed later: everything from their entry, as
+          // long as it was posted since following began.
+          const w = { author: e.author, log, next: initial ? Math.max(e.start, log.length) : e.start }
+          w.onappend = () => drain(w).catch(safetyCatch)
+          log.core.on('append', w.onappend)
+          w.range = log.core.download({ start: log.length, end: -1 })
+          watched.set(e.log, w)
+          w.onappend() // anything already there since following began
+        }
+      }
+    }
+
+    scan().then(() => { initial = false }, safetyCatch)
+    const timer = setInterval(() => scan().catch(safetyCatch), 500)
+    if (timer.unref) timer.unref()
+    const stop = () => {
+      if (stopped) return
+      stopped = true
+      clearInterval(timer)
+      for (const w of watched.values()) {
+        w.log.core.off('append', w.onappend)
+        try { w.range.destroy() } catch (err) { safetyCatch(err) }
+      }
+      this.#follows.delete(stop)
+    }
+    this.#follows.add(stop)
+    return stop
+  }
+
+  async stats () {
+    let rosterKeepers = 0
+    for (const m of this.#rosters.values()) rosterKeepers += m.size
+    return {
+      openLogs: this.#logs.size + this.#ownLogs.size,
+      rosterKeepers,
+      unreachable: this.#unreachable,
+      controlLength: this.#control.base.length
+    }
+  }
+
   // ── test hooks (prototype only) ──────────────────────────────────────────
+
+  /** Post with a given time, announcing for its segment (tests). */
+  async postRaw (channel, { t, text }) {
+    const record = this.channel(channel)
+    const log = await this.#ownLog(channel)
+    const { seq } = await log.appendRaw({ t, text })
+    const segment = segmentOf(t, record.segmentMs)
+    if (!this.#announced.has(`${channel}:${segment}`)) await this.#announce(channel, segment, log, seq)
+    return { seq, t }
+  }
+
+  /** As a keeper, write a roster entry without any check (tests forging). */
+  async writeRosterEntryUnchecked (channel, segment, entry) {
+    const roster = await this.#openOwnRoster(channel)
+    await roster.put(segment, entry.author, entry)
+  }
 
   /** Append an event signed by another key pair, through this peer's writer. */
   async appendAs (keyPair, event) {
