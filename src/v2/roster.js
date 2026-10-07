@@ -60,6 +60,14 @@ class Roster {
     await this.bee.ready()
     if (this.authors) await this.authors.ready()
     if (this.grants) await this.grants.ready()
+    // The header names the author index and the grants bee: written now, not
+    // with the first entry (Hyperbee's default), or a private channel nobody
+    // has posted in yet has grants no member can find.
+    if (this.core.writable && this.core.length === 0 && (this.authors || this.grants)) {
+      const batch = this.bee.batch()
+      await batch.getRoot(true)
+      await batch.close()
+    }
   }
 
   async close () {

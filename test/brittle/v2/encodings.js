@@ -53,8 +53,8 @@ test('v2 encodings: a private message block round-trips and is told apart from a
 
 test('v2 encodings: grants, invites and redemptions round-trip', (t) => {
   const { grantKey, grantValue, grantSubmission, invite, redemption } = require('../../../src/v2/encodings')
-  t.alike(grantKey.decode(grantKey.encode([key(1), 7])), [key(1), 7])
-  const g = { identity: key(13), sealed: b4a.alloc(80, 3), granter: key(2), sig: b4a.alloc(64, 4) }
+  t.alike(grantKey.decode(grantKey.encode([key(1), 7, key(14)])), [key(1), 7, key(14).subarray(0, 8)])
+  const g = { identity: key(13), commit: key(14), sealed: b4a.alloc(80, 3), granter: key(2), sig: b4a.alloc(64, 4) }
   t.alike(grantValue.decode(grantValue.encode(g)), g)
   const s = { channel: 'c', recipient: key(5), epoch: 1, ...g }
   t.alike(grantSubmission.decode(grantSubmission.encode(s)), s)

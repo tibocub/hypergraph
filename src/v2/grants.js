@@ -14,21 +14,21 @@ const { sha256 } = require('./crypto')
 
 const ENTRIES = b4a.from([0])
 const WHO = b4a.from([1])
-const entryKey = (recipient, epoch) => b4a.concat([ENTRIES, grantKey.encode([recipient, epoch])])
+const entryKey = (recipient, epoch, commit) => b4a.concat([ENTRIES, grantKey.encode([recipient, epoch, commit])])
 const whoKey = (identity) => b4a.concat([WHO, identity])
 
-/** What a granter signs: binds the sealed key to community, channel, recipient and epoch. */
-function grantSignable (communityKey, channel, recipient, identity, epoch, sealed) {
-  return sha256('hg-v2-grant\0', communityKey, channel + '\0', recipient, identity, `${epoch}\0`, sealed)
+/** What a granter signs: binds the sealed key to community, channel, recipient, epoch and commitment. */
+function grantSignable (communityKey, channel, g) {
+  return sha256('hg-v2-grant\0', communityKey, channel + '\0', g.recipient, g.identity, `${g.epoch}\0`, g.commit, g.sealed)
 }
 
 function signGrant (communityKey, channel, g, keyPair) {
-  return hcrypto.sign(grantSignable(communityKey, channel, g.recipient, g.identity, g.epoch, g.sealed), keyPair.secretKey)
+  return hcrypto.sign(grantSignable(communityKey, channel, g), keyPair.secretKey)
 }
 
 function verifyGrant (communityKey, channel, g) {
   try {
-    return hcrypto.verify(grantSignable(communityKey, channel, g.recipient, g.identity, g.epoch, g.sealed), g.sig, g.granter)
+    return hcrypto.verify(grantSignable(communityKey, channel, g), g.sig, g.granter)
   } catch {
     return false
   }
@@ -36,7 +36,7 @@ function verifyGrant (communityKey, channel, g) {
 
 /** Write a grant (and its identity index) unless that recipient's epoch is there. */
 async function putGrant (bee, g) {
-  const key = entryKey(g.recipient, g.epoch)
+  const key = entryKey(g.recipient, g.epoch, g.commit)
   if (await bee.get(key)) return false
   const batch = bee.batch()
   await batch.put(key, grantValue.encode(g))
@@ -45,8 +45,8 @@ async function putGrant (bee, g) {
   return true
 }
 
-async function hasGrant (bee, recipient, epoch, opts) {
-  return !!(await bee.get(entryKey(recipient, epoch), opts))
+async function hasGrant (bee, recipient, epoch, commit, opts) {
+  return !!(await bee.get(entryKey(recipient, epoch, commit), opts))
 }
 
 /**
@@ -56,8 +56,8 @@ async function hasGrant (bee, recipient, epoch, opts) {
  * binary search.
  */
 async function grantsForEpochs (bee, recipient, epochs, opts) {
-  const found = await Promise.all(epochs.map(async (epoch) => {
-    const node = await bee.get(entryKey(recipient, epoch), opts)
+  const found = await Promise.all(epochs.map(async ({ epoch, commit }) => {
+    const node = await bee.get(entryKey(recipient, epoch, commit), opts)
     return node ? { recipient, epoch, ...grantValue.decode(node.value) } : null
   }))
   return found.filter(Boolean)

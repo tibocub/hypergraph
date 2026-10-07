@@ -87,5 +87,69 @@ test('v2 grants: a member fetches its own grant, not everyone’s', async (t) =>
   const length = core.length
   for (let i = 0; i < length; i++) if (await core.has(i)) held++
   await core.close()
-  t.ok(held < 15, `${held} of ${length} grant blocks fetched`)
+  t.ok(held < length / 3, `${held} of ${length} grant blocks fetched (a fraction, not everyone’s)`)
+})
+
+test('v2 grants: a revoked member reads nothing posted after, and keeps what it had', async (t) => {
+  const { owner, channel, join } = await setup(t, 'gr-revoke')
+  const a = await join('a')
+  const b = await join('b')
+  await owner.community.grant(channel, who(a))
+  await owner.community.grant(channel, who(b))
+  await owner.community.post(channel, 'old')
+  t.ok(await readsAll(a, channel, 1))
+
+  const result = await owner.community.revoke(channel, a.pub)
+  t.is(result.epoch, 1, 'a new epoch')
+  t.ok(result.granted >= 2, `re-granted to the members left (${result.granted})`)
+  t.ok(owner.community.revoked(channel, a.pub))
+  await owner.community.post(channel, 'new')
+
+  t.ok(await readsAll(b, channel, 2), 'a member still in reads both')
+  await until(async () => { await a.community.update(); return a.community.epoch(channel) === 1 })
+  const page = await a.community.latest(channel)
+  t.alike(page.map(m => m.text), [null, 'old'], 'the revoked member: the old message, not the new one')
+  t.alike((await a.community.access(channel)).epochs, [0])
+  await t.exception(a.community.post(channel, 'still here?'), /key/, 'and can’t post with the new epoch')
+})
+
+test('v2 grants: two admins rotating at once end on one epoch everyone holds', async (t) => {
+  const { owner, channel, join } = await setup(t, 'gr-race')
+  const admin = await join('admin')
+  const m = await join('m')
+  t.teardown(link(admin, m))
+  await owner.community.setRole(admin.pub, 'admin', { writer: admin.community.localKey })
+  await until(async () => { await admin.community.update(); return admin.community.role(admin.pub) === 'admin' && admin.community.control.writable })
+  await owner.community.grant(channel, who(admin))
+  await owner.community.grant(channel, who(m))
+  await until(async () => (await admin.community.access(channel)).current)
+
+  await Promise.all([owner.community.rotate(channel), admin.community.rotate(channel)])
+  t.ok(await until(async () => {
+    for (const p of [owner, admin, m]) await p.community.update()
+    const e = owner.community.epoch(channel)
+    return e === admin.community.epoch(channel) && e === m.community.epoch(channel) &&
+      (await owner.community.access(channel)).current && (await admin.community.access(channel)).current && (await m.community.access(channel)).current
+  }, 20000), 'every member holds the same current epoch')
+  await owner.community.post(channel, 'from owner')
+  await admin.community.post(channel, 'from admin')
+  t.ok(await readsAll(m, channel, 2), 'and reads both admins’ posts')
+})
+
+test('v2 grants: a member offline during a rotation gets the new epoch when back', async (t) => {
+  const { owner, channel, join } = await setup(t, 'gr-offline')
+  const a = await join('a')
+  const c = await member(t, 'gr-offline-c', { key: owner.community.key })
+  let unlink = link(owner, c)
+  await until(async () => { await c.community.update(); return c.community.keepers(channel).length === 1 })
+  await owner.community.grant(channel, who(a))
+  await owner.community.grant(channel, who(c))
+  await until(async () => (await c.community.access(channel)).current)
+  unlink()
+
+  await owner.community.revoke(channel, a.pub)
+  await owner.community.post(channel, 'while you were away')
+  unlink = link(owner, c)
+  t.teardown(unlink)
+  t.ok(await readsAll(c, channel, 1), 'back online, it reads the message from the new epoch')
 })

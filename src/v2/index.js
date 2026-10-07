@@ -11,7 +11,7 @@ const { AuthorLog } = require('./author-log')
 const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 const { Replicator } = require('./replication')
 const { boxKeyPair, newEpochKey, commitOf, messageAD, encryptMessage, decryptMessage, seal, openSealed } = require('./crypto')
-const { signGrant, verifyGrant, putGrant, hasGrant, grantsForEpochs, recipientOf } = require('./grants')
+const { signGrant, verifyGrant, putGrant, hasGrant, grantsForEpochs, allRecipients, recipientOf } = require('./grants')
 const { isSealed, sealedContent } = require('./encodings')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
@@ -231,10 +231,110 @@ class Community extends ReadyResource {
       await this.#control.append(this.#sign({ type: 'unrevoke', channel, member: toHex(id) })) // granting again lifts it
     }
     for (const epoch of epochs) {
-      const g = { channel, recipient, identity: id, epoch, sealed: seal(this.#keys.get(channel).get(epoch), recipient), granter: this.#identity.keyPair.publicKey }
+      const key = this.#keys.get(channel).get(epoch)
+      const g = { channel, recipient, identity: id, epoch, commit: commitOf(key), sealed: seal(key, recipient), granter: this.#identity.keyPair.publicKey }
       g.sig = signGrant(this.key, channel, g, this.#identity.keyPair)
       await this.#submitGrant(g)
     }
+  }
+
+  /**
+   * A new epoch for a private channel, re-granted to every current member
+   * (anyone with a grant, minus the revoked). Admins and up, holding the
+   * current epoch. Of two concurrent rotations the control log keeps one; if
+   * this one lost, it waits for the winner's key and rotates again.
+   * @returns {Promise<{ epoch: number, granted: number }>}
+   */
+  async rotate (channel) {
+    if (!this.opened) await this.ready()
+    const record = this.channel(channel)
+    if (!record || !record.private) throw new Error('Not a private channel')
+    if (!((RANK[this.#myRole()] || 0) >= RANK.admin)) throw new Error('Rotating this channel is not allowed for this member')
+    this.#requireWriter()
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await this.update()
+      const current = this.channel(channel).epoch
+      if (!(await this.#waitForKey(channel, current))) throw new Error('This member holds no key for the current epoch of this private channel')
+      const key = newEpochKey()
+      const commit = toHex(commitOf(key))
+      this.#holdKey(channel, current + 1, key)
+      await this.#control.append(this.#sign({ type: 'rotate', channel, epoch: current + 1, commit }))
+      if (this.epochCommit(channel, current + 1) === commit) {
+        return { epoch: current + 1, granted: await this.#regrant(channel, current + 1) }
+      }
+      // Another admin's rotation to that epoch came first: theirs is the one.
+      this.#keys.get(channel).delete(current + 1)
+    }
+    throw new Error('Could not rotate: other rotations kept coming first')
+  }
+
+  /**
+   * Take a member's access away: recorded, then a rotation, so nothing
+   * posted afterwards is readable to them. What they already had stays theirs.
+   */
+  async revoke (channel, member) {
+    if (!this.opened) await this.ready()
+    const record = this.channel(channel)
+    if (!record || !record.private) throw new Error('Not a private channel')
+    if (!((RANK[this.#myRole()] || 0) >= RANK.admin)) throw new Error('Revoking is not allowed for this member')
+    this.#requireWriter()
+    await this.#control.append(this.#sign({ type: 'revoke', channel, member: toHex(member) }))
+    let result = await this.rotate(channel)
+    // A concurrent rotation by an admin who hadn't seen the revocation may
+    // end up first once both are ordered: rotate again if ours didn't stay.
+    for (let i = 0; i < 3; i++) {
+      await this.update()
+      if (this.epochCommit(channel, result.epoch) && this.#epochKey(channel, result.epoch) && this.channel(channel).epoch === result.epoch) break
+      result = await this.rotate(channel)
+    }
+    return result
+  }
+
+  /** Identities (hex) holding a grant for the channel, minus the revoked (an admin's view). */
+  async members (channel) {
+    return [...(await this.#recipients(channel)).keys()]
+  }
+
+  // identity hex -> encryption key, from every keeper's grants bee.
+  async #recipients (channel) {
+    const out = new Map()
+    for (const roster of (await this.#keeperRosters(channel)).values()) {
+      const bee = await this.#grantsBee(roster)
+      if (!bee) continue
+      if (!roster.grants) await within(bee.core.update({ wait: true }).catch(safetyCatch), 2000)
+      let list = []
+      try {
+        list = await allRecipients(bee)
+      } catch (err) {
+        safetyCatch(err)
+      }
+      for (const { identity, recipient } of list) {
+        const id = toHex(identity)
+        if (!this.revoked(channel, id)) out.set(id, recipient)
+      }
+    }
+    return out
+  }
+
+  async #regrant (channel, epoch) {
+    const key = this.#keys.get(channel).get(epoch)
+    const members = await this.#recipients(channel)
+    members.set(toHex(this.#identity.keyPair.publicKey), this.#box().publicKey) // this admin too
+    for (const [id, recipient] of members) {
+      const g = { channel, recipient, identity: b4a.from(id, 'hex'), epoch, commit: commitOf(key), sealed: seal(key, recipient), granter: this.#identity.keyPair.publicKey }
+      g.sig = signGrant(this.key, channel, g, this.#identity.keyPair)
+      await this.#submitGrant(g)
+    }
+    return members.size
+  }
+
+  // Up to 10 s for this member's key to an epoch (a rotation's winner grants it).
+  async #waitForKey (channel, epoch) {
+    for (let i = 0; i < 20 && !this.#epochKey(channel, epoch); i++) {
+      await this.#loadKeys(channel, true)
+      if (!this.#epochKey(channel, epoch)) await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    return !!this.#epochKey(channel, epoch)
   }
 
   // A grant to the keepers: written here if this member keeps the channel,
@@ -243,7 +343,7 @@ class Community extends ReadyResource {
     if (this.#kept.has(g.channel)) await this.acceptGrant(g)
     const rosters = await this.#keeperRosters(g.channel)
     if (this.#kept.has(g.channel) && rosters.size === 1) return // listed here, no other keeper
-    this.#grantPending.set(`${g.channel}:${toHex(g.recipient)}:${g.epoch}`, g)
+    this.#grantPending.set(`${g.channel}:${toHex(g.recipient)}:${g.epoch}:${toHex(g.commit)}`, g)
     for (const roster of rosters.values()) if (!roster.writable) roster.submitGrant(g)
     if (!this.#grantRetry) {
       this.#grantRetry = setInterval(() => this.#sendGrants().catch(safetyCatch), 500)
@@ -257,7 +357,7 @@ class Community extends ReadyResource {
       let listed = false
       for (const roster of rosters.values()) {
         const bee = await this.#grantsBee(roster)
-        if (bee && await within(hasGrant(bee, g.recipient, g.epoch, { timeout: 1000 }).catch(() => false), 1500)) { listed = true; break }
+        if (bee && await within(hasGrant(bee, g.recipient, g.epoch, g.commit, { timeout: 1000 }).catch(() => false), 1500)) { listed = true; break }
       }
       if (listed) this.#grantPending.delete(id)
       else for (const roster of rosters.values()) if (!roster.writable) roster.submitGrant(g)
@@ -278,7 +378,7 @@ class Community extends ReadyResource {
     if (g.epoch > record.epoch || !verifyGrant(this.key, g.channel, g)) return false
     if (this.revoked(g.channel, g.identity)) return false
     if (!(await this.#mayGrant(g.channel, g.granter, roster.grants))) return false
-    const id = `${g.channel}:${toHex(g.recipient)}:${g.epoch}`
+    const id = `${g.channel}:${toHex(g.recipient)}:${g.epoch}:${toHex(g.commit)}`
     if (this.#accepting.has(id)) return true // a copy of one being written
     this.#accepting.add(id)
     try {
@@ -326,7 +426,10 @@ class Community extends ReadyResource {
       if (!roster.grants) await within(bee.core.update({ wait: true }).catch(safetyCatch), 1000)
       // The epochs the control log has, minus those already held.
       const missing = []
-      for (let e = 0; e <= record.epoch; e++) if (!this.#epochKey(channel, e)) missing.push(e)
+      for (let e = 0; e <= record.epoch; e++) {
+        const commit = this.epochCommit(channel, e)
+        if (commit && !this.#epochKey(channel, e)) missing.push({ epoch: e, commit: b4a.from(commit, 'hex') })
+      }
       if (missing.length === 0) return
       let list = []
       try {
@@ -334,13 +437,14 @@ class Community extends ReadyResource {
       } catch (err) {
         safetyCatch(err)
       }
+      trace('load-keys', channel.slice(0, 6), 'missing', missing.map(m => m.epoch).join(','), 'found', list.length, 'bee', bee.core.length)
       for (const g of list) {
         if (this.#epochKey(channel, g.epoch)) continue
-        if (!verifyGrant(this.key, channel, g)) continue
-        if (!(await this.#mayGrant(channel, g.granter, bee))) continue
+        if (!verifyGrant(this.key, channel, g)) { trace('grant-bad-sig', g.epoch); continue }
+        if (!(await this.#mayGrant(channel, g.granter, bee))) { trace('grant-not-allowed', g.epoch, toHex(g.granter).slice(0, 8)); continue }
         const key = openSealed(g.sealed, box)
         const commit = this.epochCommit(channel, g.epoch)
-        if (!key || !commit || toHex(commitOf(key)) !== commit) continue
+        if (!key || !commit || toHex(commitOf(key)) !== commit) { trace('grant-key-mismatch', g.epoch, !!key); continue }
         this.#holdKey(channel, g.epoch, key)
       }
     }
@@ -1145,7 +1249,7 @@ class Community extends ReadyResource {
   /** Keeper only: write a grant into its grants bee without any check. */
   async writeGrantUnchecked (channel, { recipient, identity, epoch, sealed, granterKeyPair }) {
     const roster = await this.#openOwnRoster(channel)
-    const g = { channel, recipient: b4a.from(toHex(recipient), 'hex'), identity: b4a.from(toHex(identity), 'hex'), epoch, sealed, granter: granterKeyPair.publicKey }
+    const g = { channel, recipient: b4a.from(toHex(recipient), 'hex'), identity: b4a.from(toHex(identity), 'hex'), epoch, commit: b4a.from(this.epochCommit(channel, epoch), 'hex'), sealed, granter: granterKeyPair.publicKey }
     g.sig = signGrant(this.key, channel, g, granterKeyPair)
     await putGrant(roster.grants, g)
   }

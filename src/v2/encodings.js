@@ -94,18 +94,20 @@ const sealedContent = {
 const grantValue = {
   preencode (state, g) {
     c.fixed32.preencode(state, g.identity)
+    c.fixed32.preencode(state, g.commit)
     c.buffer.preencode(state, g.sealed)
     c.fixed32.preencode(state, g.granter)
     c.fixed64.preencode(state, g.sig)
   },
   encode (state, g) {
     c.fixed32.encode(state, g.identity)
+    c.fixed32.encode(state, g.commit)
     c.buffer.encode(state, g.sealed)
     c.fixed32.encode(state, g.granter)
     c.fixed64.encode(state, g.sig)
   },
   decode (state) {
-    return { identity: c.fixed32.decode(state), sealed: c.buffer.decode(state), granter: c.fixed32.decode(state), sig: c.fixed64.decode(state) }
+    return { identity: c.fixed32.decode(state), commit: c.fixed32.decode(state), sealed: c.buffer.decode(state), granter: c.fixed32.decode(state), sig: c.fixed64.decode(state) }
   }
 }
 
@@ -272,26 +274,31 @@ const wrap = (enc) => ({
   enc
 })
 
-// A grants bee key: [recipient encryption key, epoch].
+// A grants bee key: [recipient encryption key, epoch, epoch key commitment].
+// The commitment is part of the key: two admins rotating at once both send
+// grants for the same epoch with different keys before the control log
+// settles which one counts; a slot per (recipient, epoch) kept whichever came
+// first, sometimes the loser's, and the member never got the right key.
 const grantKey = {
-  encode: ([recipient, epoch]) => c.encode(grantKeyEnc, { recipient, epoch }),
-  decode: (buf) => { const { recipient, epoch } = c.decode(grantKeyEnc, buf); return [recipient, epoch] },
+  encode: ([recipient, epoch, commit]) => c.encode(grantKeyEnc, { recipient, epoch, commit: commit.subarray(0, 8) }),
+  decode: (buf) => { const { recipient, epoch, commit } = c.decode(grantKeyEnc, buf); return [recipient, epoch, commit] },
   // All of one recipient's grants.
-  range: (recipient) => ({ gte: c.encode(grantKeyEnc, { recipient, epoch: 0 }), lt: c.encode(grantKeyEnc, { recipient: nextKey(recipient), epoch: 0 }) })
+  range: (recipient) => ({ gte: c.encode(grantKeyEnc, { recipient, epoch: 0, commit: b4a.alloc(8) }), lt: c.encode(grantKeyEnc, { recipient: nextKey(recipient), epoch: 0, commit: b4a.alloc(8) }) })
 }
-// Fixed-width so keys sort by recipient, then epoch (big-endian epoch).
+// Fixed-width so keys sort by recipient, then epoch (big-endian), then commit.
 const grantKeyEnc = {
-  preencode (state) { state.end += 32 + 4 },
+  preencode (state) { state.end += 32 + 4 + 8 },
   encode (state, v) {
     c.fixed32.encode(state, v.recipient)
     state.buffer.writeUInt32BE(v.epoch, state.start)
     state.start += 4
+    c.fixed(8).encode(state, v.commit)
   },
   decode (state) {
     const recipient = c.fixed32.decode(state)
     const epoch = state.buffer.readUInt32BE(state.start)
     state.start += 4
-    return { recipient, epoch }
+    return { recipient, epoch, commit: c.fixed(8).decode(state) }
   }
 }
 function nextKey (key) {
