@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-07: dependencies
+
+- Dev dependencies `blind-peer` and `blind-peering` (research experiments `bench/v2-blind*.js`). They
+  raised the installed Corestore (7.9 → 7.13), Hypercore (11.30 → 11.37), hypercore-storage and
+  compact-encoding within the declared ranges; the full suite, HyperBBS and hyperDNS pass on them.
+
 ### 2026-10-07: v2 private channels and invites (additive, unstable)
 
 - `createChannel({ private: true })`: messages sealed in authors' logs with the channel's key epoch;

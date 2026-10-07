@@ -67,6 +67,8 @@
     "sodium-universal": "^5.0.1"
   },
   "devDependencies": {
+    "blind-peer": "^3.15.1",
+    "blind-peering": "^2.10.0",
     "brittle": "^3.0.0",
     "hyperdht": "^6.34.1",
     "hyperswarm": "^4.17.0",
