@@ -39,9 +39,13 @@ to run? If a feature doesn't serve that, it waits.
    tag, time, fields the app declares), can delete and rebuild them, never replicates them. Queries
    answer from what a member holds, fetch what's missing within a bound, and say when a result is
    incomplete. (No shared index: no "newcomer replays everything", no offline bug.)
-5. **Finding who wrote what, without a special role.** The space's decision log also records which
-   authors were active in each time period (one small entry per author per period); readers open only
-   those authors for the period they read. (v2 used keepers for this: a single point of failure.)
+5. **Finding who wrote what, without a special role: every member is a keeper.** For each time period, a
+   list of the authors active in it (one entry per author, signed by the author). An author announces
+   its entry to whoever is connected; every member keeps the lists of the periods it reads and passes
+   them on; a newcomer gets them from any member and checks the signatures. Readers then open only the
+   authors active in the period they read. (v2 had dedicated keepers: a single point of failure. The
+   first draft of this brief put the lists in the space's decision log; spec 007 already measured that
+   and rejected it: ~162 KB of memory per member on every peer confirming the log — research R2.)
 6. **Schemas.** The app declares record types and their fields and links; records are validated and
    compactly encoded; most of v1's "app rules" become schema rules.
 7. **Proven dependencies first.** Hypercore, Corestore, Autobase, Hyperswarm, keet-identity-key, and
@@ -109,11 +113,51 @@ No contexts to create, no separate content call, no ids to assemble by hand, no 
 4. **Several devices per member**: one log per device, attested to the identity, merged by readers? How
    do "edit from two devices at once" and "one vote per member" resolve?
 
-## Not decided yet (Tibo)
+## Decided (2026-10-07)
 
-- How close the API stays to v1's names (`put`, `relate`, `tag`, `query`) versus the sketch above.
-- Default policy for new spaces.
-- The project's name and package layout (same repo beside v1, or a new package).
+- **Names: keep v1's where they still mean the same thing** — `put`, `get`, `del`, `relate`, `unrelate`,
+  `edges`, `tag`, `untag`, `getByTag`, `query` (with `.type()`, `.author()`, `.tag()`, `.live()`...),
+  `setRole`, `getRole`, `removeRole`, `moderateAction`, `createInvite`, `redeemInvite`,
+  `connectToSwarm`. `relate` and `tag` become author records under the hood. Proposed changes (to
+  confirm): **`context` → `space`**, because the meaning changes (a v1 context is a place for relations
+  inside a graph; a space is the whole community: members, roles, decisions); reusing the old word for a
+  different thing would mislead v1 users. **`putContent` / `getContent` go away**: content is a field of
+  the record. **No `keyPair` argument** to `moderateAction`: the member's identity signs.
+- **Layout: same repo.** About a third of `src/` carries over (adapted), plus all the tooling, research
+  and history; and HyperBBS and hyperDNS are linked to this working tree. The new core is written as a
+  fresh, separate tree (not grafted onto v1's files), with only reused modules copied in; v1 stays frozen
+  beside it until hyperDNS moves, then goes.
+
+## The default policy for new spaces (to discuss)
+
+When someone creates a space, every member's app must decide how much of it to keep on disk:
+
+- **everyone keeps everything**: the most reliable (any one member can serve it all), but each member
+  stores the whole space — fine for a 100-person forum (tens of MB), not for a 50 GB archive;
+- **keep only what you read**: the lightest, but data held only by offline members is unavailable
+  (volatile in small spaces);
+- **auto**: keep everything while the whole space fits the member's budget for it (e.g. 1 GB, or a share
+  of free disk), and beyond that the newest part plus what was read.
+
+Proposal: **auto by default**, with a generous default budget, so a small space behaves as "everyone
+keeps everything" without anyone choosing it, and a big one degrades gracefully; a space's creator can
+require "everyone keeps everything", and a member can still lower it on a full device (and is told it's
+below the space's policy).
+
+## Experiment 3, from measurements we already have
+
+- **Latest posts across a whole big space without lists of who was active**: opening one log costs ~0.7 ms
+  and ~660 B (spec 007, R1): 10,000 authors ≈ 7 s and 6.6 MB per page. Too slow; per-period activity
+  lists (point 5) are needed: the prototype's latest page read only the authors active in the newest
+  period (0.25 s, ~70–140 KB at 10M messages).
+- **Aggregates such as "vote count of a post"**: from a member's local index, ~1 ms if it holds the votes
+  (experiment 2) — true in small spaces (everyone keeps everything). In a big space a member doesn't hold
+  every voter's records, and fetching thousands of logs for one count is the same 7 s problem. Big spaces
+  need **helpers that keep aggregates** (a signed "this post has N votes as of period P", which anyone
+  holding the votes can check), as Bluesky's servers do. Small spaces need nothing.
+- **Still to measure**: the activity-list gossip (point 5) — how fast a newcomer gets a period's list from
+  a few members, its size with 10,000 active authors, and the cost of checking signatures.
+
 
 ## Experiment results
 
