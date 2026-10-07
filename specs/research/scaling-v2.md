@@ -183,7 +183,7 @@ Summary against v1 (details below and in the tables above):
 
 | | v1 | v2 |
 |---|---|---|
-| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (edge); 44 s, 36 MB at 100k (content) | 0.61 / 0.69 / 0.67 s, 412 / 455 / 490 KB at 10k / 1M / 10M |
+| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (edge); 44 s, 36 MB at 100k (content) | 0.22 / 0.27 / 0.25 s, 68 / 113 / 143 KB at 10k / 1M / 10M (2026-10-07; first runs: 0.6–0.7 s, 412–490 KB) |
 | channel write throughput | ~300 msg/s (one indexer) | ~9,300 msg/s posted by 100 writers, all delivered |
 | live arrival p50 / p95 | 24–34 / 40–159 ms | 2–14 / 20–23 ms |
 | full holder's disk | ~2–3 KB per message | ~211 B per message |
@@ -229,7 +229,18 @@ Against the spec's success criteria:
   logarithmic, neither measured yet: each author log is ~50× longer, so each block's proof
   covers a deeper tree; and the roster holds 1,000 segments instead of one, so reaching the
   latest segment reads more Hyperbee nodes.
-- **SC-002** (under 2 MB for 50 messages from 50 authors): pass, 0.49 MB.
+  **Measured 2026-10-07 (T031)**, splitting the page's bytes by what was fetched: the reader
+  took each author's newest 50 messages and kept 50: 2,500 log blocks (210 KB) for a 50-message
+  page, about half of every page's bytes. It now reads in rounds (each author still in the
+  running gives its next 1, 2, 4... blocks; an author drops out once its oldest fetched message
+  is older than the 50th newest): 148 blocks. Scrollback finds its start by binary search over
+  each author's times instead of walking down. Results, 10k / 1M / 10M: latest page 68 / 113 /
+  143 KB in 0.22 / 0.27 / 0.25 s, 18–20 MB (was 412 / 455 / 490 KB, 0.6–0.7 s, 35–37 MB); one page
+  back at 1M 161 KB in 0.17 s (was 1.1 MB, 1.1 s). What still grows is the roster: 50 / 83 / 98
+  blocks of 170 / 311 / 463 B (Hyperbee writes the path's nodes into every block, so a deeper
+  tree means bigger blocks), plus per-block proofs. Logarithmic; still a miss against "within
+  10%" as worded. One roster core per segment would make it flat; not done.
+- **SC-002** (under 2 MB for 50 messages from 50 authors): pass, 0.49 MB (0.14 MB since T031).
 - **SC-003** (≥ 5× v1's ~300 msg/s with 100 writers): pass, ~30× posted; one follower reads
   ~22× v1.
 - **SC-004** (p50 < 100 ms, p95 < 500 ms): p50 2–14 ms, pass. p95 was 511–527 ms at every

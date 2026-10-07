@@ -234,6 +234,9 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
     await sleep(20)
   }
   const latest = { ms: Math.round(ms(t0)), bytes, got: page.length, rss: rss() - startRss, openLogs: (await community.stats()).openLogs }
+  // HG_V2_BYTES=1: what the page's bytes are made of (blocks held per kind;
+  // the rest of the wire bytes is proofs and protocol).
+  if (process.env.HG_V2_BYTES) latest.parts = await heldParts(store, community, channel, page)
 
   const t1 = now()
   const b0 = bytes
@@ -371,6 +374,27 @@ function stdinReader () {
     if (i !== -1) return Promise.resolve(queue.splice(i, 1)[0])
     return new Promise(resolve => waiters.push({ type, resolve }))
   }
+}
+
+async function heldParts (store, community, channel, page) {
+  const count = async (key) => {
+    const core = store.get({ key: b4a.from(key, 'hex') })
+    await core.ready()
+    let blocks = 0
+    let bytes = 0
+    for (let i = 0; i < core.length; i++) {
+      if (!(await core.has(i))) continue
+      blocks++
+      bytes += (await core.get(i, { wait: false })).byteLength
+    }
+    const length = core.length
+    await core.close()
+    return { blocks, bytes, length }
+  }
+  const sum = (parts) => parts.reduce((a, p) => ({ blocks: a.blocks + p.blocks, bytes: a.bytes + p.bytes, length: Math.max(a.length, p.length) }), { blocks: 0, bytes: 0, length: 0 })
+  const rosters = sum(await Promise.all(community.keepers(channel).map(k => count(k.rosterKey))))
+  const logs = sum(await Promise.all([...new Set(page.map(m => m.log))].map(count)))
+  return { rosters, logs }
 }
 
 // ── orchestration ────────────────────────────────────────────────────────────

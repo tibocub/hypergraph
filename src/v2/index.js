@@ -15,6 +15,9 @@ const { Replicator } = require('./replication')
 // docs/v2-prototype.md and specs/007-scaling-v2-prototype/.
 
 const ROSTER_WAIT_MS = 2000
+// > 0 when message a comes after b in the order every peer agrees on:
+// time, then author key, then seq.
+const newer = (a, b) => (a.t - b.t) || (a.author > b.author ? 1 : a.author < b.author ? -1 : 0) || (a.seq - b.seq)
 const toHex = (k) => (b4a.isBuffer(k) ? b4a.toString(k, 'hex') : String(k))
 
 function rosterKeyPair (identity, communityKey, channel) {
@@ -466,6 +469,36 @@ class Community extends ReadyResource {
 
   // A log's length as far as peers say within `timeout` (its local length if
   // nobody answers).
+  // The highest seq in [lo, hi] whose message is older than `t` (lo - 1 if
+  // none), assuming non-decreasing times; null if a block can't be fetched.
+  async #lastBefore (log, lo, hi, t, timeout) {
+    const at = async (i) => {
+      try {
+        return await log.get(i, { timeout })
+      } catch (err) {
+        safetyCatch(err)
+        return null
+      }
+    }
+    const top = await at(hi)
+    if (!top) return null
+    if (top.t < t) return hi
+    let found = lo - 1
+    hi--
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      const m = await at(mid)
+      if (!m) return null
+      if (m.t < t) {
+        found = mid
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    return found
+  }
+
   async #length (log, timeout) {
     if (log.writable) return log.length
     await within(log.update({ wait: true }).catch(safetyCatch), timeout)
@@ -502,23 +535,56 @@ class Community extends ReadyResource {
       seg = await this.latestSegment(channel, seg)
       if (seg < 0) break
       const entries = await this.rosterEntries(channel, seg)
-      await Promise.all(entries.map(async (e) => {
+      const cursors = await Promise.all(entries.map(async (e) => {
         const log = await this.#log(e.log, channel)
         const end = later.has(e.author) ? later.get(e.author) : await this.#length(log, timeout)
-        let got = 0
-        for (let i = end - 1; i >= e.start && got < limit; i--) {
-          let m = null
-          try {
-            m = await log.get(i, { timeout })
-          } catch (err) {
-            safetyCatch(err)
+        const c = { e, log, next: end - 1, done: end - 1 < e.start, oldest: null, shown: [] }
+        // Scrollback: start below `beforeT` by binary search over the
+        // author's times (non-decreasing), not by walking down to it.
+        if (!c.done && Number.isFinite(beforeT)) {
+          const at = await this.#lastBefore(log, e.start, end - 1, beforeT, timeout)
+          if (at === null) {
+            unreachable++
+            c.done = true
+          } else {
+            c.next = at
+            if (c.next < e.start) c.done = true
           }
-          if (!m) { unreachable++; break }
-          if (m.t >= beforeT || !this.#visible(e.author, e.log, m)) continue
-          out.push(this.#shape(e.author, e.log, m))
-          got++
         }
+        return c
       }))
+      // In rounds, all authors at once: each author still in the running
+      // gives its next batch (1, 2, 4... blocks); an author is out once its
+      // oldest fetched message is older than the `need`-th newest shown so
+      // far. Taking every author's newest `limit` fetched 2,500 blocks for a
+      // 50-message page from 50 authors.
+      const need = limit - out.length
+      let threshold = null
+      let shown = []
+      for (let batch = 1; ; batch *= 2) {
+        const active = cursors.filter(c => !c.done && (threshold === null || newer(c.oldest, threshold) > 0))
+        if (active.length === 0) break
+        await Promise.all(active.map(async (c) => {
+          const from = Math.max(c.e.start, c.next - batch + 1)
+          const seqs = []
+          for (let i = c.next; i >= from; i--) seqs.push(i)
+          const got = await Promise.all(seqs.map(i => c.log.get(i, { timeout }).catch((err) => { safetyCatch(err); return null })))
+          for (const m of got) {
+            if (!m) {
+              unreachable++
+              c.done = true
+              break
+            }
+            c.oldest = { t: m.t, author: c.e.author, seq: m.seq }
+            if (m.t < beforeT && this.#visible(c.e.author, c.e.log, m)) c.shown.push(this.#shape(c.e.author, c.e.log, m))
+          }
+          c.next = from - 1
+          if (c.next < c.e.start) c.done = true
+        }))
+        shown = cursors.flatMap(c => c.shown).sort((x, y) => newer(y, x))
+        if (shown.length >= need) threshold = shown[need - 1]
+      }
+      out.push(...shown)
       for (const e of entries) later.set(e.author, e.start)
       if (out.length >= limit) break
       seg--
@@ -526,7 +592,7 @@ class Community extends ReadyResource {
     this.#unreachable = unreachable
     // Newest first: by time, then author, then seq, all descending: the
     // exact reverse of the order every peer agrees on.
-    out.sort((x, y) => (y.t - x.t) || (y.author < x.author ? -1 : y.author > x.author ? 1 : 0) || (y.seq - x.seq))
+    out.sort((x, y) => newer(y, x))
     return out.slice(0, limit)
   }
 
