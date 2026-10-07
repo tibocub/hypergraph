@@ -155,8 +155,13 @@ below the space's policy).
   every voter's records, and fetching thousands of logs for one count is the same 7 s problem. Big spaces
   need **helpers that keep aggregates** (a signed "this post has N votes as of period P", which anyone
   holding the votes can check), as Bluesky's servers do. Small spaces need nothing.
-- **Still to measure**: the activity-list gossip (point 5) — how fast a newcomer gets a period's list from
-  a few members, its size with 10,000 active authors, and the cost of checking signatures.
+- **Activity lists, size and checking** (measured, one process): ~135 B per entry (author, log,
+  start, signature). One period with 1,000 / 10,000 / 50,000 active authors: 135 KB / 1.36 MB / 6.8 MB,
+  and 56 ms / 0.64 s / 2.8 s to check every signature. More than a page (~70 KB), so: **periods shrink in
+  busy spaces** (e.g. a few minutes when thousands post per hour, so a period's list stays at a few
+  hundred entries), and **signatures are checked on use** (only the authors whose records are shown).
+- **Still to measure**: the gossip itself on a real network — how fast a newcomer gets the latest
+  period's list from a few members, and how lists spread as authors post.
 
 
 ## Experiment results
