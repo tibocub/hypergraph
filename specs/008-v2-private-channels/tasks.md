@@ -53,7 +53,7 @@ by a failing test.
 ## Phase 7: Polish
 
 - [X] T019 `bench/v2-chat.js --private` (history encrypted, newcomer granted): latest page time/bytes/memory vs the public run at 10k and 1M (SC-001); record in research.md and `bench/README.md`
-- [ ] T020 [P] Update `docs/v2-prototype.md` (private channels, grants, invites, measured numbers, known gaps), `CHANGELOG.md` (dated, unstable), spec 008 contracts if names moved
+- [X] T020 [P] Update `docs/v2-prototype.md` (private channels, grants, invites, measured numbers, known gaps), `CHANGELOG.md` (dated, unstable), spec 008 contracts if names moved
 - [ ] T021 Run `npm test` and hyperDNS (and HyperBBS while it exists) (SC-007); merge to master
 
 ## Dependencies & Execution Order

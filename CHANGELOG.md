@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-07: v2 private channels and invites (additive, unstable)
+
+- `createChannel({ private: true })`: messages sealed in authors' logs with the channel's key epoch;
+  non-members (and keepers, helpers) see author and time, not text. `grant`, `grantMany`, `revoke`
+  (rotates and re-grants), `rotate`, `access`, `members`, `community.encryptionKey`.
+- Invites: `createInvite({ role, channels, expires, uses })`, `Community.join(store, link)`,
+  `redeem(link)` (completes with the maker offline), `revokeInvite(link)`.
+- `createChannel({ keep: true })` and replication `all` also cover private channels' grants.
+- Measured: a member's cost to get access 23.4 KB at 50,000 members; revoking with 1,000 members
+  0.4 s; a private latest page at 1M 280 ms / 104 KB vs 247 ms / 97 KB public. Details:
+  `specs/008-v2-private-channels/`.
+
 ### 2026-10-07: v2 prototype follow-ups (additive, unstable)
 
 - Pages fetch about what they show: latest page 68 / 113 / 143 KB at 10k / 1M / 10M messages (was

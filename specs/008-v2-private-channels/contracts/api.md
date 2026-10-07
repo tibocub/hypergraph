@@ -19,6 +19,7 @@ await community.post(id, text)          // encrypted with the current epoch, if 
                                         // throws if it holds no key for the channel
 const page = await community.latest(id) // members: { ..., text, encrypted: true, epoch }
                                         // others:  { ..., text: null, encrypted: true, epoch, unreadable: true }
+                                        // plain text in a private channel: { text: null, encrypted: false, unreadable: true }
 community.channel(id)                   // { name, segmentMs, private: true, epoch: n, memberGrants }
 await community.access(id)              // { epochs: [n...], current: bool } for this member
 ```
@@ -28,6 +29,7 @@ await community.access(id)              // { epochs: [n...], current: bool } for
 ```js
 await community.grant(id, { identity, encryptionKey })   // admin+, or a key holder if memberGrants
                                                          // seals every epoch the caller holds
+await community.grantMany(id, [{ identity, encryptionKey }, ...])   // one batch
 await community.revoke(id, identity)                     // admin+: marks revoked, rotates, re-grants
                                                          // the new epoch to every current member
                                                          // resolves { epoch, granted: n }
@@ -45,16 +47,20 @@ const link = await community.createInvite({ role?, channels?: [id], expires?: ms
 
 // the newcomer
 const community = await Community.join(store, link, { identity })   // opens the community from the link
-const result = await community.redeem(link, { timeout })             // { role, channels: { id: 'granted' | 'pending' } }
+const result = await community.redeem(link, { timeout })
+// { recorded, role, channels: { id: 'granted' | 'pending' } }; recorded: false after timeout
 
-await community.revokeInvite(inviteId)   // its maker or an admin
+await community.revokeInvite(link)       // its maker or an admin
+community.redemptions(inviteIdHex)       // identities (hex) that redeemed it
 ```
 
 `redeem` resolves once the redemption is recorded (role applied); channel access may be `pending`
 until a key holder is online; `community.access(id)` turns current when the grant arrives.
 
-## Introspection
+## Test hooks (prototype)
 
 ```js
-await community.stats()   // + { grantsFetched, privateChannels }
+await community.writeGrantUnchecked(id, { recipient, identity, epoch, sealed, granterKeyPair })  // keeper
+await community.grantsCores(id)          // the keepers' grants core keys
+community.adoptEpochKey(id, epoch, key)  // benchmarks: bulk-written encrypted history
 ```
