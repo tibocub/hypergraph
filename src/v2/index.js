@@ -11,7 +11,7 @@ const { AuthorLog } = require('./author-log')
 const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 const { Replicator } = require('./replication')
 const { boxKeyPair, newEpochKey, commitOf, messageAD, encryptMessage, decryptMessage, seal, openSealed } = require('./crypto')
-const { signGrant, verifyGrant, putGrant, hasGrant, grantsForEpochs, allRecipients, recipientOf } = require('./grants')
+const { signGrant, verifyGrant, putGrant, putGrants, hasGrant, grantsForEpochs, allRecipients, recipientOf } = require('./grants')
 const { isSealed, sealedContent } = require('./encodings')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
@@ -130,7 +130,10 @@ class Community extends ReadyResource {
     if (this.#replicator) await this.#replicator.close()
     if (this.#retry) clearInterval(this.#retry)
     if (this.#grantRetry) clearInterval(this.#grantRetry)
-    for (const bee of this.#grantBees.values()) await bee.close().catch(safetyCatch)
+    for (const gs of this.#grantBees.values()) {
+      await gs.bee.close().catch(safetyCatch)
+      if (gs.who) await gs.who.close().catch(safetyCatch)
+    }
     for (const stop of [...this.#follows.keys()]) stop()
     for (const rosters of this.#rosters.values()) for (const r of rosters.values()) await r.close().catch(safetyCatch)
     for (const log of this.#logs.values()) await log.close().catch(safetyCatch)
@@ -214,7 +217,16 @@ class Community extends ReadyResource {
    * keepers (retried until one lists it). Admins and up; key holders too if
    * the channel allows it.
    */
-  async grant (channel, { identity, encryptionKey }) {
+  async grant (channel, member) {
+    return this.grantMany(channel, [member])
+  }
+
+  /**
+   * grant() for many members at once: one batch on a keeper (bulk grants,
+   * a rotation's re-grants).
+   * @param {Array<{ identity, encryptionKey }>} members
+   */
+  async grantMany (channel, members) {
     if (!this.opened) await this.ready()
     const record = this.channel(channel)
     if (!record || !record.private) throw new Error('Not a private channel')
@@ -224,18 +236,24 @@ class Community extends ReadyResource {
     const admin = (RANK[this.#myRole()] || 0) >= RANK.admin
     if (!admin && !(record.memberGrants && epochs.length && !this.revoked(channel, me))) throw new Error('Granting this channel is not allowed for this member')
     if (!epochs.length) throw new Error('This member holds no key for this channel')
-    const recipient = b4a.from(toHex(encryptionKey), 'hex')
-    const id = b4a.from(toHex(identity), 'hex')
-    if (this.revoked(channel, id)) {
-      if (!admin) throw new Error('This member is revoked from the channel')
-      await this.#control.append(this.#sign({ type: 'unrevoke', channel, member: toHex(id) })) // granting again lifts it
+    const list = []
+    for (const { identity, encryptionKey } of members) {
+      const recipient = b4a.from(toHex(encryptionKey), 'hex')
+      const id = b4a.from(toHex(identity), 'hex')
+      if (this.revoked(channel, id)) {
+        if (!admin) throw new Error('This member is revoked from the channel')
+        await this.#control.append(this.#sign({ type: 'unrevoke', channel, member: toHex(id) })) // granting again lifts it
+      }
+      for (const epoch of epochs) list.push(this.#makeGrant(channel, epoch, id, recipient))
     }
-    for (const epoch of epochs) {
-      const key = this.#keys.get(channel).get(epoch)
-      const g = { channel, recipient, identity: id, epoch, commit: commitOf(key), sealed: seal(key, recipient), granter: this.#identity.keyPair.publicKey }
-      g.sig = signGrant(this.key, channel, g, this.#identity.keyPair)
-      await this.#submitGrant(g)
-    }
+    await this.#submitGrants(channel, list)
+  }
+
+  #makeGrant (channel, epoch, identity, recipient) {
+    const key = this.#keys.get(channel).get(epoch)
+    const g = { channel, recipient, identity, epoch, commit: commitOf(key), sealed: seal(key, recipient), granter: this.#identity.keyPair.publicKey }
+    g.sig = signGrant(this.key, channel, g, this.#identity.keyPair)
+    return g
   }
 
   /**
@@ -299,12 +317,12 @@ class Community extends ReadyResource {
   async #recipients (channel) {
     const out = new Map()
     for (const roster of (await this.#keeperRosters(channel)).values()) {
-      const bee = await this.#grantsBee(roster)
-      if (!bee) continue
-      if (!roster.grants) await within(bee.core.update({ wait: true }).catch(safetyCatch), 2000)
+      const gs = await this.#grantsBee(roster)
+      if (!gs || !(await this.#whoBee(gs))) continue
+      if (!roster.grants) await within(gs.who.core.update({ wait: true }).catch(safetyCatch), 2000)
       let list = []
       try {
-        list = await allRecipients(bee)
+        list = await allRecipients(gs)
       } catch (err) {
         safetyCatch(err)
       }
@@ -317,14 +335,9 @@ class Community extends ReadyResource {
   }
 
   async #regrant (channel, epoch) {
-    const key = this.#keys.get(channel).get(epoch)
     const members = await this.#recipients(channel)
     members.set(toHex(this.#identity.keyPair.publicKey), this.#box().publicKey) // this admin too
-    for (const [id, recipient] of members) {
-      const g = { channel, recipient, identity: b4a.from(id, 'hex'), epoch, commit: commitOf(key), sealed: seal(key, recipient), granter: this.#identity.keyPair.publicKey }
-      g.sig = signGrant(this.key, channel, g, this.#identity.keyPair)
-      await this.#submitGrant(g)
-    }
+    await this.#submitGrants(channel, [...members].map(([id, recipient]) => this.#makeGrant(channel, epoch, b4a.from(id, 'hex'), recipient)))
     return members.size
   }
 
@@ -339,12 +352,14 @@ class Community extends ReadyResource {
 
   // A grant to the keepers: written here if this member keeps the channel,
   // broadcast to the others; the timer re-sends it until a keeper lists it.
-  async #submitGrant (g) {
-    if (this.#kept.has(g.channel)) await this.acceptGrant(g)
-    const rosters = await this.#keeperRosters(g.channel)
-    if (this.#kept.has(g.channel) && rosters.size === 1) return // listed here, no other keeper
-    this.#grantPending.set(`${g.channel}:${toHex(g.recipient)}:${g.epoch}:${toHex(g.commit)}`, g)
-    for (const roster of rosters.values()) if (!roster.writable) roster.submitGrant(g)
+  async #submitGrants (channel, list) {
+    if (this.#kept.has(channel)) await this.#acceptGrants(channel, list)
+    const rosters = await this.#keeperRosters(channel)
+    if (this.#kept.has(channel) && rosters.size === 1) return // listed here, no other keeper
+    for (const g of list) {
+      this.#grantPending.set(`${g.channel}:${toHex(g.recipient)}:${g.epoch}:${toHex(g.commit)}`, g)
+      for (const roster of rosters.values()) if (!roster.writable) roster.submitGrant(g)
+    }
     if (!this.#grantRetry) {
       this.#grantRetry = setInterval(() => this.#sendGrants().catch(safetyCatch), 500)
       if (this.#grantRetry.unref) this.#grantRetry.unref()
@@ -366,6 +381,20 @@ class Community extends ReadyResource {
       clearInterval(this.#grantRetry)
       this.#grantRetry = null
     }
+  }
+
+  // Keeper: the grants that check out, in one batch.
+  async #acceptGrants (channel, list) {
+    const record = this.channel(channel)
+    const roster = this.#rostersOf(channel).get(toHex(this.#identity.keyPair.publicKey))
+    if (!record || !record.private || !roster || !roster.grants || !roster.writable) return 0
+    const ok = []
+    for (const g of list) {
+      if (g.epoch > record.epoch || !verifyGrant(this.key, channel, g) || this.revoked(channel, g.identity)) continue
+      if (!(await this.#mayGrant(channel, g.granter, roster.grants))) continue
+      ok.push(g)
+    }
+    return putGrants(roster.grants, ok)
   }
 
   /** Keeper: list a grant if its signature, granter and recipient check out. */
@@ -395,7 +424,20 @@ class Community extends ReadyResource {
     if ((RANK[this.role(granter)] || 0) >= RANK.admin) return true
     const record = this.channel(channel)
     if (!record || !record.memberGrants || this.revoked(channel, granter)) return false
+    if (!(await this.#whoBee(bee))) return false
     return !!(await within(recipientOf(bee, b4a.from(toHex(granter), 'hex'), { timeout: 1000 }).catch(() => null), 1500))
+  }
+
+  // A grants store's identity index (opened from the grants tree's header).
+  async #whoBee (gs) {
+    if (gs.who) return gs.who
+    const header = await within(gs.bee.getHeader({ timeout: 2000 }).catch(() => null), 2000)
+    const key = header && header.metadata && header.metadata.contentFeed
+    if (!key || key.length !== 32) return null
+    gs.who = new Hyperbee(this.#store.get({ key }), { ...BIN, extension: false })
+    await gs.who.ready()
+    await within(gs.who.core.update({ wait: true }).catch(safetyCatch), 1000)
+    return gs.who
   }
 
   async #grantsBee (roster) {
@@ -406,8 +448,9 @@ class Community extends ReadyResource {
     if (!key) return null
     const bee = new Hyperbee(this.#store.get({ key }), { ...BIN, extension: false })
     await bee.ready()
-    this.#grantBees.set(id, bee)
-    return bee
+    const gs = { bee, who: null }
+    this.#grantBees.set(id, gs)
+    return gs
   }
 
   // This member's grants for a channel, from each keeper: checked (granter's
@@ -423,7 +466,7 @@ class Community extends ReadyResource {
     for (const roster of (await this.#keeperRosters(channel)).values()) {
       const bee = await this.#grantsBee(roster)
       if (!bee) continue
-      if (!roster.grants) await within(bee.core.update({ wait: true }).catch(safetyCatch), 1000)
+      if (!roster.grants) await within(bee.bee.core.update({ wait: true }).catch(safetyCatch), 1000)
       // The epochs the control log has, minus those already held.
       const missing = []
       for (let e = 0; e <= record.epoch; e++) {
@@ -437,7 +480,7 @@ class Community extends ReadyResource {
       } catch (err) {
         safetyCatch(err)
       }
-      trace('load-keys', channel.slice(0, 6), 'missing', missing.map(m => m.epoch).join(','), 'found', list.length, 'bee', bee.core.length)
+      trace('load-keys', channel.slice(0, 6), 'missing', missing.map(m => m.epoch).join(','), 'found', list.length, 'bee', bee.bee.core.length)
       for (const g of list) {
         if (this.#epochKey(channel, g.epoch)) continue
         if (!verifyGrant(this.key, channel, g)) { trace('grant-bad-sig', g.epoch); continue }
@@ -571,6 +614,7 @@ class Community extends ReadyResource {
       authors: this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-authors') }),
       // A private channel's keeper also keeps its grants (spec 008, R1).
       grants: priv ? this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-grants') }) : null,
+      grantsWho: priv ? this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-grants-who') }) : null,
       onGrant: (g) => this.acceptGrant(g)
     })
     await roster.ready()
@@ -1258,8 +1302,8 @@ class Community extends ReadyResource {
   async grantsCores (channel) {
     const out = []
     for (const roster of (await this.#keeperRosters(channel)).values()) {
-      const bee = await this.#grantsBee(roster)
-      if (bee) out.push(toHex(bee.core.key))
+      const gs = await this.#grantsBee(roster)
+      if (gs) out.push(toHex(gs.bee.core.key))
     }
     return out
   }

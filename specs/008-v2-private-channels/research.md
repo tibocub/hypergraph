@@ -26,6 +26,23 @@ index; it is revised to a measured bound (under 32 KB at 50,000, never others' g
 would need the grant's position delivered to its recipient out of band; not worth it for ~26 KB once
 per channel.
 
+**As built and measured (T013, `bench/v2-grants.js`, 2026-10-07)**: what a member pays to obtain
+access (roster header, grants tree lookup), and revocation:
+
+| members granted | to obtain access | revoke (rotation + re-grant all) | an online member holds the new epoch |
+|---|---|---|---|
+| 10 | 3.4 KB, 16 ms | 25 ms | 4 ms after |
+| 1,000 | 10.0 KB, 20 ms | 0.37 s | 0.34 s after |
+| 50,000 | 23.4 KB, 29 ms | 15 s | 15 s after |
+
+SC-002 (< 32 KB at 50,000) and SC-003 (1,000 members < 60 s, new epoch < 10 s) pass. Two changes got
+there: the identity index (recipient identity → encryption key) moved out of the grants tree into its
+own core (in the same tree it doubled the entries a lookup walks: 44.6 KB at 50,000), and the tree's
+key uses a 16-byte prefix of the recipient's key. Grants are keyed `[recipient prefix, epoch,
+commitment prefix]`: keyed by `(recipient, epoch)` alone, two admins rotating at once both granted
+epoch n + 1 with different keys and the keeper kept whichever came first (found by T011's test).
+Members look up one key per epoch: a range read loaded every key it passed (~30 of 80 blocks).
+
 **Alternatives considered**: grants in the control log (every member downloads every grant:
 O(members), against FR-008); one Autobase of grants per channel (multi-writer for granters, but rights
 checks at apply time would read another log: non-deterministic, the v1 RoleBase problem); a core per

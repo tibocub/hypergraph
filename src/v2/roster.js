@@ -30,12 +30,15 @@ class Roster {
    *   of its grants bee (spec 008), named in the header as well
    * @param {(g: Object) => Promise<boolean>} [opts.onGrant] - keeper only
    */
-  constructor (core, { onAnnouncement = null, extension = true, authors = null, grants = null, onGrant = null } = {}) {
+  constructor (core, { onAnnouncement = null, extension = true, authors = null, grants = null, grantsWho = null, onGrant = null } = {}) {
     this.core = core
     const metadata = authors || grants ? { contentFeed: authors ? authors.key : null, userData: grants ? grants.key : null } : null
     this.bee = new Hyperbee(core, { ...BIN, extension: false, metadata })
     this.authors = authors ? new Hyperbee(authors, { ...BIN, extension: false }) : null
-    this.grants = grants ? new Hyperbee(grants, { ...BIN, extension: false }) : null
+    // A grants store: the grants tree and its identity index, named in the tree's header.
+    this.grants = grants
+      ? { bee: new Hyperbee(grants, { ...BIN, extension: false, metadata: { contentFeed: grantsWho.key } }), who: new Hyperbee(grantsWho, { ...BIN, extension: false }) }
+      : null
     this.onAnnouncement = onAnnouncement
     this.onGrant = onGrant
     this.ext = extension
@@ -59,15 +62,15 @@ class Roster {
     await this.core.ready()
     await this.bee.ready()
     if (this.authors) await this.authors.ready()
-    if (this.grants) await this.grants.ready()
+    if (this.grants) {
+      await this.grants.bee.ready()
+      await this.grants.who.ready()
+      await writeHeader(this.grants.bee)
+    }
     // The header names the author index and the grants bee: written now, not
     // with the first entry (Hyperbee's default), or a private channel nobody
     // has posted in yet has grants no member can find.
-    if (this.core.writable && this.core.length === 0 && (this.authors || this.grants)) {
-      const batch = this.bee.batch()
-      await batch.getRoot(true)
-      await batch.close()
-    }
+    if (this.authors || this.grants) await writeHeader(this.bee)
   }
 
   async close () {
@@ -75,7 +78,10 @@ class Roster {
     if (this.grantExt) this.grantExt.destroy()
     await this.bee.close()
     if (this.authors) await this.authors.close()
-    if (this.grants) await this.grants.close()
+    if (this.grants) {
+      await this.grants.bee.close()
+      await this.grants.who.close()
+    }
   }
 
   announce (ann) {
@@ -131,6 +137,15 @@ class Roster {
     }
     return -1
   }
+}
+
+// A writable, empty Hyperbee's header now (Hyperbee writes it with the first
+// entry otherwise).
+async function writeHeader (bee) {
+  if (!bee.core.writable || bee.core.length > 0) return
+  const batch = bee.batch()
+  await batch.getRoot(true)
+  await batch.close()
 }
 
 /** Whether a roster entry is genuinely the author's. */

@@ -4,18 +4,16 @@ const { grantKey, grantValue } = require('./encodings')
 const { sha256 } = require('./crypto')
 
 // Grants of a private channel as one keeper keeps them (spec 008, research
-// R1): a single-writer Hyperbee next to the keeper's roster, named in the
-// roster's header. Two key spaces:
-//   0x00 + [recipient encryption key, epoch] -> { identity, sealed, granter, sig }
-//   0x01 + recipient identity                -> recipient encryption key
-// A member reads only the range of its own encryption key (never anyone
-// else's grants). The identity index lets the keeper refuse grants to
-// revoked members and vouch for key holders who grant (memberGrants).
+// R1). A grants store is { bee, who }:
+//   bee: [recipient key prefix, epoch, commit prefix] -> { identity, commit, sealed, granter, sig }
+//   who: recipient identity -> recipient encryption key
+// Members read only `bee`, and only their own keys. `who` is its own core
+// (named in `bee`'s header): in the same tree it doubled the entries a
+// member's lookup walks through (50,000 members: 44.6 KB to get access).
+// Keepers use it to refuse revoked members and vouch for key holders who
+// grant; admins to list members.
 
-const ENTRIES = b4a.from([0])
-const WHO = b4a.from([1])
-const entryKey = (recipient, epoch, commit) => b4a.concat([ENTRIES, grantKey.encode([recipient, epoch, commit])])
-const whoKey = (identity) => b4a.concat([WHO, identity])
+const entryKey = (recipient, epoch, commit) => grantKey.encode([recipient, epoch, commit])
 
 /** What a granter signs: binds the sealed key to community, channel, recipient, epoch and commitment. */
 function grantSignable (communityKey, channel, g) {
@@ -35,18 +33,29 @@ function verifyGrant (communityKey, channel, g) {
 }
 
 /** Write a grant (and its identity index) unless that recipient's epoch is there. */
-async function putGrant (bee, g) {
-  const key = entryKey(g.recipient, g.epoch, g.commit)
-  if (await bee.get(key)) return false
-  const batch = bee.batch()
-  await batch.put(key, grantValue.encode(g))
-  await batch.put(whoKey(g.identity), g.recipient)
-  await batch.flush()
-  return true
+async function putGrant (gs, g) {
+  return (await putGrants(gs, [g])) === 1
 }
 
-async function hasGrant (bee, recipient, epoch, commit, opts) {
-  return !!(await bee.get(entryKey(recipient, epoch, commit), opts))
+/** Many grants in one batch (a rotation's re-grants, bulk grants): one flush. */
+async function putGrants (gs, list) {
+  const batch = gs.bee.batch()
+  const who = gs.who.batch()
+  let written = 0
+  for (const g of list) {
+    const key = entryKey(g.recipient, g.epoch, g.commit)
+    if (await batch.get(key)) continue
+    await batch.put(key, grantValue.encode(g))
+    await who.put(g.identity, g.recipient)
+    written++
+  }
+  await batch.flush()
+  await who.flush()
+  return written
+}
+
+async function hasGrant (gs, recipient, epoch, commit, opts) {
+  return !!(await gs.bee.get(entryKey(recipient, epoch, commit), opts))
 }
 
 /**
@@ -55,38 +64,24 @@ async function hasGrant (bee, recipient, epoch, commit, opts) {
  * their own blocks and a range loads every key it passes); a lookup is a
  * binary search.
  */
-async function grantsForEpochs (bee, recipient, epochs, opts) {
+async function grantsForEpochs (gs, recipient, epochs, opts) {
   const found = await Promise.all(epochs.map(async ({ epoch, commit }) => {
-    const node = await bee.get(entryKey(recipient, epoch, commit), opts)
+    const node = await gs.bee.get(entryKey(recipient, epoch, commit), opts)
     return node ? { recipient, epoch, ...grantValue.decode(node.value) } : null
   }))
   return found.filter(Boolean)
 }
 
-/** All grants sealed to `recipient`: [{ recipient, epoch, identity, sealed, granter, sig }]. */
-async function grantsFor (bee, recipient) {
-  const out = []
-  const range = grantKey.range(recipient)
-  const stream = bee.createReadStream({ gte: b4a.concat([ENTRIES, range.gte]), lt: b4a.concat([ENTRIES, range.lt]) })
-  for await (const { key, value } of stream) {
-    const [r, epoch] = grantKey.decode(key.subarray(1))
-    out.push({ recipient: r, epoch, ...grantValue.decode(value) })
-  }
-  return out
-}
-
 /** Every recipient: [{ identity, recipient }] (an admin's view, O(members)). */
-async function allRecipients (bee) {
+async function allRecipients (gs) {
   const out = []
-  for await (const { key, value } of bee.createReadStream({ gte: WHO, lt: b4a.from([2]) })) {
-    out.push({ identity: key.subarray(1), recipient: value })
-  }
+  for await (const { key, value } of gs.who.createReadStream()) out.push({ identity: key, recipient: value })
   return out
 }
 
-async function recipientOf (bee, identity, opts) {
-  const node = await bee.get(whoKey(identity), opts)
+async function recipientOf (gs, identity, opts) {
+  const node = await gs.who.get(identity, opts)
   return node ? node.value : null
 }
 
-module.exports = { grantSignable, signGrant, verifyGrant, putGrant, hasGrant, grantsFor, grantsForEpochs, allRecipients, recipientOf }
+module.exports = { grantSignable, signGrant, verifyGrant, putGrant, putGrants, hasGrant, grantsForEpochs, allRecipients, recipientOf }

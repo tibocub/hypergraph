@@ -35,7 +35,7 @@ by a failing test.
 - [X] T010 [US2] Implement `src/v2/grants.js` (keeper grants bee per private channel: create with the roster, key in the roster header `metadata.userData`; accept submissions over the roster extension with signature + right checks; `mine(recipient)` range read; `all()` for admins) and `community.grant`, `community.access`, own-grant lookup on first read of a private channel (cached)
 - [X] T011 [US2] Test (extend `grants.js`): `revoke(id, member)` → the revoked member reads none of the messages posted after, still reads older ones; other members read the new ones; concurrent `rotate` by two admins → every member ends on the same epoch and reads every message; a member offline during the rotation gets the new epoch when back
 - [X] T012 [US2] Implement `community.rotate`, `community.revoke` (revoke event, rotate, re-grant every current member: valid grant recipients minus revoked, one keeper batch), `community.members`; posters use only the epoch the control log names current
-- [ ] T013 [US2] Create `bench/v2-grants.js`: keeper grants bee with 10 / 1,000 / 50,000 members (bulk), a newcomer fetching its own grant (bytes, time); `revoke` with 1,000 members (time; time for an online member to get the new epoch); record in research.md (SC-002, SC-003)
+- [X] T013 [US2] Create `bench/v2-grants.js`: keeper grants bee with 10 / 1,000 / 50,000 members (bulk), a newcomer fetching its own grant (bytes, time); `revoke` with 1,000 members (time; time for an online member to get the new epoch); record in research.md (SC-002, SC-003)
 
 ## Phase 5: User Story 3 — one link to join (P2)
 

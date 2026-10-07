@@ -279,23 +279,25 @@ const wrap = (enc) => ({
 // grants for the same epoch with different keys before the control log
 // settles which one counts; a slot per (recipient, epoch) kept whichever came
 // first, sometimes the loser's, and the member never got the right key.
+// The recipient is a 16-byte prefix of its encryption key here (the full key
+// is signed and checked; a shorter key keeps the tree's blocks smaller).
 const grantKey = {
-  encode: ([recipient, epoch, commit]) => c.encode(grantKeyEnc, { recipient, epoch, commit: commit.subarray(0, 8) }),
+  encode: ([recipient, epoch, commit]) => c.encode(grantKeyEnc, { recipient: recipient.subarray(0, 16), epoch, commit: commit.subarray(0, 8) }),
   decode: (buf) => { const { recipient, epoch, commit } = c.decode(grantKeyEnc, buf); return [recipient, epoch, commit] },
   // All of one recipient's grants.
-  range: (recipient) => ({ gte: c.encode(grantKeyEnc, { recipient, epoch: 0, commit: b4a.alloc(8) }), lt: c.encode(grantKeyEnc, { recipient: nextKey(recipient), epoch: 0, commit: b4a.alloc(8) }) })
+  range: (recipient) => ({ gte: c.encode(grantKeyEnc, { recipient: recipient.subarray(0, 16), epoch: 0, commit: b4a.alloc(8) }), lt: c.encode(grantKeyEnc, { recipient: nextKey(recipient.subarray(0, 16)), epoch: 0, commit: b4a.alloc(8) }) })
 }
 // Fixed-width so keys sort by recipient, then epoch (big-endian), then commit.
 const grantKeyEnc = {
-  preencode (state) { state.end += 32 + 4 + 8 },
+  preencode (state) { state.end += 16 + 4 + 8 },
   encode (state, v) {
-    c.fixed32.encode(state, v.recipient)
+    c.fixed(16).encode(state, v.recipient)
     state.buffer.writeUInt32BE(v.epoch, state.start)
     state.start += 4
     c.fixed(8).encode(state, v.commit)
   },
   decode (state) {
-    const recipient = c.fixed32.decode(state)
+    const recipient = c.fixed(16).decode(state)
     const epoch = state.buffer.readUInt32BE(state.start)
     state.start += 4
     return { recipient, epoch, commit: c.fixed(8).decode(state) }
