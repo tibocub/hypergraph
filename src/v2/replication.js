@@ -234,8 +234,8 @@ class Replicator {
       const wanted = new Set(want.map(i => `${i.channel}:${i.segment}`))
       for (const [key, item] of [...this.held]) {
         if (wanted.has(key)) continue
+        this.held.delete(key) // off the books first, as in trimReads()
         await this.drop(item, sessions, this.reads.get(key))
-        this.held.delete(key)
       }
       // Live sessions for logs no longer in a current segment.
       const liveNow = new Set()
@@ -423,8 +423,8 @@ class Replicator {
     try {
       for (const [key, read] of [...this.reads].sort((x, y) => x[1].at - y[1].at)) {
         if (this.readBytes <= this.budget) break
+        this.reads.delete(key) // off the books first: heldBytes never counts what is being cleared
         if (!this.held.has(key)) await this.drop(read, sessions)
-        this.reads.delete(key)
       }
     } finally {
       for (const core of sessions.values()) await core.close().catch(safetyCatch)

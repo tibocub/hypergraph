@@ -85,7 +85,7 @@ The gaps `docs/v2-prototype.md` lists, each measured first, then fixed or explai
 - [X] T033 SC-005: memory with 5 channels open is ~10–35% higher at 500 channels than at 10: measure the control log's share (two events per channel) and try one keeper event for many channels
 - [X] T034 SC-008: `auto` doesn't count what is read beyond its window: test that scrollback beyond the window doesn't push holdings over the budget for long; implement
 - [X] T035 FR-017: a ban can't cut a log last listed in an older segment: test a banned author backdating into their last listed segment; close it
-- [ ] T036 The `v2/reader.js` failure seen once under parallel load (30.8 s, no output): reproduce under load with the full log kept; fix or record
+- [X] T036 The `v2/reader.js` failure seen once under parallel load (30.8 s, no output): not reproduced in 6 full-suite runs and ~20 v2-group runs with full logs kept (the reader it ran was rewritten in T031). Found instead: a `v2/replication.js` flake (`heldBytes` counted segments while they were being cleared), fixed: off the books before clearing
 
 ## Dependencies & Execution Order
 

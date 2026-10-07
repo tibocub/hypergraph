@@ -178,7 +178,7 @@ test('v2 replication: auto drops the oldest reads once reads alone pass the budg
   }
   t.ok(await until(async () => holdsNothingOf(peer, a.segments[0]), 10000), 'the first read is dropped')
   t.ok(await holdsSegment(peer, a.segments[1]), 'the last read is kept')
-  t.ok((await peer.community.stats()).heldBytes <= budget, 'within budget')
+  t.ok(await until(async () => { const st = await peer.community.stats(); return !st.replicating && st.heldBytes <= budget }, 10000), 'within budget once replication settles')
 })
 
 test('v2 replication: a helper holding everything serves old segments to a sparse member', async (t) => {
