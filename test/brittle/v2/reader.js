@@ -88,6 +88,54 @@ test('v2 reader: a message claiming the future is held back; an unreachable auth
   t.ok((await owner.community.stats()).unreachable >= 1 || page.some(m => m.text === 'b1'), 'and the gap is reported (unless b1 had already arrived)')
 })
 
+test('v2 reader: a page fetches about what it shows, not every author’s newest page', async (t) => {
+  // The reader took each author's newest `limit` messages, then kept `limit`:
+  // 2,500 blocks for a 50-message page from 50 authors (bench/v2-chat.js,
+  // about half the newcomer's bytes).
+  const b4a = require('b4a')
+  const hcrypto = require('hypercore-crypto')
+  const { AuthorLog } = require('../../../src/v2/author-log')
+  const { signEntry } = require('../../../src/v2/roster')
+  const owner = await member(t, 'rd-fetch-owner')
+  const channel = await owner.community.createChannel({ name: 'general', segmentMs: 60000 })
+  await owner.community.keep(channel)
+  const AUTHORS = 20
+  const PER = 30
+  const now = Date.now() - 5000
+  const seg = segmentOf(now, 60000)
+  const logs = []
+  for (let k = 0; k < AUTHORS; k++) {
+    const a = { keyPair: hcrypto.keyPair(), seed: hcrypto.randomBytes(32) }
+    const log = new AuthorLog(owner.store, { keyPair: AuthorLog.keyPairFor(a, owner.community.key, channel) })
+    await log.ready()
+    const messages = []
+    // Interleaved in time: the newest 10 are one message each from 10 authors.
+    for (let i = 0; i < PER; i++) messages.push({ t: now - (PER - i) * 100 + k, text: `a${k} m${i}` })
+    const first = await log.appendMany(messages)
+    await owner.community.writeRosterEntryUnchecked(channel, seg, { author: a.keyPair.publicKey, log: log.key, start: first, sig: signEntry(owner.community.key, channel, seg, log.key, first, a.keyPair) })
+    logs.push(b4a.toString(log.key, 'hex'))
+  }
+  const reader = await member(t, 'rd-fetch-reader', { key: owner.community.key, replicate: 'sparse' })
+  t.teardown(link(owner, reader))
+  await until(async () => { await reader.community.update(); return reader.community.channels().length === 1 })
+
+  const page = await reader.community.latest(channel, { limit: 10 })
+  t.alike(texts(page), texts(await owner.community.latest(channel, { limit: 10 })), 'the same page the owner shows')
+  let held = 0
+  for (const log of logs) for (let i = 0; i < PER; i++) if (await reader.community.holds(log, i)) held++
+  t.ok(held <= 10 + 2 * AUTHORS, `${held} blocks fetched for 10 messages from ${AUTHORS} authors`)
+
+  // Scrollback to the middle: found by binary search over each author's
+  // times, not by walking down through everything newer (1M: 1.1 MB -> 161 KB).
+  const middle = now - (PER / 2) * 100
+  const older = await reader.community.before(channel, { t: middle, limit: 10 })
+  t.alike(texts(older), texts(await owner.community.before(channel, { t: middle, limit: 10 })), 'scrollback: the same page the owner shows')
+  let after = 0
+  for (const log of logs) for (let i = 0; i < PER; i++) if (await reader.community.holds(log, i)) after++
+  const bound = 10 + AUTHORS * (2 + Math.ceil(Math.log2(PER)) + 1)
+  t.ok(after - held <= bound, `${after - held} more blocks for 10 messages back (bound ${bound})`)
+})
+
 test('v2 reader: follow delivers new posts from other members, once each', async (t) => {
   const { owner, peers, channel } = await setup(t, 'rd-follow')
   const [a] = peers

@@ -84,3 +84,51 @@ test('v2 moderation: a ban leaves out posts after it, including ones dated befor
   await owner.community.unban(a.identity.keyPair.publicKey)
   t.alike(summary(await pageOf(b, owner, channel, 3)), ['before', 'backdated', 'after'], 'unban shows everything again')
 })
+
+for (const byKeeper of [true, false]) test(`v2 moderation: a ban also cuts a log last listed in an older segment (mod ${byKeeper ? 'is' : 'is not'} the keeper)`, async (t) => {
+  // The ban's cut covered logs listed in the current or previous segment only:
+  // an author whose last post was older could append posts dated back into
+  // that segment, and scrollback showed them.
+  const b4a = require('b4a')
+  const hcrypto = require('hypercore-crypto')
+  const { AuthorLog } = require('../../../src/v2/author-log')
+  const { signEntry } = require('../../../src/v2/roster')
+  const { segmentOf: seg, segmentStart } = require('../../../src/v2/segments')
+  const owner = await member(t, `mod-oldban-owner-${byKeeper}`)
+  const now = seg(Date.now(), SEG)
+  const old = now - 3
+  const channel = b4a.toString(hcrypto.randomBytes(16), 'hex')
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id: channel, name: 'general', segmentMs: SEG, timestamp: segmentStart(old, SEG) })
+  await owner.community.keep(channel)
+  // The author's log (in the owner's store here, appended to as the author would).
+  const author = { keyPair: hcrypto.keyPair(), seed: hcrypto.randomBytes(32) }
+  const log = new AuthorLog(owner.store, { keyPair: AuthorLog.keyPairFor(author, owner.community.key, channel) })
+  await log.ready()
+  t.teardown(() => log.close())
+  const t0 = segmentStart(old, SEG) + 1000
+  const first = await log.appendMany([0, 1, 2].map(i => ({ t: t0 + i * 1000, text: `old${i}` })))
+  await owner.community.writeRosterEntryUnchecked(channel, old, { author: author.keyPair.publicKey, log: log.key, start: first, sig: signEntry(owner.community.key, channel, old, log.key, first, author.keyPair) })
+
+  const reader = await member(t, `mod-oldban-reader-${byKeeper}`, { key: owner.community.key, replicate: 'sparse' })
+  t.teardown(link(owner, reader))
+  await until(async () => { await reader.community.update(); return reader.community.channels().length === 1 })
+  const back = () => reader.community.before(channel, { t: segmentStart(old + 1, SEG), limit: 50, timeout: 2000 })
+  t.ok(await until(async () => (await back()).length === 3), 'three posts in the old segment')
+
+  let mod = owner
+  if (!byKeeper) {
+    // A mod who isn't a keeper reads the keeper's author index remotely,
+    // found through the roster's header.
+    mod = await member(t, `mod-oldban-mod-${byKeeper}`, { key: owner.community.key })
+    t.teardown(link(owner, mod))
+    await until(async () => { await mod.community.update(); return mod.community.channels().length === 1 })
+    await owner.community.setRole(mod.pub, 'mod', { writer: mod.community.localKey })
+    await until(async () => { await mod.community.update(); return mod.community.role(mod.pub) === 'mod' && mod.community.control.writable })
+  }
+  await mod.community.ban(author.keyPair.publicKey, { reason: 'spam' })
+  await until(async () => { await owner.community.update(); return !!owner.community.banned(author.keyPair.publicKey) })
+  await log.appendRaw({ t: t0 + 5000, text: 'backdated after the ban' })
+  t.ok(await until(async () => (await reader.community.logLength(log.key)) === 4), 'the reader holds the new post')
+  await until(async () => { await reader.community.update(); return !!reader.community.banned(author.keyPair.publicKey) })
+  t.alike((await back()).map(m => m.text).reverse(), ['old0', 'old1', 'old2'], 'scrollback shows only the posts before the ban')
+})

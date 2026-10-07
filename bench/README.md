@@ -172,8 +172,10 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
   reading). With `auto`/`all` it then waits for replication to go quiet and reports what it holds
   against the budget (`hold`), and its disk. `HG_V2_TRACE=1` traces each replication pass.
 
-  Measured 2026-10-06 (full table in `specs/research/scaling-v2.md`): latest page 0.61 / 0.69 /
-  0.67 s, 412 / 455 / 490 KB, +36 MB memory at 10k / 1M / 10M messages; host disk ~211 B per
+  Measured 2026-10-07 (full table in `specs/research/scaling-v2.md`): latest page 0.22 / 0.27 /
+  0.25 s, 68 / 113 / 143 KB, +18–20 MB memory at 10k / 1M / 10M messages (first runs, before the
+  reader fetched in rounds: 0.6–0.7 s, 412–490 KB); `HG_V2_BYTES=1` splits the page's bytes into
+  roster and log blocks. Host disk ~211 B per
   message; 100 writers post ~9,300 msg/s (v1: ~300) and all of it reaches a follower; at 5 msg/s
   each, arrival p50 14 ms, p95 20 ms. The 10M history takes 134 s to write, whole run 144 s.
 - `v2-community.js` (spec 007 prototype, T020): a community of C channels and M members; the
@@ -187,6 +189,10 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
   Measured 2026-10-06 (table in `specs/research/scaling-v2.md`): 1,000 vs 50,000 members makes
   no difference; 10 vs 500 channels costs startup 34 → 690 KB (the channel list in the control
   log) and ~10–35% memory; idle is 0 ms CPU, 0 bytes. About 1–2 min per run.
+  2026-10-07: ~13–17% with a channel and its keeper in one event (`KEEPER_EVENTS=1`: two events
+  per channel, as before). `idle.later` is a second 10 s window (what keeps costing, not what was
+  still settling). `HOST_MODE=sparse|auto|all` sets the host's replication (default auto);
+  `HG_V2_PEERS=1` samples the member's peer count while idle.
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 

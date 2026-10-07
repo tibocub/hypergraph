@@ -183,7 +183,7 @@ Summary against v1 (details below and in the tables above):
 
 | | v1 | v2 |
 |---|---|---|
-| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (edge); 44 s, 36 MB at 100k (content) | 0.61 / 0.69 / 0.67 s, 412 / 455 / 490 KB at 10k / 1M / 10M |
+| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (edge); 44 s, 36 MB at 100k (content) | 0.22 / 0.27 / 0.25 s, 68 / 113 / 143 KB at 10k / 1M / 10M (2026-10-07; first runs: 0.6–0.7 s, 412–490 KB) |
 | channel write throughput | ~300 msg/s (one indexer) | ~9,300 msg/s posted by 100 writers, all delivered |
 | live arrival p50 / p95 | 24–34 / 40–159 ms | 2–14 / 20–23 ms |
 | full holder's disk | ~2–3 KB per message | ~211 B per message |
@@ -229,16 +229,31 @@ Against the spec's success criteria:
   logarithmic, neither measured yet: each author log is ~50× longer, so each block's proof
   covers a deeper tree; and the roster holds 1,000 segments instead of one, so reaching the
   latest segment reads more Hyperbee nodes.
-- **SC-002** (under 2 MB for 50 messages from 50 authors): pass, 0.49 MB.
+  **Measured 2026-10-07 (T031)**, splitting the page's bytes by what was fetched: the reader
+  took each author's newest 50 messages and kept 50: 2,500 log blocks (210 KB) for a 50-message
+  page, about half of every page's bytes. It now reads in rounds (each author still in the
+  running gives its next 1, 2, 4... blocks; an author drops out once its oldest fetched message
+  is older than the 50th newest): 148 blocks. Scrollback finds its start by binary search over
+  each author's times instead of walking down. Results, 10k / 1M / 10M: latest page 68 / 113 /
+  143 KB in 0.22 / 0.27 / 0.25 s, 18–20 MB (was 412 / 455 / 490 KB, 0.6–0.7 s, 35–37 MB); one page
+  back at 1M 161 KB in 0.17 s (was 1.1 MB, 1.1 s). What still grows is the roster: 50 / 83 / 98
+  blocks of 170 / 311 / 463 B (Hyperbee writes the path's nodes into every block, so a deeper
+  tree means bigger blocks), plus per-block proofs. Logarithmic; still a miss against "within
+  10%" as worded. One roster core per segment would make it flat; not done.
+- **SC-002** (under 2 MB for 50 messages from 50 authors): pass, 0.49 MB (0.14 MB since T031).
 - **SC-003** (≥ 5× v1's ~300 msg/s with 100 writers): pass, ~30× posted; one follower reads
   ~22× v1.
 - **SC-004** (p50 < 100 ms, p95 < 500 ms): p50 2–14 ms, pass. p95 was 511–527 ms at every
   size: an author's first post in a segment waited for the reader's 500 ms roster poll. Fixed:
   `follow()` now re-reads the rosters as soon as one grows (test `v2 reader: follow finds a new
   author when the roster grows`). After the fix: one author posting p95 22 ms; 100 authors at
-  5 msg/s p95 20 ms once known. **Still a miss when 100 authors all post for the first time
-  in the same second (p95 1.4 s)**: each announcement goes to the keeper, which lists it, and
-  the roster then has to replicate to the reader.
+  5 msg/s p95 20 ms once known. When 100 authors all post for the first time in the same
+  second, p95 was 1.4–1.7 s. Traced (T032, 2026-10-07): the keeper wrote 2,996 roster entries
+  for 100 authors. Every first post re-sent all of that process's pending announcements (114
+  rounds), and copies of one announcement arriving together all passed the keeper's "already
+  listed?" check before the first was written. Now the keeper claims an author in memory before
+  writing, and a first post sends only its own announcement (the retry timer re-sends pending
+  ones): 101 entries, p95 33 ms, bytes 2.6 → 1.6 MB. SC-004 passes.
 - Newcomer disk grows from 11 MB (10k) to ~40 MB (1M, 10M) for the same page: not explained
   yet.
 
@@ -272,6 +287,17 @@ channel here.)
   the 500-channel member *worse* (idle 74–81 MB against 67–70 MB without, two runs each), so it
   was not kept. Left: fewer control events per channel (one keeper event for many channels),
   Autobase fast-forward for newcomers; both untested.
+  **T033 (2026-10-07)**: a channel and its creator's keeper record are now one event
+  (`createChannel({ keep: true })`). Memory with the same 5 channels open, two runs each: 10
+  channels 57 / 63 MB; 500 channels with two events per channel 79–80 / 82–83 MB, with one
+  66–68 / 71 MB. The overhead of 500 channels went from ~+30–40% to ~+13–17%; still above the
+  10% of SC-005, now from the channel list itself (each member holds it by design).
+  Found on the way: a host on `auto` cost each connected member 350 KB and 0.5 s of CPU per 10
+  idle seconds. Each replication pass opened an active session on every log it checked, and
+  opening or closing one makes Hypercore signal every peer of that log. Planning and checking now
+  use inactive sessions, and a closed segment confirmed held isn't checked again: 15 KB and 32 ms.
+  What is left at 500 channels (~170 KB, once per connection) is Corestore offering the host's
+  live logs to each new connection.
 - **Replication (T023–T024, SC-008)**, `bench/v2-chat.js --replicate auto`: at 10k with the
   default 1 GB budget, a newcomer holds everything (`holding: 'all'`). At 1M (218 MB on the host)
   with a 50 MB budget: a window of the newest ~23 segments, 49.6 MB counted, 50.2 MB downloaded,
@@ -281,7 +307,8 @@ channel here.)
   host itself on `auto`, some downloads hung with 0 peers (window 13 MB after 515 s; now a stall
   is detected in 5 s and retried with fresh sessions), and segments planned while their logs were
   out of reach were kept as empty and never fetched (regression test). SC-008 holds on these
-  runs; reads beyond the window are not counted yet.
+  runs. Reads beyond the window count since T034 (the window shrinks to make room; 1M, 50 MB:
+  49.6 MB held after the newcomer's page and scrollback, filled in 26 s).
 - **Fixed on the way**: following channels polled the rosters every 500 ms. Idle with 5
   channels followed: 734 ms CPU and +35 MB per 10 s; now 0 ms and nothing (scan on roster
   growth and on control log change only). Closing a channel releases its logs and rosters

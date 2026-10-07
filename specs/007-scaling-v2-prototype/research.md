@@ -132,7 +132,11 @@ was dropped as a direct dependency again.
     the exact trigger in Hypercore wasn't isolated (a minimal two-store setup didn't reproduce
     it). A segment whose logs no peer could describe yet (length unknown) isn't cached as planned
     and is retried from 2 s (it used to be kept as empty, never fetched).
-  - Not counted yet: what is read beyond the window (scrollback stays on disk until cleared).
+  - What pages read counts too (T034, 2026-10-07): reads are kept first, the window gets the
+    budget left over (reads of segments the window holds aren't counted twice); once reads alone
+    pass the budget, the oldest read segments are cleared. Dropping a window segment spares the
+    blocks a read of that segment covers. Not counted: the few blocks the scrollback binary
+    search probes.
 
 ## R8 — Moderation on partial data (decision)
 
@@ -150,6 +154,12 @@ Bans and hides are control log entries (admins/mods only), so every member has t
   below it, the same on every peer. The time rule remains for other logs; the remaining gap is a
   log last listed in an older segment, where backdated posts can show on scrollback to that
   segment.
+- **Ban, closed (T035, 2026-10-07)**: each keeper also keeps an author index per channel (author →
+  latest roster entry, signed by the author) in a separate core named in the roster's Hyperbee
+  header (`metadata.contentFeed`). Readers never download it; a mod banning someone reads it in
+  every channel, checks the author's signature, and adds that log's length to the cut. Cost: one
+  more write per author per segment on the keeper; the page a reader downloads is unchanged
+  (68 KB at 10k). Rosters created before this have no index (the gap stays for them).
 
 ## R10 — Compaction by archivers (FR-010): later (decision, 2026-10-06, T030)
 

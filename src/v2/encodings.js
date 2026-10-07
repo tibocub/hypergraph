@@ -55,6 +55,22 @@ const rosterValue = {
   }
 }
 
+// A keeper's author index: an author's latest roster entry in a channel.
+const authorEntry = {
+  preencode (state, v) {
+    c.uint.preencode(state, v.segment)
+    rosterValue.preencode(state, v)
+  },
+  encode (state, v) {
+    c.uint.encode(state, v.segment)
+    rosterValue.encode(state, v)
+  },
+  decode (state) {
+    const segment = c.uint.decode(state)
+    return { segment, ...rosterValue.decode(state) }
+  }
+}
+
 // What an author sends a keeper on first posting in a segment.
 const announcement = {
   preencode (state, a) {
@@ -101,6 +117,7 @@ module.exports = {
   MAX_TEXT,
   message: wrap(message),
   rosterValue: wrap(rosterValue),
+  authorEntry: wrap(authorEntry),
   announcement: wrap(announcement),
   rosterSignable
 }

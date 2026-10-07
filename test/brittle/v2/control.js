@@ -67,3 +67,21 @@ test('v2 control: only keepers register rosters', async (t) => {
   await owner.community.appendAs(crypto.keyPair(), { type: 'keeper', channel: id, rosterKey: 'ef'.repeat(32) })
   t.alike(owner.community.keepers(id).map(k => k.rosterKey), ['cd'.repeat(32)], 'only the keeper is listed')
 })
+
+test('v2 control: a channel created to be kept by its creator is one event, not two', async (t) => {
+  // Two control events per channel (the channel, then its keeper): a member
+  // of a 500-channel community applied 2,003 events, and its memory with the
+  // same 5 channels open was ~20-40 MB higher than with half of them.
+  const { owner, other } = await community(t)
+  const length = async () => (await owner.community.stats()).controlLength
+  let before = await length()
+  await owner.community.createChannel({ name: 'plain' })
+  const plain = await length() - before
+  before = await length()
+  const id = await owner.community.createChannel({ name: 'general', segmentMs: 60000, keep: true })
+  t.is(await length() - before, plain, 'the control log grows as for a channel alone')
+  t.ok(await until(async () => { await other.community.update(); return other.community.keepers(id).length === 1 }), 'the other peer sees the keeper')
+  t.is(other.community.keepers(id)[0].keeper, owner.pub)
+  const post = await other.community.post(id, 'listed?')
+  t.ok(await until(async () => (await owner.community.rosterEntries(id, Math.floor(post.t / 60000))).some(e => e.author === other.pub)), 'and the roster lists posts')
+})

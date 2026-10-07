@@ -26,7 +26,7 @@ await community.close()
 
 ```js
 await community.setRole(pubkeyHex, 'admin' | 'mod' | 'keeper' | null)
-const channelId = await community.createChannel({ name, segmentMs = 3600000 })
+const channelId = await community.createChannel({ name, segmentMs = 3600000, keep = false })  // keep: also keep it, in the same event
 await community.ban(pubkeyHex, { reason })
 await community.unban(pubkeyHex)
 await community.hide({ author, log, seq }, { reason })

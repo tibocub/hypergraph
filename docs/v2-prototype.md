@@ -27,8 +27,9 @@ reads and holds, not for how big or old the community is.
 - **Reading**: a page merges the listed authors' newest messages by `(time, author, seq)`, the same
   on every peer. `follow()` reacts when a roster grows or the control log changes, with no polling.
 - **Moderation**: hides and bans are in the control log, so a member holding only today's messages
-  still applies them. A ban records how long each of the author's recent logs was, so posts dated
-  before the ban but written after it are still left out.
+  still applies them. A ban records how long each of the author's logs was (found through the
+  rosters and each keeper's author index), so posts dated before the ban but written after it are
+  still left out.
 - **Replication**: `replicate: 'all' | 'sparse' | 'auto'` (default `auto`) with a `budget` in
   bytes. `all` holds everything (helpers); `sparse` holds what is read; `auto` holds everything
   while it fits the budget, else the newest segments that fit.
@@ -50,8 +51,8 @@ const community = new Community(new Corestore('./storage'), {
 await community.ready()
 swarm.on('connection', (socket) => community.replicate(socket))
 
-const channel = await community.createChannel({ name: 'general' })  // admin and up
-await community.keep(channel)                                     // a keeper lists who posts
+const channel = await community.createChannel({ name: 'general', keep: true })  // admin and up; keep: list who posts
+await community.keep(otherChannel)                                // a keeper can also keep channels others created
 await community.post(channel, 'hello')
 const page = await community.latest(channel, { limit: 50 })
 const older = await community.before(channel, { t: page[page.length - 1].t })
@@ -65,9 +66,9 @@ Full surface: [`contracts/api.md`](../specs/007-scaling-v2-prototype/contracts/a
 
 | | v1 | v2 |
 |---|---|---|
-| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (text on relation); 44 s, 36 MB at 100k (text in author logs) | 0.61 / 0.69 / 0.67 s and 412 / 455 / 490 KB at 10k / 1M / 10M |
+| newcomer, latest 50 messages | 1.7 s, 0.73 MB at 10k (text on relation); 44 s, 36 MB at 100k (text in author logs) | 0.22 / 0.27 / 0.25 s and 68 / 113 / 143 KB at 10k / 1M / 10M; one page back 0.17 s, ~0.17 MB |
 | channel write throughput | ~300 msg/s (one indexer applies all) | ~9,300 msg/s posted by 100 writers, all delivered |
-| live arrival p50 / p95 | 24–34 / 40–159 ms | 2–14 / 20–23 ms |
+| live arrival p50 / p95 | 24–34 / 40–159 ms | 2–15 / 20–33 ms, also with 100 authors posting their first message at once |
 | disk for a peer holding everything | ~2–3 KB per message | ~211 B per message |
 | silent members | ~70 KB memory each on every applying peer | nothing |
 | idle cost of followed channels | 0.8 ms per `update()` for 200 channels (after fixes) | 0 ms CPU, 0 bytes per 10 s |
@@ -78,13 +79,13 @@ Benchmarks: `bench/v2-chat.js` (channel size, throughput, replication), `bench/v
 
 ## Known gaps
 
-- A newcomer's download for the latest page grows slightly with history (+19% from 10k to 10M;
-  logarithmic, cause not measured yet).
-- 100 authors posting for the first time in the same second: p95 arrival 1.4 s (announcements go
-  through the keeper).
-- Memory with 5 channels open is ~10–35% higher in a 500-channel community than in a 10-channel
-  one: native RocksDB memory from applying a larger control log.
-- `auto` doesn't count what is read beyond its window yet.
-- A ban can't cut a log last listed in an older segment; backdated posts there show on scrollback.
+- A newcomer's download for the latest page grows slowly with history (68 → 143 KB from 10k to
+  10M): the roster's index gets deeper (Hyperbee stores the path in every block). Logarithmic;
+  one roster per segment would flatten it (not done).
+- Memory with 5 channels open is ~13–17% higher in a 500-channel community than in a 10-channel
+  one (was ~30–40% before a channel and its keeper became one event): every member holds the
+  channel list, and applying it costs native RocksDB memory.
+- A host on `auto` or `all` offers each live log to every new connection, also logs the member
+  never opens (~87 B each; 500 channels: ~170 KB once per connection).
 - No encryption, invites or query API in v2; no compaction of old segments (decided: later, see
   research.md).

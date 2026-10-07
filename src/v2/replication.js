@@ -25,7 +25,7 @@ const { Roster } = require('./roster')
 // Reads beyond the window are not counted (gap: see research.md).
 
 const TRACE = !!process.env.HG_V2_TRACE // per-segment timings on stderr
-const trace = (...a) => { if (TRACE) process.stderr.write(`[replication ${process.pid}] ${a.join(' ')}\n`) }
+const trace = (...a) => { if (TRACE) process.stderr.write(`[replication ${process.pid}] ${Date.now()} ${a.join(' ')}\n`) }
 // Stored per block beyond its own bytes: Merkle tree nodes, bitfield and
 // RocksDB keys. Measured: a host holding 10M messages, 211 B on disk per
 // ~80 B message; an auto window at 1M, ~215 B per ~86 B block. Counting
@@ -63,9 +63,13 @@ class Replicator {
     this.latestFrom = latestFrom
 
     this.held = new Map() // `${channel}:${segment}` -> { channel, segment, ranges, bytes }
+    // What pages read, per segment (auto): kept first, the window gets what
+    // is left of the budget.
+    this.reads = new Map() // `${channel}:${segment}` -> { channel, segment, ranges, bytes, at }
     this.closedPlans = new Map() // same key -> ranges + bytes of a closed segment (final)
     this.fits = true
     this.passes = 0
+    this.activeOpens = 0 // active sessions opened (each one signals the log's peers)
     this.live = new Map() // log hex -> { core, range, ondownload, from } (current segment)
     this.liveBytes = 0 // live blocks beyond what the last pass planned
     // Its own roster sessions, apart from the reader's: holding a community
@@ -89,11 +93,51 @@ class Replicator {
   get heldBytes () {
     let n = this.liveBytes
     for (const item of this.held.values()) n += item.bytes
+    for (const [key, read] of this.reads) if (!this.held.has(key)) n += read.bytes
     return n
   }
 
-  schedule () {
+  get readBytes () {
+    let n = 0
+    for (const read of this.reads.values()) n += read.bytes
+    return n
+  }
+
+  // Reads of segments the window doesn't hold (those it holds are counted there).
+  get readBytesOutside () {
+    let n = 0
+    for (const [key, read] of this.reads) if (!this.held.has(key)) n += read.bytes
+    return n
+  }
+
+  /**
+   * A page read these ranges of a segment (auto only: `all` holds everything,
+   * `sparse` counts nothing). Blocks found by the scrollback binary search
+   * are not counted (a few per author).
+   * @param {Array<{ log, start, end, blockBytes }>} ranges
+   */
+  noteRead (channel, segment, ranges) {
+    if (this.mode !== 'auto' || this.closed || ranges.length === 0) return
+    const key = `${channel}:${segment}`
+    let read = this.reads.get(key)
+    if (!read) this.reads.set(key, (read = { channel, segment, ranges: [], bytes: 0, at: 0 }))
+    read.at = Date.now()
+    for (const r of ranges) {
+      const known = read.ranges.find(x => x.log === r.log)
+      if (!known) read.ranges.push({ log: r.log, start: r.start, end: r.end, blockBytes: r.blockBytes })
+      else {
+        known.start = Math.min(known.start, r.start)
+        known.end = Math.max(known.end, r.end)
+        known.blockBytes = r.blockBytes
+      }
+    }
+    read.bytes = Math.ceil(read.ranges.reduce((n, r) => n + (r.end - r.start) * (r.blockBytes + STORED_OVERHEAD), 0))
+    if (this.heldBytes > this.budget) this.schedule('read')
+  }
+
+  schedule (reason) {
     if (this.closed || this.mode === 'sparse') return
+    trace('schedule', reason)
     if (this.timer) return
     this.timer = setTimeout(() => {
       this.timer = null
@@ -140,7 +184,9 @@ class Replicator {
     this.passes++
     this.liveBytes = 0 // the plan below counts the current segments again
     await this.watchRosters()
-    const budget = this.mode === 'all' ? Infinity : this.budget
+    // Reads first: past the budget on their own, the oldest go.
+    if (this.mode === 'auto') await this.trimReads()
+    const budget = this.mode === 'all' ? Infinity : Math.max(0, this.budget - this.readBytesOutside)
     const want = []
     let total = 0
     let fits = true
@@ -163,7 +209,9 @@ class Replicator {
         const th = Date.now()
         if (item.current) await this.holdLive(item, sessions)
         else if (!this.held.has(key)) await this.holdClosed(item, sessions)
-        const done = (await this.complete(item, sessions)) && !item.unknown
+        // A closed segment already confirmed held stays held (only drop()
+        // removes it): no need to look at its logs again.
+        const done = (!item.current && this.held.has(key)) || ((await this.complete(item, sessions)) && !item.unknown)
         if (item.unknown) retry = true
         else if (!done) stalled = true
         if (done) this.held.set(key, item)
@@ -186,8 +234,8 @@ class Replicator {
       const wanted = new Set(want.map(i => `${i.channel}:${i.segment}`))
       for (const [key, item] of [...this.held]) {
         if (wanted.has(key)) continue
-        await this.drop(item, sessions)
-        this.held.delete(key)
+        this.held.delete(key) // off the books first, as in trimReads()
+        await this.drop(item, sessions, this.reads.get(key))
       }
       // Live sessions for logs no longer in a current segment.
       const liveNow = new Set()
@@ -214,7 +262,7 @@ class Replicator {
     trace('retry in', ms)
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null
-      this.schedule()
+      this.schedule('retry')
     }, ms)
     if (this.retryTimer.unref) this.retryTimer.unref()
   }
@@ -257,7 +305,10 @@ class Replicator {
     for (const e of entries) {
       const core = await this.session(e.log, sessions)
       const fromLater = c.later.has(e.author)
-      if (!fromLater) await within(core.update({ wait: true }).catch(safetyCatch), LENGTH_MS)
+      // The length from peers only when nothing is known locally (newer
+      // blocks of the current segment come with the live download), through
+      // a short active session: an inactive one doesn't ask.
+      if (!fromLater && core.length <= e.start) await this.askLength(core)
       const end = fromLater ? c.later.get(e.author) : core.length
       c.later.set(e.author, e.start)
       if (end <= e.start) {
@@ -287,6 +338,7 @@ class Replicator {
         known.from = Math.max(known.from, r.end)
         continue
       }
+      this.activeOpens++
       const core = this.store.get({ key: b4a.from(r.log, 'hex') })
       await core.ready()
       const range = core.download({ start: r.start, end: -1 })
@@ -297,7 +349,7 @@ class Replicator {
       l.ondownload = (index, byteLength) => {
         if (index < l.from) return
         this.liveBytes += byteLength + STORED_OVERHEAD
-        if (this.mode === 'auto' && this.heldBytes > this.budget) this.schedule()
+        if (this.mode === 'auto' && this.heldBytes > this.budget) this.schedule('live-over-budget')
       }
       core.on('download', l.ondownload)
       this.live.set(r.log, l)
@@ -307,7 +359,12 @@ class Replicator {
 
   // Download [start, end); give up after DOWNLOAD_MS, or sooner when nothing
   // arrived for STALL_MS and the log has no peer.
-  async fetch (core, r) {
+  async fetch (held, r) {
+    if (await held.has(r.start, r.end)) return
+    // Active only while it downloads: see session().
+    this.activeOpens++
+    const core = this.store.get({ key: held.key })
+    await core.ready()
     const range = core.download({ start: r.start, end: r.end })
     let last = Date.now()
     const ondownload = () => { last = Date.now() }
@@ -325,6 +382,18 @@ class Replicator {
     } finally {
       core.off('download', ondownload)
       range.destroy()
+      await core.close().catch(safetyCatch)
+    }
+  }
+
+  async askLength (inactive) {
+    this.activeOpens++
+    const core = this.store.get({ key: inactive.key })
+    try {
+      await core.ready()
+      await within(core.update({ wait: true }).catch(safetyCatch), LENGTH_MS)
+    } finally {
+      await core.close().catch(safetyCatch)
     }
   }
 
@@ -336,18 +405,42 @@ class Replicator {
     return true
   }
 
-  async drop (item, sessions) {
+  // Clear an item's ranges, except what `keep` (a read of the same segment)
+  // covers.
+  async drop (item, sessions, keep = null) {
     for (const r of item.ranges) {
       const core = await this.session(r.log, sessions)
       if (core.writable) continue // the member's own messages: never dropped
-      await core.clear(r.start, r.end).catch(safetyCatch)
+      const k = keep && keep.ranges.find(x => x.log === r.log)
+      const parts = k ? [[r.start, Math.min(r.end, k.start)], [Math.max(r.start, k.end), r.end]] : [[r.start, r.end]]
+      for (const [start, end] of parts) if (end > start) await core.clear(start, end).catch(safetyCatch)
+    }
+  }
+
+  async trimReads () {
+    if (this.readBytes <= this.budget) return
+    const sessions = new Map()
+    try {
+      for (const [key, read] of [...this.reads].sort((x, y) => x[1].at - y[1].at)) {
+        if (this.readBytes <= this.budget) break
+        this.reads.delete(key) // off the books first: heldBytes never counts what is being cleared
+        if (!this.held.has(key)) await this.drop(read, sessions)
+      }
+    } finally {
+      for (const core of sessions.values()) await core.close().catch(safetyCatch)
     }
   }
 
   async session (logHex, sessions) {
     let core = sessions.get(logHex)
     if (!core) {
-      core = this.store.get({ key: b4a.from(logHex, 'hex') })
+      // Inactive: planning and checking what is held must not count as
+      // using the log. Each active session opened and closed makes Hypercore
+      // signal every peer of that log; a host's pass over ~1,000 logs it
+      // already held cost each connected member 350 KB and 0.5 s of CPU per
+      // 10 idle seconds (now 15 KB, 32 ms). fetch() opens an active one only
+      // for what is missing.
+      core = this.store.get({ key: b4a.from(logHex, 'hex'), active: false })
       sessions.set(logHex, core)
       await core.ready()
     }
@@ -364,7 +457,7 @@ class Replicator {
         const roster = new Roster(core, { extension: false })
         await roster.ready()
         if (core.length === 0) await within(core.update({ wait: true }).catch(safetyCatch), LENGTH_MS)
-        const onappend = () => this.schedule()
+        const onappend = () => { trace('roster-append', rosterKey.slice(0, 8), core.length, core.writable); this.schedule('roster') }
         core.on('append', onappend)
         const range = this.mode === 'all' ? core.download({ start: 0, end: -1 }) : null
         this.rosters.set(rosterKey, { roster, core, range, onappend })

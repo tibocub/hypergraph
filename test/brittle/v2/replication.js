@@ -140,6 +140,47 @@ test('v2 replication: auto over budget holds the newest segments that fit, and m
   t.ok(st.heldBytes <= budget, `still within budget (${st.heldBytes} <= ${budget})`)
 })
 
+test('v2 replication: auto counts what was read beyond its window; the window makes room', async (t) => {
+  // Scrollback past the window downloaded blocks no one counted: holdings
+  // could grow past the budget for good.
+  const owner = await member(t, 'rep-read-owner')
+  const c = now()
+  const a = await channelWithHistory(owner, 'a', authors(2), [c - 6, c - 5, c - 4, c - 3])
+  const segBytes = 2 * PER * ((await blockBytes(owner, a)) + STORED_OVERHEAD)
+  const budget = Math.floor(segBytes * 2.5)
+  const peer = await member(t, 'rep-read-peer', { key: owner.community.key, budget })
+  t.teardown(link(owner, peer))
+  t.ok(await until(async () => (await holdsSegment(peer, a.segments[3])) && (await holdsSegment(peer, a.segments[2])), 20000), 'the window: the two newest segments')
+
+  // Read the oldest segment in full.
+  const oldest = a.segments[0]
+  const page = await peer.community.before(a.id, { t: segmentStart(oldest.segment + 1, SEG), limit: 2 * PER })
+  t.is(page.length, 2 * PER, 'read the oldest segment')
+  t.ok(await until(async () => (await holdsNothingOf(peer, a.segments[2])) && (await holdsSegment(peer, a.segments[3])), 10000), 'the window shrank to the newest segment')
+  t.ok(await holdsSegment(peer, oldest), 'what was read is kept')
+  const st = await peer.community.stats()
+  t.ok(st.heldBytes <= budget, `held ${st.heldBytes} <= budget ${budget}, reads counted`)
+})
+
+test('v2 replication: auto drops the oldest reads once reads alone pass the budget', async (t) => {
+  const owner = await member(t, 'rep-reads-owner')
+  const c = now()
+  const a = await channelWithHistory(owner, 'a', authors(2), [c - 6, c - 5, c - 4, c - 3])
+  const segBytes = 2 * PER * ((await blockBytes(owner, a)) + STORED_OVERHEAD)
+  const budget = Math.floor(segBytes * 1.5)
+  const peer = await member(t, 'rep-reads-peer', { key: owner.community.key, budget })
+  t.teardown(link(owner, peer))
+  await until(async () => holdsSegment(peer, a.segments[3]), 20000)
+
+  for (const seg of [a.segments[0], a.segments[1]]) {
+    const page = await peer.community.before(a.id, { t: segmentStart(seg.segment + 1, SEG), limit: 2 * PER })
+    t.is(page.length, 2 * PER, `read segment ${seg.segment}`)
+  }
+  t.ok(await until(async () => holdsNothingOf(peer, a.segments[0]), 10000), 'the first read is dropped')
+  t.ok(await holdsSegment(peer, a.segments[1]), 'the last read is kept')
+  t.ok(await until(async () => { const st = await peer.community.stats(); return !st.replicating && st.heldBytes <= budget }, 10000), 'within budget once replication settles')
+})
+
 test('v2 replication: a helper holding everything serves old segments to a sparse member', async (t) => {
   const owner = await member(t, 'rep-helper-owner')
   const c = now()
@@ -176,6 +217,30 @@ test('v2 replication: logs unreachable at first are fetched once their holder co
 
   t.teardown(link(holder, peer))
   t.ok(await until(async () => (await holdsSegment(peer, a.segments[0])) && (await holdsSegment(peer, a.segments[1])), 25000), 'held once the holder connects')
+})
+
+test('v2 replication: a pass over what a holder already holds opens no active session', async (t) => {
+  // Each pass opened an active session on every log it checked. Opening and
+  // closing one makes Hypercore signal every peer of that log when its "in
+  // use" state flips: a host on the default (auto) cost each member 350 KB
+  // and 0.5 s of CPU per 10 idle seconds (bench/v2-community.js; 15 KB and
+  // 32 ms with inactive sessions for planning and checking).
+  const owner = await member(t, 'rep-quiet-owner') // auto: holds its own history
+  const c = now()
+  await channelWithHistory(owner, 'a', authors(10), [c - 3, c - 2])
+  await until(async () => { const st = await owner.community.stats(); return st.replicationPasses > 0 && !st.replicating })
+  const st0 = await owner.community.stats()
+  t.is(st0.holding, 'all')
+  t.is(st0.replicationActiveOpens, 0, 'none for logs it wrote and holds')
+
+  // Restarted, it checks everything again: still none.
+  await owner.community.close()
+  const { Community } = require('../../../src/v2')
+  const again = new Community(owner.store, { identity: owner.identity, key: owner.community.key })
+  await again.ready()
+  t.teardown(() => again.close())
+  await until(async () => { const st = await again.stats(); return st.replicationPasses > 0 && !st.replicating })
+  t.is((await again.stats()).replicationActiveOpens, 0, 'none after a restart either')
 })
 
 async function blockBytes (owner, ch) {
