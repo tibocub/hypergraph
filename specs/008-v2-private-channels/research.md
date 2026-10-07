@@ -134,6 +134,20 @@ without the key moderates by reference (FR-019).
 
 ## R9 — Measuring (decision)
 
+**Measured (T019, `bench/v2-chat.js --private`, 2026-10-07)**, the newcomer's latest page:
+
+| | public | private | difference |
+|---|---|---|---|
+| 10k: time / bytes / memory | 221 ms / 68.4 KB / 17.6 MB | 269 ms / 76.3 KB / 18.5 MB | +48 ms / +7.9 KB / +0.9 MB |
+| 1M: time / bytes / memory | 247 ms / 96.9 KB / 18.2 MB | 280 ms / 104.1 KB / 19.4 MB | +33 ms / +7.2 KB / +1.2 MB |
+| 1M: one page back | 186 ms / 163 KB | 178 ms / 182 KB | |
+| live arrival p50 / p95 | 2 / 20–25 ms | 2–3 / 18–27 ms | |
+| offline restart | 174–283 ms | 167–184 ms | |
+
+The bytes are the grant lookup (~3.4 KB, once) plus ~42 B per fetched message (nonce, tag, epoch:
+log blocks 12.4 → 18.8 KB for 148 blocks): +7.4% at 1M with the lookup included. The time is mostly
+the lookup's round trips. SC-001 passes.
+
 - `bench/v2-chat.js --private`: the same history, encrypted; the newcomer is granted; compare page
   time/bytes/memory with the public run (SC-001).
 - `bench/v2-grants.js`: a keeper's grants bee with 10, 1,000, 50,000 members (bulk), a newcomer

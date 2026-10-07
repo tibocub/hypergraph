@@ -1451,6 +1451,12 @@ class Community extends ReadyResource {
     }
   }
 
+  /** Benchmarks: hold an epoch key made elsewhere (checked against the control log's commitment). */
+  adoptEpochKey (channel, epoch, key) {
+    if (toHex(commitOf(key)) !== this.epochCommit(channel, epoch)) throw new Error('This key is not the epoch\u2019s')
+    this.#holdKey(channel, epoch, key)
+  }
+
   /** Keeper only: write a grant into its grants bee without any check. */
   async writeGrantUnchecked (channel, { recipient, identity, epoch, sealed, granterKeyPair }) {
     const roster = await this.#openOwnRoster(channel)

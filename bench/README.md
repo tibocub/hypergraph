@@ -168,6 +168,9 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
   node bench/v2-chat.js 1000000 --live 0 --replicate auto --budget 50000000
   ```
 
+  `--private` makes the channel private (spec 008): history encrypted, the newcomer granted by
+  the host; measured 2026-10-07, private vs public latest page at 1M: 280 vs 247 ms, 104 vs 97 KB.
+
   The newcomer is `sparse` unless `--replicate` says otherwise (the page numbers are about
   reading). With `auto`/`all` it then waits for replication to go quiet and reports what it holds
   against the budget (`hold`), and its disk. `HG_V2_TRACE=1` traces each replication pass.
@@ -193,6 +196,13 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
   per channel, as before). `idle.later` is a second 10 s window (what keeps costing, not what was
   still settling). `HOST_MODE=sparse|auto|all` sets the host's replication (default auto);
   `HG_V2_PEERS=1` samples the member's peer count while idle.
+- `v2-grants.js` (spec 008): a private channel with M members granted; a member's cost to get
+  access, and a revocation re-granting everyone. Measured 2026-10-07: 3.4 / 10.0 / 23.4 KB to get
+  access at 10 / 1,000 / 50,000 members; revoking with 1,000 members 0.37 s.
+
+  ```
+  node bench/v2-grants.js --members 50000
+  ```
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 
