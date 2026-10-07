@@ -155,8 +155,9 @@ channel.
   identity; a channel MAY also allow members who hold its key to grant it.
 - **FR-007**: A grant MUST be readable only by its recipient (sealed to their encryption key), and
   MUST include every epoch the granter decides to share (by default all epochs they hold).
-- **FR-008**: Obtaining one's own grant MUST cost a member the same order of downloads whether 10 or
-  50,000 members are granted; the community's control log MUST NOT carry per-member grants.
+- **FR-008**: Obtaining one's own grant MUST NOT download other members' grants, and its cost MAY
+  grow only slowly (logarithmically) with the number of members granted; the community's control
+  log MUST NOT carry per-member grants.
 - **FR-009**: Revoking a member MUST be followed by a key rotation (one action for the caller): a new
   epoch is created and granted to every current member except the revoked one; new messages use it.
 - **FR-010**: A revoked member MUST keep reading what they could read before, and MUST NOT read
@@ -205,8 +206,10 @@ channel.
 
 - **SC-001**: A member with access shows a private channel's latest page within 10% of the time and
   bytes of the same public channel, plus at most a fixed amount for obtaining the key the first time.
-- **SC-002**: A member's download to obtain their own access differs by under 10% between 10 and
-  50,000 members granted.
+- **SC-002**: A member's download to obtain their own access never includes other members' grants
+  and stays under 32 KB with 50,000 members granted. (First written as "within 10% from 10 to
+  50,000"; measured during planning, research R1: any tree index grows with its depth, 1.6 / 8.7 /
+  25.7 KB at 10 / 1,000 / 50,000.)
 - **SC-003**: Revoking a member of a channel with 1,000 members (rotation and re-grants included)
   completes in under 60 seconds on the dev machine, and members receive the new epoch within 10
   seconds of being online after it.

@@ -38,7 +38,7 @@ know about hypergraph. Nothing consumes HyperBBS.
 |---|---|---|
 | **hypergraph** | P2P graph database — entities, relations, tags, content, multi-writer contexts (Autobase), roles/permissions, encrypted read-scopes. The shared data + identity + permission substrate. | Holepunch stack only |
 | **HyperMD** | Document format (`.hmd`) — Markdown + directives (`:::query`, `:::script`) for layout, data views, sandboxed scripting | (standalone) |
-| **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. | hypergraph, HyperMD |
+| **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. **Likely paused (2026-10-07) in favour of a web interface: OpenTUI is too unstable under Node.js.** Not to be moved onto `hypergraph/v2`; its suite still runs after v1 changes while it is here. | hypergraph, HyperMD |
 | **hyperDNS** | Federated naming — `name@authority` resolves to addresses without a central registry. An authority is a trust/moderation boundary, not a global namespace. | hypergraph |
 | **SwarmFS** | P2P file transfer — content-addressed (merkle roots), chunked, topic-scoped. **Development paused** pending hypergraph features. | (Holepunch directly, for now) |
 
