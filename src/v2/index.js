@@ -12,7 +12,8 @@ const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 const { Replicator } = require('./replication')
 const { boxKeyPair, newEpochKey, commitOf, messageAD, encryptMessage, decryptMessage, seal, openSealed } = require('./crypto')
 const { signGrant, verifyGrant, putGrant, putGrants, hasGrant, grantsForEpochs, allRecipients, recipientOf } = require('./grants')
-const { isSealed, sealedContent } = require('./encodings')
+const { isSealed, sealedContent, redemption: redemptionCodec, invite: inviteCodec } = require('./encodings')
+const { makeInvite, encodeLink, decodeLink, makeRedemption, verifyRedemption } = require('./invites')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
 // peer holds and reads. Unstable; not part of the v1 API. See
@@ -67,6 +68,12 @@ class Community extends ReadyResource {
   #grantPending = new Map() // `${channel}:${recipient}:${epoch}` -> submission, until a keeper lists it
   #grantRetry = null
   #accepting = new Set() // grants a keeper is writing (copies arriving together)
+  #redeemCore = null // the control log's key core: redemptions travel on its extension
+  #redeemExt = null
+  #recording = new Set() // redemptions this writer is recording
+  #completed = new Set() // redeemed channel grants already done (or not ours to do)
+  #completing = null
+  #completeAgain = false
   #mode = 'auto'
   #budget = 1e9
   #replicator = null
@@ -124,9 +131,20 @@ class Community extends ReadyResource {
     })
     this.#control.on('change', () => this.#replicator.schedule('control'))
     this.#replicator.schedule('open')
+    // Redemption requests reach every peer of the control log's key core;
+    // writers record them, key holders then grant (spec 008, R6).
+    this.#redeemCore = ns.get({ key: this.key })
+    await this.#redeemCore.ready()
+    this.#redeemExt = this.#redeemCore.registerExtension('hg-v2-redeem', {
+      encoding: redemptionCodec.enc,
+      onmessage: (r) => this.#recordRedemption(r).catch(safetyCatch)
+    })
+    this.#control.on('change', () => this.#completeRedemptions().catch(safetyCatch))
   }
 
   async _close () {
+    if (this.#redeemExt) this.#redeemExt.destroy()
+    if (this.#redeemCore) await this.#redeemCore.close().catch(safetyCatch)
     if (this.#replicator) await this.#replicator.close()
     if (this.#retry) clearInterval(this.#retry)
     if (this.#grantRetry) clearInterval(this.#grantRetry)
@@ -1290,6 +1308,144 @@ class Community extends ReadyResource {
   }
 
   /** As a keeper, write a roster entry without any check (tests forging). */
+  /**
+   * Open a community from an invite link (then `redeem(link)` it).
+   * @returns {Promise<Community>}
+   */
+  static async join (store, link, opts = {}) {
+    const inv = decodeLink(link)
+    const community = new Community(store, { ...opts, key: inv.community })
+    await community.ready()
+    return community
+  }
+
+  /**
+   * An invite link: the community, and optionally a staff role, private
+   * channels, an expiry (ms since epoch) and a use limit. Only for what this
+   * member could give itself. Never carries a key.
+   */
+  async createInvite ({ role = null, channels = [], expires = 0, uses = 0 } = {}) {
+    if (!this.opened) await this.ready()
+    const mine = this.#myRole()
+    if (role && !mayAssign(mine, null, role)) throw new Error('Inviting with this role is not allowed for this member')
+    for (const ch of channels) {
+      const record = this.channel(ch)
+      if (!record || !record.private) throw new Error('Unknown private channel: ' + ch)
+      if (!((RANK[mine] || 0) >= RANK.admin) && !(record.memberGrants && this.#heldEpochs(ch).length)) throw new Error('Inviting into this channel is not allowed for this member')
+    }
+    return encodeLink(makeInvite({ community: this.key, role, channels, expires, uses }, this.#identity.keyPair))
+  }
+
+  /** No more redemptions of this link (its maker or an admin). */
+  async revokeInvite (link) {
+    if (!this.opened) await this.ready()
+    const inv = decodeLink(link)
+    const me = toHex(this.#identity.keyPair.publicKey)
+    if (!((RANK[this.#myRole()] || 0) >= RANK.admin) && toHex(inv.maker) !== me) throw new Error('Revoking this invite is not allowed for this member')
+    this.#requireWriter()
+    await this.#control.append(this.#sign({ type: 'revokeInvite', invite: toHex(inviteCodec.encode(inv)) }))
+  }
+
+  /** Identities (hex) that redeemed an invite (by its id, hex). */
+  redemptions (inviteId) {
+    const prefix = toHex(inviteId) + ':'
+    return Object.keys(this.#state.redeemed).filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length))
+  }
+
+  /**
+   * Redeem an invite: the request goes to whichever control log writer is
+   * online (the maker needn't be), retried until it is recorded or `timeout`.
+   * @returns {Promise<{ recorded: boolean, role: string|null, channels: Object }>}
+   */
+  async redeem (link, { timeout = 30000 } = {}) {
+    if (!this.opened) await this.ready()
+    const inv = decodeLink(link)
+    if (!b4a.equals(inv.community, this.key)) throw new Error('This invite is for another community')
+    const me = toHex(this.#identity.keyPair.publicKey)
+    const id = `${toHex(inv.id)}:${me}`
+    const r = makeRedemption(inv, this.#identity.keyPair, this.#box().publicKey, inv.role ? this.localKey : null)
+    const deadline = Date.now() + timeout
+    while (Date.now() < deadline) {
+      await this.update()
+      const record = this.#state.redeemed[id]
+      if (record) {
+        const channels = {}
+        for (const ch of record.channels || []) {
+          await this.#loadKeys(ch, true)
+          channels[ch] = this.#epochKey(ch, this.epoch(ch)) ? 'granted' : 'pending'
+        }
+        return { recorded: true, role: record.role || null, channels }
+      }
+      await this.#recordRedemption(r) // a writer records its own
+      this.#redeemExt.broadcast(r)
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    return { recorded: false, role: null, channels: {} }
+  }
+
+  // A writer records a redemption that the control log would accept now
+  // (checked again in apply; checked here too so a forged or used-up invite
+  // doesn't add an event on every retry).
+  async #recordRedemption (r) {
+    if (!this.opened) await this.ready()
+    if (!this.#control.writable || !((RANK[this.#myRole()] || 0) >= RANK.keeper)) return
+    const inv = r.invite
+    if (!verifyRedemption(r) || !b4a.equals(inv.community, this.key)) return
+    const id = toHex(inv.id)
+    const key = `${id}:${toHex(r.identity)}`
+    if (this.#state.redeemed[key] || this.#recording.has(key)) return
+    if (this.#state.invitesRevoked[id] || (inv.expires && Date.now() > inv.expires)) return
+    if (inv.uses && (this.#state.uses[id] || 0) >= inv.uses) return
+    const makerRole = this.role(inv.maker)
+    if (inv.role && !mayAssign(makerRole, this.role(r.identity), inv.role)) return
+    for (const ch of inv.channels) {
+      const record = this.channel(ch)
+      if (!record || !record.private || (!((RANK[makerRole] || 0) >= RANK.admin) && !record.memberGrants)) return
+    }
+    this.#recording.add(key)
+    try {
+      await this.#control.append(this.#sign({ type: 'redeem', redemption: toHex(redemptionCodec.encode(r)) }))
+    } finally {
+      this.#recording.delete(key)
+    }
+  }
+
+  // Key holders grant the private channels of recorded redemptions.
+  async #completeRedemptions () {
+    if (this.#completing) {
+      this.#completeAgain = true
+      return
+    }
+    this.#completing = (async () => {
+      do {
+        this.#completeAgain = false
+        for (const [key, record] of Object.entries(this.#state.redeemed)) {
+          if (!record.channels || record.channels.length === 0) continue
+          const identity = key.split(':')[1]
+          for (const ch of record.channels) {
+            const channel = this.channel(ch)
+            if (!channel || !channel.private) continue
+            const done = `${key}:${ch}:${channel.epoch}`
+            if (this.#completed.has(done)) continue
+            if (this.revoked(ch, identity)) { this.#completed.add(done); continue }
+            const admin = (RANK[this.#myRole()] || 0) >= RANK.admin
+            if (!this.#epochKey(ch, channel.epoch)) continue // not ours to do (yet)
+            if (!admin && !channel.memberGrants) continue
+            await this.grantMany(ch, [{ identity, encryptionKey: record.encryptionKey }])
+            this.#completed.add(done)
+          }
+        }
+      } while (this.#completeAgain)
+    })()
+    try {
+      await this.#completing
+    } catch (err) {
+      safetyCatch(err)
+    } finally {
+      this.#completing = null
+    }
+  }
+
   /** Keeper only: write a grant into its grants bee without any check. */
   async writeGrantUnchecked (channel, { recipient, identity, epoch, sealed, granterKeyPair }) {
     const roster = await this.#openOwnRoster(channel)

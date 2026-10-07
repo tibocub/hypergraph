@@ -5,6 +5,10 @@ const hcrypto = require('hypercore-crypto')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const { EventEmitter } = require('events')
+const { verifyInvite, verifyRedemption, inviteEnc, redemptionEnc } = require('./invites')
+
+const hex = (b) => b4a.toString(b, 'hex')
+const decodeHex = (enc, s) => { try { return typeof s === 'string' ? enc.decode(b4a.from(s, 'hex')) : null } catch { return null } }
 
 // The community control log (spec 007, data-model.md): one Autobase written
 // only by the owner, admins, mods and keepers. Every member applies it in
@@ -128,6 +132,12 @@ class Control extends EventEmitter {
       else if (key.startsWith('epoch:')) {
         const [channel, n] = key.slice(6).split(':')
         ;(state.epochs[channel] = state.epochs[channel] || {})[n] = value
+      } else if (key.startsWith('redeemed:')) {
+        state.redeemed[key.slice(9)] = value
+      } else if (key.startsWith('invite-revoked:')) {
+        state.invitesRevoked[key.slice(15)] = value
+      } else if (key.startsWith('uses:')) {
+        state.uses[key.slice(5)] = value.count
       } else if (key.startsWith('revoked:')) {
         const [channel, member] = key.slice(8).split(':')
         ;(state.revoked[channel] = state.revoked[channel] || {})[member] = value
@@ -209,6 +219,51 @@ class Control extends EventEmitter {
           await view.put(`epoch:${event.channel}:${event.epoch}`, { commit: event.commit, by: event.author, at: event.timestamp })
           break
         }
+        case 'redeem': {
+          // A newcomer's redemption of an invite, recorded by any writer (the
+          // maker can be offline). Decided here, the same on every peer
+          // (spec 008, R6): signatures, the maker's right at this point,
+          // revocation, expiry against this recorder's time, uses per
+          // distinct identity.
+          if (!atLeast(authorRole, 'keeper')) break
+          const r = decodeHex(redemptionEnc, event.redemption)
+          if (!r || !verifyRedemption(r)) break
+          const inv = r.invite
+          if (!this.base.key || !b4a.equals(inv.community, this.base.key)) break
+          const id = hex(inv.id)
+          const identity = hex(r.identity)
+          if (await view.get(`redeemed:${id}:${identity}`)) break // the same person counts once
+          if (await view.get(`invite-revoked:${id}`)) break
+          if (inv.expires && event.timestamp > inv.expires) break
+          const usesNode = await view.get(`uses:${id}`)
+          const used = usesNode ? usesNode.value.count : 0
+          if (inv.uses && used >= inv.uses) break
+          const makerRole = await roleOf(hex(inv.maker))
+          const current = await roleOf(identity)
+          if (inv.role && !mayAssign(makerRole, current, inv.role)) break
+          let channelsOk = true
+          for (const ch of inv.channels) {
+            const node = await view.get(`channel:${ch}`)
+            if (!node || !node.value.private || (!atLeast(makerRole, 'admin') && !node.value.memberGrants)) channelsOk = false
+          }
+          if (!channelsOk) break
+          // The role, never a step down for someone already above it.
+          if (inv.role && (RANK[current] || 0) < RANK[inv.role]) {
+            const writer = r.writer ? hex(r.writer) : null
+            await view.put(`role:${identity}`, { role: inv.role, writer, by: hex(inv.maker) })
+            if (writer) await host.addWriter(r.writer, { indexer: inv.role === 'admin' })
+          }
+          await view.put(`redeemed:${id}:${identity}`, { channels: inv.channels, encryptionKey: hex(r.encryptionKey), role: inv.role, maker: hex(inv.maker), at: event.timestamp, by: event.author })
+          await view.put(`uses:${id}`, { count: used + 1 })
+          break
+        }
+        case 'revokeInvite': {
+          const inv = decodeHex(inviteEnc, event.invite)
+          if (!inv || !verifyInvite(inv)) break
+          if (!atLeast(authorRole, 'admin') && event.author !== hex(inv.maker)) break
+          await view.put(`invite-revoked:${hex(inv.id)}`, { by: event.author, at: event.timestamp })
+          break
+        }
         case 'revoke':
         case 'unrevoke': {
           if (!atLeast(authorRole, 'admin') || typeof event.member !== 'string') break
@@ -240,7 +295,7 @@ class Control extends EventEmitter {
 }
 
 function emptyState () {
-  return { meta: null, roles: {}, channels: {}, bans: {}, hides: {}, keepers: {}, epochs: {}, revoked: {} }
+  return { meta: null, roles: {}, channels: {}, bans: {}, hides: {}, keepers: {}, epochs: {}, revoked: {}, redeemed: {}, invitesRevoked: {}, uses: {} }
 }
 
 // A ban's cut: { logHex: length } for the banned author's logs, as the mod

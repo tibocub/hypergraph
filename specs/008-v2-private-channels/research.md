@@ -106,6 +106,12 @@ re-grants to current members only); keys already handed out can't be taken back 
 - **Channel access**: any member able to grant those channels (R5) sees pending redemptions in the
   control state (redeemed, no valid grant yet) and grants. So: role when a writer is online, keys when
   a key holder is online; the maker can be offline (FR-016).
+- **As built (T014–T016)**: writers also pre-check a redemption against the current state before
+  recording it (a forged or used-up invite would otherwise add a rejected event on every retry). A
+  role is never a step down for someone already above it. Found while testing: a key arriving from
+  an online key holder doesn't make a message readable if its author's log is offline and nobody
+  else held its blocks (keepers list posts, they don't store them); availability is the
+  replication setting's job (`all` helpers), not the invite's.
 - **Alternative considered**: Autobase optimistic appends by the newcomer (v1's redemption). v2's
   control log admits staff writers only, and an optimistic block's timestamp is the newcomer's own
   (expiry could be backdated); a recorder's event fixes both.
