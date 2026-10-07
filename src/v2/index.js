@@ -10,6 +10,8 @@ const Hyperbee = require('hyperbee')
 const { AuthorLog } = require('./author-log')
 const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 const { Replicator } = require('./replication')
+const { boxKeyPair, newEpochKey, commitOf, messageAD, encryptMessage, decryptMessage } = require('./crypto')
+const { isSealed, sealedContent } = require('./encodings')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
 // peer holds and reads. Unstable; not part of the v1 API. See
@@ -57,6 +59,8 @@ class Community extends ReadyResource {
   #unreachable = 0 // logs a read gave up on (last page)
   #follows = new Map() // stop function of a live follow -> its channel
   #scans = 0 // roster scans by follows (idle-cost introspection)
+  #boxKeys = null // this member's encryption key pair (spec 008)
+  #keys = new Map() // private channel -> Map(epoch -> key) this member holds
   #mode = 'auto'
   #budget = 1e9
   #replicator = null
@@ -154,6 +158,29 @@ class Community extends ReadyResource {
   /** The commitment (hex) the control log records for an epoch of a private channel. */
   epochCommit (channel, epoch) { const e = (this.#state.epochs[channel] || {})[epoch]; return e ? e.commit : null }
   revoked (channel, member) { return (this.#state.revoked[channel] || {})[toHex(member)] || null }
+
+  /** This member's encryption public key (hex): what grants are sealed to. */
+  get encryptionKey () { return toHex(this.#box().publicKey) }
+
+  #box () {
+    if (!this.#boxKeys) this.#boxKeys = boxKeyPair(this.#identity)
+    return this.#boxKeys
+  }
+
+  // An epoch key this member holds, if its commitment matches the control
+  // log's (a key from a losing rotation doesn't count).
+  #epochKey (channel, epoch) {
+    const key = (this.#keys.get(channel) || new Map()).get(epoch)
+    if (!key) return null
+    const commit = this.epochCommit(channel, epoch)
+    return commit && toHex(commitOf(key)) === commit ? key : null
+  }
+
+  #holdKey (channel, epoch, key) {
+    let keys = this.#keys.get(channel)
+    if (!keys) this.#keys.set(channel, (keys = new Map()))
+    keys.set(epoch, key)
+  }
   hidden (author, log, seq) { return this.#state.hides[`${toHex(author)}:${toHex(log)}:${seq}`] || null }
   keepers (channelId) { return this.#state.keepers[channelId] || [] }
 
@@ -183,12 +210,19 @@ class Community extends ReadyResource {
    *   event instead of two (500 channels: 2,003 events, ~20-40 MB more on
    *   every member than with half of them)
    */
-  async createChannel ({ name = '', segmentMs = 3600000, keep = false } = {}) {
+  async createChannel ({ name = '', segmentMs = 3600000, keep = false, private: priv = false, memberGrants = false } = {}) {
     if (!this.opened) await this.ready()
     if (!((RANK[this.#myRole()] || 0) >= RANK.admin)) throw new Error('Creating a channel is not allowed for this member')
     this.#requireWriter()
     const id = toHex(hcrypto.randomBytes(16))
     const event = { type: 'channel', id, name, segmentMs }
+    if (priv) {
+      // Epoch 0: the key stays here (and, sealed, with keepers once granted);
+      // the control log only records its commitment.
+      const key = newEpochKey()
+      this.#holdKey(id, 0, key)
+      Object.assign(event, { private: true, commit: toHex(commitOf(key)), memberGrants: !!memberGrants })
+    }
     // The roster core's key, not its key pair's public key (Hypercore derives
     // a core's key from its manifest).
     if (keep) event.rosterKey = toHex((await this.#openOwnRoster(id)).key)
@@ -454,7 +488,19 @@ class Community extends ReadyResource {
     if (this.banned(this.#identity.keyPair.publicKey)) throw new Error('This member is banned')
     const log = await this.#ownLog(channel)
     const reply = opts.reply ? { log: b4a.from(toHex(opts.reply.log), 'hex'), seq: opts.reply.seq } : null
-    const { seq, t } = await log.append({ text, reply })
+    let appended
+    if (record.private) {
+      // Only with the epoch the control log names current, and its key.
+      const epoch = record.epoch
+      const key = this.#epochKey(channel, epoch)
+      if (!key) throw new Error('This member holds no key for the current epoch of this private channel')
+      const t = log.nextT()
+      const { nonce, box } = encryptMessage(key, messageAD(this.key, channel, log.key, epoch, t), sealedContent.encode({ text, reply }))
+      appended = await log.appendRaw({ t, epoch, nonce, box })
+    } else {
+      appended = await log.append({ text, reply })
+    }
+    const { seq, t } = appended
     const segment = segmentOf(t, record.segmentMs)
     if (!this.#announced.has(`${channel}:${segment}`)) await this.#announce(channel, segment, log, seq)
     return { author: toHex(this.#identity.keyPair.publicKey), log: toHex(log.key), seq, t }
@@ -595,9 +641,20 @@ class Community extends ReadyResource {
     return log.length
   }
 
-  #shape (author, logHex, m) {
+  #shape (channel, author, logHex, m) {
     const hidden = !!this.hidden(author, logHex, m.seq)
-    return { author, log: logHex, seq: m.seq, t: m.t, text: hidden ? null : m.text, hidden }
+    if (!isSealed(m)) return { author, log: logHex, seq: m.seq, t: m.t, text: hidden ? null : m.text, hidden }
+    // Private: the text only with the epoch's key and an intact box;
+    // otherwise unreadable, never an error (FR-003).
+    const out = { author, log: logHex, seq: m.seq, t: m.t, text: null, hidden, encrypted: true, epoch: m.epoch }
+    const key = this.#epochKey(channel, m.epoch)
+    const plain = key && decryptMessage(key, messageAD(this.key, channel, b4a.from(logHex, 'hex'), m.epoch, m.t), m.nonce, m.box)
+    if (!plain) return { ...out, unreadable: true }
+    let content = null
+    try { content = sealedContent.decode(plain) } catch { return { ...out, unreadable: true } }
+    if (!hidden) out.text = content.text
+    if (content.reply) out.reply = { log: toHex(content.reply.log), seq: content.reply.seq }
+    return out
   }
 
   #visible (author, logHex, m) {
@@ -667,7 +724,7 @@ class Community extends ReadyResource {
               break
             }
             c.oldest = { t: m.t, author: c.e.author, seq: m.seq }
-            if (m.t < beforeT && this.#visible(c.e.author, c.e.log, m)) c.shown.push(this.#shape(c.e.author, c.e.log, m))
+            if (m.t < beforeT && this.#visible(c.e.author, c.e.log, m)) c.shown.push(this.#shape(channel, c.e.author, c.e.log, m))
           }
           c.next = from - 1
           if (c.next < c.e.start) c.done = true
@@ -733,7 +790,7 @@ class Community extends ReadyResource {
         } catch (err) {
           safetyCatch(err)
         }
-        if (m && m.t >= since && this.#visible(w.author, toHex(w.log.key), m)) onmessage(this.#shape(w.author, toHex(w.log.key), m))
+        if (m && m.t >= since && this.#visible(w.author, toHex(w.log.key), m)) onmessage(this.#shape(channel, w.author, toHex(w.log.key), m))
       }
     }
 

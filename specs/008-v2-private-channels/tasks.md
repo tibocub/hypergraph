@@ -10,22 +10,22 @@ by a failing test.
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `src/v2/crypto.js`, `src/v2/grants.js`, `src/v2/invites.js` (empty modules exporting `{}`) and confirm `node scripts/test-runner.js v2` still runs green
+- [X] T001 Add `src/v2/crypto.js`, `src/v2/grants.js`, `src/v2/invites.js` (empty modules exporting `{}`) and confirm `node scripts/test-runner.js v2` still runs green
 
 ## Phase 2: Foundational (blocking all stories)
 
-- [ ] T002 [P] Test `test/brittle/v2/crypto.js`: the encryption key pair is the same from the same identity seed on two stores and differs between identities; a sealed epoch key opens only with the recipient's secret; a private message box opens only with the same epoch key and the same AD (community, channel, author log key, epoch, t) and fails with any of them changed; a tampered box fails
-- [ ] T003 [P] Implement `src/v2/crypto.js`: `boxKeyPair(identity)` = `crypto_box_seed_keypair(sha256('hg-v2-box\0' + seed))`, `seal/openSealed`, `encryptMessage/decryptMessage` (XChaCha20-Poly1305 IETF, 24-byte nonce, AD = `sha256('hg-v2-msg\0' + community + channel + authorLogKey + epoch + t)`), `commitOf(key)` = sha256
-- [ ] T004 [P] Extend `src/v2/encodings.js`: private message block `{ t, epoch, nonce, box }` distinguished from `{ t, text, reply? }` by a flag; grant entry `{ sealed, granter, sig }` and grant key `[recipient (32 B), epoch (uint)]`; grant submission; invite `{ id, community, role?, channels?, expires?, uses?, maker, sig }`; redemption `{ invite, identity, encryptionKey, writer?, t, sig }`; tests in `test/brittle/v2/encodings.js`
-- [ ] T005 Test `test/brittle/v2/control.js`: `channel` with `private: true` + `commit` records `epoch:<id>:0`; `rotate` accepted only for `current + 1` and from admin+; two concurrent `rotate` for the same epoch converge on the first ordered on two peers; `revoke` admin+ only; events from someone without the role are ignored everywhere
-- [ ] T006 Implement the control log events in `src/v2/control.js` (`channel{private, commit, memberGrants}`, `rotate`, `revoke`) and state (`epochs`, `revoked`), exposed by `community.channel(id)` (`private`, `epoch`, `memberGrants`)
+- [X] T002 [P] Test `test/brittle/v2/crypto.js`: the encryption key pair is the same from the same identity seed on two stores and differs between identities; a sealed epoch key opens only with the recipient's secret; a private message box opens only with the same epoch key and the same AD (community, channel, author log key, epoch, t) and fails with any of them changed; a tampered box fails
+- [X] T003 [P] Implement `src/v2/crypto.js`: `boxKeyPair(identity)` = `crypto_box_seed_keypair(sha256('hg-v2-box\0' + seed))`, `seal/openSealed`, `encryptMessage/decryptMessage` (XChaCha20-Poly1305 IETF, 24-byte nonce, AD = `sha256('hg-v2-msg\0' + community + channel + authorLogKey + epoch + t)`), `commitOf(key)` = sha256
+- [X] T004 [P] Extend `src/v2/encodings.js`: private message block `{ t, epoch, nonce, box }` distinguished from `{ t, text, reply? }` by a flag; grant entry `{ sealed, granter, sig }` and grant key `[recipient (32 B), epoch (uint)]`; grant submission; invite `{ id, community, role?, channels?, expires?, uses?, maker, sig }`; redemption `{ invite, identity, encryptionKey, writer?, t, sig }`; tests in `test/brittle/v2/encodings.js`
+- [X] T005 Test `test/brittle/v2/control.js`: `channel` with `private: true` + `commit` records `epoch:<id>:0`; `rotate` accepted only for `current + 1` and from admin+; two concurrent `rotate` for the same epoch converge on the first ordered on two peers; `revoke` admin+ only; events from someone without the role are ignored everywhere
+- [X] T006 Implement the control log events in `src/v2/control.js` (`channel{private, commit, memberGrants}`, `rotate`, `revoke`) and state (`epochs`, `revoked`), exposed by `community.channel(id)` (`private`, `epoch`, `memberGrants`)
 
 ## Phase 3: User Story 1 — a private channel only its members can read (P1) 🎯 MVP
 
 **Independent test**: admin, member with access, member without, keeper without the key, newcomer.
 
-- [ ] T007 [US1] Test `test/brittle/v2/private.js`: `createChannel({ private: true, keep: true })`; the creator posts and reads its text; a member without access and a keeper read `{ encrypted: true, text: null, unreadable: true }` with author and time; the raw author log blocks contain no message text; a member who isn't granted can't post (throws)
-- [ ] T008 [US1] Implement in `src/v2/index.js`: `community.encryptionKey`; channel keys in memory per channel (`#keys`: channel → epoch → key); private `createChannel` (epoch 0 key, commit, self-grant kept locally until US2 stores it); `post` encrypting with the current epoch; `#shape` decrypting or marking unreadable; `follow` the same
+- [X] T007 [US1] Test `test/brittle/v2/private.js`: `createChannel({ private: true, keep: true })`; the creator posts and reads its text; a member without access and a keeper read `{ encrypted: true, text: null, unreadable: true }` with author and time; the raw author log blocks contain no message text; a member who isn't granted can't post (throws)
+- [X] T008 [US1] Implement in `src/v2/index.js`: `community.encryptionKey`; channel keys in memory per channel (`#keys`: channel → epoch → key); private `createChannel` (epoch 0 key, commit, self-grant kept locally until US2 stores it); `post` encrypting with the current epoch; `#shape` decrypting or marking unreadable; `follow` the same
 
 ## Phase 4: User Story 2 — giving and taking away access (P1)
 
