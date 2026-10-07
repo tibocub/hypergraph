@@ -103,8 +103,9 @@ No contexts to create, no separate content call, no ids to assemble by hand, no 
 
 ## Open questions → experiments before a spec
 
-1. **Activity list in the decision log**: does one entry per author per period hold up with thousands
-   of active authors per period (decision log size, newcomer join cost, write rate)?
+1. **Activity lists passed between members** (point 5): how big is a period's list, how costly to check,
+   and how fast does a newcomer get it from a few members? (Size and checking measured below; the
+   gossip on a real network is still to measure.)
 2. **HyperDB for local indexes**: speed and size for 1M records; can app-declared indexes work without a
    build step for app developers (one generic index collection filled by our code)?
 3. **Aggregates across many authors**: how fast are "latest posts across 10,000 authors" and "vote count
