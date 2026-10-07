@@ -5,7 +5,8 @@ const hcrypto = require('hypercore-crypto')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const { Control, sign, mayAssign, RANK } = require('./control')
-const { Roster, verifyEntry, signEntry } = require('./roster')
+const { Roster, verifyEntry, signEntry, lastEntry, BIN } = require('./roster')
+const Hyperbee = require('hyperbee')
 const { AuthorLog } = require('./author-log')
 const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 const { Replicator } = require('./replication')
@@ -22,9 +23,9 @@ const trace = (...a) => { if (TRACE) process.stderr.write(`[v2 ${process.pid}] $
 const newer = (a, b) => (a.t - b.t) || (a.author > b.author ? 1 : a.author < b.author ? -1 : 0) || (a.seq - b.seq)
 const toHex = (k) => (b4a.isBuffer(k) ? b4a.toString(k, 'hex') : String(k))
 
-function rosterKeyPair (identity, communityKey, channel) {
+function rosterKeyPair (identity, communityKey, channel, domain = 'hg-v2-roster') {
   const seed = identity.seed || nodeCrypto.createHash('sha256').update(identity.keyPair.secretKey).digest()
-  return hcrypto.keyPair(nodeCrypto.createHash('sha256').update('hg-v2-roster\0').update(seed).update(communityKey).update(b4a.from(channel)).digest())
+  return hcrypto.keyPair(nodeCrypto.createHash('sha256').update(domain + '\0').update(seed).update(communityKey).update(b4a.from(channel)).digest())
 }
 
 // Whichever first: the promise, or `ms`; the timer is cleared either way.
@@ -214,6 +215,15 @@ class Community extends ReadyResource {
           cut[e.log] = log.length
         }
       }
+      // A log last listed earlier: from each keeper's author index (the
+      // author's own signature on the entry is checked).
+      for (const roster of (await this.#keeperRosters(id)).values()) {
+        const e = await this.#lastListed(roster, id, author)
+        if (!e || cut[e.log] !== undefined) continue
+        const log = await this.#log(e.log, id)
+        await within(log.update({ wait: true }).catch(safetyCatch), 1000)
+        cut[e.log] = log.length
+      }
       if (!wasOpen) await this.closeChannel(id) // opened only for this
     }
     return cut
@@ -245,7 +255,8 @@ class Community extends ReadyResource {
     // storage namespace, it came back empty under a new key after the
     // community was reopened by key, which every reader missed.)
     const roster = new Roster(this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel) }), {
-      onAnnouncement: (ann) => this.acceptAnnouncement(ann)
+      onAnnouncement: (ann) => this.acceptAnnouncement(ann),
+      authors: this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-authors') })
     })
     await roster.ready()
     rosters.set(me, roster)
@@ -346,6 +357,30 @@ class Community extends ReadyResource {
   async rosterEntries (channel, segment, opts = {}) {
     if (!this.opened) await this.ready()
     return this.#entriesFrom(await this.#keeperRosters(channel), channel, segment, opts)
+  }
+
+  async #lastListed (roster, channel, author) {
+    let bee = roster.authors
+    let session = null
+    try {
+      if (!bee) {
+        const key = await within(roster.authorsKey({ timeout: 2000 }).catch(() => null), 2000)
+        if (!key) return null
+        session = this.#store.get({ key })
+        bee = new Hyperbee(session, { ...BIN, extension: false })
+        await bee.ready()
+        // Never seen here: its length from the keeper first, or the lookup
+        // finds nothing.
+        await within(session.update({ wait: true }).catch(safetyCatch), 2000)
+      }
+      const e = await within(lastEntry(bee, b4a.from(author, 'hex'), { timeout: 2000 }).catch(() => null), 2000)
+      if (!e) return null
+      const entry = { author: b4a.from(author, 'hex'), log: e.log, start: e.start, sig: e.sig }
+      if (!verifyEntry(this.key, channel, e.segment, entry)) return null
+      return { log: toHex(e.log), segment: e.segment, start: e.start }
+    } finally {
+      if (session) await bee.close().catch(safetyCatch)
+    }
   }
 
   // The union of these rosters' entries for a segment: signature checked,

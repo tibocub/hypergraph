@@ -154,6 +154,12 @@ Bans and hides are control log entries (admins/mods only), so every member has t
   below it, the same on every peer. The time rule remains for other logs; the remaining gap is a
   log last listed in an older segment, where backdated posts can show on scrollback to that
   segment.
+- **Ban, closed (T035, 2026-10-07)**: each keeper also keeps an author index per channel (author →
+  latest roster entry, signed by the author) in a separate core named in the roster's Hyperbee
+  header (`metadata.contentFeed`). Readers never download it; a mod banning someone reads it in
+  every channel, checks the author's signature, and adds that log's length to the cut. Cost: one
+  more write per author per segment on the keeper; the page a reader downloads is unchanged
+  (68 KB at 10k). Rosters created before this have no index (the gap stays for them).
 
 ## R10 — Compaction by archivers (FR-010): later (decision, 2026-10-06, T030)
 

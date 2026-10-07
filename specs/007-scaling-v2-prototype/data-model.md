@@ -59,6 +59,13 @@ the union over all keepers they reach (same (segment, author) → lowest `start`
 a segment. A keeper accepts it if: the signature is valid, the author isn't banned, the segment is
 the current or the previous one (by the keeper's clock), and the entry isn't already listed.
 
+## Keeper author index (per keeper, per channel)
+
+A Hyperbee (binary) beside each roster, written only by its keeper: `author` → `{ segment, log,
+start, sig }`, the author's latest roster entry (signed by the author, as in the roster). Its key
+is the roster header's `metadata.contentFeed`. Read only by mods, to cut every log of a banned
+author (T035).
+
 ## Local database (RocksDB, per peer, not replicated)
 
 | key | value |

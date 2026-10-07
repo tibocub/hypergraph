@@ -27,8 +27,9 @@ reads and holds, not for how big or old the community is.
 - **Reading**: a page merges the listed authors' newest messages by `(time, author, seq)`, the same
   on every peer. `follow()` reacts when a roster grows or the control log changes, with no polling.
 - **Moderation**: hides and bans are in the control log, so a member holding only today's messages
-  still applies them. A ban records how long each of the author's recent logs was, so posts dated
-  before the ban but written after it are still left out.
+  still applies them. A ban records how long each of the author's logs was (found through the
+  rosters and each keeper's author index), so posts dated before the ban but written after it are
+  still left out.
 - **Replication**: `replicate: 'all' | 'sparse' | 'auto'` (default `auto`) with a `budget` in
   bytes. `all` holds everything (helpers); `sparse` holds what is read; `auto` holds everything
   while it fits the budget, else the newest segments that fit.
@@ -86,6 +87,5 @@ Benchmarks: `bench/v2-chat.js` (channel size, throughput, replication), `bench/v
   channel list, and applying it costs native RocksDB memory.
 - A host on `auto` or `all` offers each live log to every new connection, also logs the member
   never opens (~87 B each; 500 channels: ~170 KB once per connection).
-- A ban can't cut a log last listed in an older segment; backdated posts there show on scrollback.
 - No encryption, invites or query API in v2; no compaction of old segments (decided: later, see
   research.md).
