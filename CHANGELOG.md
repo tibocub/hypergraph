@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-07: v2 prototype follow-ups (additive, unstable)
+
+- Pages fetch about what they show: latest page 68 / 113 / 143 KB at 10k / 1M / 10M messages (was
+  412–490 KB); scrollback finds its start by binary search (1M: 161 KB, was 1.1 MB).
+- `createChannel({ keep: true })`: the channel and its keeper in one control event.
+- Fixes: rosters listed an author once per copy of an announcement (100 first posts: 2,996
+  entries); a host on `auto` made members' idle connections busy (350 KB / 10 s); `auto` now
+  counts what pages read; a ban also cuts logs last listed in older segments (keepers keep an
+  author index). Details: `specs/007-scaling-v2-prototype/tasks.md` (T031–T036).
+
 ### 2026-10-06: v2 prototype, `require('hypergraph/v2')` (additive, unstable)
 
 - New, separate API: `Community` (control log, per-author channel logs, time segments, keeper
