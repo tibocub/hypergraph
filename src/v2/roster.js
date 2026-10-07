@@ -3,7 +3,7 @@ const IndexEncoder = require('index-encoder')
 const hcrypto = require('hypercore-crypto')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
-const { rosterValue, authorEntry, announcement, rosterSignable } = require('./encodings')
+const { rosterValue, authorEntry, announcement, grantSubmission, rosterSignable } = require('./encodings')
 
 // A channel's roster as one keeper keeps it (spec 007, research R3): which
 // authors posted in which segment, and where their messages start. A plain
@@ -13,6 +13,7 @@ const { rosterValue, authorEntry, announcement, rosterSignable } = require('./en
 
 const ENTRY = new IndexEncoder([IndexEncoder.UINT, IndexEncoder.BUFFER])
 const EXTENSION = 'hg-v2-announce'
+const GRANT_EXTENSION = 'hg-v2-grant' // grants of a private channel, to its keepers (spec 008)
 const BIN = { keyEncoding: 'binary', valueEncoding: 'binary' }
 
 class Roster {
@@ -25,16 +26,31 @@ class Roster {
    * @param {Object} [opts.authors] - keeper only: the core of its author index
    *   (author -> latest entry), named in the roster's header. Readers never
    *   download it; a mod reads it to find every log a banned author has.
+   * @param {Object} [opts.grants] - keeper of a private channel only: the core
+   *   of its grants bee (spec 008), named in the header as well
+   * @param {(g: Object) => Promise<boolean>} [opts.onGrant] - keeper only
    */
-  constructor (core, { onAnnouncement = null, extension = true, authors = null } = {}) {
+  constructor (core, { onAnnouncement = null, extension = true, authors = null, grants = null, grantsWho = null, onGrant = null } = {}) {
     this.core = core
-    this.bee = new Hyperbee(core, { ...BIN, extension: false, metadata: authors ? { contentFeed: authors.key } : null })
+    const metadata = authors || grants ? { contentFeed: authors ? authors.key : null, userData: grants ? grants.key : null } : null
+    this.bee = new Hyperbee(core, { ...BIN, extension: false, metadata })
     this.authors = authors ? new Hyperbee(authors, { ...BIN, extension: false }) : null
+    // A grants store: the grants tree and its identity index, named in the tree's header.
+    this.grants = grants
+      ? { bee: new Hyperbee(grants, { ...BIN, extension: false, metadata: { contentFeed: grantsWho.key } }), who: new Hyperbee(grantsWho, { ...BIN, extension: false }) }
+      : null
     this.onAnnouncement = onAnnouncement
+    this.onGrant = onGrant
     this.ext = extension
       ? core.registerExtension(EXTENSION, {
         encoding: announcement.enc,
         onmessage: (msg) => { if (this.onAnnouncement) this.onAnnouncement(msg).catch(safetyCatch) }
+      })
+      : null
+    this.grantExt = extension
+      ? core.registerExtension(GRANT_EXTENSION, {
+        encoding: grantSubmission.enc,
+        onmessage: (msg) => { if (this.onGrant) this.onGrant(msg).catch(safetyCatch) }
       })
       : null
   }
@@ -46,16 +62,40 @@ class Roster {
     await this.core.ready()
     await this.bee.ready()
     if (this.authors) await this.authors.ready()
+    if (this.grants) {
+      await this.grants.bee.ready()
+      await this.grants.who.ready()
+      await writeHeader(this.grants.bee)
+    }
+    // The header names the author index and the grants bee: written now, not
+    // with the first entry (Hyperbee's default), or a private channel nobody
+    // has posted in yet has grants no member can find.
+    if (this.authors || this.grants) await writeHeader(this.bee)
   }
 
   async close () {
     if (this.ext) this.ext.destroy()
+    if (this.grantExt) this.grantExt.destroy()
     await this.bee.close()
     if (this.authors) await this.authors.close()
+    if (this.grants) {
+      await this.grants.bee.close()
+      await this.grants.who.close()
+    }
   }
 
   announce (ann) {
     if (this.ext) this.ext.broadcast(ann)
+  }
+
+  submitGrant (g) {
+    if (this.grantExt) this.grantExt.broadcast(g)
+  }
+
+  /** The grants bee's key, from the roster's header (null if none). */
+  async grantsKey (opts) {
+    const header = await this.bee.getHeader(opts)
+    return (header && header.metadata && header.metadata.userData && header.metadata.userData.length === 32) ? header.metadata.userData : null
   }
 
   async has (segment, author) {
@@ -75,7 +115,7 @@ class Roster {
   /** The author index's key, from the roster's header (null if it has none). */
   async authorsKey (opts) {
     const header = await this.bee.getHeader(opts)
-    return (header && header.metadata && header.metadata.contentFeed) || null
+    return (header && header.metadata && header.metadata.contentFeed && header.metadata.contentFeed.length === 32) ? header.metadata.contentFeed : null
   }
 
   /** Raw entries of one segment: [{ author, log, start, sig }] (unverified). */
@@ -97,6 +137,15 @@ class Roster {
     }
     return -1
   }
+}
+
+// A writable, empty Hyperbee's header now (Hyperbee writes it with the first
+// entry otherwise).
+async function writeHeader (bee) {
+  if (!bee.core.writable || bee.core.length > 0) return
+  const batch = bee.batch()
+  await batch.getRoot(true)
+  await batch.close()
 }
 
 /** Whether a roster entry is genuinely the author's. */

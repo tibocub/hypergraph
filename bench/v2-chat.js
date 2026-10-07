@@ -3,7 +3,7 @@
 //
 //   node bench/v2-chat.js <N> [--active A] [--pool P] [--per-segment S] [--segment-ms MS] [--live L]
 //                             [--writers W] [--procs K] [--seconds D] [--rate R]
-//                             [--replicate sparse|auto|all] [--budget BYTES]
+//                             [--replicate sparse|auto|all] [--budget BYTES] [--private]
 //
 // History is generated in bulk (research R9): S messages per segment, from A
 // authors active in it (drawn from a pool of P), written straight into the
@@ -14,6 +14,8 @@
 //   writers  — K processes posting as W authors in all (W/K each, through
 //              postAs) for D seconds, R messages/s per author (0: as fast as
 //              they can); the newcomer follows: throughput and arrival.
+//   --private — the channel is private (spec 008): history encrypted, the
+//              newcomer granted by the host; the page counts once decrypted.
 //   hold     — with --replicate auto|all (the newcomer is sparse by default,
 //              so the page numbers are about reading): what it ends up
 //              holding against --budget, and its disk.
@@ -32,6 +34,9 @@ const { Community } = require('../src/v2')
 const { AuthorLog } = require('../src/v2/author-log')
 const { signEntry } = require('../src/v2/roster')
 const { segmentOf, segmentStart } = require('../src/v2/segments')
+const { newEpochKey, commitOf, messageAD, encryptMessage, boxKeyPair } = require('../src/v2/crypto')
+const { sealedContent } = require('../src/v2/encodings')
+const PRIVATE = !!process.env.V2_PRIVATE // set by --private, for every process
 
 const argValue = (name, def) => {
   const i = process.argv.indexOf(name)
@@ -69,8 +74,13 @@ async function history (dir, n, active, pool, perSegment, segmentMs) {
   const current = segmentOf(Date.now(), segmentMs)
   const firstSeg = current - segments + 1
   const channel = b4a.toString(hcrypto.randomBytes(16), 'hex')
-  await community.appendAs(owner.keyPair, { type: 'channel', id: channel, name: 'general', segmentMs, timestamp: segmentStart(firstSeg, segmentMs) })
+  const epochKey = PRIVATE ? newEpochKey() : null
+  await community.appendAs(owner.keyPair, { type: 'channel', id: channel, name: 'general', segmentMs, timestamp: segmentStart(firstSeg, segmentMs), ...(PRIVATE ? { private: true, commit: b4a.toString(commitOf(epochKey), 'hex') } : {}) })
   await community.keep(channel)
+  if (PRIVATE) {
+    community.adoptEpochKey(channel, 0, epochKey)
+    await community.grant(channel, { identity: owner.keyPair.publicKey, encryptionKey: boxKeyPair(owner).publicKey })
+  }
 
   const logs = new Map()
   const logOf = async (a) => {
@@ -100,7 +110,11 @@ async function history (dir, n, active, pool, perSegment, segmentMs) {
       if (m <= 0) break
       const log = await logOf(a)
       const messages = []
-      for (let i = 0; i < m; i++) messages.push({ t: start + Math.floor(((i * authors.length + k) / (m * authors.length)) * span), text: text(a, written + i) })
+      for (let i = 0; i < m; i++) {
+        const t = start + Math.floor(((i * authors.length + k) / (m * authors.length)) * span)
+        if (!PRIVATE) messages.push({ t, text: text(a, written + i) })
+        else messages.push({ t, epoch: 0, ...encryptMessage(epochKey, messageAD(community.key, channel, log.key, 0, t), sealedContent.encode({ text: text(a, written + i) })) })
+      }
       const first = await log.appendMany(messages)
       const id = identityOf(a)
       await community.writeRosterEntryUnchecked(channel, s, {
@@ -128,6 +142,7 @@ async function seed (dir, key, channel) {
   const community = new Community(store, { identity: identityOf('owner'), key })
   await community.ready()
   const reopenMs = ms(t)
+  if (PRIVATE) await community.grant(channel, { identity: identityOf('newcomer').keyPair.publicKey, encryptionKey: boxKeyPair(identityOf('newcomer')).publicKey })
   const server = net.createServer((socket) => {
     const s = community.replicate(false)
     s.pipe(socket).pipe(s)
@@ -212,7 +227,8 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
   const startRss = rss()
   let store = new Corestore(dir)
   const repOpts = { replicate: tp.replicate || 'sparse', ...(tp.budget ? { budget: tp.budget } : {}) }
-  let community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key, ...repOpts })
+  const me = PRIVATE ? identityOf('newcomer') : { keyPair: hcrypto.keyPair() }
+  let community = new Community(store, { identity: me, key, ...repOpts })
   await community.ready()
   let bytes = 0
   const found = store.findingPeers()
@@ -229,7 +245,7 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
   let page = []
   while (true) {
     page = await community.latest(channel, { limit: 50 })
-    if (page[0] && page[0].log === lastMessage.log && page[0].seq === lastMessage.seq) break
+    if (page[0] && page[0].log === lastMessage.log && page[0].seq === lastMessage.seq && page[0].text !== null) break
     if (ms(t0) > 10 * 60 * 1000) break
     await sleep(20)
   }
@@ -336,7 +352,7 @@ async function newcomer (dir, port, key, channel, lastMessage, live, writerPorts
   // Restart offline: is what was shown still there?
   const t2 = now()
   store = new Corestore(dir)
-  community = new Community(store, { identity: { keyPair: hcrypto.keyPair() }, key, ...repOpts })
+  community = new Community(store, { identity: me, key, ...repOpts })
   await community.ready()
   let again = []
   try {
@@ -450,6 +466,7 @@ async function main () {
   const perSegment = argValue('--per-segment', 10000)
   const segmentMs = argValue('--segment-ms', 3600000)
   const live = argValue('--live', 20)
+  if (process.argv.includes('--private')) process.env.V2_PRIVATE = '1'
   const tp = { writers: argValue('--writers', 0), procs: argValue('--procs', 2), seconds: argValue('--seconds', 10), rate: argValue('--rate', 0), replicate: argString('--replicate', 'sparse'), budget: argValue('--budget', 0) }
   const root = fs.mkdtempSync(path.join(process.env.BENCH_DIR || os.tmpdir(), `hg-v2chat-${n}-`))
   const result = { n }
@@ -491,7 +508,7 @@ async function main () {
     delete result.history.lastMessage
     const out = path.join(__dirname, 'results')
     fs.mkdirSync(out, { recursive: true })
-    fs.writeFileSync(path.join(out, `v2-chat-${n}${tp.writers ? `-w${tp.writers}` : ''}${tp.replicate !== 'sparse' ? `-${tp.replicate}` : ''}.json`), JSON.stringify(result, null, 2))
+    fs.writeFileSync(path.join(out, `v2-chat-${n}${PRIVATE || process.env.V2_PRIVATE ? '-private' : ''}${tp.writers ? `-w${tp.writers}` : ''}${tp.replicate !== 'sparse' ? `-${tp.replicate}` : ''}.json`), JSON.stringify(result, null, 2))
     console.log(JSON.stringify(result, null, 2))
     ok = true
   } finally {

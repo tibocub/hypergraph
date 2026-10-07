@@ -62,6 +62,36 @@ await community.closeChannel(channel)                             // release wha
 
 Full surface: [`contracts/api.md`](../specs/007-scaling-v2-prototype/contracts/api.md).
 
+## Private channels and invites (spec 008)
+
+Design and measurements: [`specs/008-v2-private-channels/`](../specs/008-v2-private-channels/).
+
+- **Private channels**: messages are sealed in the authors' logs with the channel's current key
+  epoch (XChaCha20-Poly1305, bound to community, channel, log, epoch and time). Who posted, when and
+  how big stays visible; members without the key, keepers and helpers get `{ text: null,
+  unreadable: true }`. Only sealed messages are shown in a private channel.
+- **Keys**: each member has one encryption key pair per identity (all its devices). An epoch key
+  travels only sealed to one member (a **grant**), signed by an admin (or, if the channel allows,
+  a key holder). Keepers keep the grants next to their roster; a member looks up only its own
+  (3.4 / 10 / 23.4 KB at 10 / 1,000 / 50,000 members). The control log records each epoch's
+  commitment, not the keys: one event per rotation, never per member.
+- **Revoking**: `revoke()` records it, rotates to a new epoch and re-grants it to everyone else (1,000
+  members: 0.4 s). The revoked member keeps what it had; nothing posted after is readable to it.
+  Concurrent rotations settle on one epoch everywhere.
+- **Invites**: `createInvite({ role, channels, expires, uses })` → a link with no key in it.
+  `redeem(link)` reaches any control log writer online (the maker needn't be); the control log
+  decides role, uses and expiry the same way on every peer; a key holder online grants the channels.
+- **Cost**: a private channel's first page vs the same public one at 1M: 280 vs 247 ms, 104 vs 97 KB.
+
+```js
+const secret = await community.createChannel({ name: 'staff', private: true, keep: true })
+await community.grant(secret, { identity, encryptionKey })   // the member's community.encryptionKey
+await community.revoke(secret, identity)
+const link = await community.createInvite({ role: 'mod', channels: [secret], uses: 5 })
+const joined = await Community.join(store, link, { identity })
+await joined.redeem(link)
+```
+
 ## Measured (2026-10-06, one Windows machine, 16 GB)
 
 | | v1 | v2 |
@@ -87,5 +117,7 @@ Benchmarks: `bench/v2-chat.js` (channel size, throughput, replication), `bench/v
   channel list, and applying it costs native RocksDB memory.
 - A host on `auto` or `all` offers each live log to every new connection, also logs the member
   never opens (~87 B each; 500 channels: ~170 KB once per connection).
-- No encryption, invites or query API in v2; no compaction of old segments (decided: later, see
-  research.md).
+- Private channels: a message is readable only while someone online holds its blocks (keepers
+  list posts, they don't store them; run helpers on `all`). Rotation re-grants every member: 15 s
+  at 50,000. Removing someone needs a rotation (no MLS-style forward secrecy).
+- No query API in v2; no compaction of old segments (decided: later, see research.md).

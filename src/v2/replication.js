@@ -2,6 +2,7 @@ const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const { segmentOf } = require('./segments')
 const { Roster } = require('./roster')
+const { Header } = require('hyperbee/lib/messages')
 
 // What a member keeps (spec 007, research R7, US4).
 //
@@ -173,6 +174,7 @@ class Replicator {
     for (const r of this.rosters.values()) {
       r.core.off('append', r.onappend)
       if (r.range) try { r.range.destroy() } catch (err) { safetyCatch(err) }
+      for (const x of r.extra || []) await closeSession(x)
       await r.roster.close().catch(safetyCatch)
     }
     this.live.clear()
@@ -460,10 +462,34 @@ class Replicator {
         const onappend = () => { trace('roster-append', rosterKey.slice(0, 8), core.length, core.writable); this.schedule('roster') }
         core.on('append', onappend)
         const range = this.mode === 'all' ? core.download({ start: 0, end: -1 }) : null
-        this.rosters.set(rosterKey, { roster, core, range, onappend })
+        // 'all' also holds a private channel's grants (and their identity
+        // index), so it can serve them with the keeper away (spec 008, T018).
+        const extra = this.mode === 'all' ? await this.holdGrants(roster) : []
+        this.rosters.set(rosterKey, { roster, core, range, onappend, extra })
         this.rostersOf(ch.id).set(keeper, roster)
       }
     }
+  }
+
+  // The grants core named in a roster's header, and the identity index named
+  // in the grants core's header: live downloads of both.
+  async holdGrants (roster) {
+    const out = []
+    const key = await within(roster.grantsKey({ timeout: LENGTH_MS }).catch(() => null), LENGTH_MS)
+    if (!key) return out
+    const grants = this.store.get({ key })
+    await grants.ready()
+    out.push({ core: grants, range: grants.download({ start: 0, end: -1 }) })
+    await within(grants.update({ wait: true }).catch(safetyCatch), LENGTH_MS)
+    const header = await within(grants.get(0, { timeout: LENGTH_MS }).catch(() => null), LENGTH_MS)
+    let who = null
+    try { who = header && Header.decode(header).metadata && Header.decode(header).metadata.contentFeed } catch {}
+    if (who && who.length === 32) {
+      const core = this.store.get({ key: who })
+      await core.ready()
+      out.push({ core, range: core.download({ start: 0, end: -1 }) })
+    }
+    return out
   }
 
   rostersOf (channel) {

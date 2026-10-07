@@ -39,13 +39,17 @@ class AuthorLog {
   async update (opts) { return this.core.update(opts) }
 
   async append ({ text, reply = null }) {
-    const t = Math.max(Date.now(), this.lastT)
-    return this.appendRaw({ t, text, reply })
+    return this.appendRaw({ t: this.nextT(), text, reply })
+  }
+
+  /** The time the next message gets: now, never before the last one. */
+  nextT () {
+    return Math.max(Date.now(), this.lastT)
   }
 
   /** Append a message with the given time, as-is (tests, bulk history). */
   async appendRaw (m) {
-    const block = message.encode(m.reply ? m : { t: m.t, text: m.text })
+    const block = message.encode(m.box ? { t: m.t, epoch: m.epoch, nonce: m.nonce, box: m.box } : m.reply ? m : { t: m.t, text: m.text })
     const { length } = await this.core.append(block)
     this.lastT = Math.max(this.lastT, m.t)
     return { seq: length - 1, t: m.t }

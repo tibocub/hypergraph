@@ -85,3 +85,57 @@ test('v2 control: a channel created to be kept by its creator is one event, not 
   const post = await other.community.post(id, 'listed?')
   t.ok(await until(async () => (await owner.community.rosterEntries(id, Math.floor(post.t / 60000))).some(e => e.author === other.pub)), 'and the roster lists posts')
 })
+
+test('v2 control: a private channel starts at epoch 0; rotations go one up, from admins only', async (t) => {
+  const { owner, other } = await community(t)
+  const b4a = require('b4a')
+  const commit = (n) => b4a.toString(b4a.alloc(32, n), 'hex')
+  const id = 'private-1'
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id, name: 'secret', private: true, commit: commit(0) })
+  t.is(owner.community.channel(id).private, true)
+  t.is(owner.community.epoch(id), 0)
+  t.is(owner.community.epochCommit(id, 0), commit(0))
+
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'rotate', channel: id, epoch: 2, commit: commit(2) })
+  t.is(owner.community.epoch(id), 0, 'skipping an epoch is ignored')
+  const stranger = crypto.keyPair()
+  await owner.community.appendAs(stranger, { type: 'rotate', channel: id, epoch: 1, commit: commit(9) })
+  t.is(owner.community.epoch(id), 0, 'a rotation by someone without the role is ignored')
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'rotate', channel: id, epoch: 1, commit: commit(1) })
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'rotate', channel: id, epoch: 1, commit: commit(5) })
+  t.is(owner.community.epoch(id), 1)
+  t.is(owner.community.epochCommit(id, 1), commit(1), 'the first rotation to an epoch wins; a second one to it is ignored')
+
+  await owner.community.appendAs(stranger, { type: 'revoke', channel: id, member: other.pub })
+  t.absent(owner.community.revoked(id, other.pub), 'a revocation by someone without the role is ignored')
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'revoke', channel: id, member: other.pub })
+  t.ok(owner.community.revoked(id, other.pub))
+
+  // Both: the revocation comes after the rotation in the owner's log, and
+  // under load the other peer can be between the two.
+  t.ok(await until(async () => { await other.community.update(); return other.community.epoch(id) === 1 && !!other.community.revoked(id, other.pub) }), 'the other peer agrees on the epoch')
+  t.is(other.community.epochCommit(id, 1), commit(1))
+  t.ok(other.community.revoked(id, other.pub))
+})
+
+test('v2 control: concurrent rotations by two admins converge on the same epoch key everywhere', async (t) => {
+  const b4a = require('b4a')
+  const commit = (n) => b4a.toString(b4a.alloc(32, n), 'hex')
+  const { owner, other } = await community(t)
+  const id = 'private-2'
+  await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id, name: 'secret', private: true, commit: commit(0) })
+  await owner.community.setRole(other.pub, 'admin', { writer: other.community.localKey })
+  await until(async () => { await other.community.update(); return other.community.role(other.pub) === 'admin' && other.community.control.writable && other.community.epoch(id) === 0 })
+  // Both rotate to epoch 1 at once, each with its own key.
+  await Promise.all([
+    owner.community.appendAs(owner.identity.keyPair, { type: 'rotate', channel: id, epoch: 1, commit: commit(11) }),
+    other.community.appendAs(other.identity.keyPair, { type: 'rotate', channel: id, epoch: 1, commit: commit(22) })
+  ])
+  t.ok(await until(async () => {
+    await owner.community.update()
+    await other.community.update()
+    const a = owner.community.epochCommit(id, 1)
+    return a && a === other.community.epochCommit(id, 1)
+  }), 'both peers name the same commit for epoch 1')
+  t.ok([commit(11), commit(22)].includes(owner.community.epochCommit(id, 1)))
+})
