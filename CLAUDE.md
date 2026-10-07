@@ -43,7 +43,7 @@ working tree**. That means:
   not a safe fallback but a silently-incompatible peer that rejects events signed by a current one —
   hyperDNS ran one for weeks before the switch; see `ECOSYSTEM.md`.
 
-## Two rules that exist specifically to stop drift
+## Three rules that exist specifically to stop drift
 
 These were added after an audit found that `docs/`, `API_PROBLEMS.md`, and `TODO.md` had partly
 drifted from the actual code, because nothing enforced keeping them in sync. Don't let it happen
@@ -53,6 +53,20 @@ again:
    top-level `docs/*.md`) → update that file in the *same* change. Not a follow-up.
 2. **Regression-test-on-change**: fix a bug or change behavior anywhere in `src/` → add or update
    a test that fails before the change and passes after, in the *same* change.
+3. **The example app is part of the product**: the reddit clone (`examples/p2p-reddit-clone`, or
+   its successor for the redesigned core) is how we prove hypergraph is easy to build with and how we
+   judge the API's friendliness. It must have automated tests of its main flows (sign up, create a
+   forum, post, comment, vote, moderate, invite), and any change to the public API or its behavior
+   updates the app and its tests in the *same* change. If something is awkward to write in the app,
+   that is an API bug to fix, not a workaround to add. The previous forum examples died exactly this
+   way: `p2p-reddit-clone`, `forum-web` and `chat-web` had no tests and went untouched while specs
+   006–008 shipped (only `examples/forum/storage` stayed alive, because the forum tests use it).
+
+**Keep the goal in view.** Hypergraph exists to be the easiest kit to build server-less,
+decentralized social apps (forums, chats, wikis, sites) without knowing replication, cryptography or
+networking. Judge every task against that, and say so when a request or a plan drifts from it
+(performance work that doesn't serve apps, features no app needs). Direction and open questions:
+`specs/research/design-brief.md`.
 
 ## Spec-kit workflow
 
