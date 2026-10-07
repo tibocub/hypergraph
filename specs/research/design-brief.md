@@ -104,15 +104,16 @@ No contexts to create, no separate content call, no ids to assemble by hand, no 
 ## Open questions → experiments before a spec
 
 1. **Activity lists passed between members** (point 5): how big is a period's list, how costly to check,
-   and how fast does a newcomer get it from a few members? (Size and checking measured below; the
-   gossip on a real network is still to measure.)
+   and how fast does a newcomer get it from a few members? **Answered** (experiment 1 below).
 2. **HyperDB for local indexes**: speed and size for 1M records; can app-declared indexes work without a
-   build step for app developers (one generic index collection filled by our code)?
+   build step for app developers (one generic index collection filled by our code)? **Answered: yes**
+   (experiment 2 below, including rebuild and live queries).
 3. **Aggregates across many authors**: how fast are "latest posts across 10,000 authors" and "vote count
    of a post" from what a member holds and fetches? When do they need helpers that keep indexes (as
-   Bluesky's servers do)?
+   Bluesky's servers do)? **Answered from existing measurements** (below).
 4. **Several devices per member**: one log per device, attested to the identity, merged by readers? How
-   do "edit from two devices at once" and "one vote per member" resolve?
+   do "edit from two devices at once" and "one vote per member" resolve? **Proposal and cost below; the
+   meaning of "latest" is Tibo's call.**
 
 ## Decided (2026-10-07)
 
@@ -161,8 +162,7 @@ below the space's policy).
   and 56 ms / 0.64 s / 2.8 s to check every signature. More than a page (~70 KB), so: **periods shrink in
   busy spaces** (e.g. a few minutes when thousands post per hour, so a period's list stays at a few
   hundred entries), and **signatures are checked on use** (only the authors whose records are shown).
-- **Still to measure**: the gossip itself on a real network — how fast a newcomer gets the latest
-  period's list from a few members, and how lists spread as authors post.
+- The gossip itself: measured on a real network, see experiment 1 below.
 
 
 ## Experiment results
@@ -191,3 +191,87 @@ RocksDB engine, one process:
 work without a build step for apps. Cost: the index roughly doubles what a member stores for what it
 holds (members index only what they hold). Not measured yet: rebuilding indexes from logs after a crash,
 and live updates (re-running a query on new records).
+
+### 1. Activity lists between members (2026-10-07, `bench/experiments/activity/gossip.js`)
+
+Real Hyperswarm connections on a local DHT (127.0.0.1, so bytes matter more than times: on a home
+connection at ~1 MB/s, 1.3 MB is ~1.3 s).
+
+**A newcomer gets a period's list** (members hold N entries; the newcomer asks one member at a time and
+compares again with the others after each answer):
+
+| entries | from 1 member | from 3 members | received |
+|---|---|---|---|
+| 1,000 | 37 ms | 72 ms | 131 KB |
+| 10,000 | 129 ms | 102 ms | 1.32 MB |
+| 50,000 | 292 ms | 238 ms | 6.6 MB |
+
+No duplicates with several members (asking one at a time works). Checking every signature on arrival
+adds ~0.55 s at 10,000 (656 ms instead of 107 ms), hence "check on use".
+
+**New entries spread** (50 members, each with 3 to 17 connections, at most 3 hops apart; 20 authors
+announce):
+
+| members pass on | every member has it (median) | received per member per entry |
+|---|---|---|
+| the entry (~135 B) | 10 ms | 4.75 copies, 615 B |
+| a short notice (~40 B); who lacks it asks | 13 ms | 1 entry + notices, 290 B |
+
+Passing on full entries costs each member one copy per connection. **Notices halve it**: at 10,000
+active authors per period, ~2.9 MB per member per period instead of ~6.1 MB. (Scuttlebutt's epidemic
+broadcast trees and Plumtree do this, plus a tree that cuts the notices further; worth it only if
+needed.)
+
+**Found on the way**: members who come online at the same moment don't find each other. Each looks
+before the others have announced, and Hyperswarm looks again only every 10 minutes. v1's networking
+already looks again after a random delay (`src/networking.js`); the new core must keep that.
+
+**Found by reading prior art: spam in the lists.** Anyone can make keys, so in an open space a spammer
+could fill a period's list with thousands of fake authors (13.5 MB for 100,000). Members must check
+**"may this author write here?" before keeping or passing on an entry**, not only when showing
+records: in a closed space, membership from the decision log (a local lookup); in an open space, a rule
+the space chooses (e.g. an invite, a proof of work, a member vouching, or a rate per period).
+
+### 2 (gaps). Rebuilding the index, live queries (2026-10-07, `bench/experiments/hyperdb/rebuild.js`)
+
+100,000 records in 1,000 author logs, on disk:
+
+- **Rebuild from the logs** (crash, lost index, schema change): reopen 0.7 s, read 5.5 s (18,000
+  records/s), index 7.8 s (12,800 records/s): **~14 s per 100,000 records**, so 2-3 minutes for a
+  million. Rare, and can be made incremental: the index remembers how far it got in each log, so after a
+  crash only the unflushed tail is redone.
+- **Live queries**: HyperDB's `watch()` fires after each flush; insert a record, flush, re-run "latest 20
+  posts": **0.6 ms median, 3.9 ms worst**. Our code knows which types were written, so it re-runs only the
+  queries that can change.
+
+### 4. Several devices per member (2026-10-07, `bench/experiments/devices/attest.js`)
+
+Proposal: **one log per device**, as Scuttlebutt learned the hard way (one key on two devices forks the
+log, and others reject the fork; Hypercore behaves the same). The device's proof that it belongs to the
+member (keet-identity-key, as v1) goes in the log's first block; a reader checks it once per log.
+
+- Cost: proof **139 B** (first device) / **235 B** (device added by another device); checking **0.07 /
+  0.13 ms**. Cheap, so devices are invisible to apps: records show the member, not the device.
+- **"Latest wins" without trusting clocks**: a device stamps a record with *the later of its clock and
+  one more than the newest record of its member it has seen*. A member's devices read each other's logs,
+  so a change made after seeing an earlier one always wins, even when one device's clock is an hour
+  ahead. Only truly simultaneous edits (both offline) are settled arbitrarily but identically for
+  everyone (by device key). Votes: one per member per target, the latest counts.
+- **A lost device** is removed by a record from another device (or the identity) that says "trust its
+  log up to block n": the same cut-by-length as v2's bans, because a thief could backdate times but
+  not rewrite blocks others already hold.
+
+## Prior art read on the way (2026-10-07)
+
+- **Nostr has both models.** NIP-72 (communities where moderators approve each post and readers show
+  only approved ones) is now marked "unrecommended" in favour of NIP-29 (a relay enforces membership and
+  moderation). NIP-72's stated problems: moderators must approve every post, and when the moderators
+  change, past approvals are lost unless re-signed. **Our model avoids both**: the decision log says who
+  may write and who is banned (no per-post approval), and decisions stay valid when roles change. What
+  NIP-29 buys with a server (closed groups, private reading) we get from the ordered decision log and
+  encryption (spec 008). What it costs, we don't pay: a group lasts only as long as its relay.
+- **Scuttlebutt**: one feed per device; multi-device ("fusion identity") came late and stayed awkward.
+  Their replication (epidemic broadcast trees) is the model for passing activity on cheaply.
+- **Bluesky**: counts and feeds come from big servers (AppViews) that index everything; that is the
+  "helpers that keep aggregates" of experiment 3, only needed for big spaces.
+
