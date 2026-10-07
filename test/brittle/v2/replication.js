@@ -140,6 +140,47 @@ test('v2 replication: auto over budget holds the newest segments that fit, and m
   t.ok(st.heldBytes <= budget, `still within budget (${st.heldBytes} <= ${budget})`)
 })
 
+test('v2 replication: auto counts what was read beyond its window; the window makes room', async (t) => {
+  // Scrollback past the window downloaded blocks no one counted: holdings
+  // could grow past the budget for good.
+  const owner = await member(t, 'rep-read-owner')
+  const c = now()
+  const a = await channelWithHistory(owner, 'a', authors(2), [c - 6, c - 5, c - 4, c - 3])
+  const segBytes = 2 * PER * ((await blockBytes(owner, a)) + STORED_OVERHEAD)
+  const budget = Math.floor(segBytes * 2.5)
+  const peer = await member(t, 'rep-read-peer', { key: owner.community.key, budget })
+  t.teardown(link(owner, peer))
+  t.ok(await until(async () => (await holdsSegment(peer, a.segments[3])) && (await holdsSegment(peer, a.segments[2])), 20000), 'the window: the two newest segments')
+
+  // Read the oldest segment in full.
+  const oldest = a.segments[0]
+  const page = await peer.community.before(a.id, { t: segmentStart(oldest.segment + 1, SEG), limit: 2 * PER })
+  t.is(page.length, 2 * PER, 'read the oldest segment')
+  t.ok(await until(async () => (await holdsNothingOf(peer, a.segments[2])) && (await holdsSegment(peer, a.segments[3])), 10000), 'the window shrank to the newest segment')
+  t.ok(await holdsSegment(peer, oldest), 'what was read is kept')
+  const st = await peer.community.stats()
+  t.ok(st.heldBytes <= budget, `held ${st.heldBytes} <= budget ${budget}, reads counted`)
+})
+
+test('v2 replication: auto drops the oldest reads once reads alone pass the budget', async (t) => {
+  const owner = await member(t, 'rep-reads-owner')
+  const c = now()
+  const a = await channelWithHistory(owner, 'a', authors(2), [c - 6, c - 5, c - 4, c - 3])
+  const segBytes = 2 * PER * ((await blockBytes(owner, a)) + STORED_OVERHEAD)
+  const budget = Math.floor(segBytes * 1.5)
+  const peer = await member(t, 'rep-reads-peer', { key: owner.community.key, budget })
+  t.teardown(link(owner, peer))
+  await until(async () => holdsSegment(peer, a.segments[3]), 20000)
+
+  for (const seg of [a.segments[0], a.segments[1]]) {
+    const page = await peer.community.before(a.id, { t: segmentStart(seg.segment + 1, SEG), limit: 2 * PER })
+    t.is(page.length, 2 * PER, `read segment ${seg.segment}`)
+  }
+  t.ok(await until(async () => holdsNothingOf(peer, a.segments[0]), 10000), 'the first read is dropped')
+  t.ok(await holdsSegment(peer, a.segments[1]), 'the last read is kept')
+  t.ok((await peer.community.stats()).heldBytes <= budget, 'within budget')
+})
+
 test('v2 replication: a helper holding everything serves old segments to a sparse member', async (t) => {
   const owner = await member(t, 'rep-helper-owner')
   const c = now()

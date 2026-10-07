@@ -63,6 +63,9 @@ class Replicator {
     this.latestFrom = latestFrom
 
     this.held = new Map() // `${channel}:${segment}` -> { channel, segment, ranges, bytes }
+    // What pages read, per segment (auto): kept first, the window gets what
+    // is left of the budget.
+    this.reads = new Map() // `${channel}:${segment}` -> { channel, segment, ranges, bytes, at }
     this.closedPlans = new Map() // same key -> ranges + bytes of a closed segment (final)
     this.fits = true
     this.passes = 0
@@ -90,7 +93,46 @@ class Replicator {
   get heldBytes () {
     let n = this.liveBytes
     for (const item of this.held.values()) n += item.bytes
+    for (const [key, read] of this.reads) if (!this.held.has(key)) n += read.bytes
     return n
+  }
+
+  get readBytes () {
+    let n = 0
+    for (const read of this.reads.values()) n += read.bytes
+    return n
+  }
+
+  // Reads of segments the window doesn't hold (those it holds are counted there).
+  get readBytesOutside () {
+    let n = 0
+    for (const [key, read] of this.reads) if (!this.held.has(key)) n += read.bytes
+    return n
+  }
+
+  /**
+   * A page read these ranges of a segment (auto only: `all` holds everything,
+   * `sparse` counts nothing). Blocks found by the scrollback binary search
+   * are not counted (a few per author).
+   * @param {Array<{ log, start, end, blockBytes }>} ranges
+   */
+  noteRead (channel, segment, ranges) {
+    if (this.mode !== 'auto' || this.closed || ranges.length === 0) return
+    const key = `${channel}:${segment}`
+    let read = this.reads.get(key)
+    if (!read) this.reads.set(key, (read = { channel, segment, ranges: [], bytes: 0, at: 0 }))
+    read.at = Date.now()
+    for (const r of ranges) {
+      const known = read.ranges.find(x => x.log === r.log)
+      if (!known) read.ranges.push({ log: r.log, start: r.start, end: r.end, blockBytes: r.blockBytes })
+      else {
+        known.start = Math.min(known.start, r.start)
+        known.end = Math.max(known.end, r.end)
+        known.blockBytes = r.blockBytes
+      }
+    }
+    read.bytes = Math.ceil(read.ranges.reduce((n, r) => n + (r.end - r.start) * (r.blockBytes + STORED_OVERHEAD), 0))
+    if (this.heldBytes > this.budget) this.schedule('read')
   }
 
   schedule (reason) {
@@ -142,7 +184,9 @@ class Replicator {
     this.passes++
     this.liveBytes = 0 // the plan below counts the current segments again
     await this.watchRosters()
-    const budget = this.mode === 'all' ? Infinity : this.budget
+    // Reads first: past the budget on their own, the oldest go.
+    if (this.mode === 'auto') await this.trimReads()
+    const budget = this.mode === 'all' ? Infinity : Math.max(0, this.budget - this.readBytesOutside)
     const want = []
     let total = 0
     let fits = true
@@ -190,7 +234,7 @@ class Replicator {
       const wanted = new Set(want.map(i => `${i.channel}:${i.segment}`))
       for (const [key, item] of [...this.held]) {
         if (wanted.has(key)) continue
-        await this.drop(item, sessions)
+        await this.drop(item, sessions, this.reads.get(key))
         this.held.delete(key)
       }
       // Live sessions for logs no longer in a current segment.
@@ -361,11 +405,29 @@ class Replicator {
     return true
   }
 
-  async drop (item, sessions) {
+  // Clear an item's ranges, except what `keep` (a read of the same segment)
+  // covers.
+  async drop (item, sessions, keep = null) {
     for (const r of item.ranges) {
       const core = await this.session(r.log, sessions)
       if (core.writable) continue // the member's own messages: never dropped
-      await core.clear(r.start, r.end).catch(safetyCatch)
+      const k = keep && keep.ranges.find(x => x.log === r.log)
+      const parts = k ? [[r.start, Math.min(r.end, k.start)], [Math.max(r.start, k.end), r.end]] : [[r.start, r.end]]
+      for (const [start, end] of parts) if (end > start) await core.clear(start, end).catch(safetyCatch)
+    }
+  }
+
+  async trimReads () {
+    if (this.readBytes <= this.budget) return
+    const sessions = new Map()
+    try {
+      for (const [key, read] of [...this.reads].sort((x, y) => x[1].at - y[1].at)) {
+        if (this.readBytes <= this.budget) break
+        if (!this.held.has(key)) await this.drop(read, sessions)
+        this.reads.delete(key)
+      }
+    } finally {
+      for (const core of sessions.values()) await core.close().catch(safetyCatch)
     }
   }
 

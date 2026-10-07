@@ -601,6 +601,7 @@ class Community extends ReadyResource {
             if (c.next < e.start) c.done = true
           }
         }
+        c.top = c.next // where reading starts: [next + 1, top + 1) is what was read
         return c
       }))
       // In rounds, all authors at once: each author still in the running
@@ -635,6 +636,12 @@ class Community extends ReadyResource {
         if (shown.length >= need) threshold = shown[need - 1]
       }
       out.push(...shown)
+      this.#replicator.noteRead(channel, seg, cursors.filter(c => c.next + 1 <= c.top).map(c => ({
+        log: c.e.log,
+        start: c.next + 1,
+        end: c.top + 1,
+        blockBytes: c.log.core.length > 0 ? c.log.core.byteLength / c.log.core.length : 0
+      })))
       for (const e of entries) later.set(e.author, e.start)
       if (out.length >= limit) break
       seg--

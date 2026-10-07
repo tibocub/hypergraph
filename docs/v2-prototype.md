@@ -86,7 +86,6 @@ Benchmarks: `bench/v2-chat.js` (channel size, throughput, replication), `bench/v
   channel list, and applying it costs native RocksDB memory.
 - A host on `auto` or `all` offers each live log to every new connection, also logs the member
   never opens (~87 B each; 500 channels: ~170 KB once per connection).
-- `auto` doesn't count what is read beyond its window yet.
 - A ban can't cut a log last listed in an older segment; backdated posts there show on scrollback.
 - No encryption, invites or query API in v2; no compaction of old segments (decided: later, see
   research.md).

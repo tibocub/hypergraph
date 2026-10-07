@@ -307,7 +307,8 @@ channel here.)
   host itself on `auto`, some downloads hung with 0 peers (window 13 MB after 515 s; now a stall
   is detected in 5 s and retried with fresh sessions), and segments planned while their logs were
   out of reach were kept as empty and never fetched (regression test). SC-008 holds on these
-  runs; reads beyond the window are not counted yet.
+  runs. Reads beyond the window count since T034 (the window shrinks to make room; 1M, 50 MB:
+  49.6 MB held after the newcomer's page and scrollback, filled in 26 s).
 - **Fixed on the way**: following channels polled the rosters every 500 ms. Idle with 5
   channels followed: 734 ms CPU and +35 MB per 10 s; now 0 ms and nothing (scan on roster
   growth and on control log change only). Closing a channel releases its logs and rosters

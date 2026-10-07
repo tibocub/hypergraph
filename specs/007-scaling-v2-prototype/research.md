@@ -132,7 +132,11 @@ was dropped as a direct dependency again.
     the exact trigger in Hypercore wasn't isolated (a minimal two-store setup didn't reproduce
     it). A segment whose logs no peer could describe yet (length unknown) isn't cached as planned
     and is retried from 2 s (it used to be kept as empty, never fetched).
-  - Not counted yet: what is read beyond the window (scrollback stays on disk until cleared).
+  - What pages read counts too (T034, 2026-10-07): reads are kept first, the window gets the
+    budget left over (reads of segments the window holds aren't counted twice); once reads alone
+    pass the budget, the oldest read segments are cleared. Dropping a window segment spares the
+    blocks a read of that segment covers. Not counted: the few blocks the scrollback binary
+    search probes.
 
 ## R8 — Moderation on partial data (decision)
 
