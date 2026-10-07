@@ -111,7 +111,9 @@ test('v2 control: a private channel starts at epoch 0; rotations go one up, from
   await owner.community.appendAs(owner.identity.keyPair, { type: 'revoke', channel: id, member: other.pub })
   t.ok(owner.community.revoked(id, other.pub))
 
-  t.ok(await until(async () => { await other.community.update(); return other.community.epoch(id) === 1 }), 'the other peer agrees on the epoch')
+  // Both: the revocation comes after the rotation in the owner's log, and
+  // under load the other peer can be between the two.
+  t.ok(await until(async () => { await other.community.update(); return other.community.epoch(id) === 1 && !!other.community.revoked(id, other.pub) }), 'the other peer agrees on the epoch')
   t.is(other.community.epochCommit(id, 1), commit(1))
   t.ok(other.community.revoked(id, other.pub))
 })
