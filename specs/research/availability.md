@@ -175,3 +175,38 @@ What it says:
 
 For the self-organizing cache: *Hivekeep*, *Commons*, *Seedbank*, *Hyperhive*. For the always-on
 helper program shared with SwarmFS: *Anchor*, *Lighthouse*, *Steward*, *Hivekeeper*.
+
+### Clarified (Tibo, 2026-10-07)
+
+- **No parity.** "RAID-like" meant chunks kept a configurable number of times (2–3 by default);
+  repairing = copying a chunk from one of its remaining holders. That is what the simulation models
+  (the Reed–Solomon rows above are only for comparison).
+- **Rarity counts every holder**, not only cache duty: readers holding a chunk, full replicas,
+  helpers. A file seeded by 30 people is not a helper's priority.
+
+### Network-wide lookups by root (SwarmFS, mostly)
+
+SwarmFS already addresses files by Merkle root (fixed 1 MB chunks, verified per chunk) and finds peers
+by Hyperswarm topic. HyperDHT is already one global DHT shared by every Holepunch app. A network-wide
+"who has root X" is an announce/lookup on a topic derived from X.
+
+Measured (`bench/dht-latency.js`, public HyperDHT, 5 trials, 2026-10-07):
+
+| | p50 | max |
+|---|---|---|
+| announce a topic | 1.7 s | 2.2 s |
+| look it up (found 5/5) | 1.4 s | 1.6 s |
+| look up a topic nobody announced | 1.3 s | 1.6 s |
+
+- **Fast enough** as a fallback ("no seeder in my space for this file"): ~1.5 s once, then chunks
+  come from the peers found. Not per chunk.
+- **Scalable if announcements are per root, not per chunk**: each holder re-announces what it holds
+  as announcements expire; a peer with 10,000 public roots would announce continuously (IPFS's
+  "reprovide" problem; Kubo announces roots only and rate-limits). Rarity inside a file comes from its
+  swarm (peers' chunk bitfields), not from the DHT.
+- **Safe for integrity** (content addressed: a fake provider wastes time, can't corrupt), **not
+  private**: announcing a root tells anyone who looks it up that this IP holds it; lookups show
+  interest to DHT nodes on the path. Global announcing must be opt-in (public files/spaces); private
+  spaces never announce roots globally.
+- **Shared infrastructure**: the public DHT stores announcements on other people's nodes (Keet's
+  users among them); how many records it tolerates per announcer is not measured yet.
