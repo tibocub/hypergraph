@@ -89,19 +89,23 @@ const sealedContent = {
 
 // A keeper's grants bee: [recipient encryption key, epoch] -> sealed epoch
 // key, signed by its granter (spec 008, data-model.md).
+// `identity`: the recipient's identity, so keepers can refuse revoked members
+// and check "key holders may grant" chains.
 const grantValue = {
   preencode (state, g) {
+    c.fixed32.preencode(state, g.identity)
     c.buffer.preencode(state, g.sealed)
     c.fixed32.preencode(state, g.granter)
     c.fixed64.preencode(state, g.sig)
   },
   encode (state, g) {
+    c.fixed32.encode(state, g.identity)
     c.buffer.encode(state, g.sealed)
     c.fixed32.encode(state, g.granter)
     c.fixed64.encode(state, g.sig)
   },
   decode (state) {
-    return { sealed: c.buffer.decode(state), granter: c.fixed32.decode(state), sig: c.fixed64.decode(state) }
+    return { identity: c.fixed32.decode(state), sealed: c.buffer.decode(state), granter: c.fixed32.decode(state), sig: c.fixed64.decode(state) }
   }
 }
 

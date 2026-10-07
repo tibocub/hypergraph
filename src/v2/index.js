@@ -10,7 +10,8 @@ const Hyperbee = require('hyperbee')
 const { AuthorLog } = require('./author-log')
 const { segmentOf, isFuture, FUTURE_MS } = require('./segments')
 const { Replicator } = require('./replication')
-const { boxKeyPair, newEpochKey, commitOf, messageAD, encryptMessage, decryptMessage } = require('./crypto')
+const { boxKeyPair, newEpochKey, commitOf, messageAD, encryptMessage, decryptMessage, seal, openSealed } = require('./crypto')
+const { signGrant, verifyGrant, putGrant, hasGrant, grantsForEpochs, recipientOf } = require('./grants')
 const { isSealed, sealedContent } = require('./encodings')
 
 // Scaling v2 prototype (spec 007): a community where cost follows what a
@@ -61,6 +62,11 @@ class Community extends ReadyResource {
   #scans = 0 // roster scans by follows (idle-cost introspection)
   #boxKeys = null // this member's encryption key pair (spec 008)
   #keys = new Map() // private channel -> Map(epoch -> key) this member holds
+  #keysLoadedAt = new Map() // private channel -> when this member last read its grants
+  #grantBees = new Map() // grants core key hex -> Hyperbee (other keepers' grants)
+  #grantPending = new Map() // `${channel}:${recipient}:${epoch}` -> submission, until a keeper lists it
+  #grantRetry = null
+  #accepting = new Set() // grants a keeper is writing (copies arriving together)
   #mode = 'auto'
   #budget = 1e9
   #replicator = null
@@ -123,6 +129,8 @@ class Community extends ReadyResource {
   async _close () {
     if (this.#replicator) await this.#replicator.close()
     if (this.#retry) clearInterval(this.#retry)
+    if (this.#grantRetry) clearInterval(this.#grantRetry)
+    for (const bee of this.#grantBees.values()) await bee.close().catch(safetyCatch)
     for (const stop of [...this.#follows.keys()]) stop()
     for (const rosters of this.#rosters.values()) for (const r of rosters.values()) await r.close().catch(safetyCatch)
     for (const log of this.#logs.values()) await log.close().catch(safetyCatch)
@@ -181,6 +189,162 @@ class Community extends ReadyResource {
     if (!keys) this.#keys.set(channel, (keys = new Map()))
     keys.set(epoch, key)
   }
+
+  // Epochs of a channel this member holds a valid key for, oldest first.
+  #heldEpochs (channel) {
+    return [...(this.#keys.get(channel) || new Map()).keys()].filter(e => this.#epochKey(channel, e)).sort((a, b) => a - b)
+  }
+
+  /**
+   * What this member can read of a private channel: the epochs it holds, and
+   * whether it holds the current one (after looking for grants).
+   * @returns {Promise<{ epochs: number[], current: boolean }>}
+   */
+  async access (channel) {
+    if (!this.opened) await this.ready()
+    const record = this.channel(channel)
+    if (!record || !record.private) throw new Error('Not a private channel')
+    await this.#loadKeys(channel, true)
+    return { epochs: this.#heldEpochs(channel), current: !!this.#epochKey(channel, record.epoch) }
+  }
+
+  /**
+   * Give a member access to a private channel: every epoch key this member
+   * holds, sealed to the recipient's encryption key, sent to the channel's
+   * keepers (retried until one lists it). Admins and up; key holders too if
+   * the channel allows it.
+   */
+  async grant (channel, { identity, encryptionKey }) {
+    if (!this.opened) await this.ready()
+    const record = this.channel(channel)
+    if (!record || !record.private) throw new Error('Not a private channel')
+    const me = toHex(this.#identity.keyPair.publicKey)
+    if (!this.#heldEpochs(channel).length) await this.#loadKeys(channel, true)
+    const epochs = this.#heldEpochs(channel)
+    const admin = (RANK[this.#myRole()] || 0) >= RANK.admin
+    if (!admin && !(record.memberGrants && epochs.length && !this.revoked(channel, me))) throw new Error('Granting this channel is not allowed for this member')
+    if (!epochs.length) throw new Error('This member holds no key for this channel')
+    const recipient = b4a.from(toHex(encryptionKey), 'hex')
+    const id = b4a.from(toHex(identity), 'hex')
+    if (this.revoked(channel, id)) {
+      if (!admin) throw new Error('This member is revoked from the channel')
+      await this.#control.append(this.#sign({ type: 'unrevoke', channel, member: toHex(id) })) // granting again lifts it
+    }
+    for (const epoch of epochs) {
+      const g = { channel, recipient, identity: id, epoch, sealed: seal(this.#keys.get(channel).get(epoch), recipient), granter: this.#identity.keyPair.publicKey }
+      g.sig = signGrant(this.key, channel, g, this.#identity.keyPair)
+      await this.#submitGrant(g)
+    }
+  }
+
+  // A grant to the keepers: written here if this member keeps the channel,
+  // broadcast to the others; the timer re-sends it until a keeper lists it.
+  async #submitGrant (g) {
+    if (this.#kept.has(g.channel)) await this.acceptGrant(g)
+    const rosters = await this.#keeperRosters(g.channel)
+    if (this.#kept.has(g.channel) && rosters.size === 1) return // listed here, no other keeper
+    this.#grantPending.set(`${g.channel}:${toHex(g.recipient)}:${g.epoch}`, g)
+    for (const roster of rosters.values()) if (!roster.writable) roster.submitGrant(g)
+    if (!this.#grantRetry) {
+      this.#grantRetry = setInterval(() => this.#sendGrants().catch(safetyCatch), 500)
+      if (this.#grantRetry.unref) this.#grantRetry.unref()
+    }
+  }
+
+  async #sendGrants () {
+    for (const [id, g] of [...this.#grantPending]) {
+      const rosters = await this.#keeperRosters(g.channel)
+      let listed = false
+      for (const roster of rosters.values()) {
+        const bee = await this.#grantsBee(roster)
+        if (bee && await within(hasGrant(bee, g.recipient, g.epoch, { timeout: 1000 }).catch(() => false), 1500)) { listed = true; break }
+      }
+      if (listed) this.#grantPending.delete(id)
+      else for (const roster of rosters.values()) if (!roster.writable) roster.submitGrant(g)
+    }
+    if (this.#grantPending.size === 0 && this.#grantRetry) {
+      clearInterval(this.#grantRetry)
+      this.#grantRetry = null
+    }
+  }
+
+  /** Keeper: list a grant if its signature, granter and recipient check out. */
+  async acceptGrant (g) {
+    if (!this.opened) await this.ready()
+    const record = this.channel(g.channel)
+    if (!record || !record.private || !this.#kept.has(g.channel)) return false
+    const roster = this.#rostersOf(g.channel).get(toHex(this.#identity.keyPair.publicKey))
+    if (!roster || !roster.grants || !roster.writable) return false
+    if (g.epoch > record.epoch || !verifyGrant(this.key, g.channel, g)) return false
+    if (this.revoked(g.channel, g.identity)) return false
+    if (!(await this.#mayGrant(g.channel, g.granter, roster.grants))) return false
+    const id = `${g.channel}:${toHex(g.recipient)}:${g.epoch}`
+    if (this.#accepting.has(id)) return true // a copy of one being written
+    this.#accepting.add(id)
+    try {
+      await putGrant(roster.grants, g)
+    } finally {
+      this.#accepting.delete(id)
+    }
+    return true
+  }
+
+  // Admins and up; or, where the channel allows it, a member the keeper's
+  // grants bee already lists (a valid grant got them there) and not revoked.
+  async #mayGrant (channel, granter, bee) {
+    if ((RANK[this.role(granter)] || 0) >= RANK.admin) return true
+    const record = this.channel(channel)
+    if (!record || !record.memberGrants || this.revoked(channel, granter)) return false
+    return !!(await within(recipientOf(bee, b4a.from(toHex(granter), 'hex'), { timeout: 1000 }).catch(() => null), 1500))
+  }
+
+  async #grantsBee (roster) {
+    if (roster.grants) return roster.grants
+    const id = toHex(roster.key)
+    if (this.#grantBees.has(id)) return this.#grantBees.get(id)
+    const key = await within(roster.grantsKey({ timeout: 2000 }).catch(() => null), 2000)
+    if (!key) return null
+    const bee = new Hyperbee(this.#store.get({ key }), { ...BIN, extension: false })
+    await bee.ready()
+    this.#grantBees.set(id, bee)
+    return bee
+  }
+
+  // This member's grants for a channel, from each keeper: checked (granter's
+  // signature and right, the key matching the epoch's commitment) and kept
+  // in memory. At most once a second unless forced.
+  async #loadKeys (channel, force = false) {
+    const record = this.channel(channel)
+    if (!record || !record.private) return
+    const last = this.#keysLoadedAt.get(channel) || 0
+    if (!force && Date.now() - last < 1000) return
+    this.#keysLoadedAt.set(channel, Date.now())
+    const box = this.#box()
+    for (const roster of (await this.#keeperRosters(channel)).values()) {
+      const bee = await this.#grantsBee(roster)
+      if (!bee) continue
+      if (!roster.grants) await within(bee.core.update({ wait: true }).catch(safetyCatch), 1000)
+      // The epochs the control log has, minus those already held.
+      const missing = []
+      for (let e = 0; e <= record.epoch; e++) if (!this.#epochKey(channel, e)) missing.push(e)
+      if (missing.length === 0) return
+      let list = []
+      try {
+        list = await within(grantsForEpochs(bee, box.publicKey, missing, { timeout: 2000 }), 3000) || []
+      } catch (err) {
+        safetyCatch(err)
+      }
+      for (const g of list) {
+        if (this.#epochKey(channel, g.epoch)) continue
+        if (!verifyGrant(this.key, channel, g)) continue
+        if (!(await this.#mayGrant(channel, g.granter, bee))) continue
+        const key = openSealed(g.sealed, box)
+        const commit = this.epochCommit(channel, g.epoch)
+        if (!key || !commit || toHex(commitOf(key)) !== commit) continue
+        this.#holdKey(channel, g.epoch, key)
+      }
+    }
+  }
   hidden (author, log, seq) { return this.#state.hides[`${toHex(author)}:${toHex(log)}:${seq}`] || null }
   keepers (channelId) { return this.#state.keepers[channelId] || [] }
 
@@ -225,8 +389,11 @@ class Community extends ReadyResource {
     }
     // The roster core's key, not its key pair's public key (Hypercore derives
     // a core's key from its manifest).
-    if (keep) event.rosterKey = toHex((await this.#openOwnRoster(id)).key)
+    if (keep) event.rosterKey = toHex((await this.#openOwnRoster(id, { private: priv })).key)
     await this.#control.append(this.#sign(event))
+    // The creator's own grant: its key survives a restart and reaches its
+    // other devices (pending until a keeper lists it).
+    if (priv) await this.grant(id, { identity: this.#identity.keyPair.publicKey, encryptionKey: this.#box().publicKey })
     return id
   }
 
@@ -285,8 +452,10 @@ class Community extends ReadyResource {
 
   // ── keepers and rosters ──────────────────────────────────────────────────
 
-  async #openOwnRoster (channel) {
+  async #openOwnRoster (channel, opts = {}) {
     const me = toHex(this.#identity.keyPair.publicKey)
+    const record = this.channel(channel)
+    const priv = opts.private !== undefined ? opts.private : !!(record && record.private)
     const rosters = this.#rostersOf(channel)
     if (rosters.has(me) && rosters.get(me).writable) return rosters.get(me)
     // Derived from the identity, community and channel, like author logs:
@@ -295,7 +464,10 @@ class Community extends ReadyResource {
     // community was reopened by key, which every reader missed.)
     const roster = new Roster(this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel) }), {
       onAnnouncement: (ann) => this.acceptAnnouncement(ann),
-      authors: this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-authors') })
+      authors: this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-authors') }),
+      // A private channel's keeper also keeps its grants (spec 008, R1).
+      grants: priv ? this.#store.get({ keyPair: rosterKeyPair(this.#identity, this.key, channel, 'hg-v2-grants') }) : null,
+      onGrant: (g) => this.acceptGrant(g)
     })
     await roster.ready()
     rosters.set(me, roster)
@@ -492,6 +664,7 @@ class Community extends ReadyResource {
     if (record.private) {
       // Only with the epoch the control log names current, and its key.
       const epoch = record.epoch
+      if (!this.#epochKey(channel, epoch)) await this.#loadKeys(channel, true)
       const key = this.#epochKey(channel, epoch)
       if (!key) throw new Error('This member holds no key for the current epoch of this private channel')
       const t = log.nextT()
@@ -672,6 +845,7 @@ class Community extends ReadyResource {
   async #page (channel, beforeT, limit, timeout) {
     const record = this.channel(channel)
     if (!record) throw new Error('Unknown channel')
+    if (record.private) await this.#loadKeys(channel)
     const first = segmentOf(record.createdAt, record.segmentMs)
     const startT = Number.isFinite(beforeT) ? beforeT : Date.now() + FUTURE_MS
     let seg = segmentOf(startT, record.segmentMs)
@@ -790,7 +964,13 @@ class Community extends ReadyResource {
         } catch (err) {
           safetyCatch(err)
         }
-        if (m && m.t >= since && this.#visible(w.author, toHex(w.log.key), m)) onmessage(this.#shape(channel, w.author, toHex(w.log.key), m))
+        if (!m || m.t < since || !this.#visible(w.author, toHex(w.log.key), m)) continue
+        let shaped = this.#shape(channel, w.author, toHex(w.log.key), m)
+        if (shaped.unreadable) {
+          await this.#loadKeys(channel)
+          shaped = this.#shape(channel, w.author, toHex(w.log.key), m)
+        }
+        onmessage(shaped)
       }
     }
 
@@ -962,6 +1142,24 @@ class Community extends ReadyResource {
   }
 
   /** As a keeper, write a roster entry without any check (tests forging). */
+  /** Keeper only: write a grant into its grants bee without any check. */
+  async writeGrantUnchecked (channel, { recipient, identity, epoch, sealed, granterKeyPair }) {
+    const roster = await this.#openOwnRoster(channel)
+    const g = { channel, recipient: b4a.from(toHex(recipient), 'hex'), identity: b4a.from(toHex(identity), 'hex'), epoch, sealed, granter: granterKeyPair.publicKey }
+    g.sig = signGrant(this.key, channel, g, granterKeyPair)
+    await putGrant(roster.grants, g)
+  }
+
+  /** The keys (hex) of the channel's keepers' grants cores. */
+  async grantsCores (channel) {
+    const out = []
+    for (const roster of (await this.#keeperRosters(channel)).values()) {
+      const bee = await this.#grantsBee(roster)
+      if (bee) out.push(toHex(bee.core.key))
+    }
+    return out
+  }
+
   async writeRosterEntryUnchecked (channel, segment, entry) {
     const roster = await this.#openOwnRoster(channel)
     await roster.put(segment, entry.author, entry)
