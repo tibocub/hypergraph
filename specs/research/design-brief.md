@@ -114,3 +114,30 @@ No contexts to create, no separate content call, no ids to assemble by hand, no 
 - How close the API stays to v1's names (`put`, `relate`, `tag`, `query`) versus the sketch above.
 - Default policy for new spaces.
 - The project's name and package layout (same repo beside v1, or a new package).
+
+## Experiment results
+
+### 2. HyperDB for local indexes (2026-10-07, `bench/experiments/hyperdb/`)
+
+One definition built once by hypergraph (`build.js`): a `records` collection (id, type, author, time,
+links, app index keys, encoded body) and four indexes — by type and time, by author and time, by link
+target (a `map` over the record's links), and by **app-declared keys** (a `map` over keys our code
+computes when a record is written, e.g. `post|forum=abc|<time>`). App developers run no build step.
+
+A forum-shaped dataset (10% posts, 60% comments on posts, 30% votes; 1,000 authors, 20 forums),
+RocksDB engine, one process:
+
+| | 100k records | 1M records |
+|---|---|---|
+| writing (batches of 10k) | 14,500 records/s | 13,500 records/s |
+| disk (records + 4 indexes) | 32 MB | 302 MB (~300 B per record, ~80 B of it the body) |
+| latest 50 posts | 0.98 ms | 1.06 ms |
+| comments on a post (what points at it) | 0.36 ms | 1.1 ms |
+| latest 50 posts in a forum (app-declared index) | 0.68 ms | 0.78 ms |
+| an author's latest 50 | 0.60 ms | 1.4 ms |
+| one record by id | 0.06 ms | 0.08 ms |
+
+**Verdict: HyperDB does the job.** Queries stay around a millisecond from 100k to 1M; app-declared indexes
+work without a build step for apps. Cost: the index roughly doubles what a member stores for what it
+holds (members index only what they hold). Not measured yet: rebuilding indexes from logs after a crash,
+and live updates (re-running a query on new records).

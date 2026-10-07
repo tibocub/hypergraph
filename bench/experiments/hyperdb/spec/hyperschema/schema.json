@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "name": "record",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": 4,
+      "fields": [
+        {
+          "name": "id",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "type",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "author",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "t",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "links",
+          "array": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "ix",
+          "array": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "body",
+          "type": "buffer",
+          "version": 1
+        }
+      ]
+    }
+  ]
+}

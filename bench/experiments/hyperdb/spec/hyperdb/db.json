@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "offset": 0,
+  "schema": [
+    {
+      "name": "records",
+      "namespace": "hg",
+      "id": 0,
+      "type": 1,
+      "version": 1,
+      "versionField": null,
+      "indexes": [
+        "@hg/by-type",
+        "@hg/by-author",
+        "@hg/by-link",
+        "@hg/by-ix"
+      ],
+      "schema": "@hg/record",
+      "derived": false,
+      "key": [
+        "id"
+      ],
+      "trigger": null
+    },
+    {
+      "name": "by-type",
+      "namespace": "hg",
+      "id": 1,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": [
+        "type",
+        "t"
+      ]
+    },
+    {
+      "name": "by-author",
+      "namespace": "hg",
+      "id": 2,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": [
+        "author",
+        "t"
+      ]
+    },
+    {
+      "name": "by-link",
+      "namespace": "hg",
+      "id": 3,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": {
+        "type": "string",
+        "map": "linkKeys"
+      }
+    },
+    {
+      "name": "by-ix",
+      "namespace": "hg",
+      "id": 4,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": {
+        "type": "string",
+        "map": "ixKeys"
+      }
+    }
+  ]
+}
