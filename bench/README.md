@@ -189,6 +189,10 @@ newcomer latest page 1.7 s / 0.73 MB, offline reopen 111 ms.
   Measured 2026-10-06 (table in `specs/research/scaling-v2.md`): 1,000 vs 50,000 members makes
   no difference; 10 vs 500 channels costs startup 34 → 690 KB (the channel list in the control
   log) and ~10–35% memory; idle is 0 ms CPU, 0 bytes. About 1–2 min per run.
+  2026-10-07: ~13–17% with a channel and its keeper in one event (`KEEPER_EVENTS=1`: two events
+  per channel, as before). `idle.later` is a second 10 s window (what keeps costing, not what was
+  still settling). `HOST_MODE=sparse|auto|all` sets the host's replication (default auto);
+  `HG_V2_PEERS=1` samples the member's peer count while idle.
 - `channels.js`: one member with C channels open. Reports idle `update()` cost, live arrival,
   memory, cold reopen.
 

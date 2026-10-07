@@ -111,8 +111,8 @@ class Community extends ReadyResource {
       entriesFrom: (rosters, channel, segment) => this.#entriesFrom(rosters, channel, segment),
       latestFrom: (rosters, max) => this.#latestFrom(rosters, max)
     })
-    this.#control.on('change', () => this.#replicator.schedule())
-    this.#replicator.schedule()
+    this.#control.on('change', () => this.#replicator.schedule('control'))
+    this.#replicator.schedule('open')
   }
 
   async _close () {
@@ -171,12 +171,22 @@ class Community extends ReadyResource {
     await this.#control.append(this.#sign({ type: 'role', member, role: role || null, writer: opts.writer ? toHex(opts.writer) : null }))
   }
 
-  async createChannel ({ name = '', segmentMs = 3600000 } = {}) {
+  /**
+   * @param {Object} [opts]
+   * @param {boolean} [opts.keep] - also keep it (list who posts): one control
+   *   event instead of two (500 channels: 2,003 events, ~20-40 MB more on
+   *   every member than with half of them)
+   */
+  async createChannel ({ name = '', segmentMs = 3600000, keep = false } = {}) {
     if (!this.opened) await this.ready()
     if (!((RANK[this.#myRole()] || 0) >= RANK.admin)) throw new Error('Creating a channel is not allowed for this member')
     this.#requireWriter()
     const id = toHex(hcrypto.randomBytes(16))
-    await this.#control.append(this.#sign({ type: 'channel', id, name, segmentMs }))
+    const event = { type: 'channel', id, name, segmentMs }
+    // The roster core's key, not its key pair's public key (Hypercore derives
+    // a core's key from its manifest).
+    if (keep) event.rosterKey = toHex((await this.#openOwnRoster(id)).key)
+    await this.#control.append(this.#sign(event))
     return id
   }
 
@@ -775,6 +785,7 @@ class Community extends ReadyResource {
       replicating: !!(this.#replicator.running || this.#replicator.timer || this.#replicator.retryTimer),
       replicationRosters: this.#replicator.rosters.size,
       replicationLiveLogs: this.#replicator.live.size,
+      replicationActiveOpens: this.#replicator.activeOpens,
       scans: this.#scans,
       rosterKeepers,
       unreachable: this.#unreachable,
@@ -867,4 +878,4 @@ class Community extends ReadyResource {
   }
 }
 
-module.exports = { Community }
+module.exports = { Community, rosterKeyPair }

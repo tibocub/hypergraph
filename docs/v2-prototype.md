@@ -50,8 +50,8 @@ const community = new Community(new Corestore('./storage'), {
 await community.ready()
 swarm.on('connection', (socket) => community.replicate(socket))
 
-const channel = await community.createChannel({ name: 'general' })  // admin and up
-await community.keep(channel)                                     // a keeper lists who posts
+const channel = await community.createChannel({ name: 'general', keep: true })  // admin and up; keep: list who posts
+await community.keep(otherChannel)                                // a keeper can also keep channels others created
 await community.post(channel, 'hello')
 const page = await community.latest(channel, { limit: 50 })
 const older = await community.before(channel, { t: page[page.length - 1].t })
@@ -81,8 +81,11 @@ Benchmarks: `bench/v2-chat.js` (channel size, throughput, replication), `bench/v
 - A newcomer's download for the latest page grows slowly with history (68 → 143 KB from 10k to
   10M): the roster's index gets deeper (Hyperbee stores the path in every block). Logarithmic;
   one roster per segment would flatten it (not done).
-- Memory with 5 channels open is ~10–35% higher in a 500-channel community than in a 10-channel
-  one: native RocksDB memory from applying a larger control log.
+- Memory with 5 channels open is ~13–17% higher in a 500-channel community than in a 10-channel
+  one (was ~30–40% before a channel and its keeper became one event): every member holds the
+  channel list, and applying it costs native RocksDB memory.
+- A host on `auto` or `all` offers each live log to every new connection, also logs the member
+  never opens (~87 B each; 500 channels: ~170 KB once per connection).
 - `auto` doesn't count what is read beyond its window yet.
 - A ban can't cut a log last listed in an older segment; backdated posts there show on scrollback.
 - No encryption, invites or query API in v2; no compaction of old segments (decided: later, see

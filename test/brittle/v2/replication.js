@@ -178,6 +178,30 @@ test('v2 replication: logs unreachable at first are fetched once their holder co
   t.ok(await until(async () => (await holdsSegment(peer, a.segments[0])) && (await holdsSegment(peer, a.segments[1])), 25000), 'held once the holder connects')
 })
 
+test('v2 replication: a pass over what a holder already holds opens no active session', async (t) => {
+  // Each pass opened an active session on every log it checked. Opening and
+  // closing one makes Hypercore signal every peer of that log when its "in
+  // use" state flips: a host on the default (auto) cost each member 350 KB
+  // and 0.5 s of CPU per 10 idle seconds (bench/v2-community.js; 15 KB and
+  // 32 ms with inactive sessions for planning and checking).
+  const owner = await member(t, 'rep-quiet-owner') // auto: holds its own history
+  const c = now()
+  await channelWithHistory(owner, 'a', authors(10), [c - 3, c - 2])
+  await until(async () => { const st = await owner.community.stats(); return st.replicationPasses > 0 && !st.replicating })
+  const st0 = await owner.community.stats()
+  t.is(st0.holding, 'all')
+  t.is(st0.replicationActiveOpens, 0, 'none for logs it wrote and holds')
+
+  // Restarted, it checks everything again: still none.
+  await owner.community.close()
+  const { Community } = require('../../../src/v2')
+  const again = new Community(owner.store, { identity: owner.identity, key: owner.community.key })
+  await again.ready()
+  t.teardown(() => again.close())
+  await until(async () => { const st = await again.stats(); return st.replicationPasses > 0 && !st.replicating })
+  t.is((await again.stats()).replicationActiveOpens, 0, 'none after a restart either')
+})
+
 async function blockBytes (owner, ch) {
   const log = ch.logs[0]
   return Math.ceil(log.core.byteLength / log.core.length)

@@ -12,7 +12,7 @@ layout is not worth it here).
 |---|---|---|
 | `meta:community` | `{ version: 'v2-prototype', name, createdAt }` | owner, once |
 | `role:<pubkey>` | `{ role: 'owner' \| 'admin' \| 'mod' \| 'keeper', by }` | owner (admin, mod, keeper), admin (mod, keeper) |
-| `channel:<channelId>` | `{ name, segmentMs, createdAt, by }` | admin |
+| `channel:<channelId>` | `{ name, segmentMs, createdAt, by }`; an event carrying `rosterKey` also writes `keeper:<channelId>:<by>` (created and kept in one event) | admin |
 | `ban:<pubkey>` | `{ at, reason, by, cut: { <logHex>: length } }` (absent = not banned; unban deletes) | mod and up |
 | `hide:<authorPub>:<logKey>:<seq>` | `{ reason, by, at }` | mod and up |
 | `keeper:<channelId>:<keeperPub>` | `{ rosterKey }` | the keeper itself (role `keeper` required) |

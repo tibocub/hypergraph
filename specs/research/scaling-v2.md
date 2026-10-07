@@ -287,6 +287,17 @@ channel here.)
   the 500-channel member *worse* (idle 74–81 MB against 67–70 MB without, two runs each), so it
   was not kept. Left: fewer control events per channel (one keeper event for many channels),
   Autobase fast-forward for newcomers; both untested.
+  **T033 (2026-10-07)**: a channel and its creator's keeper record are now one event
+  (`createChannel({ keep: true })`). Memory with the same 5 channels open, two runs each: 10
+  channels 57 / 63 MB; 500 channels with two events per channel 79–80 / 82–83 MB, with one
+  66–68 / 71 MB. The overhead of 500 channels went from ~+30–40% to ~+13–17%; still above the
+  10% of SC-005, now from the channel list itself (each member holds it by design).
+  Found on the way: a host on `auto` cost each connected member 350 KB and 0.5 s of CPU per 10
+  idle seconds. Each replication pass opened an active session on every log it checked, and
+  opening or closing one makes Hypercore signal every peer of that log. Planning and checking now
+  use inactive sessions, and a closed segment confirmed held isn't checked again: 15 KB and 32 ms.
+  What is left at 500 channels (~170 KB, once per connection) is Corestore offering the host's
+  live logs to each new connection.
 - **Replication (T023–T024, SC-008)**, `bench/v2-chat.js --replicate auto`: at 10k with the
   default 1 GB budget, a newcomer holds everything (`holding: 'all'`). At 1M (218 MB on the host)
   with a 50 MB budget: a window of the newest ~23 segments, 49.6 MB counted, 50.2 MB downloaded,

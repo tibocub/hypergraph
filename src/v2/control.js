@@ -181,6 +181,9 @@ class Control extends EventEmitter {
             createdAt: event.timestamp,
             by: event.author
           })
+          // Created to be kept by its creator: the keeper record too, in the
+          // same event.
+          if (typeof event.rosterKey === 'string') await view.put(`keeper:${event.id}:${event.author}`, { rosterKey: event.rosterKey })
           break
         case 'ban':
           if (!atLeast(authorRole, 'mod') || (await roleOf(event.member)) === 'owner') break

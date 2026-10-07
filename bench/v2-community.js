@@ -21,7 +21,7 @@ const hcrypto = require('hypercore-crypto')
 const { spawn } = require('child_process')
 const Corestore = require('corestore')
 const b4a = require('b4a')
-const { Community } = require('../src/v2')
+const { Community, rosterKeyPair } = require('../src/v2')
 const { AuthorLog } = require('../src/v2/author-log')
 const { signEntry } = require('../src/v2/roster')
 const { segmentOf, segmentStart } = require('../src/v2/segments')
@@ -56,8 +56,17 @@ async function host (dir, channels, members, segments, active, perAuthor, open) 
   const ids = []
   for (let c = 0; c < channels; c++) {
     const id = b4a.toString(hcrypto.randomBytes(16), 'hex')
-    await community.appendAs(owner.keyPair, { type: 'channel', id, name: `c${c}`, segmentMs: SEGMENT_MS, timestamp: segmentStart(firstSeg, SEGMENT_MS) })
-    await community.keep(id)
+    // Created and kept in one event, as createChannel({ keep: true }) does
+    // (backdated here, so through the test hook). KEEPER_EVENTS=1: a separate
+    // keeper event per channel, as before.
+    const roster = store.get({ keyPair: rosterKeyPair(owner, community.key, id) })
+    await roster.ready()
+    const rosterKey = b4a.toString(roster.key, 'hex')
+    await roster.close()
+    const event = { type: 'channel', id, name: `c${c}`, segmentMs: SEGMENT_MS, timestamp: segmentStart(firstSeg, SEGMENT_MS) }
+    if (!process.env.KEEPER_EVENTS) event.rosterKey = rosterKey
+    await community.appendAs(owner.keyPair, event)
+    await community.keep(id) // opens the roster; an event only if not yet a keeper
     ids.push(id)
   }
 
@@ -121,7 +130,7 @@ async function host (dir, channels, members, segments, active, perAuthor, open) 
   // offered each one to the member on connect (~87 bytes each: 296 KB vs
   // 470 KB at startup between 1,000 and 50,000 members, from that alone).
   const served = new Corestore(dir)
-  const reopened = new Community(served, { identity: owner, key })
+  const reopened = new Community(served, { identity: owner, key, ...(process.env.HOST_MODE ? { replicate: process.env.HOST_MODE } : {}) })
   await reopened.ready()
   const server = net.createServer((socket) => {
     const s = reopened.replicate(false)
@@ -176,9 +185,22 @@ async function memberRun (dir, port, key, open, last, channels) {
 
   const cpu0 = process.cpuUsage()
   const b2 = bytes
+  // HG_V2_PEERS=1: total peers across this member's cores, every 500 ms.
+  const peerSamples = []
+  const sampler = process.env.HG_V2_PEERS
+    ? setInterval(() => { let n = 0; for (const core of store.cores) n += core.replicator.peers.length; peerSamples.push(n) }, 500)
+    : null
   await sleep(10000)
+  if (sampler) { clearInterval(sampler); process.stderr.write(`peers while idle: ${peerSamples.join(' ')}
+`) }
   const cpu = process.cpuUsage(cpu0)
   const idle = { cpuMs: Math.round((cpu.user + cpu.system) / 1000), bytes: bytes - b2, rss: rss() - startRss }
+  // A second idle window: what keeps costing, not what was still settling.
+  const cpu1 = process.cpuUsage()
+  const b3 = bytes
+  await sleep(10000)
+  const cpu2 = process.cpuUsage(cpu1)
+  idle.later = { cpuMs: Math.round((cpu2.user + cpu2.system) / 1000), bytes: bytes - b3 }
 
   for (const stop of stops) stop()
   socket.destroy()
