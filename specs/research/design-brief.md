@@ -261,6 +261,31 @@ member (keet-identity-key, as v1) goes in the log's first block; a reader checks
   log up to block n": the same cut-by-length as v2's bans, because a thief could backdate times but
   not rewrite blocks others already hold.
 
+### 6. Schemas without a build step (2026-10-07, `bench/experiments/schema/encoding.js`)
+
+Hyperschema versions encodings well, but by generating code, which every app would have to run. The
+app's declared types need a **runtime** encoding that survives app updates (old and new versions of an
+app run side by side in one space). Tested: each present field is written as its number (declaration
+order, so apps may only add fields at the end, as Hyperschema requires), its length, its value;
+readers skip numbers they don't know and leave missing fields empty (protobuf's rule).
+
+| record | JSON | tagged |
+|---|---|---|
+| post (title, text) | 129 B | 113 B |
+| comment (text, link) | 179 B | 116 B |
+| vote (value, link) | 103 B | 40 B |
+
+Both directions work (an old app reads a newer record, a newer app reads an old one); ~1.6 µs to encode,
+~0.5 µs to decode. Hypercore's own ~130 B per block then dominates small records like votes, so batching
+a few small records per block is a later option, not a need.
+
+### Deleting, said plainly
+
+Logs are append-only and other members hold copies. `del` writes a "deleted" record: every app built on
+hypergraph then hides the record and wipes its bytes from its own disk (Hypercore can clear blocks
+locally). Nobody can force a modified or offline peer to wipe its copy, which is true of every P2P
+system and of email. The docs and the reddit clone should say so where users delete.
+
 ## Prior art read on the way (2026-10-07)
 
 - **Nostr has both models.** NIP-72 (communities where moderators approve each post and readers show
