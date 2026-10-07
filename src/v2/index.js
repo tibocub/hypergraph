@@ -145,10 +145,15 @@ class Community extends ReadyResource {
   role (pubkey) { const r = this.#state.roles[toHex(pubkey)]; return r ? r.role : null }
   roles () { return Object.fromEntries(Object.entries(this.#state.roles).map(([k, v]) => [k, v.role])) }
   channels () {
-    return Object.entries(this.#state.channels).map(([id, c]) => ({ id, name: c.name, segmentMs: c.segmentMs }))
+    return Object.entries(this.#state.channels).map(([id, c]) => ({ id, name: c.name, segmentMs: c.segmentMs, ...(c.private ? { private: true } : {}) }))
   }
   channel (id) { return this.#state.channels[id] || null }
   banned (pubkey) { return this.#state.bans[toHex(pubkey)] || null }
+  /** A private channel's current epoch (null for a public channel). */
+  epoch (channel) { const c = this.channel(channel); return c && c.private ? c.epoch : null }
+  /** The commitment (hex) the control log records for an epoch of a private channel. */
+  epochCommit (channel, epoch) { const e = (this.#state.epochs[channel] || {})[epoch]; return e ? e.commit : null }
+  revoked (channel, member) { return (this.#state.revoked[channel] || {})[toHex(member)] || null }
   hidden (author, log, seq) { return this.#state.hides[`${toHex(author)}:${toHex(log)}:${seq}`] || null }
   keepers (channelId) { return this.#state.keepers[channelId] || [] }
 

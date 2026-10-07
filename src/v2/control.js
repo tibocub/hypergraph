@@ -23,6 +23,7 @@ function mayAssign (authorRole, currentRole, role) {
 }
 
 const atLeast = (role, wanted) => (RANK[role] || 0) >= RANK[wanted]
+const isHex32 = (s) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s)
 
 function digest (communityHex, event) {
   const { signature, ...rest } = event
@@ -124,6 +125,13 @@ class Control extends EventEmitter {
       else if (key.startsWith('channel:')) state.channels[key.slice(8)] = value
       else if (key.startsWith('ban:')) state.bans[key.slice(4)] = value
       else if (key.startsWith('hide:')) state.hides[key.slice(5)] = value
+      else if (key.startsWith('epoch:')) {
+        const [channel, n] = key.slice(6).split(':')
+        ;(state.epochs[channel] = state.epochs[channel] || {})[n] = value
+      } else if (key.startsWith('revoked:')) {
+        const [channel, member] = key.slice(8).split(':')
+        ;(state.revoked[channel] = state.revoked[channel] || {})[member] = value
+      }
       else if (key.startsWith('keeper:')) {
         const [channel, keeper] = key.slice(7).split(':')
         ;(state.keepers[channel] = state.keepers[channel] || []).push({ keeper, rosterKey: value.rosterKey })
@@ -172,19 +180,44 @@ class Control extends EventEmitter {
           if (writer) await host.addWriter(b4a.from(writer, 'hex'), { indexer: role === 'admin' })
           break
         }
-        case 'channel':
+        case 'channel': {
           if (!atLeast(authorRole, 'admin') || typeof event.id !== 'string' || !event.id) break
           if (await view.get(`channel:${event.id}`)) break
+          // Private: epoch 0's commitment comes with it (spec 008, R4).
+          const priv = event.private === true
+          if (priv && !isHex32(event.commit)) break
           await view.put(`channel:${event.id}`, {
             name: String(event.name || ''),
             segmentMs: Number.isInteger(event.segmentMs) && event.segmentMs > 0 ? event.segmentMs : 3600000,
             createdAt: event.timestamp,
-            by: event.author
+            by: event.author,
+            ...(priv ? { private: true, epoch: 0, memberGrants: event.memberGrants === true } : {})
           })
+          if (priv) await view.put(`epoch:${event.id}:0`, { commit: event.commit, by: event.author, at: event.timestamp })
           // Created to be kept by its creator: the keeper record too, in the
           // same event.
           if (typeof event.rosterKey === 'string') await view.put(`keeper:${event.id}:${event.author}`, { rosterKey: event.rosterKey })
           break
+        }
+        case 'rotate': {
+          // One epoch up, from an admin; of two rotations to the same epoch
+          // the first ordered wins on every peer (spec 008, R4).
+          if (!atLeast(authorRole, 'admin') || !isHex32(event.commit)) break
+          const node = await view.get(`channel:${event.channel}`)
+          if (!node || !node.value.private || event.epoch !== node.value.epoch + 1) break
+          await view.put(`channel:${event.channel}`, { ...node.value, epoch: event.epoch })
+          await view.put(`epoch:${event.channel}:${event.epoch}`, { commit: event.commit, by: event.author, at: event.timestamp })
+          break
+        }
+        case 'revoke':
+        case 'unrevoke': {
+          if (!atLeast(authorRole, 'admin') || typeof event.member !== 'string') break
+          const node = await view.get(`channel:${event.channel}`)
+          if (!node || !node.value.private) break
+          if (event.type === 'revoke') await view.put(`revoked:${event.channel}:${event.member}`, { by: event.author, at: event.timestamp })
+          else await view.del(`revoked:${event.channel}:${event.member}`)
+          break
+        }
         case 'ban':
           if (!atLeast(authorRole, 'mod') || (await roleOf(event.member)) === 'owner') break
           await view.put(`ban:${event.member}`, { at: event.timestamp, reason: event.reason || '', by: event.author, cut: banCut(event.cut) })
@@ -207,7 +240,7 @@ class Control extends EventEmitter {
 }
 
 function emptyState () {
-  return { meta: null, roles: {}, channels: {}, bans: {}, hides: {}, keepers: {} }
+  return { meta: null, roles: {}, channels: {}, bans: {}, hides: {}, keepers: {}, epochs: {}, revoked: {} }
 }
 
 // A ban's cut: { logHex: length } for the banned author's logs, as the mod
