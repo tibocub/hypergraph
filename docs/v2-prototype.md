@@ -1,5 +1,10 @@
 # v2 prototype: communities whose cost follows what you read
 
+**Status: prototype, unstable, and not a graph store.** It has channels of messages only: no
+entities, relations, tags or queries. It proved an architecture; the graph is being rebuilt on it
+(spec 010). What it taught us: [`specs/research/v2-prototype-lessons.md`](../specs/research/v2-prototype-lessons.md).
+This version is preserved at tag `v2-chat-prototype`.
+
 **Status: prototype, unstable.** `require('hypergraph/v2')` exposes it alongside the v1 API, which
 is unchanged. Names and shapes may change; nothing migrates between v1 and v2. Design, decisions
 and measurements: [`specs/007-scaling-v2-prototype/`](../specs/007-scaling-v2-prototype/) and
