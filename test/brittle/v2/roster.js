@@ -18,6 +18,14 @@ async function setup (t, label) {
   return { owner, author, channel }
 }
 
+// The keeper's own roster core for a channel (its length counts the entries written).
+async function rosterCore (peer, channel) {
+  const { rosterKey } = peer.community.keepers(channel)[0]
+  const core = peer.store.get({ key: b4a.from(rosterKey, 'hex') })
+  await core.ready()
+  return core
+}
+
 const listed = async (peer, channel, who, segment) =>
   (await peer.community.rosterEntries(channel, segment)).filter(e => e.author === who.pub)
 
@@ -61,6 +69,56 @@ test('v2 roster: a keeper that restarts keeps listing in the same roster', async
     await reader.community.update()
     return (await reader.community.rosterEntries(channel, segmentOf(post.t, 60000))).some(e => e.author === owner.pub)
   }), 'another member sees the post listed')
+})
+
+test('v2 roster: an announcement received many times at once is listed once', async (t) => {
+  // 100 authors posting for the first time together: the keeper wrote 2,996
+  // roster entries for 100 authors (copies of one announcement all passed
+  // the "already listed?" check before the first was written). Each is a
+  // permanent block, and a roster update for every reader.
+  const owner = await member(t, 'ros-dup-owner')
+  const channel = await owner.community.createChannel({ name: 'general', segmentMs: 60000 })
+  await owner.community.keep(channel)
+  const keeper = owner.community
+  const seg = segmentOf(Date.now(), 60000)
+  const roster = await rosterCore(owner, channel)
+  const authors = Array.from({ length: 6 }, () => crypto.keyPair())
+  const anns = authors.map((a) => {
+    const log = crypto.randomBytes(32)
+    return { channel, segment: seg, author: a.publicKey, log, start: 0, sig: crypto.sign(rosterSignable(keeper.key, channel, seg, log, 0), a.secretKey) }
+  })
+  await keeper.acceptAnnouncement(anns.shift()) // the first entry also writes the Hyperbee header
+  const before = roster.length
+  const copies = []
+  for (let i = 0; i < 20; i++) for (const ann of anns) copies.push(keeper.acceptAnnouncement(ann))
+  t.ok((await Promise.all(copies)).every(Boolean), 'every copy accepted')
+  t.is(roster.length - before, anns.length, `${anns.length} entries written for ${copies.length} copies`)
+})
+
+test('v2 roster: an author announces a new segment once, not again with every pending one', async (t) => {
+  // Each first post re-sent every announcement still pending: 10 first posts
+  // with nobody listing them, 55 broadcasts. Retries are the timer's job.
+  const { Roster } = require('../../../src/v2/roster')
+  const owner = await member(t, 'ros-once-owner')
+  const channel = await owner.community.createChannel({ name: 'general', segmentMs: 60000 })
+  await owner.community.keep(channel)
+  const author = await member(t, 'ros-once-author', { key: owner.community.key })
+  const unlink = link(owner, author)
+  await until(async () => { await author.community.update(); return author.community.keepers(channel).length === 1 })
+  unlink() // the keeper goes away: nothing gets listed, everything stays pending
+  // A peer that holds the roster and only counts what reaches it.
+  const spy = await member(t, 'ros-once-spy', { key: owner.community.key })
+  t.teardown(link(author, spy))
+  let received = 0
+  const roster = new Roster(spy.store.get({ key: b4a.from(author.community.keepers(channel)[0].rosterKey, 'hex') }), { onAnnouncement: async () => { received++ } })
+  await roster.ready()
+  t.teardown(() => roster.close())
+  await author.community.rosterEntries(channel, 0) // the author opens the roster
+  await until(() => roster.core.peers.length > 0, 5000)
+  const identities = Array.from({ length: 10 }, () => ({ keyPair: crypto.keyPair(), seed: crypto.randomBytes(32) }))
+  for (const id of identities) await author.community.postAs(id, channel, 'first')
+  await until(() => received >= 10, 3000)
+  t.ok(received >= 10 && received <= 20, `${received} announcements for 10 first posts`)
 })
 
 test('v2 roster: a keeper refuses bad signatures, banned authors and old segments', async (t) => {

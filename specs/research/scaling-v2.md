@@ -247,9 +247,13 @@ Against the spec's success criteria:
   size: an author's first post in a segment waited for the reader's 500 ms roster poll. Fixed:
   `follow()` now re-reads the rosters as soon as one grows (test `v2 reader: follow finds a new
   author when the roster grows`). After the fix: one author posting p95 22 ms; 100 authors at
-  5 msg/s p95 20 ms once known. **Still a miss when 100 authors all post for the first time
-  in the same second (p95 1.4 s)**: each announcement goes to the keeper, which lists it, and
-  the roster then has to replicate to the reader.
+  5 msg/s p95 20 ms once known. When 100 authors all post for the first time in the same
+  second, p95 was 1.4–1.7 s. Traced (T032, 2026-10-07): the keeper wrote 2,996 roster entries
+  for 100 authors. Every first post re-sent all of that process's pending announcements (114
+  rounds), and copies of one announcement arriving together all passed the keeper's "already
+  listed?" check before the first was written. Now the keeper claims an author in memory before
+  writing, and a first post sends only its own announcement (the retry timer re-sends pending
+  ones): 101 entries, p95 33 ms, bytes 2.6 → 1.6 MB. SC-004 passes.
 - Newcomer disk grows from 11 MB (10k) to ~40 MB (1M, 10M) for the same page: not explained
   yet.
 

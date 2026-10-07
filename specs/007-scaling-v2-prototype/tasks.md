@@ -81,7 +81,7 @@ big sizes with few processes, one at a time).
 The gaps `docs/v2-prototype.md` lists, each measured first, then fixed or explained.
 
 - [X] T031 SC-001: find where the newcomer's latest-page download grows (412 KB at 10k → 490 KB at 10M): split the bytes by roster, author logs and control log at 10k and 1M; fix if it isn't inherent
-- [ ] T032 SC-004: 100 authors posting for the first time in the same second, p95 arrival 1.4 s: measure where the time goes (announcement → keeper → roster replication → reader scan); fix what dominates
+- [X] T032 SC-004: 100 authors posting for the first time in the same second, p95 arrival 1.4 s: measure where the time goes (announcement → keeper → roster replication → reader scan); fix what dominates
 - [ ] T033 SC-005: memory with 5 channels open is ~10–35% higher at 500 channels than at 10: measure the control log's share (two events per channel) and try one keeper event for many channels
 - [ ] T034 SC-008: `auto` doesn't count what is read beyond its window: test that scrollback beyond the window doesn't push holdings over the budget for long; implement
 - [ ] T035 FR-017: a ban can't cut a log last listed in an older segment: test a banned author backdating into their last listed segment; close it

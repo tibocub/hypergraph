@@ -15,6 +15,8 @@ const { Replicator } = require('./replication')
 // docs/v2-prototype.md and specs/007-scaling-v2-prototype/.
 
 const ROSTER_WAIT_MS = 2000
+const TRACE = !!process.env.HG_V2_TRACE // timings on stderr (benchmarks)
+const trace = (...a) => { if (TRACE) process.stderr.write(`[v2 ${process.pid}] ${Date.now()} ${a.join(' ')}\n`) }
 // > 0 when message a comes after b in the order every peer agrees on:
 // time, then author key, then seq.
 const newer = (a, b) => (a.t - b.t) || (a.author > b.author ? 1 : a.author < b.author ? -1 : 0) || (a.seq - b.seq)
@@ -47,6 +49,7 @@ class Community extends ReadyResource {
   #ownLogs = new Map() // channel id -> this member's AuthorLog
   #rosters = new Map() // channel id -> Map(keeper pubkey hex -> Roster)
   #kept = new Set() // channels this member keeps
+  #listing = new Map() // `${channel}:${segment}` -> Set of authors listed or being listed (keeper)
   #announced = new Set() // `${channel}:${segment}` this member is listed in
   #pending = new Map() // `${channel}:${segment}` -> announcement, until listed
   #retry = null
@@ -290,10 +293,38 @@ class Community extends ReadyResource {
     if (ann.segment < current - 1 || ann.segment > current + 1) return false
     if (this.banned(ann.author)) return false
     if (!verifyEntry(this.key, ann.channel, ann.segment, ann)) return false
-    if (!(await roster.has(ann.segment, ann.author))) {
-      await roster.put(ann.segment, ann.author, { log: ann.log, start: ann.start, sig: ann.sig })
+    // Claimed before any await: copies of one announcement arriving together
+    // all passed the roster check before the first was written (100 authors
+    // posting at once: 2,996 entries, each a permanent block).
+    const claimed = this.#claim(ann.channel, ann.segment, current, toHex(ann.author))
+    if (!claimed) return true
+    try {
+      if (!(await roster.has(ann.segment, ann.author))) {
+        await roster.put(ann.segment, ann.author, { log: ann.log, start: ann.start, sig: ann.sig })
+        trace('listed', toHex(ann.author).slice(0, 8))
+      }
+    } catch (err) {
+      claimed.delete(toHex(ann.author))
+      throw err
     }
     return true
+  }
+
+  // The keeper's set for this segment, after adding `author` to it; null if
+  // it was there already. Segments too old to accept are forgotten.
+  #claim (channel, segment, current, author) {
+    const id = `${channel}:${segment}`
+    let authors = this.#listing.get(id)
+    if (!authors) {
+      for (const key of this.#listing.keys()) {
+        const [ch, seg] = key.split(':')
+        if (ch === channel && Number(seg) < current - 1) this.#listing.delete(key)
+      }
+      this.#listing.set(id, (authors = new Set()))
+    }
+    if (authors.has(author)) return null
+    authors.add(author)
+    return authors
   }
 
   /**
@@ -392,7 +423,7 @@ class Community extends ReadyResource {
     this.#announced.add(id)
     this.#pending.set(id, ann)
     if (this.#kept.has(channel)) await this.acceptAnnouncement(ann)
-    await this.#sendPending()
+    await this.#broadcast(ann)
     if (!this.#retry) {
       // Until a keeper lists it: a keeper may not be connected yet.
       this.#retry = setInterval(() => this.#sendPending().catch(safetyCatch), 500)
@@ -400,7 +431,16 @@ class Community extends ReadyResource {
     }
   }
 
+  // This announcement to every keeper's roster; the retry timer re-sends the
+  // ones still pending (re-sending them all with each new one: 10 first posts,
+  // 54 broadcasts).
+  async #broadcast (ann) {
+    const rosters = await this.#keeperRosters(ann.channel)
+    for (const roster of rosters.values()) if (!roster.writable) roster.announce(ann)
+  }
+
   async #sendPending () {
+    trace('send-pending', this.#pending.size)
     for (const [id, ann] of this.#pending) {
       const rosters = await this.#keeperRosters(ann.channel)
       let listed = false
@@ -684,6 +724,7 @@ class Community extends ReadyResource {
         }
         const first = initial
         initial = false
+        if (fresh.length) trace('found', fresh.length, fresh.map(e => e.author.slice(0, 8)).join(','))
         for (const e of fresh) watched.set(e.log, null) // claimed
         await Promise.all(fresh.map(e => watch(e, first).catch(err => { watched.delete(e.log); safetyCatch(err) })))
       } finally {
@@ -763,11 +804,12 @@ class Community extends ReadyResource {
     const segment = segmentOf(t, record.segmentMs)
     const announced = `${author}:${channel}:${segment}`
     if (!this.#announced.has(announced)) {
+      trace('first-post', author.slice(0, 8))
       this.#announced.add(announced)
       const ann = { channel, segment, author: identity.keyPair.publicKey, log: log.key, start: seq, sig: signEntry(this.key, channel, segment, log.key, seq, identity.keyPair) }
       this.#pending.set(announced, ann)
       if (this.#kept.has(channel)) await this.acceptAnnouncement(ann)
-      await this.#sendPending()
+      await this.#broadcast(ann)
       if (!this.#retry) {
         this.#retry = setInterval(() => this.#sendPending().catch(safetyCatch), 500)
         if (this.#retry.unref) this.#retry.unref()
