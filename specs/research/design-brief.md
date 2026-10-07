@@ -286,6 +286,40 @@ hypergraph then hides the record and wipes its bytes from its own disk (Hypercor
 locally). Nobody can force a modified or offline peer to wipe its copy, which is true of every P2P
 system and of email. The docs and the reddit clone should say so where users delete.
 
+### Activity entries need no signature of their own (reasoned, follows from the above)
+
+An entry says "log L has records in period P, from block S". Everything in it can be checked against
+the log itself, which its author already signs: block S is in P and block S-1 is before it (two block
+reads a reader does anyway when it opens the log). A false entry costs a reader one wasted lookup; an
+entry for a log that may not write here is dropped by the "may write" check. So the entry shrinks from
+~135 B (with a 64 B signature and the author key) to **~40 B** (log key, period, start): **10,000 active
+authors = ~400 KB per period instead of 1.36 MB, and nothing to verify**. Not measured beyond that
+arithmetic; the next real test of the lists should use this form.
+
+### The pieces together: a spike (2026-10-07, `bench/experiments/spike/`)
+
+A throwaway prototype, not the core: the creator's decision log (a plain Hypercore, one admin), one
+log per member, HyperDB index per member, readers enforcing the decisions, and the sketch's API (`put`,
+`query().latest`, `live`, `linked`, `sum`, `hide`, `ban`). `run.js` plays the reddit clone with three
+members on a local DHT: create, join, post, comment, reply, vote (one per member, latest counts; a
+changed vote), live list, hide, ban cut by length (spam gone, the earlier vote still counts, posts
+after the ban never indexed), a non-member's log never opened.
+
+- **It fits**: 220 lines for the space, all flows pass, three runs stable. Every member agrees within
+  **15–42 ms** of a write (local network); creating and joining ~300 ms.
+- **The app code reads like the sketch.** What was awkward, so API bugs to fix in the spec (rule 3):
+  - `ban(member, { keepUpTo })`: a moderator doesn't know log lengths. The API should be `ban(member)`,
+    cutting at the length the moderator holds when deciding (v2 did this); `keepUpTo` stays internal.
+  - "One vote per member" lived in `sum()`; it belongs in the type (`onePerAuthor`, as the sketch had),
+    so `linked()` and every query agree.
+  - `live()` re-ran 15 times for a handful of changes, on comments and votes too: re-run only queries
+    whose types changed (as planned in experiment 2).
+- **Found**: HyperDB refuses to commit while another insert is running. With logs arriving from many
+  authors at once, the core needs **one write queue per index** (the spike's `#exclusive`).
+- Not covered by the spike, on purpose: invites, devices, private spaces, activity lists (a small
+  space's member list is its author list; the lists matter only when members far outnumber the authors
+  active in a period), schemas, bounded waits, partial holding.
+
 ## Prior art read on the way (2026-10-07)
 
 - **Nostr has both models.** NIP-72 (communities where moderators approve each post and readers show
