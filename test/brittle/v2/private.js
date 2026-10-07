@@ -42,6 +42,17 @@ test('v2 private: the creator reads its posts; everyone else sees them as unread
   t.is(b4a.indexOf(block, b4a.from('secret plan')), -1, 'no text in the stored block')
 })
 
+test('v2 private: plain text posted into a private channel is never shown', async (t) => {
+  // Anyone can append to their own log and get listed by a keeper; in a
+  // private channel only messages sealed with one of its keys count.
+  const { owner, outsider, channel } = await setup(t, 'priv-plain')
+  await outsider.community.postRaw(channel, { t: Date.now(), text: 'look at me' })
+  let page = []
+  t.ok(await until(async () => (page = await owner.community.latest(channel)).length === 1), 'listed')
+  t.is(page[0].text, null, 'but not shown')
+  t.is(page[0].unreadable, true)
+})
+
 test('v2 private: a member without the key can’t post; a keeper lists posts it can’t read', async (t) => {
   const { owner, outsider, channel } = await setup(t, 'priv-post')
   await t.exception(outsider.community.post(channel, 'let me in'), /key/, 'posting without the key throws')

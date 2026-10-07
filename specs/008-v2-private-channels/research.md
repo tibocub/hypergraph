@@ -123,6 +123,10 @@ whose epoch it lacks comes back `{ encrypted: true, text: null, epoch }` (FR-003
 arrives later, pages re-read blocks already held (no new download). Keepers handle private channels
 unchanged: roster entries never contain text.
 
+**Found in T017**: anyone can append plain text to their own log and be listed by a keeper, so a
+non-member could put readable posts in front of a private channel's members. In a private channel only
+messages sealed with one of its keys are shown; plain ones come back unreadable.
+
 ## R8 — Moderation on private channels (decision)
 
 Unchanged: hides name `(author, log, seq)`, bans and cuts use log lengths; none needs the text. A mod

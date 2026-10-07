@@ -982,7 +982,12 @@ class Community extends ReadyResource {
 
   #shape (channel, author, logHex, m) {
     const hidden = !!this.hidden(author, logHex, m.seq)
-    if (!isSealed(m)) return { author, log: logHex, seq: m.seq, t: m.t, text: hidden ? null : m.text, hidden }
+    if (!isSealed(m)) {
+      // In a private channel only messages sealed with one of its keys are
+      // shown: anyone can post plain text to their own log and get listed.
+      if (this.channel(channel) && this.channel(channel).private) return { author, log: logHex, seq: m.seq, t: m.t, text: null, hidden, encrypted: false, unreadable: true }
+      return { author, log: logHex, seq: m.seq, t: m.t, text: hidden ? null : m.text, hidden }
+    }
     // Private: the text only with the epoch's key and an intact box;
     // otherwise unreadable, never an error (FR-003).
     const out = { author, log: logHex, seq: m.seq, t: m.t, text: null, hidden, encrypted: true, epoch: m.epoch }

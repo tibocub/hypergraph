@@ -47,8 +47,8 @@ by a failing test.
 
 ## Phase 6: User Story 4 — moderation and the rest on private channels (P2)
 
-- [ ] T017 [US4] Test `test/brittle/v2/private-rest.js`: hide and ban (with the ban cut) on a private channel, by a mod without the key; replication `all` / `auto` window on a private channel; offline restart shows the page again; follow delivers decrypted messages; a grant arriving after the message turns it readable without re-downloading
-- [ ] T018 [US4] Implement whatever T017 shows missing (expected: replication `all` also holds the grants bees; follow re-shapes on grant arrival)
+- [X] T017 [US4] Test `test/brittle/v2/private-rest.js`: hide and ban (with the ban cut) on a private channel, by a mod without the key; replication `all` / `auto` window on a private channel; offline restart shows the page again; follow delivers decrypted messages; a grant arriving after the message turns it readable without re-downloading
+- [X] T018 [US4] Implement whatever T017 shows missing (expected: replication `all` also holds the grants bees; follow re-shapes on grant arrival)
 
 ## Phase 7: Polish
 
