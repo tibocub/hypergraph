@@ -84,3 +84,94 @@ Packages: `blind-peer` 3.15.1 (the server), `blind-peering` 2.10.0 (the client),
 - Duty: k, assignment unit (author log per channel, or segment), reaction time to churn — from a
   simulation.
 - Contribution: audit protocol, who audits, how tiers become roles, how quotas are enforced by keepers.
+
+## Self-organizing availability: keeping everything online without anyone holding everything
+
+Tibo's goal (for hypergraph and, mostly, SwarmFS at terabyte scale): members give each community a
+cache; members organize themselves so every piece stays online, the rarest first, without races,
+handling churn as the normal case ("at that scale a disk dies every few seconds" — GFS; here, members
+leave every few seconds). Optional always-on helpers (one program for hypergraph and SwarmFS, groups
+of them like IPFS Cluster) carry what members can't.
+
+### A blind peer in every client?
+
+Not forbidden, but the package doesn't fit: it is a server (own swarm, database, RPC), keeps whole
+cores for anyone who asks (strangers giving orders), picks holders from a fixed list (stale under
+churn; every change moves whole cores), evicts whole cores and never re-fetches them. Its placement
+rule is the right idea, though, and needs no blind peer: **each member computes on its own which
+pieces it should hold** (rendezvous hashing: rank members per piece by hash(member, piece); the top k
+hold it), then downloads them with plain Hypercore range downloads.
+
+### The arithmetic first (`node -e` in this note's history; holders online independently)
+
+P(piece available) for a holder online with probability p:
+
+| scheme | storage | p = 0.1 | 0.2 | 0.3 | 0.5 | 0.9 |
+|---|---|---|---|---|---|---|
+| 3 copies | 3× | 27% | 49% | 66% | 87.5% | 99.9% |
+| 10 copies | 10× | 65% | 89% | 97% | 99.9% | >99.9999% |
+| RS 10-of-30 | 3× | 0.05% | 6% | 41% | 97.9% | >99.9999% |
+| RS 32-of-96 | 3× | 0% | 0.15% | 27% | 99.97% | >99.9999% |
+
+RAID-like coding (Reed–Solomon) beats copies only when holders are online most of the time (servers,
+desktops); with casual members (p ≤ 0.3) it is worse than copies. With flaky members, availability
+can't come from storing more: it comes from **repairing** (copying to members online now) faster than
+holders leave. Hence a simulation.
+
+### Simulation (`bench/sim-availability.js`; 300 members, 1,000 pieces of 4 MB, 3 simulated days)
+
+Casual members online ~1 h, offline ~3 h (25%); helpers online ~95%. Holders keep pieces while
+offline. Repairs are coordinated by rank (the best-ranked online non-holders act first, each after its
+slot plus random jitter, re-checking before starting).
+
+| policy | availability | repair traffic / member / day | stored / member |
+|---|---|---|---|
+| eager: keep 3 online | 99.44% | 120 MB | 400 MB (copies pile up: 30 per piece) |
+| eager, trimmed to 12 copies | 99.39% | 411 MB (trim, re-copy, trim...) | 160 MB |
+| lazy: repair below 2 online, 6 in all | 89.7% | 9 MB | 107 MB |
+| lazy: repair below 1 online | 81.7% | 0 (no source left when it's needed) | 80 MB |
+| 3 helpers, each piece on 2 of them, members idle | 99.87% | 0 | 27 MB |
+| 3 helpers (2 of 3) + members eager 2, trimmed to 8 | **99.98%** | 30 MB | 104 MB |
+| 3 helpers (2 of 3) + members lazy | 99.79% | 0.2 MB | 80 MB |
+| eager 3, members online 50% | 99.94% | 57 MB | 211 MB |
+| eager 3, 1,000 members (same data) | 99.34% | 36 MB | 120 MB |
+| eager 3, 64 MB pieces | 99.41% | 1.9 GB | 6.3 GB |
+
+What it says:
+
+1. **Members alone can keep everything ~99.4% available, at a real cost**: every member ends up holding
+   a growing share (copies pile up as holders come back) and repair traffic is ~9 piece-copies per
+   piece per day. Trimming bounds storage but multiplies traffic.
+2. **More members make it cheaper for each**: same data, 3.3× the members → traffic 120 → 36 MB/day,
+   storage 400 → 120 MB per member; availability depends on uptime, not headcount.
+3. **A few always-on helpers do most of the work cheaply**; members' caches close the gap (99.87% →
+   99.98%). This is the classic result (Blake & Rodrigues 2003: churn makes maintenance bandwidth the
+   limit; Total Recall, Carbonite: count copies that are offline but coming back, repair late).
+4. **Piece size doesn't change availability, only cost granularity**: traffic scales with piece size;
+   small pieces spread repairs over many members (no single upload bottleneck) and let caches trim
+   finely. For SwarmFS: pieces as block ranges of a file's Hypercore (e.g. 4 MB), verified block by
+   block by its Merkle tree, fetched from every holder in parallel.
+5. **Races**: rank plus jitter still made ~18% duplicate copies in the simulation (announcement
+   latency); uncoordinated copying (everyone who notices) is the worst case to avoid. Holders should
+   announce a repair when they start it, not when they finish.
+
+### How peers learn what is rare, at scale (design sketch, not measured yet)
+
+- **Who holds what**: HyperDHT is already a Kademlia DHT. Group pieces into shards (e.g. 2^b of them by
+  piece key prefix); a member announces on the topics of the shards it holds; a lookup of a shard's
+  topic returns its current holders: a decentralized tracker. Announcing per shard, not per piece,
+  keeps DHT traffic bounded.
+- **Who repairs**: rendezvous rank among online members (from shard lookups and connections), the
+  best-ranked first, slot + jitter, announce on start.
+- **Within a budget**: each member's cache per community; past it, it drops its lowest-ranked pieces
+  (they rank someone else first).
+- **Helpers**: members with a helper role and a large or unlimited cache; a helper group gets a
+  replication factor (each piece on r of the group's h helpers: 2 of 3 = each holds 2/3), ranked
+  among helpers only. Erasure coding fits there (high uptime): RS 2-of-3 over 3 helpers stores 1.5×
+  instead of 2× for the same "one may fail". Parity as its own author-signed Hypercore keeps every
+  piece verifiable.
+
+### Names (to choose)
+
+For the self-organizing cache: *Hivekeep*, *Commons*, *Seedbank*, *Hyperhive*. For the always-on
+helper program shared with SwarmFS: *Anchor*, *Lighthouse*, *Steward*, *Hivekeeper*.
