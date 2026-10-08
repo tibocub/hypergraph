@@ -38,9 +38,9 @@ know about hypergraph. Nothing consumes HyperBBS.
 |---|---|---|
 | **hypergraph** | P2P graph database — entities, relations, tags, content, multi-writer contexts (Autobase), roles/permissions, encrypted read-scopes. The shared data + identity + permission substrate. | Holepunch stack only |
 | **HyperMD** | Document format (`.hmd`) — Markdown + directives (`:::query`, `:::script`) for layout, data views, sandboxed scripting | (standalone) |
-| **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. **Likely paused (2026-10-07) in favour of a web interface: OpenTUI is too unstable under Node.js.** Not to be moved onto `hypergraph/v2`; its suite still runs after v1 changes while it is here. | hypergraph, HyperMD |
+| **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. **Paused (2026-10-07): its successor is HyperBrowser (codename), the same vision in a web UI — a local Node program plus a browser tab first, a Pear app (desktop, mobile) later; its own repo, built on hypergraph's new core (spec 011). OpenTUI was too unstable under Node.js.** Not to be moved onto `hypergraph/v2`; its suite still runs after v1 changes while it is here. | hypergraph, HyperMD |
 | **hyperDNS** | Federated naming — `name@authority` resolves to addresses without a central registry. An authority is a trust/moderation boundary, not a global namespace. | hypergraph |
-| **SwarmFS** | P2P file transfer — content-addressed (merkle roots), chunked, topic-scoped. **Development paused** pending hypergraph features. | (Holepunch directly, for now) |
+| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`E:\Code\P2P\swarmwire`: content-addressed, verified transfer of files served in place). First version: two devices, one identity. **Waits for spec 011's first three stories.** | hypergraph (new core), swarmwire |
 
 ## Where they live (and what NOT to open)
 
