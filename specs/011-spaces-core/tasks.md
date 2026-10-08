@@ -117,7 +117,7 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 - [X] T041 [US2] lib/index/indexer.js: apply decisions to the index (hidden/revealed flags, removed rows, ban cuts deleting rows past the cut)
 - [X] T042 [US2] lib/space.js: `defineRole`, `setRole`, `getRole`, `removeRole`, `moderateAction` (no key pair; ban computes the cut from held lengths)
 - [X] T043 [US2] docs/next/api.md (roles, moderation), docs/next/concepts.md (readers enforce, cuts); CHANGELOG.md
-- [ ] T044 [US2] Checkpoint: stories 1–2 pass on Node and Bare; v1 and hyperDNS suites pass
+- [X] T044 [US2] Checkpoint: stories 1–2 pass on Node and Bare; v1 and hyperDNS suites pass
 
 ---
 
