@@ -322,6 +322,7 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
   redemption (spec 008 did the same).
 - **"Complete"** (R13): every member of the decision log has a known log, every known block is indexed,
   and a member was reached on the space channel since opening — or this device is the only member.
+  (Changed by A4.)
 - **Field names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are refused** in type
   declarations: records carry them next to their fields.
 - **The identity's recovery phrase is stored in the instance folder**, so `recoveryPhrase()` works
@@ -342,3 +343,20 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
 - **Test-only helpers are off the public classes**: `writeRaw`, `holdsBlock`, `logs`, `ownLog` and
   `openSpace` are functions of `lib/testing.js`, reaching the instance through its fields and one
   internal symbol (`lib/symbols.js`). Test: `test/next/unit/surface.js`.
+- **"Complete" no longer needs every member's log** (lead's review): it is "every block this member knows
+  of is held and indexed, and it reached another member since opening" (or it is the only member). A
+  member who wrote and went offline before anyone fetched their log made answers incomplete forever,
+  which teaches apps to ignore the flag. Test: `test/next/net/bounded.js` ("a member whose log nobody
+  holds…").
+- **Deleted records stay wiped, and their holes don't stall anyone.** Downloads now start where indexing
+  stands (`log.indexed`) instead of block 0, so a restart or a stall-retry never asks for blocks this
+  member wiped. A newcomer after a delete exposed a real bug: nobody holds the deleted block any more,
+  and the indexer stopped at the first missing block, so it never indexed anything after it — including
+  the author's delete record that explains the hole. The indexer now looks at every held block once
+  (`log.scanned`), keeps the missing ones as holes indexed when they arrive, and treats a hole as done
+  when its author deleted it (`log.indexed` stays the point below which everything is done; after a
+  restart the blocks past it are looked at again, so indexing a block is idempotent). Holes count as
+  missing for "complete", except wiped ones. Test: `test/next/net/wipe.js` (reconnect and restart; a
+  newcomer indexes past the hole and is complete; nobody holds or serves the block). Found while
+  writing it: a block arriving while the indexer was checking it got lost (fixed: arrivals below the
+  scan point are always rechecked).

@@ -65,6 +65,8 @@ Each member answers queries from its own local index of what it holds. Every rea
 answers from what is held, waits (up to `readTimeout`, 5 s by default, or the read's own `timeout`) for
 what is known to exist but not held yet, and returns `{ items, complete }`.
 
-`complete: false` means: some member's log isn't known yet, some known records aren't held yet, or no
-other member has been reached since the app started. The answer is still useful — show it, and read
-again later (or use a live query). A space where you are the only member is always complete.
+`complete: false` means: some record this member knows exists isn't held yet (its log is longer than
+what has arrived), or no other member has been reached since the app started. The answer is still
+useful — show it, and read again later (or use a live query). A space where you are the only member is
+always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
+of can't be waited for. Records deleted by their authors leave nothing to wait for either.

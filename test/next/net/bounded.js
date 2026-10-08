@@ -48,3 +48,23 @@ test('the only holder offline: incomplete within the bound; back online: complet
   t.ok(back, 'complete once b is back')
   t.alike(back && back.items.map((x) => x.id), [p2.id, p1.id])
 })
+
+// "Complete" = everything this member knows of is held, and it reached at
+// least one other member since starting (research.md A4). A member nobody has
+// heard from (here: let in while away, never online since) doesn't make
+// answers incomplete forever.
+test('a member whose log nobody holds does not make answers incomplete', async (t) => {
+  const crypto = require('hypercore-crypto')
+  const a = await account(t, 'a')
+  const b = await account(t, 'b')
+  const fa = await forum.createForum(a, 'Quiet member')
+  const fb = await forum.join(b, await forum.invite(fa))
+  await fa.decisions.append({ type: 'member/add', identity: crypto.randomBytes(32) }) // someone who never comes
+  const p = await forum.post(fb, 'hello', '')
+  const r = await eventually(async () => {
+    const res = await fa.query('post').latest(20, { timeout: 500 })
+    return res.items.some((x) => x.id === p.id) ? res : null
+  }, 5000)
+  t.ok(r, 'a holds b\'s post')
+  t.ok(r && r.complete, 'complete: everything a knows of is held, and a reached b')
+})

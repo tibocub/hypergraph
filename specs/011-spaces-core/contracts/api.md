@@ -2,8 +2,9 @@
 
 What a developer writes. Names follow v1 where meanings hold (spec FR-008, FR-016, FR-017); every
 method is async unless marked otherwise. Reads return `{ items, complete }` (lists) or
-`{ record, complete }` (one record): `complete: false` means some data the answer needs was not
-reachable within the read's bound (R13). Errors are `HypergraphError` with a stable `code`.
+`{ record, complete }` (one record): `complete: false` means some record this member knows exists was
+not held within the read's bound, or no other member was reached since opening (R13, amended in
+research.md A4). Errors are `HypergraphError` with a stable `code`.
 The forum scenario tests (`test/next/forum/`) are the executable form of this contract; when they and
 this file disagree, fix one of them in the same change.
 
