@@ -76,6 +76,8 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Now
 
-1. `/speckit-plan` and `/speckit-tasks` for spec 011 (in the lead conversation).
-2. Then the first worker session: spec 011's foundation and story 1 (a forum in a few lines), with the
-   forum scenario's first tests, on Node and Bare.
+1. Spec 011 is planned (branch `011-spaces-core`: spec, plan, research R1–R20, data model, API contract,
+   76 tasks).
+2. **Worker session 1**: spec 011 phases 1–3 (setup, foundation, story 1: a forum between three members,
+   on Node and Bare). Stops at the MVP checkpoint for review here.
+3. Then worker sessions for story 2 (rules) and story 3 (devices, personal space) → SwarmFS can start.
