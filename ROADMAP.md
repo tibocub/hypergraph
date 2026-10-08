@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-08 (review of spec 011 story 1)** — Story 1 accepted (59/59 on Node and Bare, re-run in the
+  lead conversation). Found in review, fixed in the story 2 session: removing a member made members
+  disagree (fix: a removal is a cut, like a ban — also the pattern for losing an edit permission in
+  story 5); deletes must stay wiped after a reconnect (test first). Decided: the person chooses whether
+  the recovery phrase is erased after being written down or kept encrypted with a password; "complete"
+  means "everything this member knows of is held, and it reached another member since starting".
+  Story 5 must decide who may delete shared records (a delete that always wins lets one vandal erase a
+  wiki page).
+
 - **2026-10-08 (SwarmFS / HyperBrowser grilling)**:
   - Everything is immutable underneath: an edit is a new record replacing an earlier one, a delete a
     tombstone. A type says who may edit its records (author, a permission, any member) — wikis, shared
@@ -78,6 +87,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 1. Spec 011 is planned (branch `011-spaces-core`: spec, plan, research R1–R20, data model, API contract,
    76 tasks).
-2. **Worker session 1**: spec 011 phases 1–3 (setup, foundation, story 1: a forum between three members,
-   on Node and Bare). Stops at the MVP checkpoint for review here.
-3. Then worker sessions for story 2 (rules) and story 3 (devices, personal space) → SwarmFS can start.
+2. Story 1 done and reviewed (branch `011-spaces-core`).
+3. **Worker session 2**: review fixes + story 2 (rules). Then story 3 (devices, personal space) →
+   SwarmFS can start.
