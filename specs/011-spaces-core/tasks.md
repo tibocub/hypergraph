@@ -105,18 +105,18 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 
 ### Tests for User Story 2
 
-- [ ] T035 [P] [US2] test/next/forum/moderation.js: assign a moderator; hide/reveal/remove a comment; ban a member who posted, voted then spammed (earlier vote still counts, spam gone, later posts never indexed); a member offline during all of it converges; a demoted moderator's later decisions ignored, earlier ones kept (US2 #1–3, #6)
-- [ ] T036 [P] [US2] test/next/forum/rules.js: an app rule (title ≤ 300 characters) rejects a record on every member before it is kept or passed on; a non-member's records are never kept (US2 #5, #7, FR-018)
-- [ ] T037 [P] [US2] test/next/unit/decisions-roles.js: built-in roles (owner, admin, moderator, member, guest — data-model.md) and custom roles with permission lists; a decision valid only if its author held the permission at that point; conflicting concurrent admin decisions converge (US2 #4, #8, FR-019)
-- [ ] T038 [P] [US2] test/next/net/cut.js: a ban's cut is the moderator's held lengths; a member that already indexed records past the cut removes them; nothing past the cut is ever indexed again (FR-017)
+- [X] T035 [P] [US2] test/next/forum/moderation.js: assign a moderator; hide/reveal/remove a comment; ban a member who posted, voted then spammed (earlier vote still counts, spam gone, later posts never indexed); a member offline during all of it converges; a demoted moderator's later decisions ignored, earlier ones kept (US2 #1–3, #6)
+- [X] T036 [P] [US2] test/next/forum/rules.js: an app rule (title ≤ 300 characters) rejects a record on every member before it is kept or passed on; a non-member's records are never kept (US2 #5, #7, FR-018)
+- [X] T037 [P] [US2] test/next/unit/decisions-roles.js: built-in roles (owner, admin, moderator, member, guest — data-model.md) and custom roles with permission lists; a decision valid only if its author held the permission at that point; conflicting concurrent admin decisions converge (US2 #4, #8, FR-019)
+- [X] T038 [P] [US2] test/next/net/cut.js: a ban's cut is the moderator's held lengths; a member that already indexed records past the cut removes them; nothing past the cut is ever indexed again (FR-017)
 
 ### Implementation for User Story 2
 
-- [ ] T039 [US2] lib/decisions/apply.js + state.js: role/define, role/set, role/remove, moderate (flag, hide, remove, reveal, ban with cut), permission checks at each point of the order; members with `decide`/`moderate` become decision-log writers
-- [ ] T040 [US2] lib/gate.js (second part): cuts, app rules (`rules: [{ id, validate }]`, deterministic, read-only context), moderation flags
-- [ ] T041 [US2] lib/index/indexer.js: apply decisions to the index (hidden/revealed flags, removed rows, ban cuts deleting rows past the cut)
-- [ ] T042 [US2] lib/space.js: `defineRole`, `setRole`, `getRole`, `removeRole`, `moderateAction` (no key pair; ban computes the cut from held lengths)
-- [ ] T043 [US2] docs/next/api.md (roles, moderation), docs/next/concepts.md (readers enforce, cuts); CHANGELOG.md
+- [X] T039 [US2] lib/decisions/apply.js + state.js: role/define, role/set, role/remove, moderate (flag, hide, remove, reveal, ban with cut), permission checks at each point of the order; members with `decide`/`moderate` become decision-log writers
+- [X] T040 [US2] lib/gate.js (second part): cuts, app rules (`rules: [{ id, validate }]`, deterministic, read-only context), moderation flags
+- [X] T041 [US2] lib/index/indexer.js: apply decisions to the index (hidden/revealed flags, removed rows, ban cuts deleting rows past the cut)
+- [X] T042 [US2] lib/space.js: `defineRole`, `setRole`, `getRole`, `removeRole`, `moderateAction` (no key pair; ban computes the cut from held lengths)
+- [X] T043 [US2] docs/next/api.md (roles, moderation), docs/next/concepts.md (readers enforce, cuts); CHANGELOG.md
 - [ ] T044 [US2] Checkpoint: stories 1–2 pass on Node and Bare; v1 and hyperDNS suites pass
 
 ---

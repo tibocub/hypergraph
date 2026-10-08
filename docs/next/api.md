@@ -1,6 +1,6 @@
 # Hypergraph's new core: API
 
-`require('hypergraph/next')`, story 1's surface (spec 011). Concepts: [concepts.md](concepts.md). The
+`require('hypergraph/next')`, the surface of stories 1 and 2 (spec 011). Concepts: [concepts.md](concepts.md). The
 full planned surface, with what is built marked ✓: `specs/011-spaces-core/contracts/api.md`. The forum
 in `test/next/forum/forum.js` uses all of it.
 
@@ -15,6 +15,7 @@ const { Hypergraph } = require('hypergraph/next')
 
 const hg = await Hypergraph.open('./data', {
   types,                 // your record types (below)
+  rules,                 // your app's rules (below)
   readTimeout: 5000,     // how long reads wait for known-but-missing data, ms
   mnemonic: undefined    // a recovery phrase, to restore an identity in a new folder
 })
@@ -64,13 +65,50 @@ forum.on('change', ({ types }) => {})   // records of these types changed
 In story 1 an invite is recorded by a member who records decisions (the owner) while online. Offline
 inviters, expiry, revocation and public links come with story 4.
 
+## Roles and moderation
+
 ```js
-await forum.getRole(someone)       // 'owner', 'member', ... or null if not a member
-await forum.removeRole(someone)    // takes them out (owner, admins)
+await forum.setRole(someone, 'moderator')   // admin, moderator, member, guest, or your own role
+await forum.getRole(someone)                // 'owner', 'member', ... or null if not a member
+await forum.removeRole(someone)             // takes them out of the space
+await forum.defineRole('editor', ['post', 'edit-pages'])   // your own roles and permissions
+
+await forum.moderateAction('hide', comment, { reason: 'rude' })   // left out of every list
+await forum.moderateAction('reveal', comment)                     // shown again
+await forum.moderateAction('flag', post, { reason: 'check' })     // record.flagged
+await forum.moderateAction('remove', comment)                     // gone for good
+await forum.moderateAction('ban', someone, { reason: 'spam' })    // out for good
 ```
 
-Removing someone keeps what they wrote up to what you held at that moment, for everyone, including
-people who join later; anything they write after is ignored everywhere. Let in again, they write again.
+Built-in roles: `owner` (everything), `admin` (members, roles, invites, moderation), `moderator`
+(moderation), `member` and `guest` (writing). Owners and admins give roles below their own; a role you
+define can gain permissions later but never lose `post` (give its members another role instead).
+Moderators, admins and the owner moderate. Every call resolves once your app applied the decision; the
+others apply it as soon as it reaches them, in the same order, offline members included. A moderator
+demoted later: what they decided before stays, what they decide after counts for nobody.
+
+Removing or banning someone keeps what they wrote up to what you held at that moment, for everyone,
+including people who join later; anything they write after is ignored everywhere. A ban keeps their
+earlier votes too; take down their spam with `remove`. Let in again (after a removal, not a ban), they
+write again.
+
+A hidden record is left out of `query`, `linked`, `count` and `sum`; `get(id)` still returns it with
+`hidden: true`, so you can show "hidden by moderators" and let moderators reveal it.
+
+## App rules
+
+```js
+const rules = [
+  { id: 'title-length', validate: (record) => record.type !== 'post' || record.title.length <= 300 }
+]
+const hg = await Hypergraph.open('./data', { types, rules })
+```
+
+`validate(record, ctx)` gets the record's fields with `id`, `type`, `author`, `device`, `stamp`, and
+`ctx = { space }`; returning `false` or throwing rejects it. Your app refuses to write a record that
+breaks a rule (`RULE_REJECTED`, naming the rule), and every member checks it before keeping it: a
+record from someone else's app that breaks it is never shown, indexed or passed on. Keep rules
+deterministic and about the record alone: every member must reach the same verdict.
 
 ## Records
 

@@ -94,3 +94,32 @@ test('members who already showed records past the cut take them back', async (t)
   t.ok(await agree([a2.space(fa.key), fc], p, expected), "c takes back the newer post, comment, vote and edit; b's earlier vote counts again")
   t.ok(await eventually(async () => !(await testing.holdsBlock(fc, newer.id)), 3000), 'and clears their blocks')
 })
+
+test('a ban\'s cut is the moderator\'s held lengths, wherever the others are', async (t) => {
+  const { a, b, c, fa, fb, fc } = await threeMembers(t)
+  await forum.giveRole(fa, b.identity.publicKey, 'moderator')
+  t.ok(await eventually(async () => {
+    try { await forum.flag(fb, await forum.post(fa, 'probe', ''), 'probe'); return true } catch { return false }
+  }, 10000), 'b moderates')
+  const p = await forum.post(fa, 'by a', 'a')
+  const early = await forum.post(fc, 'early', 'early')
+  await forum.vote(fc, p, 1)
+  t.ok(await eventually(async () => (await forum.score(fb, p)) === 1 && (await forum.latest(fb)).some((x) => x.id === early.id), 5000), "b holds c's early records")
+
+  // b (the moderator) goes away; c writes on, and a shows it.
+  await b.close()
+  const late = await forum.post(fc, 'late', 'late')
+  await forum.vote(fc, p, -1)
+  t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === late.id), 5000), 'a shows c\'s late post')
+
+  // b, offline, bans c where b holds c's log: before the late records.
+  const b2 = await open(t, { dir: b.dir, types: forum.types })
+  await forum.ban(b2.space(fb.key), c.identity.publicKey, { reason: 'spam' })
+  await b2.connectToSwarm()
+  const titles = async (f) => (await forum.latest(f)).map((x) => x.title).filter((x) => x !== 'probe').sort().join()
+  t.ok(await eventually(async () => {
+    for (const f of [fa, b2.space(fb.key)]) if ((await titles(f)) !== 'by a,early' || (await forum.score(f, p)) !== 1) return false
+    return true
+  }, 10000), 'a takes back what is past the moderator\'s cut; c\'s earlier vote counts again')
+  t.ok(a && fc)
+})

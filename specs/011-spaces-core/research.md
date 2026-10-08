@@ -384,3 +384,49 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
   don't. Today `editable: 'members'` already relies on it (an edit that passed its log's limit was
   made while its author could write); `{ permission }` still checks the current state and must move to
   cuts in story 5.
+
+### A5. Story 2: choices made while building roles, moderation and rules
+
+- **v1's meanings** (FR-016, US2 #8): `removeRole(x)` takes x out of the space (v1's `roles/removeMember`),
+  recorded as `member/remove` with a cut (A4); `setRole(x, role)` on a non-member adds them (v1). The
+  `role/remove` decision is gone. "A moderator whose role is removed" (US2 #6) is `setRole(x, 'member')`.
+- **Who may give what**: the owner gives any role but owner; others need `roles`, act only on members
+  below their rank and give roles below it (a custom role ranks as a member), and hand on hypergraph's
+  own permissions (`decide`, `moderate`, `invite`, `roles`) only if they hold them; an app's own
+  permissions (e.g. `edit-pages`) are free. The same pure functions (`lib/decisions/state.js`) decide in
+  `apply` and in the API's early `NOT_ALLOWED`.
+- **A custom role never loses `post`**: records aren't ordered against decisions, so taking `post` from
+  everyone holding a role would need a cut per holder, which the decider can't list reliably (holders
+  may change concurrently). `role/define` that drops `post` is ignored, and the API refuses it; give
+  holders another role instead (`role/set` carries the holder's cut).
+- **Decision-log writers**: a redemption now carries the redeemer's decision-log key, signed; a role
+  with `decide` or `moderate` makes it a writer (`host.addWriter`, not an indexer: only the owner
+  indexes for now). A demoted member stays a writer, but `apply` checks the author's role at each
+  point, so its later decisions count for nothing (FR-019). `Decisions.append` waits up to 5 s to become
+  writable, for a member just given such a role. Open: a custom role that *gains* `decide`/`moderate`
+  later doesn't make its existing holders writers until they are set again; moderators as indexers
+  (decisions settled while the owner is offline) is story 4's question.
+- **Moderation**: `flag` (`record.flagged`), `hide` (lists leave it out; `get()` returns it with
+  `hidden: true`, so apps can show "hidden by moderators" and moderators can reveal it), `reveal`,
+  `remove` (for good: the row goes, blocks are cleared, edits too, a reveal doesn't bring it back; it
+  explains the hole for newcomers), `ban` (out, `banned:` marker so neither an invite nor `setRole` lets
+  them back in, and a cut). No unban yet. A hide decided before the record arrives applies when it does.
+  Rows get moderation when inserted; a decision change reconciles the rows it touches (`Indexer.moderate`).
+- **A ban keeps what the moderator held** (FR-017), spam included if the moderator held it. The forum
+  takes the spam down after the ban (`forum.ban(f, who, { since })`, a few lines). Open question for
+  the lead: should `moderateAction('ban', who, { since: record })` cut at a record instead?
+- **App rules**: `validate(record, ctx)`, record = its fields plus `id, type, author, device, stamp`,
+  `ctx = { space }`; false or a throw rejects. Checked by the writer's app (`RULE_REJECTED`, naming the
+  rule) and by every member before indexing puts and edits. Rejected records are not indexed and
+  other members clear them; **a member's own log is kept whole** (FR-027), so a newcomer fetches the
+  record from its author, checks it and drops it, instead of being left with a hole nobody can fill
+  (which would make its answers incomplete for good). Rules must look only at the record: one reading
+  held records would differ between members.
+- **A Hypercore bug, worked around**: a peer learns "this holder has blocks 0..n" as a contiguous length
+  with no per-block bits; a later "dropped block k" sets that length to k, so the peer forgets the holder
+  still has k+1..n and (having asked for that range before) never asks again. Found as members stuck
+  behind a rejected record. `clearBlocks()` (`lib/replication.js`) announces the held blocks after a
+  clear again (`core.replicator.onhave`). Test: `test/next/unit/clear-blocks.js` (fails without it).
+  Worth reporting upstream.
+- **Holes are looked at again** after a short wait growing to 5 s while none fills: a block's arrival can
+  be missed, and a missed hole stayed "missing" for good.

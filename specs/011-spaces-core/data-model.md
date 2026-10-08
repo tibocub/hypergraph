@@ -34,9 +34,9 @@ point.
 | `space/init` | `name, parent?, private, policy, version` |
 | `member/add` | `identity` |
 | `member/remove` | `identity, cut ([{log, length}])` — research.md A4 |
-| `role/define` | `name, permissions[]` |
-| `role/set`, `role/remove` | `identity, role` |
-| `moderate` | `action (flag\|hide\|remove\|reveal\|ban), target (record id \| identity), reason, cut? ({log: length})` |
+| `role/define` | `name, permissions[]` (custom roles; never takes 'post' away: research.md A5) |
+| `role/set` | `identity, role, cut ([{log, length}])` — the cut counts only if the role takes 'post' away |
+| `moderate` | `action (flag\|hide\|remove\|reveal\|ban), target (record id \| identity), reason, cut ([{log, length}]: bans)` |
 | `invite/create`, `invite/revoke`, `invite/redeem` | spec 008's invite and redemption |
 | `key/rotate` | `epoch, commit` (private) |
 | `subspace/create` | `key, name, private, writeRoles[]` |
@@ -47,8 +47,13 @@ per record, bans and removals with cuts (`cut:<identity>`: first cut per log win
 effective state = parent's members, roles, bans, then its own decisions; parent bans always win.
 
 Built-in roles and permissions (as v1): `owner` (all), `admin` (decide, moderate, invite, roles below
-admin), `moderator` (moderate), `member` (post), `guest` (post in its sub-space). Permission `decide`
-makes a member a decision-log writer.
+admin), `moderator` (moderate), `member` (post), `guest` (post in its sub-space). Permission `decide` or
+`moderate` makes a member's device a decision-log writer (its key comes with its invite redemption).
+
+View keys (research.md A4–A5): `meta`, `member:<id>` `{ role, by, stamp, writer }`, `writer:<key>`,
+`role:<name>` `{ permissions }`, `cut:<id>` `{ logs: { <log>: length } }`, `banned:<id>`,
+`mod:<record id>` `{ flagged, hidden, removed }`, `redeemed:<invite>:<id>`, `uses:<invite>`.
+A redemption is `{ invite, identity, writer, proof }`.
 
 ### Space channel messages (Protomux `hypergraph/space`, id = space key)
 

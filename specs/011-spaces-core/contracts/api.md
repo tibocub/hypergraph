@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: story 1 (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1 and 2 (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 
@@ -30,6 +30,10 @@ const hg = await Hypergraph.open('./data', {
 
 // ✓ story 1: types, readTimeout, mnemonic, bootstrap. Opening a folder that already holds another
 //   identity with a different mnemonic throws NOT_ALLOWED; changed types throw INCOMPATIBLE_TYPES.
+// ✓ story 2: rules. validate(record, ctx) gets the record's fields plus id, type, author, device, stamp,
+//   and ctx = { space }; returning false or throwing rejects it. It must be deterministic and look only
+//   at the record: every member runs it before keeping a record, and the writer's app first
+//   (RULE_REJECTED). A member's own records are never dropped, so others fetch, check and drop them.
 hg.identity            // ✓ sync: { publicKey } — the person
 hg.device              // ✓ sync: { publicKey } — this device
 await hg.recoveryPhrase(password)  // ✓ the 24 words, for the user to write down; null once forgotten here (or on a
@@ -95,7 +99,8 @@ types: {
 ```js
 const post = await forum.put('post', { title: 'Hello', text: 'First!' })   // ✓ NOT_ALLOWED for non-members
 // ✓ post: { id, type, author, device, stamp, edited, title, text } — id stable across edits; author is the
-//   identity, device the one that wrote the current version; futureStamp: true if stamped > 10 min ahead
+//   identity, device the one that wrote the current version; futureStamp: true if stamped > 10 min ahead;
+//   ✓ hidden: true (hidden by a moderator: only get() returns it), flagged: true (flagged by a moderator)
 const { record, complete } = await forum.get(post.id)   // ✓ record null if not held (or deleted)
 await forum.edit(post.id, { text: 'First! (edited)' })   // ✓ changes these fields, keeps the others; resolves to the
                                                          //   new version; NOT_ALLOWED unless the type lets this member edit
@@ -128,13 +133,20 @@ await forum.getByTag('rust', { limit: 20 })        // { items, complete }
 ## Roles and moderation
 
 ```js
-await forum.defineRole('editor', ['post', 'comment', 'edit-pages'])
-await forum.setRole(someone, 'moderator')
+await forum.defineRole('editor', ['post', 'edit-pages'])   // ✓ owner/admins; hypergraph's own permissions (post,
+                                      //   moderate, invite, roles, decide) and the app's; a role may gain
+                                      //   permissions, never lose 'post'
+await forum.setRole(someone, 'moderator')   // ✓ built-in (admin, moderator, member, guest) or defined; adds
+                                      //   non-members (v1); NOT_ALLOWED at or above your rank, NOT_FOUND for an
+                                      //   unknown role; a role without 'post' cuts like a removal
 await forum.getRole(someone)          // ✓ 'member' | 'moderator' | ... | null (not a member)
 await forum.removeRole(someone)       // ✓ takes them out of the space (v1's meaning); what they wrote up to where
                                       //   this member holds them stays for everyone, nothing after counts
-await forum.moderateAction('hide', post.id, { reason: 'spam' })   // flag | hide | remove | reveal
-await forum.moderateAction('ban', someone, { reason: 'spam' })    // cut where this moderator holds them
+await forum.moderateAction('hide', post.id, { reason: 'spam' })   // ✓ flag | hide | reveal | remove (for good)
+await forum.moderateAction('ban', someone, { reason: 'spam' })    // ✓ out for good: kept up to where this
+                                      //   moderator holds them, ignored after; not let back in (no unban yet)
+// ✓ moderators, admins, owner (NOT_ALLOWED otherwise); a demoted moderator's later decisions are ignored
+//   by every member, earlier ones stay. Each call resolves once this member applied the decision.
 ```
 
 ## Invites
@@ -171,6 +183,9 @@ forum.addProtocol('swarmfs/transfer', {
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
 `INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`.
+
+Story 2 adds: `RULE_REJECTED` (an app rule refused the record, named in the message), `NOT_ALLOWED`
+for roles and moderation beyond one's rank or permissions, `NOT_FOUND` for an unknown role.
 
 Story 1 uses: `NOT_ALLOWED` (not a member; editing someone else's record; inviting without the role),
 `NOT_FOUND` (an id or a space key that isn't one, or isn't held here), `INVALID_RECORD` (a field of the

@@ -51,8 +51,7 @@ test('every decision of data-model.md round trips', (t) => {
     { type: 'member/add', stamp: 2, identity: key() },
     { type: 'member/remove', stamp: 3, identity: key(), cut: [{ log: key(), length: 4 }] },
     { type: 'role/define', stamp: 4, name: 'editor', permissions: ['post', 'edit-pages'] },
-    { type: 'role/set', stamp: 5, identity: key(), role: 'moderator' },
-    { type: 'role/remove', stamp: 6, identity: key(), role: 'moderator' },
+    { type: 'role/set', stamp: 5, identity: key(), role: 'moderator', cut: [] },
     { type: 'moderate', stamp: 7, action: 'hide', target: id, reason: 'spam', cut: [] },
     { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: 'spam', cut: [{ log: key(), length: 12 }] },
     { type: 'invite/create', stamp: 9, invite: crypto.randomBytes(100) },
@@ -70,7 +69,7 @@ test('every decision of data-model.md round trips', (t) => {
 test('invites and redemptions round trip', (t) => {
   const invite = { space: key(), id: crypto.randomBytes(16), role: 'member', uses: 1, expires: 0, subspaces: [], maker: key(), proof: crypto.randomBytes(150) }
   roundTrip(t, enc.invite, invite)
-  roundTrip(t, enc.redemption, { invite, identity: key(), proof: crypto.randomBytes(150) })
+  roundTrip(t, enc.redemption, { invite, identity: key(), writer: key(), proof: crypto.randomBytes(150) })
 })
 
 test('channel messages round trip', (t) => {

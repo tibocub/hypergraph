@@ -11,18 +11,23 @@ const types = {
   vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true }
 }
 
+// The forum's own rules: every member checks them before keeping a record.
+const rules = [
+  { id: 'title-length', validate: (record) => record.type !== 'post' || (record.title || '').length <= 300 }
+]
+
 // --- accounts ---
 
 // A new account in this folder, online.
 async function signUp (dir, opts = {}) {
-  const hg = await Hypergraph.open(dir, { types, ...opts })
+  const hg = await Hypergraph.open(dir, { types, rules, ...opts })
   await hg.connectToSwarm()
   return hg
 }
 
 // The same person on another computer, from their recovery phrase.
 async function restore (dir, phrase, opts = {}) {
-  const hg = await Hypergraph.open(dir, { types, mnemonic: phrase, ...opts })
+  const hg = await Hypergraph.open(dir, { types, rules, mnemonic: phrase, ...opts })
   await hg.connectToSwarm()
   return hg
 }
@@ -52,15 +57,58 @@ function invite (forum) {
   return forum.createInvite({ role: 'member' })
 }
 
-function join (hg, link) {
-  return hg.redeemInvite(link)
+function join (hg, link, opts) {
+  return hg.redeemInvite(link, opts)
 }
 
-// --- moderation ---
+// --- roles and moderation ---
+
+// 'moderator', 'admin', 'member', or a role the forum defined (addRole).
+function giveRole (forum, who, role) {
+  return forum.setRole(who, role)
+}
+
+function roleOf (forum, who) {
+  return forum.getRole(who)
+}
+
+function addRole (forum, name, permissions) {
+  return forum.defineRole(name, permissions)
+}
 
 // Takes someone out of the forum (v1's removeRole): what they wrote so far stays.
 function removeMember (forum, who) {
   return forum.removeRole(who)
+}
+
+// Hidden records leave every list (get() still finds them, marked hidden)
+// until revealed; a taken-down record is gone for good.
+function hide (forum, record, reason) {
+  return forum.moderateAction('hide', record, { reason })
+}
+
+function reveal (forum, record) {
+  return forum.moderateAction('reveal', record)
+}
+
+function takeDown (forum, record, reason) {
+  return forum.moderateAction('remove', record, { reason })
+}
+
+function flag (forum, record, reason) {
+  return forum.moderateAction('flag', record, { reason })
+}
+
+// Out for good: what they wrote up to what this moderator holds stays,
+// anything after is ignored. `since` (a time): also take down their posts
+// and comments written since then (the spam the moderator saw).
+async function ban (forum, who, { reason = '', since = 0 } = {}) {
+  await forum.moderateAction('ban', who, { reason })
+  if (!since) return
+  for (const type of ['post', 'comment']) {
+    const { items } = await forum.query(type).by(who).latest(1000)
+    for (const r of items) if (r.stamp >= since) await takeDown(forum, r, reason)
+  }
 }
 
 // --- posting ---
@@ -115,6 +163,7 @@ function liveLatest (forum, onUpdate, n = 20) {
 
 module.exports = {
   types,
+  rules,
   signUp,
   restore,
   recoveryPhrase,
@@ -123,7 +172,15 @@ module.exports = {
   createForum,
   invite,
   join,
+  giveRole,
+  roleOf,
+  addRole,
   removeMember,
+  hide,
+  reveal,
+  takeDown,
+  flag,
+  ban,
   post,
   comment,
   vote,

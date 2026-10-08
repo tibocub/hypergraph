@@ -1,7 +1,7 @@
 # Hypergraph's new core: concepts
 
 `require('hypergraph/next')`: the redesigned core (spec 011, `specs/011-spaces-core/`). ALPHA: it grows
-story by story; this page covers what exists (story 1). The API is in [api.md](api.md); the worked
+story by story; this page covers what exists (stories 1 and 2). The API is in [api.md](api.md); the worked
 example is the forum in `test/next/forum/forum.js`.
 
 ## Spaces
@@ -52,6 +52,14 @@ What the space must agree on — who is a member, roles, moderation, invites —
 applied by every member in the same order. A decision counts only if its author was allowed to make it
 at that point of the order. Records are never decisions.
 
+## Roles and moderation
+
+Each member has a **role**: `owner`, `admin`, `moderator`, `member`, `guest`, or one your app defines
+with its own permissions. Roles say who may write, invite, give roles and moderate. Moderators
+**flag**, **hide** and **reveal** records, **remove** them for good, and **ban** people. These are
+decisions: every member applies them in the same order, and one made by someone who wasn't allowed at
+that point is ignored by everyone (a demoted moderator's earlier decisions stay).
+
 ## Readers enforce
 
 Every member checks what it receives **before keeping, indexing or passing it on**: that a log belongs
@@ -59,8 +67,11 @@ to a member of the space (a proof signed by the member's device), that each reco
 type, that links point at allowed types, that edits come from allowed editors. What fails is never
 shown, and a stranger's log is never kept nor passed on, so spam costs members almost nothing.
 
-When someone loses the right to write (removed from the space), the decision records a **cut**: how
-much of each of their device logs the decider held. What they wrote below the cut stays, for everyone
+Your app's **rules** (`rules: [{ id, validate }]`) are checked the same way: a record that breaks one
+is never kept, indexed or passed on by any member.
+
+When someone loses the right to write (removed, banned, or given a role without `post`), the decision
+records a **cut**: how much of each of their device logs the decider held. What they wrote below the cut stays, for everyone
 and for good; anything past it is ignored by everyone, even by members who had already shown it.
 
 ## Complete answers

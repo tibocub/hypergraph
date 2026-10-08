@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-08: `hypergraph/next` — story 2, community rules (ALPHA, breaking within `next`)
+
+- Roles: `setRole`, `getRole`, `removeRole` (v1's meanings: `removeRole` takes the member out),
+  `defineRole(name, permissions)` for custom roles. Moderation: `moderateAction('flag' | 'hide' |
+  'reveal' | 'remove', record)` and `moderateAction('ban', identity)`. A removal or ban keeps what the
+  person wrote up to what the decider held, for everyone, newcomers included; nothing after counts.
+- App rules: `Hypergraph.open(dir, { rules: [{ id, validate (record, ctx) }] })`, checked by the writer
+  (`RULE_REJECTED`) and by every member before keeping a record.
+- Records may carry `hidden: true` (`get()` only; lists leave them out) and `flagged: true`.
+- Recovery phrase: `protectRecoveryPhrase(password)`, `forgetRecoveryPhrase()`;
+  `recoveryPhrase(password)` once protected. Apps should ask right after showing it.
+- `complete` no longer waits for members nobody has heard from; deleted records no longer stall a
+  newcomer's indexing; test-only helpers moved to `lib/testing.js`.
+- Breaking within `next` (no released users): decision and invite encodings changed (member/remove and
+  role/set carry a cut, redemptions carry the redeemer's decision-log key); folders made by story 1
+  should be recreated. Details: `specs/011-spaces-core/research.md` A4–A5.
+
 ### 2026-10-08: `hypergraph/next`, the new core — story 1 (additive, ALPHA)
 
 - New entry point `require('hypergraph/next')` (`lib/`), beside v1 (`src/`, unchanged): one instance,
