@@ -64,6 +64,14 @@ forum.on('change', ({ types }) => {})   // records of these types changed
 In story 1 an invite is recorded by a member who records decisions (the owner) while online. Offline
 inviters, expiry, revocation and public links come with story 4.
 
+```js
+await forum.getRole(someone)       // 'owner', 'member', ... or null if not a member
+await forum.removeRole(someone)    // takes them out (owner, admins)
+```
+
+Removing someone keeps what they wrote up to what you held at that moment, for everyone, including
+people who join later; anything they write after is ignored everywhere. Let in again, they write again.
+
 ## Records
 
 ```js

@@ -59,6 +59,10 @@ to a member of the space (a proof signed by the member's device), that each reco
 type, that links point at allowed types, that edits come from allowed editors. What fails is never
 shown, and a stranger's log is never kept nor passed on, so spam costs members almost nothing.
 
+When someone loses the right to write (removed from the space), the decision records a **cut**: how
+much of each of their device logs the decider held. What they wrote below the cut stays, for everyone
+and for good; anything past it is ignored by everyone, even by members who had already shown it.
+
 ## Complete answers
 
 Each member answers queries from its own local index of what it holds. Every read is **bounded**: it

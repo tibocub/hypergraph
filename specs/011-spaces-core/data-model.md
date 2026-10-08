@@ -32,7 +32,8 @@ point.
 | decision | fields |
 |---|---|
 | `space/init` | `name, parent?, private, policy, version` |
-| `member/add`, `member/remove` | `identity` |
+| `member/add` | `identity` |
+| `member/remove` | `identity, cut ([{log, length}])` — research.md A4 |
 | `role/define` | `name, permissions[]` |
 | `role/set`, `role/remove` | `identity, role` |
 | `moderate` | `action (flag\|hide\|remove\|reveal\|ban), target (record id \| identity), reason, cut? ({log: length})` |
@@ -42,7 +43,7 @@ point.
 | `settings/set` | `policy?, writeLimit? { records, periodMs }` |
 
 **State** (rebuilt by applying the log): members, roles and permissions, custom roles, moderation flags
-per record, bans with cuts, invites and redemptions, epochs, sub-spaces, settings. A sub-space's
+per record, bans and removals with cuts (`cut:<identity>`: first cut per log wins), invites and redemptions, epochs, sub-spaces, settings. A sub-space's
 effective state = parent's members, roles, bans, then its own decisions; parent bans always win.
 
 Built-in roles and permissions (as v1): `owner` (all), `admin` (decide, moderate, invite, roles below
@@ -63,7 +64,7 @@ adds `period, start` to log entries.
 |---|---|---|
 | `records` | `space, id` | type, author, device log, seq, stamp, current fields, links, flags (hidden, removed, deleted, edited) |
 | `logs` | `space, log` | identity, device, indexed length, cut, refused? |
-| `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2) |
+| `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2); also found by its own id (`changes-by-id`, for cuts) |
 | `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent |
 | `meta` | `name` | declared types (compat check), identity (proof, recovery phrase), budgets, schema version |
 

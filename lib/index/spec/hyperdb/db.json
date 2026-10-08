@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "offset": 0,
   "schema": [
     {
@@ -45,9 +45,11 @@
       "namespace": "hg",
       "id": 2,
       "type": 1,
-      "version": 1,
+      "version": 2,
       "versionField": null,
-      "indexes": [],
+      "indexes": [
+        "@hg/changes-by-id"
+      ],
       "schema": "@hg/change",
       "derived": false,
       "key": [
@@ -215,6 +217,20 @@
         },
         "map": "onePerMember"
       }
+    },
+    {
+      "name": "changes-by-id",
+      "namespace": "hg",
+      "id": 10,
+      "type": 2,
+      "version": 2,
+      "collection": "@hg/changes",
+      "unique": false,
+      "deprecated": false,
+      "key": [
+        "space",
+        "id"
+      ]
     }
   ]
 }

@@ -130,8 +130,9 @@ await forum.getByTag('rust', { limit: 20 })        // { items, complete }
 ```js
 await forum.defineRole('editor', ['post', 'comment', 'edit-pages'])
 await forum.setRole(someone, 'moderator')
-await forum.getRole(someone)          // 'member' | 'moderator' | ... | null
-await forum.removeRole(someone)
+await forum.getRole(someone)          // ✓ 'member' | 'moderator' | ... | null (not a member)
+await forum.removeRole(someone)       // ✓ takes them out of the space (v1's meaning); what they wrote up to where
+                                      //   this member holds them stays for everyone, nothing after counts
 await forum.moderateAction('hide', post.id, { reason: 'spam' })   // flag | hide | remove | reveal
 await forum.moderateAction('ban', someone, { reason: 'spam' })    // cut where this moderator holds them
 ```

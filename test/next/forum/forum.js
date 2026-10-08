@@ -56,6 +56,13 @@ function join (hg, link) {
   return hg.redeemInvite(link)
 }
 
+// --- moderation ---
+
+// Takes someone out of the forum (v1's removeRole): what they wrote so far stays.
+function removeMember (forum, who) {
+  return forum.removeRole(who)
+}
+
 // --- posting ---
 
 function post (forum, title, text) {
@@ -116,6 +123,7 @@ module.exports = {
   createForum,
   invite,
   join,
+  removeMember,
   post,
   comment,
   vote,

@@ -360,3 +360,27 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
   newcomer indexes past the hole and is complete; nobody holds or serves the block). Found while
   writing it: a block arriving while the indexer was checking it got lost (fixed: arrivals below the
   scan point are always rechecked).
+- **Removing a member makes no one disagree (constitution Principle I).** Before, a member who had indexed
+  someone's records before `member/remove` kept them, while a newcomer never indexed them (the gate
+  refused non-members' logs). Now a removal works like a ban: `member/remove` carries a **cut**, the
+  removed identity's device logs' lengths as the decider held them (`removeRole` computes it; nobody
+  gives lengths). The view keeps `cut:<identity>` (a log's first cut stays its cut for good), and the
+  gate gives every log a **limit**: its cut if it has one, else everything if its author may write,
+  else nothing (`State.limitOf`). Records below the limit count for everyone; records past it are
+  ignored by everyone: members who indexed them take them back (rows and changes go, an edit undone
+  brings back the version before, a vote undone brings back the member's earlier vote, blocks are
+  cleared), newcomers never index them, downloads stop at the cut, and a log is no longer refused just
+  because its author was removed later. A log whose cut leaves nothing is dropped from the directory.
+  The cut is recorded only when someone *loses* the right to write (`post`), so a later decision can't
+  widen it. Someone removed and let in again writes in a new device log (`log/1`, …): the old one keeps
+  its cut. The index gains `changes-by-id` (append-only definition change) to find a cut edit by its
+  own id. Tests: `test/next/net/cut.js` (old member and newcomer show the same; a re-invited member
+  writes again; a member that already showed records past the cut takes them back, decided by an
+  offline decider).
+  **The pattern for story 5**: losing an edit permission must be handled the same way. A record isn't
+  ordered against decisions, so "was this edit allowed?" can't be answered by "is the permission held
+  now?" (members who settled earlier would keep the edit, later ones wouldn't). The decision taking the
+  permission away records the cut of the editor's logs; edits below it stay allowed, edits past it
+  don't. Today `editable: 'members'` already relies on it (an edit that passed its log's limit was
+  made while its author could write); `{ permission }` still checks the current state and must move to
+  cuts in story 5.

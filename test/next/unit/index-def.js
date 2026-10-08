@@ -49,6 +49,8 @@ test('insert and find through every collection and index', async (t) => {
   t.is(vote.seq, 4, 'one-per-member')
   t.is((await db.get('@hg/logs', { space, log })).indexed, 5, 'logs')
   t.is((await db.find('@hg/changes', { gte: { space, target: id(1) }, lte: { space, target: id(1) } }).toArray()).length, 1, 'changes by target')
+  const byId = await db.findOne('@hg/changes-by-id', { gte: { space, id: id(5) }, lte: { space, id: id(5) } })
+  t.alike(byId && byId.target, id(1), 'changes by their own id (cuts remove them)')
   t.is((await db.get('@hg/spaces', { key: space })).name, 'Forum', 'spaces')
   t.is(b4a.toString((await db.get('@hg/meta', { name: 'types' })).value), '{}', 'meta')
   t.is((await db.find('@hg/records', { gte: { space }, lte: { space } }).toArray()).length, 4, 'a space is one key range')
