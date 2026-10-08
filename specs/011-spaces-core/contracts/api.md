@@ -31,7 +31,11 @@ const hg = await Hypergraph.open('./data', {
 //   identity with a different mnemonic throws NOT_ALLOWED; changed types throw INCOMPATIBLE_TYPES.
 hg.identity            // ✓ sync: { publicKey } — the person
 hg.device              // ✓ sync: { publicKey } — this device
-await hg.recoveryPhrase()          // ✓ the 24 words, for the user to write down (null on a device added by another: story 3)
+await hg.recoveryPhrase(password)  // ✓ the 24 words, for the user to write down; null once forgotten here (or on a
+                                   //   device added by another: story 3); NOT_ALLOWED without the right password once protected
+await hg.protectRecoveryPhrase(password)   // ✓ keep it on this device, sealed by a password
+await hg.forgetRecoveryPhrase()            // ✓ erase it from this device; the identity keeps working here
+// ✓ Until the person chooses, the phrase stays on the device as is: apps ask right after showing it.
 await hg.connectToSwarm()          // ✓ one call: all spaces, now and later
 hg.on('connection', (peer) => {})  // ✓ peer: { publicKey }
 await hg.close()                   // ✓ safe to call twice

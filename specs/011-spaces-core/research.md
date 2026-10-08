@@ -324,7 +324,21 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
   and a member was reached on the space channel since opening — or this device is the only member.
 - **Field names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are refused** in type
   declarations: records carry them next to their fields.
-- **The identity's recovery phrase is stored in the instance folder** (the index's `meta`), so
-  `recoveryPhrase()` works after a restart. Open question for the lead: encrypt it, or drop it once the
-  user confirms having written it down.
+- **The identity's recovery phrase is stored in the instance folder**, so `recoveryPhrase()` works
+  after a restart. (Replaced by A4's "recovery phrase".)
 - **`test:next` runs through `scripts/test-runner.js`** (one process per file; `--bare` for Bare).
+
+### A4. Fixes from the review of story 1 (lead conversation, 2026-10-08)
+
+- **Recovery phrase: the person chooses** (Tibo's decision). `hg.forgetRecoveryPhrase()` erases it from
+  the device; `hg.protectRecoveryPhrase(password)` keeps it sealed (Argon2id-derived key,
+  XSalsa20-Poly1305, `sodium-universal`, same on Node and Bare); `recoveryPhrase(password)` reads it
+  back. Until one is chosen it stays as before, and the docs tell apps to ask right after showing it.
+  It lives in its own file (`<dir>/recovery-phrase`), not in the index: RocksDB keeps overwritten values
+  in old files until it compacts, so "erased" would not be true there. Forgetting overwrites the file
+  before removing it. Opening a folder with `mnemonic` now compares the identity the phrase gives, not
+  the stored words (which may be gone). Test: `test/next/forum/sign-up.js` (the words are no longer
+  anywhere in the folder after forgetting or protecting).
+- **Test-only helpers are off the public classes**: `writeRaw`, `holdsBlock`, `logs`, `ownLog` and
+  `openSpace` are functions of `lib/testing.js`, reaching the instance through its fields and one
+  internal symbol (`lib/symbols.js`). Test: `test/next/unit/surface.js`.

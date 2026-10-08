@@ -27,9 +27,19 @@ async function restore (dir, phrase, opts = {}) {
   return hg
 }
 
-// The words the person writes down.
-function recoveryPhrase (hg) {
-  return hg.recoveryPhrase()
+// The words the person writes down (the password, once they protected them).
+function recoveryPhrase (hg, password) {
+  return hg.recoveryPhrase(password)
+}
+
+// Right after showing the phrase, the app asks: keep it on this device behind
+// a password, or forget it here (it is written down)?
+function protectPhrase (hg, password) {
+  return hg.protectRecoveryPhrase(password)
+}
+
+function forgetPhrase (hg) {
+  return hg.forgetRecoveryPhrase()
 }
 
 // --- forums ---
@@ -101,6 +111,8 @@ module.exports = {
   signUp,
   restore,
   recoveryPhrase,
+  protectPhrase,
+  forgetPhrase,
   createForum,
   invite,
   join,

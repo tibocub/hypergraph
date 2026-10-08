@@ -21,9 +21,17 @@ const hg = await Hypergraph.open('./data', {
 hg.identity.publicKey            // the person
 hg.device.publicKey              // this device
 await hg.recoveryPhrase()        // 24 words to write down
+await hg.protectRecoveryPhrase(password)   // keep them here behind a password: recoveryPhrase(password)
+await hg.forgetRecoveryPhrase()            // or erase them from this device
 await hg.connectToSwarm()        // find the members of every space, now and later
 await hg.close()
 ```
+
+Right after showing the recovery phrase, ask the person what to do with it: keep it on this device
+behind a password (`protectRecoveryPhrase`), or forget it here because it is written down
+(`forgetRecoveryPhrase`). Until they choose, it stays in the instance folder as is, readable by anything
+that can read that folder. This device keeps its identity either way; the phrase is only needed to
+restore the identity on another computer.
 
 ## Types
 
