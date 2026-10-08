@@ -14,14 +14,38 @@ HyperMarkdown sites) without knowing replication, cryptography or networking. Re
 | # | Project | What it proves | Status |
 |---|---|---|---|
 | 1 | **hypergraph's new core** ("spaces", spec 011) | the kit itself | spec written; plan next |
-| 2 | **The reddit clone** (`examples/`, built with the core) | the API is easy; every flow tested | built alongside 1, from its first story |
-| 3 | **SwarmFS prototype** on the new core (repo `E:\Code\P2P\SwarmFS`) | files and folders, big archives | waits for 1's first stories; its needs feed spec 011 now |
-| 4 | **The web app** (HyperBBS's successor, name to find) | a real app people use | waits for 1's first stories; its needs feed spec 011 now |
+| 2 | **Forum scenario tests** (in this repo, no UI) | the API is easy; every flow tested | built alongside 1, from its first story |
+| 3 | **SwarmFS** rewrite on the new core + swarmwire (`E:\Code\P2P\SwarmFS`) | files and folders, two devices, big archives | starts after spec 011's story 3; its needs are in spec 011 |
+| 4 | **HyperBrowser** (codename; HyperBBS's vision in a web UI, own repo) | a real app people use; a forum site is the real proof | starts after spec 011's first stories; its needs are in spec 011 |
 
 v1 (`src/`) stays frozen until hyperDNS moves to the new core. HyperBBS (the terminal app) is paused.
 Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
+
+- **2026-10-08 (SwarmFS / HyperBrowser grilling)**:
+  - Everything is immutable underneath: an edit is a new record replacing an earlier one, a delete a
+    tombstone. A type says who may edit its records (author, a permission, any member) — wikis, shared
+    folders.
+  - **Sub-spaces** instead of areas: the API offers `createSubspace()`; underneath, a separate space
+    linked from its parent, inheriting members and roles; stricter rules or private allowed; its own
+    extra members allowed; **a parent ban always wins**. Admins split big archives explicitly.
+  - **A personal space per identity** across its own devices (device list, my spaces, settings, what
+    each device holds); devices join by code / QR.
+  - **One instance, one storage folder, many spaces**, one set of connections.
+  - **Storage budget**: one for the whole app, and optionally a budget for a given space taken out of
+    it (10 GB app, 1 GB for one space → 9 GB shared by the others). Policies cover records, not file
+    bytes moved by apps.
+  - Apps can add their own protocol to a space's connections (hypergraph's own stays on by default);
+    defaults work untuned, settings adjustable.
+  - App rules reject bad data before it is kept or passed on.
+  - The reddit-clone app is dropped: **forum scenario tests** (no UI) in this repo instead; the real
+    proof is a forum site in HyperBrowser. HyperBrowser = HyperBBS's vision in a web UI (codename,
+    renamed before 1.0); HyperMD scripts must be sandboxed (its spec).
+  - Spec 011's story order: forum basics, rules, devices + personal space (SwarmFS can start), invites,
+    graph vocabulary + shared editing, partial holding, app versions, sub-spaces, big spaces.
+  - SwarmFS keeps "full file list per member" in small and medium spaces (auto policy does it; ~0.6 GB
+    per million files); huge archives split into sub-spaces; redundancy for huge ones waits for spec 009.
 
 - **2026-10-08** — The web app starts as a local Node program plus a browser tab (fast to build), and
   ships later as a Pear app (desktop, then Android and iOS). **The core is tested on Bare as well as
@@ -52,7 +76,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Now
 
-1. Feed SwarmFS's and the web app's needs into spec 011; settle the web app's name and scope.
-2. `/speckit-plan` and `/speckit-tasks` for spec 011 (in the lead conversation).
-3. Then the first worker session: spec 011's foundation and story 1 (a forum in a few lines), with the
-   reddit clone's first tests, on Node and Bare.
+1. `/speckit-plan` and `/speckit-tasks` for spec 011 (in the lead conversation).
+2. Then the first worker session: spec 011's foundation and story 1 (a forum in a few lines), with the
+   forum scenario's first tests, on Node and Bare.
