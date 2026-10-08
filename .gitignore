@@ -4,7 +4,8 @@ examples/chat-web/.chat-web/**/*
 examples/p2p-reddit-clone/.reddit-storage/**/*
 !examples/p2p-reddit-clone/.reddit-storage/bootstrap.json
 out
-lib
+# a separate local clone in the main checkout; lib/ itself is the new core (spec 011)
+/lib/hyper-identity/
 test-*
 # ...but not the test tooling (the rule above hid the runner from git for a day)
 !scripts/test-*.js

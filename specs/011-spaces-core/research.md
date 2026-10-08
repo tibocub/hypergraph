@@ -137,6 +137,12 @@ indexers).
 not rewrite blocks others hold (v2 bans).
 **Open for implementation**: verify `blind-pairing` on Bare (R3); if it fails, pair over a one-time
 Hyperswarm topic derived from the code.
+**Checked (T002, `bench/experiments/pairing/check.js`)**: adopted. `blind-pairing` 2.3.1 loads and pairs
+on Node and on Bare (local DHT, ~5 s with `poll: 1000`), imports no `module`. Two things for story 3: a
+refusal is swallowed on the candidate side (it keeps polling), so `joinCode` needs its own time limit and
+the adding device closes its listener after one use; the code (the invite, z32) is 106 characters — fine
+as a QR or pasted text, long to type by hand. Bare needs 1.32+ for brittle's dependencies: the repo's
+`bare` dev dependency (1.34) is used through `npx bare`, not an older global one.
 
 ## R10. Finding a space's logs
 
