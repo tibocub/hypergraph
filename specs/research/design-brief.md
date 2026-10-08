@@ -1,6 +1,7 @@
 # Design brief: hypergraph, rethought
 
-2026-10-07. Status: draft for discussion (Tibo + Claude). Not a spec yet: it states the goal, the
+2026-10-07. Status: decisions settled 2026-10-08 (latest wins, `space`, auto policy); the spec is
+[`specs/011-spaces-core/spec.md`](../011-spaces-core/spec.md). Earlier status: draft for discussion (Tibo + Claude). Not a spec yet: it states the goal, the
 choices we lean towards and the questions to settle by experiment before writing one.
 
 ## The goal
@@ -121,7 +122,7 @@ No contexts to create, no separate content call, no ids to assemble by hand, no 
   `edges`, `tag`, `untag`, `getByTag`, `query` (with `.type()`, `.author()`, `.tag()`, `.live()`...),
   `setRole`, `getRole`, `removeRole`, `moderateAction`, `createInvite`, `redeemInvite`,
   `connectToSwarm`. `relate` and `tag` become author records under the hood. Proposed changes (to
-  confirm): **`context` → `space`**, because the meaning changes (a v1 context is a place for relations
+  confirm; **confirmed 2026-10-08**): **`context` → `space`**, because the meaning changes (a v1 context is a place for relations
   inside a graph; a space is the whole community: members, roles, decisions); reusing the old word for a
   different thing would mislead v1 users. **`putContent` / `getContent` go away**: content is a field of
   the record. **No `keyPair` argument** to `moderateAction`: the member's identity signs.
@@ -130,7 +131,7 @@ No contexts to create, no separate content call, no ids to assemble by hand, no 
   fresh, separate tree (not grafted onto v1's files), with only reused modules copied in; v1 stays frozen
   beside it until hyperDNS moves, then goes.
 
-## The default policy for new spaces (to discuss)
+## The default policy for new spaces (decided 2026-10-08: auto)
 
 When someone creates a space, every member's app must decide how much of it to keep on disk:
 
