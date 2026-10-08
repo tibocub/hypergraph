@@ -5,6 +5,7 @@
 
 const test = require('brittle')
 const forum = require('./forum.js')
+const testing = require('../../../lib/testing.js')
 const { threeMembers } = require('./_setup.js')
 const { eventually, sleep } = require('../helpers.js')
 
@@ -40,14 +41,14 @@ test('the author deletes: every member stops showing it and clears its blocks', 
   await forum.remove(fa, p)
   t.ok(await shownEverywhere(all, async (f) => (await forum.latest(f)).length === 0 && (await f.get(p.id)).record === null), 'gone everywhere within 1 s')
   for (const f of all) {
-    t.ok(await eventually(async () => !(await f._holdsBlock(p.id)), 2000), 'the post\'s block is cleared')
+    t.ok(await eventually(async () => !(await testing.holdsBlock(f, p.id)), 2000), 'the post\'s block is cleared')
   }
   // Live downloads must not fetch it again, even as the logs grow.
   const later = await forum.post(fa, 'later', '')
   await shownEverywhere(all, async (f) => (await forum.latest(f)).length === 1)
   t.ok(later)
   await sleep(1500)
-  for (const f of all) t.absent(await f._holdsBlock(p.id), 'and stays cleared')
+  for (const f of all) t.absent(await testing.holdsBlock(f, p.id), 'and stays cleared')
 })
 
 test('someone else\'s edit or delete is refused locally and ignored everywhere', async (t) => {
@@ -60,8 +61,8 @@ test('someone else\'s edit or delete is refused locally and ignored everywhere',
   try { await forum.remove(fb, p) } catch (err) { t.is(err.code, 'NOT_ALLOWED') }
 
   // b writes them anyway, bypassing the API, then a post everyone must see.
-  await fb._writeRaw({ kind: 'edit', type: 'post', target: p.id, fields: { title: 'Mine', text: 'by b' } })
-  await fb._writeRaw({ kind: 'delete', type: 'post', target: p.id, fields: {} })
+  await testing.writeRaw(fb, { kind: 'edit', type: 'post', target: p.id, fields: { title: 'Mine', text: 'by b' } })
+  await testing.writeRaw(fb, { kind: 'delete', type: 'post', target: p.id, fields: {} })
   const marker = await forum.post(fb, 'after', 'the raw writes')
   t.ok(await shownEverywhere(all, async (f) => (await forum.latest(f)).some((x) => x.id === marker.id)), 'b\'s later post arrived everywhere')
   for (const f of all) t.is(await textOf(f, p.id), 'by a', 'the post is unchanged and still shown')

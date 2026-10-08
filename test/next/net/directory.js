@@ -4,6 +4,7 @@
 
 const test = require('brittle')
 const forum = require('../forum/forum.js')
+const testing = require('../../../lib/testing.js')
 const { account, threeMembers } = require('../forum/_setup.js')
 const { eventually, sleep } = require('../helpers.js')
 
@@ -21,7 +22,7 @@ test('a newcomer learns every member\'s log from one member', async (t) => {
     const got = (await forum.latest(fd)).map((p) => p.id)
     return got.includes(pb.id) && got.includes(pc.id)
   }, 5000), 'd sees b\'s and c\'s posts, learned from a alone')
-  t.is(fd._logs().length, 4, 'd knows a, b, c and its own log')
+  t.is(testing.logs(fd).length, 4, 'd knows a, b, c and its own log')
 
   const pd = await forum.post(fd, 'from d', '')
   t.ok(await eventually(async () => (await forum.latest(fa)).some((p) => p.id === pd.id), 2000), 'd\'s new log reached a')
@@ -30,16 +31,16 @@ test('a newcomer learns every member\'s log from one member', async (t) => {
 test('a non-member\'s log is neither kept nor passed on', async (t) => {
   const { fa, fb } = await threeMembers(t)
   const e = await account(t, 'stranger')
-  const fe = await e._openSpace(fa.key)
-  await fe._writeRaw({ kind: 'put', type: 'post', fields: { title: 'spam', text: 'buy now' } })
+  const fe = await testing.openSpace(e, fa.key)
+  await testing.writeRaw(fe, { kind: 'put', type: 'post', fields: { title: 'spam', text: 'buy now' } })
   const marker = await forum.post(fb, 'real', '')
   await eventually(async () => (await forum.latest(fa)).some((p) => p.id === marker.id), 3000)
   await sleep(1500) // time for e's log to be offered and refused
   for (const f of [fa, fb]) {
     t.absent((await forum.latest(f)).some((p) => p.title === 'spam'), 'no spam shown')
-    t.absent(f._logs().includes(fe._ownLog()), 'the stranger\'s log is not in the directory')
+    t.absent(testing.logs(f).includes(testing.ownLog(fe)), 'the stranger\'s log is not in the directory')
   }
-  t.is(fa._logs().length, 3, 'a, b and c only')
+  t.is(testing.logs(fa).length, 3, 'a, b and c only')
 })
 
 test('two members started at the same moment still meet', async (t) => {
