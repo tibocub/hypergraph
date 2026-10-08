@@ -418,6 +418,10 @@ message at startup.
   and working (its suite and hyperDNS's keep passing) until hyperDNS moves.
 - **FR-033**: Docs MUST cover the new API for developers, including what "deleted" and "incomplete"
   mean, with the clone as the worked example.
+- **FR-034**: The new core MUST run on both Node and Bare (the runtime of Pear, used later for desktop
+  and mobile apps), and its tests MUST run on both from the first story; it MUST NOT use Node's
+  built-in modules directly. (Checked 2026-10-08: every Holepunch dependency loads in Bare 1.27; Node's
+  `path`, `fs`, `os` don't.)
 
 ### Key Entities
 
@@ -466,6 +470,8 @@ message at startup.
 - **SC-010**: The design brief's measurements (activity-list size and spread, index speed, device-proof
   cost, encoding sizes) are re-run on the real core and recorded, with any difference over 25% explained.
 - **SC-011**: v1's test suite and hyperDNS's suite still pass at every commit of this feature.
+- **SC-012**: The core's whole test suite, including the reddit clone's tests, passes on Bare as well
+  as on Node at every commit of this feature.
 
 ## Assumptions
 
