@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-08: `hypergraph/next`, the new core — story 1 (additive, ALPHA)
+
+- New entry point `require('hypergraph/next')` (`lib/`), beside v1 (`src/`, unchanged): one instance,
+  one identity (24-word recovery phrase), many spaces; app-declared record types; `put`, `get`, `edit`,
+  `del`; `query(type).latest/where/by` with paging and `live`; `linked`, `count`, `sum` (one vote per
+  member); invites recorded by the owner; every read bounded, returning `{ items, complete }`.
+- Runs and is tested on Node and Bare: `npm run test:next`, `npm run test:next:bare`.
+- New direct dependencies: hyperswarm (was dev), hyperdb, hyperschema, hypercore, z32, ready-resource,
+  safety-catch, blind-pairing, bare-fs/path/os/events/process (an `imports` map sends Node built-ins to
+  them under Bare); dev: bare. `.gitignore` no longer ignores `lib/`.
+- Docs: `docs/next/`. Details: `specs/011-spaces-core/`.
+
 ### 2026-10-07: dependencies
 
 - Dev dependencies `blind-peer` and `blind-peering` (research experiments `bench/v2-blind*.js`). They

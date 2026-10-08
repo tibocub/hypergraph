@@ -299,3 +299,32 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
   flagged, so the order of arrival never matters.
 - `grants-for` is not built yet: grants are story 8's, and HyperDB definitions only grow by appending,
   so it is added then.
+
+### A3. Small choices made while building story 1
+
+- **Keys are z32 strings in the API** (record ids, space keys, identity and device keys), and methods
+  accept the record or space object where a key is expected. One convention (R18), JSON- and URL-safe.
+- **Link fields live in the record's `links` list**: a link field stores a small index into it, so
+  readers can index links without knowing the type (another app version may not).
+- **A link to a record not held yet is accepted**; its target type is checked when the target is held
+  (at write time locally, at index time on readers). A vote can arrive before its post (spec edge cases).
+- **An allowed delete is final**: whatever the stamps, a record with an allowed delete is gone; a later
+  edit of it is kept in `changes` but never applied. Converges without comparing a delete's stamp to
+  edits'.
+- **An edit carries all the fields of the new version** (the writer merges the change into the version
+  it holds), so the current version is simply the latest allowed edit.
+- **The space key is the decision log's key**; the log header's `decisions` field repeats it (sub-spaces
+  may differ later). A decision-log writer key speaks for an identity through `space/init`'s proof
+  (`writer:` entries in the view), so decisions need no signature of their own.
+- **Invites** (story 1): a newcomer sends its signed redemption on the space channel (a `redeem` message,
+  added to data-model.md's channel messages); a member who records decisions appends `invite/redeem`.
+  No `invite/create` decision: an invite carries its maker's signature, and its uses are counted at
+  redemption (spec 008 did the same).
+- **"Complete"** (R13): every member of the decision log has a known log, every known block is indexed,
+  and a member was reached on the space channel since opening — or this device is the only member.
+- **Field names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are refused** in type
+  declarations: records carry them next to their fields.
+- **The identity's recovery phrase is stored in the instance folder** (the index's `meta`), so
+  `recoveryPhrase()` works after a restart. Open question for the lead: encrypt it, or drop it once the
+  user confirms having written it down.
+- **`test:next` runs through `scripts/test-runner.js`** (one process per file; `--bare` for Bare).

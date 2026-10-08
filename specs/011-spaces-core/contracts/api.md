@@ -7,6 +7,12 @@ reachable within the read's bound (R13). Errors are `HypergraphError` with a sta
 The forum scenario tests (`test/next/forum/`) are the executable form of this contract; when they and
 this file disagree, fix one of them in the same change.
 
+**Keys are strings.** Every key the API gives out — record ids, space keys, identity and device keys — is
+a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
+itself where a key is expected (`forum.put('comment', { on: post })`).
+
+**Built so far**: story 1 (marked ✓ below). The rest is the plan for later stories.
+
 ## Opening, identity, network
 
 ```js
@@ -21,12 +27,14 @@ const hg = await Hypergraph.open('./data', {
   bootstrap: undefined  // DHT nodes (tests use a local DHT)
 })
 
-hg.identity            // sync: { publicKey } — the person
-hg.device              // sync: { publicKey } — this device
-await hg.recoveryPhrase()          // the 24 words, for the user to write down
-await hg.connectToSwarm()          // one call: all spaces, now and later
-hg.on('connection', (peer) => {})
-await hg.close()
+// ✓ story 1: types, readTimeout, mnemonic, bootstrap. Opening a folder that already holds another
+//   identity with a different mnemonic throws NOT_ALLOWED; changed types throw INCOMPATIBLE_TYPES.
+hg.identity            // ✓ sync: { publicKey } — the person
+hg.device              // ✓ sync: { publicKey } — this device
+await hg.recoveryPhrase()          // ✓ the 24 words, for the user to write down (null on a device added by another: story 3)
+await hg.connectToSwarm()          // ✓ one call: all spaces, now and later
+hg.on('connection', (peer) => {})  // ✓ peer: { publicKey }
+await hg.close()                   // ✓ safe to call twice
 ```
 
 ## Devices and the personal space
@@ -45,16 +53,17 @@ await hg.personal.put('swarmfs/held', { root, path })   // any app record, priva
 ## Spaces
 
 ```js
-const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })
-const joined = await hg.redeemInvite(link)      // joins; resolves to the Space
-hg.spaces()                                     // sync: [{ key, name, parent }]
-hg.space(key)                                   // sync: the Space (opened if needed)
+const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name (policy kept, applied in story 6; private: story 8)
+const joined = await hg.redeemInvite(link, { timeout: 60000 })  // ✓ joins (connecting if needed); resolves to the Space once a
+                                                // member who records decisions let us in; INVITE_INVALID after timeout
+hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
+hg.space(key)                                   // ✓ sync: the Space; NOT_FOUND if not held here
 await hg.leaveSpace(key)                        // drops its data from this device
 
-forum.key; forum.name; forum.parent             // sync
+forum.key; forum.name; forum.parent             // ✓ sync
 forum.status()                                  // sync: { policy, held, budget, belowPolicy, peers }
 forum.setBudget(1e9)                            // or null: share the app budget
-forum.on('change', ({ types }) => {})           // records of these types changed
+forum.on('change', ({ types }) => {})           // ✓ records of these types changed
 forum.on('status', (status) => {})
 ```
 
@@ -71,31 +80,38 @@ types: {
 // field kinds: string, text, int, uint, float, bool, bytes, ref (spec 001 envelope), link (a record), space (a space key)
 // editable: 'author' (default) | 'members' | { permission: name }
 // Only appending fields or adding types is allowed between app versions; anything else throws INCOMPATIBLE_TYPES.
+// ✓ story 1: all kinds, links, onePerMember (one per member per its first link field), editable 'author';
+//   bad declarations throw INVALID_TYPE naming type and field. Field names id, type, author, device,
+//   stamp, edited, futureStamp are taken by the record itself.
 ```
 
 ## Records
 
 ```js
-const post = await forum.put('post', { title: 'Hello', text: 'First!' })
-// post: { id, type, author, device, stamp, title, text } — id is a short string, stable across edits
-const { record } = await forum.get(post.id)
-await forum.edit(post.id, { text: 'First! (edited)' })   // NOT_ALLOWED unless the type lets this member edit
-await forum.del(post.id)
+const post = await forum.put('post', { title: 'Hello', text: 'First!' })   // ✓ NOT_ALLOWED for non-members
+// ✓ post: { id, type, author, device, stamp, edited, title, text } — id stable across edits; author is the
+//   identity, device the one that wrote the current version; futureStamp: true if stamped > 10 min ahead
+const { record, complete } = await forum.get(post.id)   // ✓ record null if not held (or deleted)
+await forum.edit(post.id, { text: 'First! (edited)' })   // ✓ changes these fields, keeps the others; resolves to the
+                                                         //   new version; NOT_ALLOWED unless the type lets this member edit
+await forum.del(post.id)                                 // ✓ every member stops showing it and clears its blocks
 ```
 
 ## Queries and the graph
 
 ```js
-const { items, complete } = await forum.query('post').latest(20)
-await forum.query('post').where({ forum: 'news' }).latest(20)      // app-declared index
-await forum.query('comment').by(someone).latest(20)                // by author
+const { items, complete } = await forum.query('post').latest(20)   // ✓ newest first (by when it was put)
+await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-declared index (INVALID_TYPE if not declared)
+await forum.query('comment').by(someone).latest(20)                // ✓ by author (identity key)
 await forum.query('post').tag('rust').latest(20)
-await forum.query('post').latest(20, { after: cursor, timeout: 2000 })   // paging, own bound
-const stop = forum.query('post').live((result) => render(result), { limit: 20 })   // sync; returns stop()
+await forum.query('post').latest(20, { after: items.at(-1), timeout: 2000 })   // ✓ paging: after the last record of
+                                                                   //   the previous page; own bound
+const stop = forum.query('post').live(({ items, complete }) => render(items), { limit: 20 })   // ✓ sync; returns stop();
+                                                                   //   re-run only when records of its type change
 
-await forum.linked(post, 'comment')                // { items, complete } — what points at it
-await forum.count('comment', { on: post })         // { value, complete }
-await forum.sum('vote', 'value', { on: post })     // { value, complete } — one per member, latest
+await forum.linked(post, 'comment', { timeout })   // ✓ { items, complete } — what points at it, oldest first
+await forum.count('comment', { on: post })         // ✓ { value, complete }
+await forum.sum('vote', 'value', { on: post })     // ✓ { value, complete } — one per member, latest
 
 await forum.relate(a, b, 'cites', { value: 1, data })   // data ≤ 4 KB
 await forum.unrelate(a, b, 'cites')
@@ -119,6 +135,8 @@ await forum.moderateAction('ban', someone, { reason: 'spam' })    // cut where t
 
 ```js
 const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.now() + 7 * 864e5, subspaces: [] })
+// ✓ story 1: a string 'hg:…'; uses default 1; recorded by a member who records decisions (owner, admins)
+//   while online; NOT_ALLOWED if this member's role can't invite
 await forum.revokeInvite(link)
 await forum.redemptions(link)         // [{ identity, at }]
 await forum.setWriteLimit({ records: 50, periodMs: 3600e3 })   // open spaces
@@ -147,3 +165,9 @@ forum.addProtocol('swarmfs/transfer', {
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
 `INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`.
+
+Story 1 uses: `NOT_ALLOWED` (not a member; editing someone else's record; inviting without the role),
+`NOT_FOUND` (an id or a space key that isn't one, or isn't held here), `INVALID_RECORD` (a field of the
+wrong kind, an unknown field, a link to a type the type doesn't allow, over 64 KB), `INVALID_TYPE`,
+`INCOMPATIBLE_TYPES`, `INVITE_INVALID` (not a link, bad signature, or nobody let us in in time),
+`INVITE_EXPIRED` (checked locally before asking), `CLOSED`.
