@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "name": "record",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": 10,
+      "fields": [
+        {
+          "name": "space",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "id",
+          "required": true,
+          "type": "buffer",
+          "version": 1
+        },
+        {
+          "name": "type",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "author",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "device",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "log",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "seq",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "stamp",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "vstamp",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "vdevice",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "fields",
+          "type": "buffer",
+          "version": 1
+        },
+        {
+          "name": "links",
+          "array": true,
+          "type": "buffer",
+          "version": 1
+        },
+        {
+          "name": "ix",
+          "array": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "flags",
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "opm",
+          "type": "bool",
+          "version": 1
+        },
+        {
+          "name": "target",
+          "type": "buffer",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "log",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": 2,
+      "fields": [
+        {
+          "name": "space",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "log",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "identity",
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "device",
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "indexed",
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "cut",
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "refused",
+          "type": "bool",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "change",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": 8,
+      "fields": [
+        {
+          "name": "space",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "target",
+          "required": true,
+          "type": "buffer",
+          "version": 1
+        },
+        {
+          "name": "id",
+          "required": true,
+          "type": "buffer",
+          "version": 1
+        },
+        {
+          "name": "kind",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "type",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "author",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "device",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "stamp",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "fields",
+          "type": "buffer",
+          "version": 1
+        },
+        {
+          "name": "links",
+          "array": true,
+          "type": "buffer",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "space",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": 2,
+      "fields": [
+        {
+          "name": "key",
+          "required": true,
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "ns",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "parent",
+          "type": "fixed32",
+          "version": 1
+        },
+        {
+          "name": "joined",
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "meta",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": 1,
+      "fields": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "value",
+          "type": "buffer",
+          "version": 1
+        }
+      ]
+    }
+  ]
+}

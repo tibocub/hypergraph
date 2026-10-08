@@ -287,3 +287,15 @@ convergence (constitution Principle I). Now:
   the stamp of the version it replaces as seen by the writing device. Any edit made after seeing a
   future-dated version therefore still wins.
 Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit made after seeing it").
+
+### A2. The index definition: a `changes` collection and a `spaces` collection; `grants-for` later (T013)
+
+- **`changes`** (space, target, id → kind, author, device, stamp, fields): edits and deletes are kept by
+  the record they replace. They can arrive before it (another device's log, or a slower log), and the
+  record's current version is the latest *allowed* one, which can only be decided once both are held.
+  The `records` row keeps the current version (`vstamp`, `vdevice`, `fields`).
+- **`spaces`** (key → Corestore namespace, name, parent): the spaces this instance holds.
+- `records` rows carry `opm` and `target` for the one-per-member index; superseded votes stay as rows,
+  flagged, so the order of arrival never matters.
+- `grants-for` is not built yet: grants are story 8's, and HyperDB definitions only grow by appending,
+  so it is added then.
