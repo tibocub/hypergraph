@@ -52,7 +52,8 @@ makes a member a decision-log writer.
 ### Space channel messages (Protomux `hypergraph/space`, id = space key)
 
 `summary { count, digest (32 B XOR) }`, `want {}`, `logs [log key]`, `notice { log }`, `get { log }`
-(experiment 1); story 9 adds `period, start` to log entries.
+(experiment 1), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3); story 9
+adds `period, start` to log entries.
 
 ## On the device only (never replicated)
 
@@ -62,11 +63,14 @@ makes a member a decision-log writer.
 |---|---|---|
 | `records` | `space, id` | type, author, device log, seq, stamp, current fields, links, flags (hidden, removed, deleted, edited) |
 | `logs` | `space, log` | identity, device, indexed length, cut, refused? |
-| `meta` | `name` | declared types (compat check), budgets, schema version |
+| `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2) |
+| `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent |
+| `meta` | `name` | declared types (compat check), identity (proof, recovery phrase), budgets, schema version |
 
 Indexes: `by-type (space, type, stamp)`, `by-author (space, author, stamp)`, `by-link (space, target,
 type, stamp)`, `by-ix (space, app key…)` (map over declared `index`), `one-per-member (space, type,
-target, author)`, `grants-for (space, recipient prefix, epoch)`.
+target, author)`, `grants-for (space, recipient prefix, epoch)` (story 8). `records` rows also carry the current version's
+`vstamp`/`vdevice` and, for one-per-member types, `opm` + `target`.
 
 ### Corestore (`<dir>/cores`)
 

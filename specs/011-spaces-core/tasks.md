@@ -91,8 +91,8 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 - [X] T030 [US1] lib/network.js: one Hyperswarm; a topic per space; `store.replicate`; the space channel per shared space; re-look after a random delay (from src/networking.js); `hg.on('connection')`
 - [X] T031 [US1] lib/invites.js (first part): `createInvite` / `redeemInvite` for a member role, single use, recorded by the creator while online (adapted from src/v2/invites.js; offline inviters, expiry, revocation and public links come in US4)
 - [X] T032 [US1] lib/space.js and lib/index.js: `Hypergraph.open` (types, readTimeout, mnemonic, bootstrap), `recoveryPhrase`, `createSpace`, `redeemInvite`, `spaces`, `space`, `connectToSwarm`, `close`; `Space.put/get/edit/del/query/linked/count/sum/on('change')` per contracts/api.md
-- [ ] T033 [US1] docs/next/concepts.md (spaces, records, edits and deletes, decisions, readers enforce, complete answers) and docs/next/api.md (story 1's surface); CHANGELOG.md entry linking to specs/011-spaces-core/
-- [ ] T034 [US1] Checkpoint: story 1 tests pass on Node and Bare; v1's `npm test` and hyperDNS's `npm test` pass; report sizes of forum.js (SC-002)
+- [X] T033 [US1] docs/next/concepts.md (spaces, records, edits and deletes, decisions, readers enforce, complete answers) and docs/next/api.md (story 1's surface); CHANGELOG.md entry linking to specs/011-spaces-core/
+- [X] T034 [US1] Checkpoint: story 1 tests pass on Node and Bare; v1's `npm test` and hyperDNS's `npm test` pass; report sizes of forum.js (SC-002)
 
 **Checkpoint**: MVP — a forum works between three members. Review in the lead conversation before Phase 4.
 
