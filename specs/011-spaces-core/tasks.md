@@ -35,12 +35,12 @@ stories 1–3, when the real API exists.
 
 **Purpose**: the new tree loads on Node and Bare, and its tests run.
 
-- [ ] T001 Add direct dependencies in package.json (research R3): hyperswarm, hyperdb, hyperschema, hypercore, b4a, z32, ready-resource, safety-catch, bare-fs, bare-path, bare-os, bare-events, bare-process; dev: bare; add the `imports` map (fs, path, os, events, process → bare-* under Bare, as in `E:\Code\P2P\swarmwire\package.json`) and the export `"./next": "./lib/index.js"`; `npm install`; v1's `npm test` still passes
-- [ ] T002 Check `blind-pairing` on Node and Bare (loads, no `module` import, pairs two local instances) in bench/experiments/pairing/check.js; record the result in research.md R9 (adopt it, or fall back to a one-time topic derived from the code)
-- [ ] T003 Add the `next` group and a `--bare` switch to scripts/test-runner.js; npm scripts `test:next` (Node) and `test:next:bare` (`bare node_modules/brittle/bin/bare.js` over test/next/**)
-- [ ] T004 [P] Create test/next/helpers.js (temp dirs with retrying removal, local DHT testnet per test, `within()`, open N instances, teardown with bounded waits), Bare-compatible, adapted from test/brittle/helpers.js
-- [ ] T005 [P] Write test/next/unit/bare-rules.js: fails if any file in lib/ uses `Buffer`, the `process` global, a `node:` specifier, or requires a Node built-in missing from the imports map
-- [ ] T006 Create the lib/ skeleton per plan.md (empty modules exporting nothing yet) and lib/index.js loading on both runtimes; a smoke test test/next/unit/load.js passes on Node and Bare
+- [X] T001 Add direct dependencies in package.json (research R3): hyperswarm, hyperdb, hyperschema, hypercore, b4a, z32, ready-resource, safety-catch, bare-fs, bare-path, bare-os, bare-events, bare-process; dev: bare; add the `imports` map (fs, path, os, events, process → bare-* under Bare, as in `E:\Code\P2P\swarmwire\package.json`) and the export `"./next": "./lib/index.js"`; `npm install`; v1's `npm test` still passes
+- [X] T002 Check `blind-pairing` on Node and Bare (loads, no `module` import, pairs two local instances) in bench/experiments/pairing/check.js; record the result in research.md R9 (adopt it, or fall back to a one-time topic derived from the code)
+- [X] T003 Add the `next` group and a `--bare` switch to scripts/test-runner.js; npm scripts `test:next` (Node) and `test:next:bare` (`bare node_modules/brittle/bin/bare.js` over test/next/**)
+- [X] T004 [P] Create test/next/helpers.js (temp dirs with retrying removal, local DHT testnet per test, `within()`, open N instances, teardown with bounded waits), Bare-compatible, adapted from test/brittle/helpers.js
+- [X] T005 [P] Write test/next/unit/bare-rules.js: fails if any file in lib/ uses `Buffer`, the `process` global, a `node:` specifier, or requires a Node built-in missing from the imports map
+- [X] T006 Create the lib/ skeleton per plan.md (empty modules exporting nothing yet) and lib/index.js loading on both runtimes; a smoke test test/next/unit/load.js passes on Node and Bare
 
 **Checkpoint**: `npm run test:next` and `npm run test:next:bare` run (and pass) on the skeleton.
 

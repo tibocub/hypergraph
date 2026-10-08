@@ -52,8 +52,8 @@
     "forum:web:owner": "node examples/forum-web/peer.js --name=owner --role=owner --topic=hyper-bbs-forum-demo",
     "forum:web:peer": "node examples/forum-web/peer.js --name=peer --role=peer --topic=hyper-bbs-forum-demo",
     "docs": "jsdoc -c jsdoc.json",
-    "test:next": "brittle test/next/unit/*.js test/next/net/*.js test/next/forum/*.js",
-    "test:next:bare": "npx bare node_modules/brittle/bin/bare.js test/next/unit/*.js test/next/net/*.js test/next/forum/*.js"
+    "test:next": "node scripts/test-runner.js next",
+    "test:next:bare": "node scripts/test-runner.js --bare next"
   },
   "dependencies": {
     "autobase": "^7.28.1",
