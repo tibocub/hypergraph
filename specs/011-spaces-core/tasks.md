@@ -70,27 +70,27 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 
 ### Tests for User Story 1 (write first, they fail)
 
-- [ ] T015 [P] [US1] Write test/next/forum/forum.js: the reference app (declares post, comment, vote per contracts/api.md "Types"; functions signUp, createForum, invite/join, post, comment, vote, score, latest, liveLatest) using only the public API; keep it under 400 lines (SC-002)
-- [ ] T016 [P] [US1] test/next/forum/sign-up.js: a new identity gets a recovery phrase; reopening another folder with it restores the same identity (US1 #7)
-- [ ] T017 [P] [US1] test/next/forum/post-comment-vote.js: three members on a local DHT; a post appears in everyone's latest within 1 s; comments and replies agree ("what points at X"); three votes, one changed, score agrees counting one per member, the latest (US1 #1–3, SC-001)
-- [ ] T018 [P] [US1] test/next/forum/edit-delete.js: author edits → everyone shows the latest; author deletes → everyone hides it and its blocks are cleared; an edit or delete by a non-author is refused locally (NOT_ALLOWED) and, written through a raw log, ignored by every member (US1 #5–6)
-- [ ] T019 [P] [US1] test/next/forum/live.js: a live latest-posts query updates on a new post; it is not recomputed when only comments or votes arrive (US1 #4, FR-010)
-- [ ] T020 [P] [US1] test/next/net/directory.js: a newcomer learns every member's log from any one member; a new log is announced with a notice and fetched by who lacks it; a non-member's log is neither kept nor passed on; two members started at the same moment still meet (research R10, R17)
-- [ ] T021 [P] [US1] test/next/unit/decisions-basic.js: `space/init` and `member/add|remove` applied deterministically; a decision by a non-writer ignored; two orders of the same concurrent decisions converge
-- [ ] T022 [P] [US1] test/next/net/bounded.js: a read whose only holder is offline returns within its bound with `complete: false`; once the holder is back, the same read is complete (FR-011, SC-007)
+- [X] T015 [P] [US1] Write test/next/forum/forum.js: the reference app (declares post, comment, vote per contracts/api.md "Types"; functions signUp, createForum, invite/join, post, comment, vote, score, latest, liveLatest) using only the public API; keep it under 400 lines (SC-002)
+- [X] T016 [P] [US1] test/next/forum/sign-up.js: a new identity gets a recovery phrase; reopening another folder with it restores the same identity (US1 #7)
+- [X] T017 [P] [US1] test/next/forum/post-comment-vote.js: three members on a local DHT; a post appears in everyone's latest within 1 s; comments and replies agree ("what points at X"); three votes, one changed, score agrees counting one per member, the latest (US1 #1–3, SC-001)
+- [X] T018 [P] [US1] test/next/forum/edit-delete.js: author edits → everyone shows the latest; author deletes → everyone hides it and its blocks are cleared; an edit or delete by a non-author is refused locally (NOT_ALLOWED) and, written through a raw log, ignored by every member (US1 #5–6)
+- [X] T019 [P] [US1] test/next/forum/live.js: a live latest-posts query updates on a new post; it is not recomputed when only comments or votes arrive (US1 #4, FR-010)
+- [X] T020 [P] [US1] test/next/net/directory.js: a newcomer learns every member's log from any one member; a new log is announced with a notice and fetched by who lacks it; a non-member's log is neither kept nor passed on; two members started at the same moment still meet (research R10, R17)
+- [X] T021 [P] [US1] test/next/unit/decisions-basic.js: `space/init` and `member/add|remove` applied deterministically; a decision by a non-writer ignored; two orders of the same concurrent decisions converge
+- [X] T022 [P] [US1] test/next/net/bounded.js: a read whose only holder is offline returns within its bound with `complete: false`; once the holder is back, the same read is complete (FR-011, SC-007)
 
 ### Implementation for User Story 1
 
-- [ ] T023 [US1] lib/log.js: a device's log in a space (block 0 header with proof; append records with stamps; read; header check for others' logs)
-- [ ] T024 [US1] lib/decisions/log.js, apply.js, state.js: the decision log (Autobase) adapted from src/v2/control.js — space/init, member/add|remove, owner as first writer; 'change' events; serialized reloads
-- [ ] T025 [US1] lib/directory.js: the `hypergraph/space` Protomux channel (summary + XOR digest, want, logs, notice, get — from bench/experiments/activity/gossip.js with notices), calling the gate's log check before keeping or passing on an entry
-- [ ] T026 [US1] lib/gate.js (first part): log check (proof valid, identity a member, device not removed), record check (decodes, type rules, links' targets, editors per `editable`)
-- [ ] T027 [US1] lib/index/indexer.js: logs → gate → rows; edits replace current fields when their stamp is newer (ties by device key); deletes flag the row and clear the record's blocks; one-per-member rows; `logs.indexed` per log; flush + `watch()` with the set of types written
-- [ ] T028 [US1] lib/index/query.js: `query(type).latest/where/by` with paging cursors, `linked`, `count`, `sum` (one per member), bounded reads returning `{ items, complete }` (research R13), `live` re-run only for its types
-- [ ] T029 [US1] lib/replication.js (first part): download everything of small spaces; stall detection and retries with fresh sessions adapted from src/v2/replication.js; "known but not held" bookkeeping for `complete`
-- [ ] T030 [US1] lib/network.js: one Hyperswarm; a topic per space; `store.replicate`; the space channel per shared space; re-look after a random delay (from src/networking.js); `hg.on('connection')`
-- [ ] T031 [US1] lib/invites.js (first part): `createInvite` / `redeemInvite` for a member role, single use, recorded by the creator while online (adapted from src/v2/invites.js; offline inviters, expiry, revocation and public links come in US4)
-- [ ] T032 [US1] lib/space.js and lib/index.js: `Hypergraph.open` (types, readTimeout, mnemonic, bootstrap), `recoveryPhrase`, `createSpace`, `redeemInvite`, `spaces`, `space`, `connectToSwarm`, `close`; `Space.put/get/edit/del/query/linked/count/sum/on('change')` per contracts/api.md
+- [X] T023 [US1] lib/log.js: a device's log in a space (block 0 header with proof; append records with stamps; read; header check for others' logs)
+- [X] T024 [US1] lib/decisions/log.js, apply.js, state.js: the decision log (Autobase) adapted from src/v2/control.js — space/init, member/add|remove, owner as first writer; 'change' events; serialized reloads
+- [X] T025 [US1] lib/directory.js: the `hypergraph/space` Protomux channel (summary + XOR digest, want, logs, notice, get — from bench/experiments/activity/gossip.js with notices), calling the gate's log check before keeping or passing on an entry
+- [X] T026 [US1] lib/gate.js (first part): log check (proof valid, identity a member, device not removed), record check (decodes, type rules, links' targets, editors per `editable`)
+- [X] T027 [US1] lib/index/indexer.js: logs → gate → rows; edits replace current fields when their stamp is newer (ties by device key); deletes flag the row and clear the record's blocks; one-per-member rows; `logs.indexed` per log; flush + `watch()` with the set of types written
+- [X] T028 [US1] lib/index/query.js: `query(type).latest/where/by` with paging cursors, `linked`, `count`, `sum` (one per member), bounded reads returning `{ items, complete }` (research R13), `live` re-run only for its types
+- [X] T029 [US1] lib/replication.js (first part): download everything of small spaces; stall detection and retries with fresh sessions adapted from src/v2/replication.js; "known but not held" bookkeeping for `complete`
+- [X] T030 [US1] lib/network.js: one Hyperswarm; a topic per space; `store.replicate`; the space channel per shared space; re-look after a random delay (from src/networking.js); `hg.on('connection')`
+- [X] T031 [US1] lib/invites.js (first part): `createInvite` / `redeemInvite` for a member role, single use, recorded by the creator while online (adapted from src/v2/invites.js; offline inviters, expiry, revocation and public links come in US4)
+- [X] T032 [US1] lib/space.js and lib/index.js: `Hypergraph.open` (types, readTimeout, mnemonic, bootstrap), `recoveryPhrase`, `createSpace`, `redeemInvite`, `spaces`, `space`, `connectToSwarm`, `close`; `Space.put/get/edit/del/query/linked/count/sum/on('change')` per contracts/api.md
 - [ ] T033 [US1] docs/next/concepts.md (spaces, records, edits and deletes, decisions, readers enforce, complete answers) and docs/next/api.md (story 1's surface); CHANGELOG.md entry linking to specs/011-spaces-core/
 - [ ] T034 [US1] Checkpoint: story 1 tests pass on Node and Bare; v1's `npm test` and hyperDNS's `npm test` pass; report sizes of forum.js (SC-002)
 
