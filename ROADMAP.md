@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09 (review of spec 011 story 2)** — Story 2 and the review fixes accepted (87/87 on Node and
+  Bare, re-run in the lead conversation; `011-spaces-core` fast-forwarded). Decided: a ban can start
+  from a chosen record ("drop everything from this post on"; built with story 3); **unban** comes with
+  story 4 (writes during the ban stay ignored); in story 4 **admins share the settling of the decision
+  order with the owner** (Autobase indexers), so a space outlives its owner (v1 spec 003's lesson).
+  Settled by the lead: rule-rejected records stay only on their author's device; a custom role can't
+  lose `post`. A Hypercore bug was found (a cleared block makes peers forget later held blocks) and
+  worked around with a test; an upstream report is drafted only with Tibo's OK.
+
 - **2026-10-08 (review of spec 011 story 1)** — Story 1 accepted (59/59 on Node and Bare, re-run in the
   lead conversation). Found in review, fixed in the story 2 session: removing a member made members
   disagree (fix: a removal is a cut, like a ban — also the pattern for losing an edit permission in
@@ -88,5 +97,5 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 1. Spec 011 is planned (branch `011-spaces-core`: spec, plan, research R1–R20, data model, API contract,
    76 tasks).
 2. Story 1 done and reviewed (branch `011-spaces-core`).
-3. **Worker session 2**: review fixes + story 2 (rules). Then story 3 (devices, personal space) →
-   SwarmFS can start.
+3. Story 2 done and reviewed.
+4. **Worker session 3**: story 3 (devices, personal space) + ban from a record → SwarmFS can start.
