@@ -270,3 +270,20 @@ Three members on the local DHT; run on Node and Bare. Every API change updates t
 **Decision**: `bench/next/` re-runs the design brief's measurements on the real core (SC-012): first page
 at 10k and 1M records (SC-004), 50 writers (SC-005), index rebuild (SC-008), activity-list traffic
 (story 9), budgets (SC-011). Short runs by default; big sizes behind flags (machine load rule).
+
+## Amendments during implementation
+
+Small changes made while building, and why. Design changes were decided by Tibo first.
+
+### A1. R7: raw stamps for ordering; edits stamped above what they replace (decided by Tibo, 2026-10-08)
+
+R7 said a stamp more than 10 minutes ahead of the reader's clock is ordered as "now + 10 minutes".
+Each member's "now" differs (and changes over time), so two members indexing the same far-future
+version at different moments would cap it differently and could settle on different winners — breaking
+convergence (constitution Principle I). Now:
+- every member orders by the **raw stamps**, ties to the lower device key;
+- a stamp more than 10 minutes ahead of the reader's clock only sets a display flag (`futureStamp: true`);
+- an edit or delete is stamped `max(now, newestOwnSeen + 1, replacedStamp + 1)`, where `replacedStamp` is
+  the stamp of the version it replaces as seen by the writing device. Any edit made after seeing a
+  future-dated version therefore still wins.
+Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit made after seeing it").
