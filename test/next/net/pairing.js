@@ -4,7 +4,7 @@
 // already holds an identity is refused.
 
 const test = require('brittle')
-const { open, tmpDir, testBootstrap } = require('../helpers.js')
+const { open, tmpDir, testBootstrap, codeOf } = require('../helpers.js')
 const { Hypergraph } = require('../../../lib/index.js')
 
 test('a join code adds a device once; used again or wrong, it is refused', async (t) => {
@@ -19,10 +19,12 @@ test('a join code adds a device once; used again or wrong, it is refused', async
   t.is((await added).publicKey, b.device.publicKey)
 
   const bootstrap = await testBootstrap(t)
-  await t.exception(Hypergraph.open(tmpDir(t, 'c'), { joinCode: code, joinTimeout: 4000, bootstrap }), /INVITE_INVALID/, 'a used code is refused')
-  await t.exception(Hypergraph.open(tmpDir(t, 'd'), { joinCode: 'not a code', bootstrap }), /INVITE_INVALID/, 'a wrong code at once')
+  t.is(await codeOf(Hypergraph.open(tmpDir(t, 'c'), { joinCode: code, joinTimeout: 4000, bootstrap })), 'INVITE_INVALID', 'a used code is refused')
+  const started = Date.now()
+  t.is(await codeOf(Hypergraph.open(tmpDir(t, 'd'), { joinCode: 'not a code', bootstrap })), 'INVITE_INVALID', 'a wrong code')
+  t.ok(Date.now() - started < 3000, 'at once')
   await a.close()
-  await t.exception(Hypergraph.open(a.dir, { joinCode: code, bootstrap }), /NOT_ALLOWED/, 'a folder that holds an identity')
+  t.is(await codeOf(Hypergraph.open(a.dir, { joinCode: code, bootstrap })), 'NOT_ALLOWED', 'a folder that holds an identity')
 })
 
 test('a code nobody uses expires: added resolves to null', async (t) => {
@@ -34,7 +36,7 @@ test('a code nobody uses expires: added resolves to null', async (t) => {
 test('a protected phrase needs its password to add a device', async (t) => {
   const a = await open(t, { label: 'a' })
   await a.protectRecoveryPhrase('secret')
-  await t.exception(a.addDevice(), /NOT_ALLOWED|password/)
+  t.is(await codeOf(a.addDevice()), 'NOT_ALLOWED')
   const { added } = await a.addDevice({ password: 'secret', timeout: 100 })
   t.is(await added, null)
 })

@@ -43,6 +43,20 @@ test('a non-member\'s log is neither kept nor passed on', async (t) => {
   t.is(testing.logs(fa).length, 3, 'a, b and c only')
 })
 
+test('a second space joined over a connection already open: its channel opens too', async (t) => {
+  // Found in story 3 (research.md A7): Protomux turns down a channel the
+  // other side opens before this side has one, so a space opened later on a
+  // connection already up never got its channel, and its invite was never
+  // heard.
+  const { a, b, fa } = await threeMembers(t)
+  const p = await forum.post(fa, 'connected', '')
+  t.ok(await eventually(async () => (await forum.latest(b.space(fa.key))).some((x) => x.id === p.id), 5000), 'a and b are connected')
+  const second = await forum.createForum(a, 'Second')
+  const fb2 = await forum.join(b, await forum.invite(second), { timeout: 10000 })
+  const q = await forum.post(fb2, 'in the second forum', '')
+  t.ok(await eventually(async () => (await forum.latest(second)).some((x) => x.id === q.id), 5000), 'a sees b\'s post in it')
+})
+
 test('two members started at the same moment still meet', async (t) => {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

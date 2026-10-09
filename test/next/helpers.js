@@ -35,6 +35,17 @@ async function eventually (fn, ms = 5000, every = 25) {
   }
 }
 
+// The code of the error `promise` rejects with (its message if it has none),
+// or null if it resolves.
+async function codeOf (promise) {
+  try {
+    await promise
+    return null
+  } catch (err) {
+    return err.code || err.message
+  }
+}
+
 let counter = 0
 
 // A fresh temp directory removed after the test (with retries: Windows keeps
@@ -97,4 +108,4 @@ async function openMany (t, n, opts = {}) {
   return out
 }
 
-module.exports = { sleep, within, eventually, tmpDir, removeDir, testBootstrap, bounded, open, openMany }
+module.exports = { sleep, within, eventually, codeOf, tmpDir, removeDir, testBootstrap, bounded, open, openMany }

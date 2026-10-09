@@ -9,7 +9,7 @@ const test = require('brittle')
 const forum = require('./forum.js')
 const testing = require('../../../lib/testing.js')
 const { account, device } = require('./_setup.js')
-const { eventually, open } = require('../helpers.js')
+const { eventually, open, codeOf } = require('../helpers.js')
 
 // The laptop owns a forum with another member, c; the phone joins with the
 // laptop's code and, once it shows the forum, writes in it.
@@ -122,8 +122,8 @@ test('a lost device: removed with the recovery phrase; what it wrote before stay
   t.ok(await agree([fl, fc], titles, ['before', 'phone is in'].join()))
 
   // Whoever holds the phone without its password can't remove the laptop.
-  await t.exception(forum.removeDevice(phone, laptop.device.publicKey), /NOT_ALLOWED|password/, 'no removal without the recovery phrase')
-  await t.exception(forum.removeDevice(laptop, phone.device.publicKey, 'wrong'), /NOT_ALLOWED|password/, 'nor with a wrong password')
+  t.is(await codeOf(forum.removeDevice(phone, laptop.device.publicKey)), 'NOT_ALLOWED', 'no removal without the recovery phrase')
+  t.is(await codeOf(forum.removeDevice(laptop, phone.device.publicKey, 'wrong')), 'NOT_ALLOWED', 'nor with a wrong password')
   await forum.removeDevice(laptop, phone.device.publicKey, 'laptop password')
 
   // The lost phone writes on (its own app would refuse once it learns).
@@ -145,12 +145,13 @@ test('once the phrase is forgotten on a device, it is typed to add or remove a d
   const laptop = await account(t, 'laptop')
   const words = await forum.recoveryPhrase(laptop)
   await forum.forgetPhrase(laptop)
-  await t.exception(forum.addDevice(laptop), /NOT_ALLOWED|recovery phrase/, 'addDevice needs it')
+  t.is(await codeOf(forum.addDevice(laptop)), 'NOT_ALLOWED', 'addDevice needs it')
   const { code } = await laptop.addDevice({ recoveryPhrase: words })
   const phone = await device(t, 'phone', code)
   t.is(phone.identity.publicKey, laptop.identity.publicKey)
-  await t.exception(forum.removeDevice(laptop, phone.device.publicKey), /NOT_ALLOWED|recovery phrase/, 'removeDevice needs it')
-  await t.exception(laptop.removeDevice(phone.device.publicKey, { recoveryPhrase: words.split(' ').reverse().join(' ') }), /NOT_ALLOWED|recovery phrase/, 'another identity\'s phrase is refused')
+  t.is(await codeOf(forum.removeDevice(laptop, phone.device.publicKey)), 'NOT_ALLOWED', 'removeDevice needs it')
+  const other = await forum.recoveryPhrase(await account(t, 'someone else'))
+  t.is(await codeOf(laptop.removeDevice(phone.device.publicKey, { recoveryPhrase: other })), 'NOT_ALLOWED', 'another account\'s phrase is refused')
   await laptop.removeDevice(phone.device.publicKey, { recoveryPhrase: words })
   t.ok(await eventually(async () => (await forum.devices(laptop)).length === 1, 10000))
 })

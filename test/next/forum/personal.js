@@ -7,7 +7,7 @@ const test = require('brittle')
 const b4a = require('b4a')
 const forum = require('./forum.js')
 const testing = require('../../../lib/testing.js')
-const { eventually, sleep, open } = require('../helpers.js')
+const { eventually, sleep, open, codeOf } = require('../helpers.js')
 
 // The forum's types plus what a file-sharing app would keep per device.
 const types = {
@@ -30,13 +30,14 @@ test('an app record in the personal space: the other device reads it, nobody els
   t.ok(await eventually(async () => (await held(phone, laptop.device.publicKey)) === '/music/a.mp3', 10000), 'the phone reads what the laptop holds')
 
   t.absent(laptop.spaces().some((s) => s.key === laptop.personal.key), 'not listed among the spaces')
-  t.exception(() => stranger.space(laptop.personal.key), /NOT_FOUND/, 'a stranger doesn\'t hold it')
+  t.is(await codeOf((async () => stranger.space(laptop.personal.key))()), 'NOT_FOUND', 'a stranger doesn\'t hold it')
   const raw = await testing.rawBlock(laptop.personal, rec.id)
   t.ok(raw && b4a.indexOf(raw, b4a.from('/music/a.mp3')) === -1, 'its blocks are encrypted (on disk and on the wire)')
 
   // A stranger who got hold of its keys writes "into" it: ignored.
   const intruder = await testing.openSpace(stranger, laptop.personal.key, testing.personalKeys(laptop))
   await testing.writeRaw(intruder, { kind: 'put', type: 'held', fields: { path: '/evil', holder: laptop.device.publicKey } })
+  testing.announce(intruder)
   await sleep(2000)
   t.is(await held(laptop, laptop.device.publicKey), '/music/a.mp3', 'the laptop ignores it')
   t.is(await held(phone, laptop.device.publicKey), '/music/a.mp3', 'so does the phone')
@@ -48,9 +49,10 @@ test('each device\'s heads (its log lengths) reach the person\'s other devices',
   await laptop.connectToSwarm()
   const { code } = await laptop.addDevice()
   const phone = await open(t, { label: 'phone', types, joinCode: code })
-  await phone.personal.put('held', { path: '/x', holder: phone.device.publicKey })
+  const mine = await phone.createSpace({ name: 'mine' })
+  await mine.put('post', { title: 'x', text: '' })
   await testing.writeHeads(phone)
-  const log = testing.ownLog(phone.personal)
+  const log = testing.ownLog(mine)
   t.ok(await eventually(async () => {
     const heads = await testing.headsOf(laptop, phone.device.publicKey)
     return heads.some((h) => h.log === log && h.length >= 2)
