@@ -22,7 +22,7 @@ test('members(): roles, you, devices; banned and removed people with their state
   await forum.removeMember(fa, d.identity.publicKey)
 
   const list = await eventually(async () => {
-    const m = await fb.members()
+    const m = await forum.people(fb)
     const banned = m.find((x) => x.identity === c.identity.publicKey)
     const removed = m.find((x) => x.identity === d.identity.publicKey)
     return banned && banned.banned && removed && removed.removed ? m : null
@@ -39,8 +39,7 @@ test('members(): roles, you, devices; banned and removed people with their state
   t.alike({ role: of(d).role, banned: of(d).banned, removed: of(d).removed }, { role: null, banned: false, removed: true })
   t.alike(of(c).devices.map((x) => x.device), [c.device.publicKey], 'the devices that wrote here')
   t.is(of(c).devices[0].log, testing.ownLog(fc))
-  t.is(JSON.stringify(await fc.members()) !== null, true)
-  t.alike((await fa.members()).map((m) => [m.identity, m.role, m.banned, m.removed]), list.map((m) => [m.identity, m.role, m.banned, m.removed]), 'the same on another member')
+  t.alike((await forum.people(fa)).map((m) => [m.identity, m.role, m.banned, m.removed]), list.map((m) => [m.identity, m.role, m.banned, m.removed]), 'the same on another member')
 })
 
 test('decisions(): who decided what, when and why, and whether it counted; newest first, paged', async (t) => {
@@ -56,7 +55,7 @@ test('decisions(): who decided what, when and why, and whether it counted; newes
   await testing.decide(fb, { type: 'moderate', action: 'ban', target: require('z32').decode(c.identity.publicKey), reason: 'nope', cut: [] }).catch(() => {})
 
   const all = await eventually(async () => {
-    const { items } = await fa.decisions()
+    const items = await forum.modLog(fa)
     return items.some((x) => x.type === 'role/set' && x.role === 'member') && items.some((x) => x.action === 'hide') ? items : null
   }, 10000)
   t.ok(all, 'every decision is listed')
@@ -108,14 +107,14 @@ test('types(), tags(), peers() and events when peers or logs change', async (t) 
   const fb = await forum.join(b, await forum.invite(fa))
   const peers = await within(peered, 15000)
   t.ok(peers, 'a peers event when b connects')
-  t.ok(await eventually(() => fa.peers().some((p) => p.identity === b.identity.publicKey && p.device === b.device.publicKey), 10000), 'peers(): b, its identity and device')
+  t.ok(await eventually(() => forum.online(fa).some((p) => p.identity === b.identity.publicKey && p.device === b.device.publicKey), 10000), 'peers(): b, its identity and device')
   const post = await forum.post(fb, 'Tagged', '')
   t.ok(await within(grew, 15000), 'a logs event when a log arrives or grows')
   await forum.tag(fb, post, 'rust')
   await forum.tag(fb, post, 'p2p')
   await forum.untag(fb, post, 'p2p')
   await forum.tag(fb, post, 'zig')
-  t.ok(await eventually(async () => (await fa.tags(post)).items.join() === 'rust,zig', 10000), 'tags(): the record\'s tags, sorted')
+  t.ok(await eventually(async () => (await forum.tagsOf(fa, post)).join() === 'rust,zig', 10000), 'tags(): the record\'s tags, sorted')
   t.alike((await fa.tags(post)).items, (await fb.tags(post)).items)
 
   const left = new Promise((resolve) => fa.on('peers', (p) => { if (!p.length) resolve(true) }))

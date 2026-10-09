@@ -256,6 +256,22 @@ async function byTopic (forum, topic, n = 20) {
   return (await forum.query('post').where({ topic }).latest(n)).items
 }
 
+// Who is here: members with their role (highest first), then people banned
+// or removed. [{ identity, role, you, banned, removed, devices }]
+function people (forum) {
+  return forum.members()
+}
+
+// The moderation log: who decided what, when and why, newest first.
+async function modLog (forum, n = 50) {
+  return (await forum.decisions({ limit: n })).items
+}
+
+// Who is online in this forum right now: [{ identity, device }].
+function online (forum) {
+  return forum.peers()
+}
+
 // A page of posts, newest first: { after } the last post of the previous page.
 async function postsPage (forum, n, after) {
   return (await forum.query('post').latest(n, { after })).items
@@ -270,6 +286,10 @@ function tag (forum, record, name) {
 
 function untag (forum, record, name) {
   return forum.untag(record, name)
+}
+
+async function tagsOf (forum, record) {
+  return (await forum.tags(record)).items
 }
 
 // Posts with a tag, newest first; { after } pages.
@@ -329,63 +349,13 @@ function liveLatest (forum, onUpdate, n = 20) {
 }
 
 module.exports = {
-  types,
-  rules,
-  signUp,
-  restore,
-  recoveryPhrase,
-  protectPhrase,
-  forgetPhrase,
-  addDevice,
-  joinWithCode,
-  devices,
-  removeDevice,
-  setSetting,
-  setting,
-  forums,
-  createForum,
-  keepEverything,
-  setAppBudget,
-  setForumBudget,
-  storage,
-  invite,
-  openLink,
-  revokeLink,
-  whoJoined,
-  join,
-  giveRole,
-  roleOf,
-  addRole,
-  roles,
-  removeMember,
-  hide,
-  reveal,
-  takeDown,
-  flag,
-  ban,
-  unban,
-  post,
-  comment,
-  vote,
-  edit,
-  remove,
-  latest,
-  comments,
-  thread,
-  score,
-  postsPage,
-  byTopic,
-  tag,
-  untag,
-  tagged,
-  seeAlso,
-  unlink,
-  referencedBy,
-  makeEditor,
-  writePage,
-  readPage,
-  pin,
-  ask,
-  polls,
-  liveLatest
+  types, rules, signUp, restore, recoveryPhrase, protectPhrase, forgetPhrase,
+  addDevice, joinWithCode, devices, removeDevice, setSetting, setting,
+  forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
+  invite, openLink, revokeLink, whoJoined, join,
+  giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
+  hide, reveal, takeDown, flag, ban, unban,
+  post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
+  tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
+  makeEditor, writePage, readPage, pin, ask, polls, liveLatest
 }
