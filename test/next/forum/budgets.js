@@ -59,9 +59,16 @@ test('a forum with its own budget keeps within it; the other within the rest; di
   t.is(budget, 3 * MB)
   t.ok(used <= 3.3 * MB, `the app's estimate: ${used} B`)
 
-  await testing.compact(b) // what the app does by itself after dropping a tenth of its budget (at most every 10 min)
-  const disk = diskUse(b.dir)
-  t.ok(disk <= 3.3 * MB, `measured on disk: ${disk} B (app budget 3 MB +10%)`)
+  // Compacting is what the app does by itself after dropping a tenth of its
+  // budget (at most every 10 min). RocksDB's write-ahead log holds the
+  // latest downloads and drops until it flushes: measured once it has.
+  let disk = 0
+  const within = await eventually(async () => {
+    await testing.compact(b)
+    disk = diskUse(b.dir)
+    return disk <= 3.3 * MB
+  }, 20000, 500)
+  t.ok(within, `measured on disk: ${disk} B (app budget 3 MB +10%)`)
 
   await forum.setForumBudget(bOwn, null)
   t.is(bOwn.status().budget, null, 'given back to the shared budget')

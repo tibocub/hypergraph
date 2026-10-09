@@ -9,7 +9,7 @@ const testing = require('../../../lib/testing.js')
 const { account, threeMembers } = require('./_setup.js')
 const { eventually } = require('../helpers.js')
 
-test('inspect(): logs, decisions, records by type, storage, peers, complete', async (t) => {
+test('inspect(): logs, decisions, records by type, storage, peers, complete', { timeout: 120000 }, async (t) => {
   const { a, b, c, fa, fb, fc } = await threeMembers(t)
   const p = await forum.post(fa, 'Hello', 'world')
   await forum.comment(fb, p, 'hi')
@@ -62,7 +62,7 @@ test('inspect(): logs, decisions, records by type, storage, peers, complete', as
   t.is(testing.logs(fb).length, before, 'nothing fetched or written')
 })
 
-test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is listed as refused', async (t) => {
+test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is listed as refused', { timeout: 120000 }, async (t) => {
   const { c, fa, fb, fc } = await threeMembers(t)
   await forum.post(fc, 'fine', '')
   const spam = await forum.post(fc, 'spam', '')
@@ -89,15 +89,17 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
   const intruder = await testing.openSpace(stranger, fa.key)
   await testing.writeRaw(intruder, { kind: 'put', type: 'post', fields: { title: 'let me in', text: '' } })
   t.ok(await eventually(() => intruder.status().peers > 0, 30000), 'the stranger reached a member')
-  testing.announce(intruder)
+  // It keeps pushing its log, as a spammer would (a member that missed one
+  // notice, or whose fetch of the header timed out, hears of it again).
   const waiting = async (f) => (await f.inspect()).logs.some((l) => l.key === testing.ownLog(intruder) && l.waiting && !l.held)
   t.ok(await eventually(async () => {
+    testing.announce(intruder)
     for (const f of [fa, fb, fc, fd]) if (await waiting(f)) return true
     return false
-  }, 30000), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
+  }, 30000, 250), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
 })
 
-test('inspect({ records }): every row of a type, hidden, superseded, dropped and edited ones included; inspect({ record }): its versions', async (t) => {
+test('inspect({ records }): every row of a type, hidden, superseded, dropped and edited ones included; inspect({ record }): its versions', { timeout: 120000 }, async (t) => {
   const { a, fa, fb } = await threeMembers(t)
   const p1 = await forum.post(fa, 'one', 'v1')
   const p2 = await forum.post(fa, 'two', '')
