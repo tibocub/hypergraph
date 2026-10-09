@@ -127,3 +127,23 @@ test('a type any member edits', async (t) => {
   t.ok(await agree(all, async (f) => (await f.get(note.id)).record?.text, 'meeting at 6'), 'a plain member\'s edit counts')
   t.is(await codeOf(forum.remove(fd, note)), 'NOT_ALLOWED', 'but only the author deletes it')
 })
+
+test('editors relate from a shared page and tag it; a change made after seeing one wins, clocks ahead or not', async (t) => {
+  const { b, fb, fc, fd, all } = await wiki(t)
+  const page = await forum.writePage(fc, 'Index', '')
+  const other = await forum.post(fd, 'A post', '')
+  t.ok(await agree(all, async (f) => !!(await f.get(other.id)).record && !!(await f.get(page.id)).record, true))
+  testing.setClock(b, 3600e3) // b's clock is an hour ahead
+  await fb.relate(page, other, 'lists')
+  await forum.tag(fb, page, 'start-here')
+  t.is(await codeOf(fd.relate(page, other, 'lists')), 'NOT_ALLOWED', 'a member without the permission can\'t')
+  t.is(await codeOf(forum.tag(fd, page, 'x')), 'NOT_ALLOWED')
+  const listed = async (f) => (await f.edges(page, { direction: 'out' })).count
+  const tagged = async (f) => (await f.getByTag('start-here', { type: 'page' })).items.length
+  t.ok(await agree([fc], listed, 1) && await agree([fc], tagged, 1), 'c sees b\'s relation and tag')
+
+  await fc.unrelate(page, other, 'lists')
+  await forum.untag(fc, page, 'start-here')
+  t.ok(await agree(all, listed, 0), 'c\'s unrelate wins everywhere, though b\'s relate is stamped an hour ahead')
+  t.ok(await agree(all, tagged, 0), 'and c\'s untag')
+})
