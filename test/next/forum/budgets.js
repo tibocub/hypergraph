@@ -69,7 +69,9 @@ test('a forum with its own budget keeps within it; the other within the rest; di
 
 test('the newest part is held, the oldest content dropped first; the reader shows what a full member shows', async (t) => {
   const { own, shared, bOwn, bShared, posts } = await grown(t)
-  t.absent(await testing.holdsBlock(bShared, posts.shared[0].id), 'the oldest post\'s content is dropped')
+  // "Settled" allows 10% over the share: the drop that brings it under may
+  // still be on its way (a budget pass runs shortly after the last change).
+  t.ok(await eventually(async () => !(await testing.holdsBlock(bShared, posts.shared[0].id)), 15000), 'the oldest post\'s content is dropped')
   t.ok(await testing.holdsBlock(bShared, posts.shared.at(-1).id), 'the newest is held')
 
   const page = await bShared.query('post').latest(20)

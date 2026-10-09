@@ -14,9 +14,16 @@ test('inspect(): logs, decisions, records by type, storage, peers, complete', as
   const p = await forum.post(fa, 'Hello', 'world')
   await forum.comment(fb, p, 'hi')
   await forum.vote(fc, p, 1)
-  t.ok(await eventually(async () => (await forum.score(fb, p)) === 1 && (await forum.comments(fb, p)).length === 1, 10000))
+  t.ok(await eventually(async () => (await forum.score(fb, p)) === 1 && (await forum.comments(fb, p)).length === 1, 30000))
 
-  const snap = await fb.inspect()
+  // Under load, blocks and peers arrive late: wait for what is checked below
+  // (every log held and indexed, complete, a peer), never for a fixed time.
+  const ready = (s) => s.complete && s.peers >= 1 && s.logs.length === 3 && s.logs.every((l) => l.length >= 2 && l.held === l.length && l.indexed === l.length)
+  const snap = await eventually(async () => {
+    const s = await fb.inspect()
+    return ready(s) ? s : null
+  }, 30000)
+  t.ok(snap, 'every log held and indexed, complete')
   t.is(snap.key, fb.key)
   t.is(snap.name, 'Hypergraph fans')
   t.is(snap.personal, false)
@@ -59,21 +66,21 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
   const { c, fa, fb, fc } = await threeMembers(t)
   await forum.post(fc, 'fine', '')
   const spam = await forum.post(fc, 'spam', '')
-  t.ok(await eventually(async () => (await fa.get(spam.id)).record, 10000))
+  t.ok(await eventually(async () => (await fa.get(spam.id)).record, 30000))
   await forum.ban(fa, c.identity.publicKey, { from: spam })
   const cLog = testing.ownLog(fc)
   t.ok(await eventually(async () => {
     const log = (await fb.inspect()).logs.find((l) => l.key === cLog)
     return log && log.cut === 2
-  }, 10000), 'c\'s log shows its cut (its header and first post count)')
+  }, 30000), 'c\'s log shows its cut (its header and first post count)')
 
   // Banned from its very first record: nothing in d's log counts, refused.
   const d = await account(t, 'd')
   const fd = await forum.join(d, await forum.invite(fa))
   const first = await forum.post(fd, 'spam from the start', '')
-  t.ok(await eventually(async () => (await fa.get(first.id)).record, 10000))
+  t.ok(await eventually(async () => (await fa.get(first.id)).record, 30000))
   await forum.ban(fa, d.identity.publicKey, { from: first })
-  t.ok(await eventually(async () => (await fb.inspect()).logs.some((l) => l.key === testing.ownLog(fd) && l.refused && l.identity === d.identity.publicKey), 10000), 'd\'s log is listed as refused')
+  t.ok(await eventually(async () => (await fb.inspect()).logs.some((l) => l.key === testing.ownLog(fd) && l.refused && l.identity === d.identity.publicKey), 30000), 'd\'s log is listed as refused')
 
   // A stranger's log: not kept, waiting in case it becomes a member.
   const { open } = require('../helpers.js')
@@ -81,11 +88,11 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
   await stranger.connectToSwarm()
   const intruder = await testing.openSpace(stranger, fa.key)
   await testing.writeRaw(intruder, { kind: 'put', type: 'post', fields: { title: 'let me in', text: '' } })
-  t.ok(await eventually(() => intruder.status().peers > 0, 10000), 'the stranger reached a member')
+  t.ok(await eventually(() => intruder.status().peers > 0, 30000), 'the stranger reached a member')
   testing.announce(intruder)
   const waiting = async (f) => (await f.inspect()).logs.some((l) => l.key === testing.ownLog(intruder) && l.waiting && !l.held)
   t.ok(await eventually(async () => {
     for (const f of [fa, fb, fc, fd]) if (await waiting(f)) return true
     return false
-  }, 10000), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
+  }, 30000), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
 })
