@@ -7,7 +7,7 @@ const b4a = require('b4a')
 const z32 = require('z32')
 const crypto = require('hypercore-crypto')
 const fields = require('../../../lib/fields.js')
-const { idToString } = require('../../../lib/encodings.js')
+const { idToString, idFromString } = require('../../../lib/encodings.js')
 
 const linkId = idToString({ log: crypto.randomBytes(32), seq: 12345 })
 
@@ -65,4 +65,25 @@ test('sizes stay near experiment 6 (post 113 B, comment 116 B, vote 40 B, ±10%)
 test('malformed bytes throw instead of returning garbage', (t) => {
   const codec = fields.codec([{ name: 'a', kind: 'string' }])
   t.exception(() => codec.decode(b4a.from([1, 200, 1]), []))
+})
+
+test('an edit by an older app keeps the fields it does not know (story 7)', (t) => {
+  const older = fields.codec([{ name: 'text', kind: 'text' }, { name: 'on', kind: 'link' }])
+  const newer = fields.codec([{ name: 'text', kind: 'text' }, { name: 'on', kind: 'link' }, { name: 'topic', kind: 'string' }, { name: 'also', kind: 'link' }])
+  const other = idToString({ log: crypto.randomBytes(32), seq: 7 })
+  const links = []
+  const put = newer.encode({ text: 'v1', on: linkId, topic: 'rust', also: other }, links)
+
+  // The older app edits the text, keeping the current version's fields and links.
+  const current = older.decode(put, links)
+  const editLinks = []
+  const edit = older.encode({ ...current, text: 'v2' }, editLinks, { fields: put, links })
+  t.alike(newer.decode(edit, editLinks), { text: 'v2', on: linkId, topic: 'rust', also: other }, 'the newer app sees the edit and its own fields')
+  t.alike(older.decode(edit, editLinks), { text: 'v2', on: linkId })
+
+  // Without fields it doesn't know, nothing is kept from before.
+  const plain = older.encode({ text: 'v1', on: linkId }, [])
+  const relinked = []
+  older.encode({ text: 'v2', on: other }, relinked, { fields: plain, links: [idFromString(linkId)] })
+  t.is(relinked.length, 1, 'a link no field uses any more is not kept')
 })

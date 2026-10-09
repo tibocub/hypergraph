@@ -109,6 +109,35 @@ test('compatibility: anything else throws INCOMPATIBLE_TYPES naming type and fie
   code(t, () => editable.checkCompatible(before), 'INCOMPATIBLE_TYPES', 'post', 'editable')
 })
 
+test('compatibility (story 7): indexes and link fields', (t) => {
+  const before = new Types(forum).describe()
+  t.alike(before.post.index, [['forum']], 'the declared indexes are stored too')
+  const linkAdded = new Types({ ...forum, post: { ...forum.post, fields: { ...forum.post.fields, replyTo: 'link' }, links: { replyTo: ['post'] } } })
+  t.execution(() => linkAdded.checkCompatible(before), 'a link field with allowed targets appended')
+  const indexAdded = new Types({ ...forum, page: { ...forum.page, index: [['title', 'stamp']] } })
+  t.execution(() => indexAdded.checkCompatible(before), 'an index added')
+  const targets = new Types({ ...forum, comment: { ...forum.comment, links: { on: ['post'] } } })
+  code(t, () => targets.checkCompatible(before), 'INCOMPATIBLE_TYPES', 'comment', '"on"')
+  const opm = { ...forum, like: { fields: { value: 'int' }, onePerMember: true } }
+  const firstLink = new Types({ ...opm, like: { ...opm.like, fields: { value: 'int', on: 'link' } } })
+  code(t, () => firstLink.checkCompatible(new Types(opm).describe()), 'INCOMPATIBLE_TYPES', 'like', '"on"')
+  t.execution(() => new Types(forum).checkCompatible({ ...before, post: { ...before.post, index: undefined } }), 'a declaration stored before indexes were')
+})
+
+test('stale (story 7): what the index derived from the declaration may be out of date', (t) => {
+  const before = new Types(forum).describe()
+  const after = new Types({
+    ...forum,
+    post: { ...forum.post, fields: { ...forum.post.fields, replyTo: 'link' }, links: { replyTo: ['post'] } }, // a link field with targets
+    page: { ...forum.page, fields: { ...forum.page.fields, summary: 'text' } }, // a plain field: nothing derived
+    comment: { ...forum.comment, index: [['on', 'stamp']] }, // an index
+    poll: { fields: { q: 'string' } } // a new type
+  })
+  t.alike(after.stale(before).sort(), ['comment', 'poll', 'post'])
+  t.alike(new Types(forum).stale(before), [], 'nothing changed')
+  t.alike(new Types(forum).stale(null), [], 'nothing stored yet')
+})
+
 test('hypergraph\'s graph types: relations and tags (story 5)', (t) => {
   const types = new Types(forum)
   t.alike(types.get('hg/relation').fields.map(f => [f.name, f.kind]), [['from', 'link'], ['to', 'link'], ['rel', 'string'], ['value', 'float'], ['data', 'text'], ['off', 'bool']])
