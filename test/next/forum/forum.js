@@ -94,8 +94,31 @@ function forums (hg) {
   return hg.spaces()
 }
 
-function createForum (hg, name) {
-  return hg.createSpace({ name })
+// `keepEverything`: every member is asked to keep the whole forum (an
+// archive); by default each keeps what fits, then the newest part.
+function createForum (hg, name, { keepEverything = false } = {}) {
+  return hg.createSpace({ name, policy: keepEverything ? 'everything' : 'auto' })
+}
+
+function keepEverything (forum) {
+  return forum.setPolicy('everything')
+}
+
+// --- storage (this device's disk) ---
+
+// The room the app may use on this device (null: the default).
+function setAppBudget (hg, bytes) {
+  return hg.setBudget(bytes)
+}
+
+// A forum's own room, out of the app's (null: share the app's).
+function setForumBudget (forum, bytes) {
+  return forum.setBudget(bytes)
+}
+
+// { budget, used, free } in bytes.
+function storage (hg) {
+  return hg.storage()
 }
 
 // A link for one person, sent any way you like.
@@ -304,6 +327,10 @@ module.exports = {
   setting,
   forums,
   createForum,
+  keepEverything,
+  setAppBudget,
+  setForumBudget,
+  storage,
   invite,
   openLink,
   revokeLink,

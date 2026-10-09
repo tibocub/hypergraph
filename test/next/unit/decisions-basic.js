@@ -109,3 +109,23 @@ test('the same decisions give the same state; adds commute', async (t) => {
   const garbage = { from: { key: space }, value: b4a.from([99, 1, 2]) }
   t.is(await run([first, garbage, addX]), await run([first, addX]), 'a malformed decision is skipped, not thrown')
 })
+
+// Story 6 (FR-027): the space's storage policy, changed by who may decide.
+test('settings/set changes the policy; only who may decide; only auto or everything', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  await applyNodes([node(space, { ...init, proof: initProof(owner, space, space) })], view, null, { space })
+  t.is(State.from(view.map).policy, 'auto')
+  await applyNodes([node(space, { type: 'settings/set', policy: 'everything', writeLimit: null })], view, null, { space })
+  t.is(State.from(view.map).policy, 'everything', 'the owner keeps everything')
+  await applyNodes([node(space, { type: 'settings/set', policy: 'sometimes', writeLimit: null })], view, null, { space })
+  t.is(State.from(view.map).policy, 'everything', 'an unknown policy is ignored')
+
+  const other = crypto.randomBytes(32)
+  const m = crypto.randomBytes(32)
+  await view.put(`writer:${hex(other)}`, { identity: hex(m) })
+  await view.put(`member:${hex(m)}`, { role: 'moderator', by: '', stamp: 0 })
+  await applyNodes([node(other, { type: 'settings/set', policy: 'auto', writeLimit: null })], view, null, { space })
+  t.is(State.from(view.map).policy, 'everything', 'a moderator may not change it')
+})

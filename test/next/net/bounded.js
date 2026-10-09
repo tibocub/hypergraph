@@ -68,3 +68,37 @@ test('a member whose log nobody holds does not make answers incomplete', async (
   t.ok(r, 'a holds b\'s post')
   t.ok(r && r.complete, 'complete: everything a knows of is held, and a reached b')
 })
+
+// Story 6 #4 (SC-007): content this member dropped, its only other holder
+// offline. The read returns within its bound, without it, incomplete; with the
+// holder back, the same read is complete and shows it.
+test('dropped content, its holder offline: incomplete within the bound; back: complete', async (t) => {
+  const testing = require('../../../lib/testing.js')
+  const a = await account(t, 'a')
+  const b = await account(t, 'b')
+  const fa = await forum.createForum(a, 'Dropped')
+  const fb = await forum.join(b, await forum.invite(fa))
+  await b.setBudget(1.5e6)
+  const posts = []
+  for (let i = 0; i < 120; i++) posts.push(await forum.post(fa, `p${i}`, `post ${i} `.padEnd(8000, 'lorem ipsum ')))
+  t.ok(await eventually(async () => (await forum.latest(fb, 1))[0]?.id === posts.at(-1).id && !(await testing.holdsBlock(fb, posts[0].id)), 30000), 'b dropped the oldest content')
+  await a.close()
+
+  const t0 = Date.now()
+  const old = await fb.query('post').latest(5, { after: posts[5], timeout: 1000 })
+  const took = Date.now() - t0
+  t.ok(took < 1500, `returned within the bound (${took} ms)`)
+  t.is(old.complete, false, 'marked incomplete')
+  t.absent(old.items.some((p) => p.id === posts[0].id), 'without what it couldn\'t fetch')
+  const { record, complete } = await fb.get(posts[0].id, { timeout: 500 })
+  t.is(record, null)
+  t.is(complete, false)
+
+  await account(t, 'a2', { dir: a.dir })
+  const back = await eventually(async () => {
+    const r = await fb.query('post').latest(5, { after: posts[5], timeout: 1000 })
+    return r.complete ? r : null
+  }, 20000)
+  t.ok(back, 'complete once a is back')
+  t.alike(back && back.items.map((p) => p.title), ['p4', 'p3', 'p2', 'p1', 'p0'])
+})

@@ -373,7 +373,7 @@ within 30 s (SC-008, measured alone).
 - [X] T059b [P] [US6] test/next/forum/personal.js: settings set many times and heads written many times
   leave one row each on every device; another device's superseded blocks are cleared here; this device's
   own log stays whole; a newcomer device and a restart show the same settings, complete
-- [ ] T059c [P] [US6] test/next/forum/budgets.js (US6 #2, #3, SC-011): a reader with a small app budget and
+- [X] T059c [P] [US6] test/next/forum/budgets.js (US6 #2, #3, SC-011): a reader with a small app budget and
   one space given its own budget, two spaces growing past them: the space with its own budget stays within
   it, the other within the rest, real disk within the app budget +10% (after compaction); the newest part
   is held, the oldest content dropped first; the reader shows the same lists, counts and scores as a full
@@ -381,10 +381,10 @@ within 30 s (SC-008, measured alone).
   and keeps them (held after the read); a dropped block is not fetched again while nobody reads it; the
   author's own records, the decision log and the personal space are never dropped (the author over its
   budget keeps them and is warned); `hg.setBudget()`, `space.setBudget(bytes | null)`, `hg.storage()`
-- [ ] T059d [P] [US6] test/next/net/bounded.js (US6 #4, SC-007): content dropped here and its only other
+- [X] T059d [P] [US6] test/next/net/bounded.js (US6 #4, SC-007): content dropped here and its only other
   holder offline: the read returns within its bound, without it, `complete: false`; the holder back, the same
   read is complete and shows it
-- [ ] T060 [P] [US6] test/next/forum/policies.js (US6 #1, #5): a small space with default settings is held
+- [X] T060 [P] [US6] test/next/forum/policies.js (US6 #1, #5): a small space with default settings is held
   entirely by every member (nothing dropped, `held: 'all'`); a forum whose creator chose `everything`: a
   member whose budget is too small is told (`belowPolicy`, a `status` event) and still answers honestly;
   given room again it gets everything back and is no longer below; `setPolicy` by the owner reaches every
@@ -393,7 +393,7 @@ within 30 s (SC-008, measured alone).
   member shows the same posts, comments, scores, edits, tags, roles, settings and devices, complete, offline;
   a damaged index (unreadable files) → the same; a simulated crash in the middle of indexing (a write
   that never commits) → reopened, only the blocks after the last saved batch are indexed again
-- [ ] T061a [P] [US6] test/next/unit/budget.js: shares (own budgets first, the rest in proportion to what
+- [X] T061a [P] [US6] test/next/unit/budget.js: shares (own budgets first, the rest in proportion to what
   each space holds, never below what can't be dropped), the stored-bytes estimate, the default budget from
   free disk (and 5 GB when the runtime can't tell)
 
@@ -404,7 +404,7 @@ within 30 s (SC-008, measured alone).
 - [ ] T062a [US6] lib/space.js `inspect()`; lib/index.js `storage()`
 - [X] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
   outside this device's own log)
-- [ ] T062c [US6] lib/storage.js (new): app budget (default from free disk), shares, stored-bytes estimate;
+- [X] T062c [US6] lib/storage.js (new): app budget (default from free disk), shares, stored-bytes estimate;
   lib/index/build.js: `log` gains `dropped` and `droppedBlocks` (append-only); lib/replication.js and
   lib/index/indexer.js: dropping content oldest first (flag `DROPPED`, fields cleared, block cleared,
   downloads restarted past it), restoring it on read (flag `READ`); lib/index/query.js and lib/space.js:

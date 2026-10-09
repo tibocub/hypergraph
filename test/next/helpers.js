@@ -108,4 +108,15 @@ async function openMany (t, n, opts = {}) {
   return out
 }
 
-module.exports = { sleep, within, eventually, codeOf, tmpDir, removeDir, testBootstrap, bounded, open, openMany }
+// Bytes the files under a folder take (what the app uses on disk).
+function diskUse (dir) {
+  let n = 0
+  for (const name of fs.readdirSync(dir)) {
+    const full = path.join(dir, name)
+    const st = fs.statSync(full)
+    n += st.isDirectory() ? diskUse(full) : st.size
+  }
+  return n
+}
+
+module.exports = { diskUse, sleep, within, eventually, codeOf, tmpDir, removeDir, testBootstrap, bounded, open, openMany }

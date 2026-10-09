@@ -22,7 +22,8 @@ const { Hypergraph } = require('hypergraph/next')
 const hg = await Hypergraph.open('./data', {
   types: { /* see Types */ },
   rules: [{ id: 'title-length', validate (record, ctx) { return record.type !== 'post' || record.title.length <= 300 } }],
-  budget: 5e9,          // bytes for the whole app (default 5 GB)
+  budget: 5e9,          // ✓ story 6: bytes for the whole app, until setBudget() (default 5 GB, or what it holds
+                        //   plus half the free disk if smaller)
   readTimeout: 5000,    // default bound for reads, ms
   mnemonic: undefined,  // restore an identity from its recovery phrase
   password: undefined,  // ✓ story 4: the recovery phrase is sealed by it from the first moment (new account,
@@ -47,6 +48,19 @@ await hg.forgetRecoveryPhrase()            // ✓ erase it from this device; the
 await hg.connectToSwarm()          // ✓ one call: all spaces, now and later
 hg.on('connection', (peer) => {})  // ✓ peer: { publicKey }
 await hg.close()                   // ✓ safe to call twice
+```
+
+## Storage (✓ story 6, research.md A10)
+
+```js
+await hg.setBudget(3e9)            // bytes this app may use on this device (null: the default); NOT_ALLOWED if the
+                                   //   spaces' own budgets add up to more
+await hg.storage()                 // { budget, used, free }: used is estimated (records, index, decision logs, the
+                                   //   personal space); free: the disk's free bytes (null if the runtime can't tell)
+// Each space keeps what fits its share; past it, content is dropped oldest first (records fetched back by a read
+// last). A dropped record keeps its place in lists, counts, votes, tags and edits: a read that needs its content
+// fetches it within its bound (and keeps it), or leaves it out and says complete: false. Never dropped: this
+// identity's records, decision logs, the personal space, records under 256 bytes (votes, tags), hypergraph's own.
 ```
 
 ## Devices and the personal space
@@ -82,7 +96,7 @@ await hg.settings()                // ✓ { theme: 'dark' }
 ## Spaces
 
 ```js
-const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name (policy kept, applied in story 6; private: story 8)
+const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name, policy (story 6); private: story 8
 const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connecting if needed); resolves to the Space once a
                                                 // member who records decisions let us in. ✓ story 5: waits up to
                                                 // 30 s by default (reads keep readTimeout); refused: INVITE_EXPIRED, INVITE_USED_UP,
@@ -92,13 +106,18 @@ hg.space(key)                                   // ✓ sync: the Space; NOT_FOUN
 await hg.leaveSpace(key)                        // drops its data from this device
 
 forum.key; forum.name; forum.parent             // ✓ sync
-forum.status()                                  // sync: { policy, held, budget, belowPolicy, peers, settlers, warnings }
-                                                // ✓ story 5: { peers, settlers, warnings: [{ code, message }] };
-                                                //   SINGLE_SETTLER while only one member settles decisions
-                                                //   ("give a space an admin"); policy, budget: story 6
-forum.setBudget(1e9)                            // or null: share the app budget
+forum.status()                                  // ✓ sync: { policy, held, stored, share, budget, belowPolicy, peers,
+                                                //   settlers, warnings: [{ code, message }] } — held 'all' | 'part'
+                                                //   (content dropped here); stored, share: bytes (share null until
+                                                //   the first budget pass); budget: its own or null.
+                                                //   Warnings: SINGLE_SETTLER (story 5: "give a space an admin"),
+                                                //   BELOW_POLICY (keep-everything asked, this device can't), OVER_BUDGET
+                                                //   (what it may not drop already exceeds its share)
+await forum.setBudget(1e9)                      // ✓ story 6: its own budget out of the app's, or null: share it;
+                                                //   NOT_ALLOWED if the spaces' own budgets would exceed the app's
+await forum.setPolicy('everything')             // ✓ story 6: 'auto' | 'everything' for every member; who may decide
 forum.on('change', ({ types }) => {})           // ✓ records of these types changed
-forum.on('status', (status) => {})
+forum.on('status', (status) => {})              // ✓ story 6: when policy, held, belowPolicy, budget or warnings change
 ```
 
 ## Types
