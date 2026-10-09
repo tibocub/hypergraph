@@ -103,7 +103,8 @@ test('the same decisions give the same state; adds commute', async (t) => {
   const addX = node(space, { type: 'member/add', identity: crypto.randomBytes(32) })
   const addY = node(space, { type: 'member/add', identity: crypto.randomBytes(32) })
 
-  const run = async (nodes) => { const v = memoryView(); await applyNodes(nodes, v, null, { space }); return v.dump() }
+  // The state; the decision list (~log:) follows the order applied.
+  const run = async (nodes) => { const v = memoryView(); await applyNodes(nodes, v, null, { space }); return JSON.stringify([...v.map].filter(([k]) => !k.startsWith('~')).sort()) }
   t.is(await run([first, addX, addY]), await run([first, addX, addY]), 'replaying gives the same state')
   t.is(await run([first, addX, addY]), await run([first, addY, addX]), 'two orders of concurrent adds converge')
   const garbage = { from: { key: space }, value: b4a.from([99, 1, 2]) }
@@ -156,4 +157,27 @@ test('settings/set records the app rules a space runs (core follow-ups); only wh
   await view.put(`member:${hex(m)}`, { role: 'moderator', by: '', stamp: 0 })
   await applyNodes([node(other, { type: 'settings/set', policy: null, writeLimit: null, rules: [] })], view, null, { space })
   t.alike(State.from(view.map).rules, ['b', 'title-length'], 'a moderator may not change them')
+})
+
+test('the decision list (core follow-ups): every decision in order, who, what, when, why, and whether it counted', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  const x = crypto.randomBytes(32)
+  const stranger = crypto.randomBytes(32)
+  await applyNodes([
+    node(space, { ...init, proof: initProof(owner, space, space) }),
+    node(space, { type: 'role/set', identity: x, role: 'moderator', cut: [] }),
+    node(space, { type: 'moderate', action: 'hide', target: crypto.randomBytes(33), reason: 'spam', cut: [] }),
+    node(stranger, { type: 'member/add', identity: x }),
+    { from: { key: space }, value: b4a.from([99, 1, 2]) }
+  ], view, null, { space })
+  const list = [...view.map].filter(([k]) => k.startsWith('~log:')).sort().map(([, v]) => v)
+  t.is(list.length, 4, 'every decodable decision, malformed ones left out')
+  t.alike(list.map((d) => [d.type, d.counted]), [['space/init', true], ['role/set', true], ['moderate', true], ['member/add', false]])
+  t.is(list[0].by, hex(owner.publicKey), 'by the owner')
+  t.is(list[0].device, hex(owner.device.publicKey), 'from this device')
+  t.alike({ identity: list[1].identity, role: list[1].role }, { identity: hex(x), role: 'moderator' })
+  t.is(list[2].reason, 'spam')
+  t.is(list[3].by, null, 'a stranger\'s writer key speaks for nobody')
 })

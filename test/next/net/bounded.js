@@ -59,7 +59,7 @@ test('a member whose log nobody holds does not make answers incomplete', async (
   const b = await account(t, 'b')
   const fa = await forum.createForum(a, 'Quiet member')
   const fb = await forum.join(b, await forum.invite(fa))
-  await fa.decisions.append({ type: 'member/add', identity: crypto.randomBytes(32) }) // someone who never comes
+  await fa.decisionLog.append({ type: 'member/add', identity: crypto.randomBytes(32) }) // someone who never comes
   const p = await forum.post(fb, 'hello', '')
   const r = await eventually(async () => {
     const res = await fa.query('post').latest(20, { timeout: 500 })

@@ -96,3 +96,39 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
     return false
   }, 30000), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
 })
+
+test('inspect({ records }): every row of a type, hidden, superseded, dropped and edited ones included; inspect({ record }): its versions', async (t) => {
+  const { a, fa, fb } = await threeMembers(t)
+  const p1 = await forum.post(fa, 'one', 'v1')
+  const p2 = await forum.post(fa, 'two', '')
+  const gone = await forum.post(fa, 'three', '')
+  await forum.edit(fa, p1, { text: 'v2' })
+  await forum.vote(fa, p1, 1)
+  await forum.vote(fa, p1, -1) // supersedes the first
+  await forum.hide(fa, p2, 'spam')
+  await forum.remove(fa, gone)
+  t.ok(await eventually(async () => (await fb.get(p1.id)).record?.text === 'v2' && !(await fb.get(gone.id)).record && (await fb.get(p2.id)).record?.hidden, 30000), 'b has it all')
+
+  const { rows } = await fb.inspect({ records: { type: 'post' } })
+  t.alike(rows.items.map((r) => r.id).sort(), [p1.id, p2.id].sort(), 'rows of posts (the deleted one has none)')
+  const r1 = rows.items.find((r) => r.id === p1.id)
+  t.is(r1.state.edited, true)
+  t.is(r1.text, 'v2', 'with its current fields')
+  t.is(rows.items.find((r) => r.id === p2.id).state.hidden, true, 'a hidden post is listed')
+  const votes = (await fb.inspect({ records: { type: 'vote' } })).rows.items
+  t.is(votes.length, 2, 'both votes')
+  t.is(votes.filter((v) => v.state.superseded).length, 1, 'the earlier one superseded')
+  const page = (await fb.inspect({ records: { type: 'post', limit: 1 } })).rows
+  t.is(page.items.length, 1)
+  t.is((await fb.inspect({ records: { type: 'post', limit: 1, after: page.next } })).rows.items.length, 1, 'paged')
+
+  const { record } = await fb.inspect({ record: p1.id })
+  t.is(record.id, p1.id)
+  t.is(record.deleted, false)
+  t.alike(record.versions.map((v) => [v.kind, v.text, v.counts]), [['put', 'v1', true], ['edit', 'v2', true]], 'its put and its edit')
+  t.is(record.versions[1].by, a.identity.publicKey)
+  t.ok(record.versions[1].stamp >= record.versions[0].stamp)
+  const del = (await fb.inspect({ record: gone.id })).record
+  t.is(del.deleted, true, 'a deleted record')
+  t.alike(del.deletes.map((d) => [d.by, d.counts]), [[a.identity.publicKey, true]], 'and who deleted it')
+})
