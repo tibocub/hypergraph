@@ -178,7 +178,7 @@ devices no removal names — fixed first.
 - [X] T054c [P] [US4] test/next/forum/devices.js: an owner's second device moderates and invites with no
   extra step (it claims its writer key itself); an admin's phone moderates; a removed device's decisions
   written afterwards (raw, `testing.decide`) are ignored by every member, a newcomer included
-- [ ] T054d [US4] Implementation: lib/encodings.js (`writer/add`, `device/remove` appended to the decision
+- [X] T054d [US4] Implementation: lib/encodings.js (`writer/add`, `device/remove` appended to the decision
   types), lib/decisions/apply.js + state.js (writers carry `{ identity, device, indexer }`, removed devices,
   settlers), lib/space.js (a device claims its writer key when its member may decide or moderate; a device
   removal also records `device/remove` in every space where that device could decide; a device that can't
@@ -187,10 +187,10 @@ devices no removal names — fixed first.
 
 ### Admins settle the decision order with the owner
 
-- [ ] T054e [P] [US4] test/next/net/indexers.js: owner + two admins; the owner closes for good; the admins
+- [X] T054e [P] [US4] test/next/net/indexers.js: owner + two admins; the owner closes for good; the admins
   make decisions (a role, a ban, a redemption); both settle them (settled length grows on each) and a newcomer
   shows the same roles and members; an admin demoted later stops settling (v1 spec 003's lesson)
-- [ ] T054f [US4] Implementation in T054d's modules (`host.addWriter(key, { indexer })`, handover, demotion)
+- [X] T054f [US4] Implementation in T054d's modules (`host.addWriter(key, { indexer })`, handover, demotion)
 
 ### Invites complete (spec 008's design, FR-023)
 
