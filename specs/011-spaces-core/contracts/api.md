@@ -181,6 +181,8 @@ await forum.setRole(someone, 'moderator')   // ✓ built-in (admin, moderator, m
                                       //   non-members (v1); NOT_ALLOWED at or above your rank, NOT_FOUND for an
                                       //   unknown role; a role without 'post' cuts like a removal
 await forum.getRole(someone)          // ✓ 'member' | 'moderator' | ... | null (not a member)
+await forum.roles()                   // ✓ story 6: [{ name, permissions, custom }], built-in roles highest first,
+                                      //   then the space's own by name (the owner holds every permission)
 await forum.removeRole(someone)       // ✓ takes them out of the space (v1's meaning); what they wrote up to where
                                       //   this member holds them stays for everyone, nothing after counts
 await forum.moderateAction('hide', post.id, { reason: 'spam' })   // ✓ flag | hide | reveal | remove (for good)
@@ -196,6 +198,8 @@ await forum.moderateAction('ban', someone, { from: spam })        // ✓ the sam
 // ✓ story 5: before refusing, every role, moderation and invite method catches up with the connected members
 //   who record decisions (within readTimeout); NOT_ALLOWED says why (banned, not a member, role too low, their
 //   role at or above yours). setRole to a role without an app permission cuts the member's edits relying on it.
+// ✓ story 6: a device whose member was just given a role that records decisions (or a new device of such a
+//   member) waits, within readTimeout (at least 5 s), to become a decision writer instead of failing.
 ```
 
 ## Invites

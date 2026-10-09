@@ -158,9 +158,7 @@ test('the owner\'s phone moderates and lets people in, with the laptop offline, 
   const { laptop, fp, fc } = await twoDevices(t)
   const rude = await forum.post(fc, 'rude', '')
   t.ok(await eventually(async () => (await fp.get(rude.id)).record, 10000))
-  t.ok(await eventually(async () => {
-    try { await forum.hide(fp, rude, 'rude'); return true } catch { return false }
-  }, 15000), 'the phone records decisions')
+  await forum.hide(fp, rude, 'rude') // no retry: the phone waits to record decisions (story 6)
   t.ok(await agree([fc], (f) => forum.latest(f).then((xs) => xs.some((x) => x.id === rude.id)), false), 'everyone applies its hide')
 
   await laptop.close()
@@ -179,9 +177,7 @@ test('an admin\'s phone moderates', async (t) => {
     try { const f = cPhone.space(fl.key); return (await f.get(p.id)).record ? f : null } catch { return null }
   }, 15000)
   t.ok(fcp, 'c\'s phone holds the forum')
-  t.ok(await eventually(async () => {
-    try { await forum.hide(fcp, p, 'test'); return true } catch { return false }
-  }, 15000), 'c\'s phone records decisions')
+  await forum.hide(fcp, p, 'test') // c's phone records decisions, no retry
   t.ok(await agree([fl, fc], titles, 'phone is in'), 'hidden for everyone')
   t.ok(laptop)
 })
@@ -189,9 +185,7 @@ test('an admin\'s phone moderates', async (t) => {
 test('a removed device\'s decisions afterwards are ignored by everyone, a newcomer included', async (t) => {
   const { laptop, phone, c, fl, fp, fc } = await twoDevices(t)
   // The phone records decisions (it claimed its writer key).
-  t.ok(await eventually(async () => {
-    try { await forum.flag(fp, (await forum.latest(fp))[0], 'check'); return true } catch { return false }
-  }, 15000), 'the phone records decisions')
+  await forum.flag(fp, (await forum.latest(fp))[0], 'check') // the phone records decisions, no retry
   await forum.protectPhrase(laptop, 'pw')
   const phoneDir = phone.dir
   await phone.close()

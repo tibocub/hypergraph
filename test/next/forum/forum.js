@@ -139,6 +139,11 @@ function addRole (forum, name, permissions) {
   return forum.defineRole(name, permissions)
 }
 
+// The forum's roles, highest first: [{ name, permissions, custom }].
+function roles (forum) {
+  return forum.roles()
+}
+
 // Takes someone out of the forum (v1's removeRole): what they wrote so far stays.
 function removeMember (forum, who) {
   return forum.removeRole(who)
@@ -258,10 +263,10 @@ async function referencedBy (forum, record) {
 
 // --- the wiki ---
 
-// Editors: members who may edit any page (and post). Defining a role again
-// with the same permissions changes nothing.
+// Editors: members who may edit any page (and post). The role is defined the
+// first time someone is made an editor.
 async function makeEditor (forum, who) {
-  await forum.defineRole('editor', ['post', 'edit-pages'])
+  if (!(await forum.roles()).some((r) => r.name === 'editor')) await forum.defineRole('editor', ['post', 'edit-pages'])
   await forum.setRole(who, 'editor')
 }
 
@@ -307,6 +312,7 @@ module.exports = {
   giveRole,
   roleOf,
   addRole,
+  roles,
   removeMember,
   hide,
   reveal,

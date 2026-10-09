@@ -98,9 +98,9 @@ test('members who already showed records past the cut take them back', async (t)
 test('a ban\'s cut is the moderator\'s held lengths, wherever the others are', async (t) => {
   const { a, b, c, fa, fb, fc } = await threeMembers(t)
   await forum.giveRole(fa, b.identity.publicKey, 'moderator')
-  t.ok(await eventually(async () => {
-    try { await forum.flag(fb, await forum.post(fa, 'probe', ''), 'probe'); return true } catch { return false }
-  }, 10000), 'b moderates')
+  const probe = await forum.post(fa, 'probe', '')
+  t.ok(await eventually(async () => (await fb.get(probe.id)).record, 10000))
+  await forum.flag(fb, probe, 'probe') // b moderates at once, no retry
   const p = await forum.post(fa, 'by a', 'a')
   const early = await forum.post(fc, 'early', 'early')
   await forum.vote(fc, p, 1)

@@ -362,7 +362,7 @@ within 30 s (SC-008, measured alone).
 
 ### Tests for User Story 6 (write first, they fail)
 
-- [ ] T059 [P] [US6] test/next/forum/roles.js (story 5's follow-ups): `space.roles()` lists the built-in roles
+- [X] T059 [P] [US6] test/next/forum/roles.js (story 5's follow-ups): `space.roles()` lists the built-in roles
   and the forum's own with their permissions; forum.js's `makeEditor` defines `editor` only when missing;
   test/next/forum/devices.js: a phone of an owner or an admin hides, flags and lets people in right after
   joining with no retry (it waits, within the bound, to record decisions) — the retries removed
@@ -399,7 +399,7 @@ within 30 s (SC-008, measured alone).
 
 ### Implementation for User Story 6
 
-- [ ] T062 [US6] lib/space.js `roles()`; a device whose member may decide waits (within `readTimeout`) to
+- [X] T062 [US6] lib/space.js `roles()`; a device whose member may decide waits (within `readTimeout`) to
   become a decision writer, claiming again at once instead of failing; forum.js `makeEditor`
 - [ ] T062a [US6] lib/space.js `inspect()`; lib/index.js `storage()`
 - [ ] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
