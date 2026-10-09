@@ -168,7 +168,9 @@ await forum.del(post.id)                                 // ✓ every member sto
 
 ```js
 const { items, complete } = await forum.query('post').latest(20)   // ✓ newest first (by when it was put)
-await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-declared index (INVALID_TYPE if not declared)
+await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-declared index (INVALID_TYPE if not declared;
+                                                                   //   records with no value there aren't in it: where() with none
+                                                                   //   throws INVALID_RECORD, story 7)
 await forum.query('comment').by(someone).latest(20)                // ✓ by author (identity key)
 await hg.personal.query('held').fromDevice(device).latest(20)      // ✓ story 4: what one device put (device key)
 await forum.query('post').tag('rust').latest(20)                    // ✓ story 5

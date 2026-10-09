@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type changes between versions: appending a link field with `links` and adding indexes are now allowed;
   changing a link field's targets, or appending the first link field of a `onePerMember` type, throws
   `INCOMPATIBLE_TYPES` naming the field. Opening a folder with an older declaration throws too.
+- App indexes leave out records with no value in the indexed fields; `where()` with no value throws `INVALID_RECORD`.
   Details: `specs/011-spaces-core/research.md` A11.
 
 ### 2026-10-09: `hypergraph/next` — story 6, holding part of a space, rebuild, diagnostics (ALPHA, breaking within `next`)

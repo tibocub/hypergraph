@@ -95,7 +95,7 @@ const types = {
 Field kinds: `string`, `text`, `int`, `uint`, `float`, `bool`, `bytes`, `ref` (content held elsewhere:
 `{ src: [addresses], size, type, digest }`), `link` (a record), `space` (a space). `links` limits what a
 link field may point at. `onePerMember`: only each member's latest counts (per its first link field).
-`index: [['forum', 'stamp']]` adds a query by field (`where`). `editable` says who may edit a record
+`index: [['forum', 'stamp']]` adds a query by field (`where`; records with no value in those fields aren't in it). `editable` says who may edit a record
 besides its author: `'author'` (the default), `'members'` (any member), or `{ permission }` (members whose
 role has that permission, e.g. one you define with `defineRole`; see [Shared editing](#shared-editing)). Field
 names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are taken by the record.

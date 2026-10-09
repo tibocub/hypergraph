@@ -764,7 +764,17 @@ link field of a one-per-member type is refused (it would change what one per mem
 (opening with an older declaration than the one stored) is refused like any removal and leaves the folder
 unchanged.
 
+**App indexes leave out records whose indexed fields are all empty.** Adding `post.topic` with an index gave
+every post (all the old version's) an index entry for "no topic", which the stored-bytes estimate (A10, ~550 B
+a row, measured without app indexes) doesn't count: the budgets test went 10% over on disk. An index entry for
+"no value" is useless to `where()` and different on members that indexed before and after the field existed, so
+those records aren't indexed and `where()` with no value throws `INVALID_RECORD`.
+
 **Limits found, not fixed here** (for the lead):
+- The stored-bytes estimate doesn't count app index entries (one per declared index per record that has a
+  value): an app indexing several fields of many records can go past its budget. Measure and add per index.
+- `test/next/forum/budgets.js` #2 ("the oldest post's content is dropped") is flaky on Bare: 3 of 12 runs on
+  `011-spaces-core` itself (it can check before the first drop happened: "settled" accepts 10% over the share).
 - App `rules` are code: a newer version refusing what an older one accepted (or the reverse) makes members
   disagree on what exists. Documented (docs/next/api.md); hypergraph can't detect it.
 - A link field's allowed targets are checked when the record arrives, only if its target is already held
