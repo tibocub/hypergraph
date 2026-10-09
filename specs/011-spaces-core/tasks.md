@@ -502,6 +502,104 @@ versions in one space, both directions; each kind of bad change refused.
   46/46; forum.js 391 lines, all app code (254 without blank and comment lines, 61 of them the export list)
   (2026-10-09)*
 
+## Phase 9b: Core follow-ups (ROADMAP 2026-10-09, review of story 7 and the inspector)
+
+**Goal**: the seven follow-ups decided in that review, before story 8: a Principle I bug fixed, future
+hypergraph types kept, two flaky tests made to wait for their conditions, the read APIs the inspector asked
+for (and the inspector moved onto them), app index entries in the storage estimate, `undefined` as absent,
+and app rules recorded by the space so mismatches are detected.
+**Independent test**: `npm run test:next` and `npm run test:next:bare` pass (the inspector's test on Node
+only); the two formerly flaky files pass 10 runs each under the full suite's load on both runtimes.
+
+**Choices made before starting** (research.md A12; for the lead's review):
+- **Link targets are judged when read, not when a record arrives.** A record is kept whatever its links
+  point at. Whether a link counts depends only on the target's type, which never changes, and on whether
+  the target is held here. So every read that follows a link (what points at X: `linked`, `count`, `sum`,
+  `query().on()`, and the link field shown on the record) looks at the target: held with a type the field
+  doesn't allow → the link counts for nothing (the field shows `null`, the record isn't "on" X). Not held
+  (not arrived yet, or deleted, taken down, cut: rows that are gone on every member) → the link stands as
+  written. Nothing is decided at arrival, so no order of arrival can make two members differ. Considered:
+  marking rows when the target arrives (reads stay free) — rejected: a deleted target's type is gone, so a
+  member that marked a row and a newcomer that never saw the target would disagree. A consequence: a type
+  gaining a link field with allowed targets no longer needs an index rebuild (A11), only new types and new
+  indexes do.
+- **`space.decisions()`** reads a list that apply writes into the decision log's view (`~log:<n>`: type,
+  who, device, when, what, why, and whether it counted), so it follows Autobase's reorders like every other
+  view entry and is the same on every member once settled.
+- **`space.peers()`**: the swarm uses the device key pair, so a connection's remote key is the peer's
+  device key; on the space channel each side sends its device proof (`hello`), checked against that key:
+  identity and device known for every connected peer, unforgeable.
+- **Storage**: per log, the bytes of its rows' app index entries and tag keys (each entry measured: its key
+  plus a fixed cost), kept with the log's dropped counters in `meta`; never dropped (rows stay).
+- **Rules**: `settings/set` gains `rules` (a list of rule ids, optional on the wire); `createSpace` records
+  the creator's app's rule ids; `space.setRules()` records this app's (who may decide); `status()` warns
+  `RULES_DIFFER` (naming the ids) when this app's rule ids differ from the space's. A space that never
+  recorded any doesn't warn. Changing what a rule does means giving it a new id.
+
+### Tests (write first, they fail)
+
+- [ ] F001 [P] test/next/forum/link-targets.js (item 1, Principle I): c (modified app) writes a comment and a
+  poll whose `on` points at a vote (a type `on` doesn't allow): on a member that held the vote first and on
+  one that got the comment first (the vote written later, delivered after), the record is kept on both, its
+  `on` shows `null`, it isn't in `linked(vote)`, `count`, `sum` or `query().on(vote)`; both show the same
+  lists; a newcomer (joined afterwards) shows the same; a link to a target not held yet counts as written
+  until the target arrives; deleting the target restores the link as written on every member, newcomer
+  included
+- [ ] F002 [P] test/next/forum/versions.js: the bad poll (on a comment) is now kept by every version, with
+  its link ignored (shown `on: null`, not under the comment); test/next/unit/types.js: `stale()` no longer
+  lists a type that only gained a link field with allowed targets
+- [ ] F003 [P] test/next/forum/versions.js (item 2): a record of a hypergraph type this version doesn't know
+  (`hg/future`, written raw) is kept and counted by type on every member (`inspect().records`), not refused;
+  later records of that log are indexed
+- [ ] F004 [P] Items 3: test/next/forum/budgets.js #2 waits until the oldest post's content is dropped
+  (instead of checking at once); test/next/forum/inspect.js waits for every condition it checks (logs held
+  and indexed, the decisions settled) with `eventually`/`within`; each file run 10 times under the full
+  suite's load on Node and on Bare
+- [ ] F005 [P] test/next/forum/members.js (item 4): `space.members()` → `[{ identity, role, you, banned,
+  removed, devices: [{ device, log }] }]` (banned and removed members listed with their state, role null);
+  `space.decisions({ limit, after })` → newest first `[{ seq, type, by, device, at, counted, ... }]` (a role
+  given, a ban with its reason, an invite redeemed, a decision by a demoted moderator `counted: false`),
+  paging; `hg.types()` → the declared types (fields with kinds, links, onePerMember, editable, indexes;
+  hypergraph's own marked `builtin`); `space.tags(record)` → sorted tag names; `space.peers()` → `[{ identity,
+  device }]` of connected members; events: `space.on('peers')` when one connects or leaves, `space.on('logs')`
+  when a log is accepted or grows
+- [ ] F006 [P] test/next/forum/inspect.js (item 4): `inspect({ records: { type, limit, after } })` lists every
+  row of a type, hidden, superseded, dropped and edited ones included, with their state flags;
+  `inspect({ record: id })` → its versions (the put and every edit, with who, when and whether it counts)
+  and deletes, also for a deleted record
+- [ ] F007 [P] test/next/tools/inspector.js (item 4, Node only): the views use the new reads (members with
+  roles and banned state, decisions, types, tags, peers) and the page updates from events (no polling)
+- [ ] F008 [P] test/next/unit/budget.js (item 5): `stored()` counts index entry bytes; test/next/forum/budgets.js:
+  a forum indexing several fields stays within its budget on disk (+10%)
+- [ ] F009 [P] test/next/unit/types.js and test/next/forum/post-comment-vote.js (item 6): a field passed as
+  `undefined` counts as absent in `put` and `edit` (an old helper passing a field the type doesn't have, or a
+  new one passing nothing); an unknown field with a value (a typo) still throws `INVALID_RECORD`
+- [ ] F010 [P] test/next/forum/rules.js (item 7): the space records its creator's rule ids; a member whose app
+  has another rule set gets `RULES_DIFFER` in `status()` (and a `status` event) naming them; `setRules()` by
+  the owner records this app's, the warning goes away there and appears for members on the old rules;
+  refused (`NOT_ALLOWED`) for a member; test/next/unit/decisions-basic.js: `settings/set { rules }` applied by
+  who may decide, decoded from an entry written without `rules`
+
+### Implementation
+
+- [ ] F011 lib/gate.js (no link check at arrival), lib/index/indexer.js (records kept whatever their links
+  point at), lib/index/query.js + lib/space.js (links judged when read: `linkedRows`, `Query.on`, `shape`),
+  lib/types.js (`stale()` without link fields)
+- [ ] F012 lib/gate.js: unknown `hg/` types kept like unknown app types
+- [ ] F013 lib/decisions/apply.js (the decision list `~log:<n>`, `settings/set { rules }`), state.js
+  (`rules`), log.js (`list()`), encodings.js (optional trailing `rules`)
+- [ ] F014 lib/space.js: `members()`, `decisions()`, `tags()`, `peers()`, events `peers` and `logs`,
+  `inspect({ records })`, `inspect({ record })`, `setRules()`, `RULES_DIFFER`; lib/index.js: `types()`,
+  `createSpace` records rule ids; lib/network.js (device key pair), lib/directory.js (`hello`)
+- [ ] F015 lib/storage.js + lib/index/indexer.js + lib/space.js: index entry bytes per log in the estimate
+- [ ] F016 lib/types.js `validate()` and lib/space.js `edit()`: `undefined` is absent
+- [ ] F017 tools/inspector/: members, decisions, types, tags, peers from the new reads; events instead of
+  3-second polling; README
+- [ ] F018 test/next/forum/forum.js, contracts/api.md, data-model.md, docs/next/api.md and concepts.md,
+  research.md A12, CHANGELOG.md
+- [ ] F019 Checkpoint: `npm run test:next` and `npm run test:next:bare`; the two formerly flaky files 10 runs
+  each under load; v1's `npm test` and hyperDNS's `npm test`; forum.js line count
+
 ## Phase 10: User Story 8 — Sub-spaces, private ones included (Priority: P3)
 
 - [ ] T065 [P] [US8] test/next/forum/subforums.js: a sub-forum seen inside its parent without a separate join; write-restricted sub-space; a guest of the sub-space only; a parent ban applies in the sub-space even if it invited the member; a record linking to another space (US8 #1, #3–5)
