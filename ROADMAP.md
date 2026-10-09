@@ -23,6 +23,14 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09 (review of spec 011 story 6)** — Story 6 accepted (180/180 on Node and on Bare, both
+  re-run in the lead conversation; v1 390/390; hyperDNS 46/46; 100k-record index rebuild 20.6 s;
+  `011-spaces-core` fast-forwarded). Departures accepted (research.md A10): dropped content keeps a
+  ~0.5 KB entry per record so counts stay exact (`OVER_BUDGET` when the list alone exceeds a share);
+  rebuild from a file listing accepted logs; self-compaction after dropping a tenth of the budget.
+  Routed to story 9 (T071b): a newcomer downloads a space bigger than its share once in full.
+  Watch: forum.js is at 371 of 400 lines — story 7 separates test plumbing from app code.
+
 - **2026-10-09** — **An inspector**: a read-only web page (local Node server + browser) showing what is
   inside a hypergraph (spaces, members, roles, decisions, logs and devices, records by type, storage,
   peers). For Tibo to see the core work during development, for app developers to debug, and later
@@ -143,5 +151,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 4. Story 3 done and reviewed → **SwarmFS can start** (its own repo and spec, prompt written with Tibo).
 5. Story 4 done and reviewed.
 6. Story 5 done and reviewed.
-7. **Worker session 6**: story 6 (holding part of a space: budgets, policies, bounded reads, rebuild).
+7. Story 6 done and reviewed.
+8. **Worker sessions, in parallel**: story 7 (app versions) and the inspector (`tools/inspector/`).
    SwarmFS spec session once Tibo has renamed the old SwarmFS folder.
