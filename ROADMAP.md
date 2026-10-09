@@ -23,6 +23,22 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09 (review of spec 011 story 7 and the inspector)** — Both accepted and merged into
+  `011-spaces-core` (story 7: 188/188 on Node and Bare; inspector: read-only, `node
+  tools/inspector/demo.js` plays a three-member forum at http://127.0.0.1:4401-4403). On the merged
+  branch the full suite passed 188/189: `test/next/forum/inspect.js` fails under load and passes alone
+  (4/4) — timing-sensitive, like `budgets.js` on Bare. Next session ("core follow-ups", before story 8):
+  (1) **a Principle I bug** found by story 7: a link's allowed target type is checked only if the
+  target is held when the record arrives, so two honest members can disagree — fix deterministically
+  (a link to a wrong-type target is ignored, the record kept, on every member); (2) unknown `hg/` types
+  kept like unknown app types (future hypergraph versions); (3) the two flaky tests wait for
+  conditions; (4) the inspector's requests: `members()`, a readable `decisions()` list, declared types,
+  a record's tags, connected peers, hidden/deleted records in diagnostics, events when logs or peers
+  change; (5) the storage estimate counts app index entries; (6) a field passed as `undefined` counts as
+  absent (old and new app code can share helpers); (7) app rules get ids and a space records which are
+  active, so `status()` warns when an app's rules differ (rules are code; mismatches can't be prevented,
+  only detected).
+
 - **2026-10-09 (review of spec 011 story 6)** — Story 6 accepted (180/180 on Node and on Bare, both
   re-run in the lead conversation; v1 390/390; hyperDNS 46/46; 100k-record index rebuild 20.6 s;
   `011-spaces-core` fast-forwarded). Departures accepted (research.md A10): dropped content keeps a
@@ -152,5 +168,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 5. Story 4 done and reviewed.
 6. Story 5 done and reviewed.
 7. Story 6 done and reviewed.
-8. **Worker sessions, in parallel**: story 7 (app versions) and the inspector (`tools/inspector/`).
-   SwarmFS spec session once Tibo has renamed the old SwarmFS folder.
+8. Story 7 and the inspector done, reviewed, merged into `011-spaces-core`.
+9. **Worker session**: core follow-ups (above), then story 8 (sub-spaces, private), then story 9 (big
+   spaces). SwarmFS spec session in parallel (folder decision pending with Tibo).
