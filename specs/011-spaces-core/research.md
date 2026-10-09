@@ -832,3 +832,16 @@ field with a value (`null` included) is still a typo (`INVALID_RECORD`).
 may decide (`createSpace` records the creator's app's, `space.setRules()` this app's); `status()` warns `RULES_DIFFER`
 naming the ids that differ. Nothing can make every member run the same rules; this only detects it. A rule changed
 in place under the same id goes unnoticed: change the id with the behavior (docs/next/api.md).
+
+### A13. Story 8: sub-spaces and private spaces (2026-10-10)
+
+**A missed announcement is recovered without a reconnect** (routed from the review of the core follow-ups). A new
+log was announced once (a notice); a member that missed it (the message lost, or its header fetch timed out, as
+A12's stranger showed) never heard of the log again until a reconnect sent the summary. Now each member sends its
+directory summary again 250 ms after its directory changed (once per burst) and every 10–11 s; a member whose
+directory differs asks for the list, but not again for the same difference (both digests unchanged) within a
+minute, so two members that disagree for good (a log one refuses and the other keeps) don't trade lists every
+period. Cost: one 40-byte message per connection per space every 10 s. Tests: `test/next/net/directory.js` ("a log
+whose announcement was missed still arrives": after a change, and with only the periodic summary left, which fails
+without it).
+

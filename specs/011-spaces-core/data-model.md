@@ -88,7 +88,7 @@ ids the space runs).
 `summary { count, digest (32 B XOR) }`, `want {}`, `logs [log key]`, `notice { log }`, `get { log }`, `hello { proof }`
 (core follow-ups: the sender's device proof, checked against the connection's key — the swarm uses the device key
 pair — so `space.peers()` knows each peer's identity)
-(experiment 1), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3), `ask
+(experiment 1; story 8, research.md A13: the summary is sent again when the directory changes and every ~10 s, the same difference asked about at most once a minute), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3), `ask
 { decision }` (a `writer/add` or `device/remove` for any writer to record, research.md A8); story 9
 adds `period, start` to log entries.
 

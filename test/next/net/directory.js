@@ -69,3 +69,45 @@ test('two members started at the same moment still meet', async (t) => {
   const p = await forum.post(a2.space(fa.key), 'after restart', '')
   t.ok(await eventually(async () => (await forum.latest(b2.space(fa.key))).some((x) => x.id === p.id), 20000), 'b sees a\'s new post')
 })
+
+// Routed from the core follow-ups' review: a log whose single announcement
+// was missed (a notice lost, a header fetch that timed out) stayed unknown
+// until a reconnect. Members now send their summary again when their
+// directory changes and every little while.
+test('a log whose announcement was missed still arrives: the summary after a change', async (t) => {
+  const a = await account(t, 'a')
+  const b = await account(t, 'b')
+  const fa = await forum.createForum(a, 'Missed')
+  const fb = await forum.join(b, await forum.invite(fa))
+  await eventually(async () => testing.logs(fa).length === 2, 5000)
+  const restore = testing.deafen(fa, { notices: true }) // a never hears a notice
+  t.teardown(restore)
+  const c = await account(t, 'c')
+  const fc = await forum.join(c, await forum.invite(fa))
+  const p = await forum.post(fc, 'from c', '')
+  t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === p.id), 10000), 'a learnt c\'s log without its notice')
+  t.ok(await eventually(async () => (await forum.latest(fb)).some((x) => x.id === p.id), 10000), 'b too')
+})
+
+test('a log whose announcement was missed still arrives: the summary sent every little while', async (t) => {
+  const a = await account(t, 'a')
+  const b = await account(t, 'b')
+  const fa = await forum.createForum(a, 'Missed')
+  await forum.join(b, await forum.invite(fa))
+  await eventually(async () => testing.logs(fa).length === 2, 5000)
+  // a hears neither notices nor summaries while c joins and posts; then
+  // nothing changes any more, so only the periodic summary can tell it.
+  const restore = testing.deafen(fa, { notices: true, summaries: true })
+  t.teardown(restore)
+  const c = await account(t, 'c')
+  const fc = await forum.join(c, await forum.invite(fa))
+  const p = await forum.post(fc, 'from c', '')
+  t.ok(await eventually(async () => testing.logs(fc).length === 3 && testing.logs(b.space(fa.key)).length === 3, 10000), 'b and c know every log')
+  // b's and c's summaries after their last change were dropped too
+  const final = testing.digestOf(fc)
+  const heard = (peer) => restore.dropped.some((d) => d.peer === peer.device.publicKey && d.digest === final)
+  t.ok(await eventually(async () => heard(b) && heard(c), 10000), 'a dropped b\'s and c\'s summaries of the final directory')
+  t.absent(testing.logs(fa).includes(testing.ownLog(fc)), 'a missed c\'s log')
+  restore()
+  t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === p.id), 25000), 'a learnt c\'s log within the bound, connections untouched')
+})
