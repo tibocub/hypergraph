@@ -78,3 +78,46 @@ test('query(type).fromDevice(key): what one device wrote, page by page', async (
   const next = await from(phone, laptop, 2, { after: first.items.at(-1) })
   t.is(paths(next), '/a', 'paging, no gaps or repeats')
 })
+
+// Story 6 (ROADMAP 2026-10-09): superseded settings and heads don't pile up.
+// Each device keeps one row per setting and per device's heads; the older
+// versions' blocks are cleared, except in a device's own log, which stays
+// whole so the other devices can always fetch and check it (FR-027).
+test('settings set many times and heads written many times leave one of each, on every device', async (t) => {
+  const laptop = await open(t, { label: 'laptop', types })
+  await laptop.connectToSwarm()
+  const { code } = await laptop.addDevice()
+  const phone = await open(t, { label: 'phone', types, joinCode: code })
+  const mine = await laptop.createSpace({ name: 'mine' })
+  for (let i = 0; i < 5; i++) {
+    await laptop.setSetting('theme', `laptop ${i}`)
+    await mine.put('post', { title: `p${i}`, text: '' })
+    await testing.writeHeads(laptop)
+  }
+  const theme = async (hg) => (await hg.settings()).theme
+  t.ok(await eventually(async () => (await theme(phone)) === 'laptop 4', 10000), 'the phone shows the latest')
+  await phone.setSetting('theme', 'phone 0')
+  await phone.setSetting('theme', 'phone 1')
+  t.ok(await eventually(async () => (await theme(laptop)) === 'phone 1', 10000), 'the laptop shows the phone\'s latest')
+
+  const one = async (hg) => (await testing.rowCount(hg.personal, 'hg/setting')) === 1 && (await testing.rowCount(hg.personal, 'hg/heads')) <= 2
+  t.ok(await eventually(async () => (await one(laptop)) && (await one(phone)), 10000), 'one setting row and one heads row per device, on each device')
+
+  const laptopLog = testing.ownLog(laptop.personal)
+  const phoneLog = testing.ownLog(phone.personal)
+  t.is(await testing.heldBlocks(laptop.personal, laptopLog), await testing.logLength(laptop.personal, laptopLog), 'the laptop\'s own log stays whole')
+  t.ok(await eventually(async () => (await testing.heldBlocks(laptop.personal, phoneLog)) < (await testing.logLength(laptop.personal, phoneLog)), 5000), 'the phone\'s superseded settings are cleared on the laptop')
+  await sleep(2000)
+  t.ok((await testing.heldBlocks(laptop.personal, phoneLog)) < (await testing.logLength(laptop.personal, phoneLog)), 'and not fetched again')
+
+  // A third device, and a restart, show the same, complete.
+  const { code: code2 } = await laptop.addDevice()
+  const tablet = await open(t, { label: 'tablet', types, joinCode: code2 })
+  t.ok(await eventually(async () => (await theme(tablet)) === 'phone 1', 10000), 'a new device shows the latest')
+  t.ok(await eventually(async () => (await tablet.personal.query('held').latest(1)).complete, 10000), 'complete: nothing it needs is missing')
+  t.ok(await eventually(async () => one(tablet), 10000), 'one row of each there too')
+  await laptop.close()
+  const again = await open(t, { dir: laptop.dir, types })
+  t.is(await theme(again), 'phone 1', 'after a restart')
+  t.ok(await one(again))
+})

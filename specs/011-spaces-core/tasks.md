@@ -370,7 +370,7 @@ within 30 s (SC-008, measured alone).
   identity, length, held, indexed, cut, refused), the decision log (length, settled, settlers), records
   by type, storage (stored, budget, share, policy, belowPolicy, held), peers, complete; read-only (nothing
   written, nothing fetched); a banned member's log shows its cut, a refused log is listed as refused
-- [ ] T059b [P] [US6] test/next/forum/personal.js: settings set many times and heads written many times
+- [X] T059b [P] [US6] test/next/forum/personal.js: settings set many times and heads written many times
   leave one row each on every device; another device's superseded blocks are cleared here; this device's
   own log stays whole; a newcomer device and a restart show the same settings, complete
 - [ ] T059c [P] [US6] test/next/forum/budgets.js (US6 #2, #3, SC-011): a reader with a small app budget and
@@ -402,7 +402,7 @@ within 30 s (SC-008, measured alone).
 - [X] T062 [US6] lib/space.js `roles()`; a device whose member may decide waits (within `readTimeout`) to
   become a decision writer, claiming again at once instead of failing; forum.js `makeEditor`
 - [ ] T062a [US6] lib/space.js `inspect()`; lib/index.js `storage()`
-- [ ] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
+- [X] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
   outside this device's own log)
 - [ ] T062c [US6] lib/storage.js (new): app budget (default from free disk), shares, stored-bytes estimate;
   lib/index/build.js: `log` gains `dropped` and `droppedBlocks` (append-only); lib/replication.js and

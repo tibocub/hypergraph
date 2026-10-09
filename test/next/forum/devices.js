@@ -237,3 +237,19 @@ test('once the phrase is forgotten on a device, it is typed to add or remove a d
   await laptop.removeDevice(phone.device.publicKey, { recoveryPhrase: words })
   t.ok(await eventually(async () => (await forum.devices(laptop)).length === 1, 10000))
 })
+
+// Found in story 6: asking for a second code while the first was still open
+// (unused, or used a moment ago) crashed the process (blind-pairing allows
+// one listener per account). A new code now replaces the previous one.
+test('a new device code replaces the previous one: two devices added one after the other', async (t) => {
+  const laptop = await account(t, 'laptop')
+  const unused = await forum.addDevice(laptop)
+  const { code, added } = await forum.addDevice(laptop)
+  t.is(await unused.added, null, 'the unused code is replaced')
+  const phone = await device(t, 'phone', code)
+  t.is((await added).publicKey, phone.device.publicKey)
+  const next = await forum.addDevice(laptop) // right after the phone used its code
+  const tablet = await device(t, 'tablet', next.code)
+  t.is(tablet.identity.publicKey, laptop.identity.publicKey, 'the second device joins too')
+  t.is(await codeOf(device(t, 'late', unused.code, { joinTimeout: 3000 })), 'INVITE_INVALID', 'the replaced code no longer works')
+})

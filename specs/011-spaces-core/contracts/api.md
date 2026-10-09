@@ -57,7 +57,8 @@ const { code, added } = await hg.addDevice({ password })   // ✓ code: text (~1
                                    //   added: Promise<{ publicKey, name } | null> (null: expired unused, `timeout`,
                                    //   default 10 min). The new device receives the recovery phrase, so this needs
                                    //   it: `password` if protected here, `recoveryPhrase` if forgotten here
-                                   //   (NOT_ALLOWED otherwise). One use.
+                                   //   (NOT_ALLOWED otherwise). One use. ✓ story 6: a new code replaces the previous
+                                   //   one (whose `added` resolves to null if it was unused)
 // On the new device (an empty folder; NOT_ALLOWED if it holds an account):
 const hg2 = await Hypergraph.open('./data2', { types, joinCode: code, deviceName: 'phone' })   // ✓ connected;
                                    //   INVITE_INVALID for a wrong code, or no answer within `joinTimeout` (60 s)
