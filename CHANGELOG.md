@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-09: `hypergraph/next` — story 3, devices and the personal space (ALPHA, breaking within `next`)
+
+- Devices: `hg.addDevice({ password })` → `{ code, added }`; `Hypergraph.open(dir, { joinCode, deviceName })`
+  on the new device, which receives the recovery phrase; `hg.devices()`; `hg.removeDevice(key, { password }
+  | { recoveryPhrase })` — removing a device needs the recovery phrase. A removed device's app gets
+  `DEVICE_REMOVED`; what it wrote before stays, nothing after counts.
+- The personal space: `hg.personal` (encrypted, shared by the identity's devices only, found again from the
+  recovery phrase), `hg.setSetting(name, value)` / `hg.settings()`; every device joins the spaces any of them
+  created or joined.
+- Latest wins across devices, after restarts too. Moderation: `moderateAction('ban', who, { from: record })`
+  also drops that record and everything after it.
+- Fixed: a space opened while already connected to one of its members never synced over that connection
+  (e.g. joining a second forum from the same inviter).
+- Breaking within `next`: space channels use the discovery key as id; folders made before story 3 have no
+  personal space (recreate them). Details: `specs/011-spaces-core/research.md` A6–A7.
+
 ### 2026-10-08: `hypergraph/next` — story 2, community rules (ALPHA, breaking within `next`)
 
 - Roles: `setRole`, `getRole`, `removeRole` (v1's meanings: `removeRole` takes the member out),

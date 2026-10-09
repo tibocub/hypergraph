@@ -128,17 +128,17 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 
 ### Tests for User Story 3
 
-- [ ] T045 [P] [US3] test/next/forum/devices.js: device B joins with A's code and shows A's spaces and settings within 10 s (SC-010); posts from both show one person; +1 on the laptop then -1 on the phone (laptop clock +1 h) → -1 wins everywhere (SC-009); simultaneous offline edits settle identically; removing a lost device ignores what it writes afterwards and keeps what it wrote before; an identity-attested removal overrides a device-made one (US3 #1, #3–6)
-- [ ] T046 [P] [US3] test/next/forum/personal.js: an app record in the personal space ("this device holds X") is read by the other device and by nobody else; someone else's device writing into it is ignored (US3 #2, FR-026)
-- [ ] T047 [P] [US3] test/next/net/pairing.js: join codes work over the local DHT on Node and Bare; a wrong or used code is refused
+- [X] T045 [P] [US3] test/next/forum/devices.js: device B joins with A's code and shows A's spaces and settings within 10 s (SC-010); posts from both show one person; +1 on the laptop then -1 on the phone (laptop clock +1 h) → -1 wins everywhere (SC-009); simultaneous offline edits settle identically; removing a lost device ignores what it writes afterwards and keeps what it wrote before; an identity-attested removal overrides a device-made one (US3 #1, #3–6)
+- [X] T046 [P] [US3] test/next/forum/personal.js: an app record in the personal space ("this device holds X") is read by the other device and by nobody else; someone else's device writing into it is ignored (US3 #2, FR-026)
+- [X] T047 [P] [US3] test/next/net/pairing.js: join codes work over the local DHT on Node and Bare; a wrong or used code is refused
 
 ### Implementation for User Story 3
 
-- [ ] T048 [US3] lib/pairing.js: `hg.addDevice()` → `{ code, added }`; `Hypergraph.open(dir, { joinCode })`; attestation with `IdentityKey.attestDevice` (per T002's result: blind-pairing or the fallback)
-- [ ] T049 [US3] lib/personal.js: the personal space created with the identity (members = its devices; private), holding devices, spaces joined, settings, device heads (log lengths per space, written periodically); the new device joins the listed spaces
-- [ ] T050 [US3] lib/stamp.js integration: "newest own seen" includes the identity's other devices' logs and the personal space
-- [ ] T051 [US3] `hg.devices()`, `hg.removeDevice()`: `hg/device-remove` records (attested) in this device's log of every space, with cuts from device heads or held lengths; lib/gate.js applies them; identity-attested removals override
-- [ ] T052 [US3] docs/next/api.md (devices, personal space), docs/next/concepts.md (latest wins); CHANGELOG.md
+- [X] T048 [US3] lib/pairing.js: `hg.addDevice()` → `{ code, added }`; `Hypergraph.open(dir, { joinCode })`; attestation with `IdentityKey.attestDevice` (per T002's result: blind-pairing or the fallback) — *the new device receives the recovery phrase and proves itself from it (research.md A7)*
+- [X] T049 [US3] lib/personal.js: the personal space created with the identity (members = its devices; private), holding devices, spaces joined, settings, device heads (log lengths per space, written periodically); the new device joins the listed spaces
+- [X] T050 [US3] lib/stamp.js integration: "newest own seen" includes the identity's other devices' logs and the personal space
+- [X] T051 [US3] `hg.devices()`, `hg.removeDevice()`: `hg/device-remove` records (attested) in this device's log of every space, with cuts from device heads or held lengths; lib/gate.js applies them; identity-attested removals override — *changed by Tibo (research.md A7): every removal is signed by the identity key (`{ password }` or `{ recoveryPhrase }`), in an identity log; no device-made removals*
+- [X] T052 [US3] docs/next/api.md (devices, personal space), docs/next/concepts.md (latest wins); CHANGELOG.md
 - [ ] T053 [US3] Checkpoint: stories 1–3 pass on Node and Bare; v1 and hyperDNS suites pass; tell the lead conversation SwarmFS can start
 
 ---
@@ -148,7 +148,8 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 - [ ] T054 [P] [US4] test/next/forum/invites.js: redeem while the inviter is offline and another admin online; expired, used-up, revoked links refused with their codes; an inviter whose role can't give the role → refused; a public link with unlimited uses; revoking it stops new joins, members stay; a write limit per period enforced by every member (US4 #1–4, FR-023)
 - [ ] T054a [P] [US4] test/next/forum/moderation.js: **unban** — a banned member let back in (`moderateAction('unban', who)`, then an invite or `setRole`) writes again; what they wrote during the ban stays ignored for everyone, newcomers included; new writes count from the unban (ROADMAP 2026-10-09)
 - [ ] T054b [P] [US4] test/next/net/indexers.js: **admins share the settling of the decision order with the owner** — members with `decide` are Autobase indexers; with the owner gone for good, two admins still settle new decisions (a role, a ban, a redemption) that every member applies the same way; an admin demoted later stops being an indexer (v1 spec 003's lesson; ROADMAP 2026-10-09)
-- [ ] T055 [US4] lib/invites.js complete (uses, expiry, revocation, redemptions, recorded by any decision writer, never downgrades — spec 008's design), `settings/set { writeLimit }` in the gate; `revokeInvite`, `redemptions`, `setWriteLimit`; unban (a `moderate` action lifting `banned:`; the ban's cut stays, so the member writes again in a new device log, as after a removal — research.md A4); decision-log indexers = members with `decide` (`host.addWriter(key, { indexer: true })`, removed when demoted); docs; CHANGELOG
+- [ ] T054c [P] [US4] test/next/forum/devices.js: an owner's second device moderates and invites (its decision-log key becomes a writer); a removed device's later decisions are ignored by every member (research.md A7)
+- [ ] T055 [US4] lib/invites.js complete (uses, expiry, revocation, redemptions, recorded by any decision writer, never downgrades — spec 008's design), `settings/set { writeLimit }` in the gate; `revokeInvite`, `redemptions`, `setWriteLimit`; a second device of a member with `decide` or `moderate` becomes a decision-log writer too (a signed claim, like a redemption), and removing a device removes its writer key (research.md A7); unban (a `moderate` action lifting `banned:`; the ban's cut stays, so the member writes again in a new device log, as after a removal — research.md A4); decision-log indexers = members with `decide` (`host.addWriter(key, { indexer: true })`, removed when demoted); docs; CHANGELOG
 
 ## Phase 7: User Story 5 — Graph vocabulary, shared editing (Priority: P2)
 
@@ -187,6 +188,7 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 - [ ] T073 Re-run the design brief's measurements on the real core and record them in specs/research/design-brief.md with differences over 25% explained (SC-012)
 - [ ] T074 [P] docs/next/deleting-and-incomplete.md (what "deleted" and "incomplete" mean, plainly — FR-028, FR-033); README section pointing to `hypergraph/next`
 - [ ] T075 [P] test/next/net/adversarial.js: malformed and oversized records, forged entries, clocks far ahead, writes past cuts — no crash, nothing shown (SC-006)
+- [ ] T075a A forgotten password (the one protecting the recovery phrase on a device): recover the phrase from another device of the account (Tibo, 2026-10-09; out of story 3's scope, research.md A7)
 - [ ] T076 Update ROADMAP.md and ECOSYSTEM.md; full suites on Node and Bare; v1 and hyperDNS suites; merge to master after review
 
 ---

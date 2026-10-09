@@ -468,8 +468,9 @@ everyone bandwidth). Now there is one kind of removal, signed by the identity ke
   Records in an identity log other than signed removals are ignored; signed removals in a device log
   too.
 - The cut of each of the removed device's logs in a space is where the remover holds it, or the
-  device's own last **head** (its log lengths, written to the personal space every minute and at close)
-  if that is further. A log of the removed device the removal doesn't name counts for nothing (a log
+  device's own last **head** (its log lengths, written to the personal space when they changed, at most
+  every 10 minutes, and at close; not the personal space's own, which every heads record changes) if
+  that is further. A log of the removed device the removal doesn't name counts for nothing (a log
   made after the removal, or one nobody had heard of).
 - The removed device's own app refuses to write once it learns (`DEVICE_REMOVED`). It can still read
   the personal space it already holds (taking that away is key rotation, story 8).
@@ -491,6 +492,34 @@ included).
 stamper any record whose log is the identity's, in any space, the personal one included). Added: on
 opening a space, the last record of each of the identity's logs held is fed to it, so a device whose
 clock was ahead and is now right still stamps its next change above its earlier ones after a restart.
+
+**Found and fixed while building** (both with tests):
+- **A space opened on a connection already up never got its space channel** (a story 1 bug): Protomux
+  turns down a channel the other side opens before this side has one, so if two peers were connected
+  (through any space) and one opened another space they share later, each side's channel was turned
+  down by the other, and its directory and redemptions never passed. A member connected to an inviter
+  couldn't join a second space from them. Each connection now accepts the space channel for any space
+  held here when the other side opens it (`mux.pair`, lib/network.js). Test: `test/next/net/directory.js`
+  ("a second space joined over a connection already open…"). Found because a new device joins its
+  spaces over the connection pairing just opened.
+- **Space channel ids were the space keys**, sent to every peer on a connection, whatever topic it came
+  from: any peer learnt the keys of all the spaces held, the personal one included. Now the discovery
+  key.
+
+**Smaller choices**:
+- **Each device writes its own `hg/device` record** once it is in the personal space (`deviceName`
+  from `open()`); a device added by code sends its name with the request, and `added` resolves with it.
+- **Spaces are listed by whichever device creates or joins them**, and every device keeps the list and
+  what it holds in step (it joins listed spaces, lists the ones it holds), so a device that joined a
+  space before its personal space had synced still lists it later.
+- **"Only member" is complete only on the only device**: a space whose only member is this identity
+  (the personal space, a private notes space) is complete without reaching anyone only while this
+  device is the identity's only one (`meta.alone`: a new identity that never added a device).
+  Otherwise a new device would call its empty personal space complete.
+- **Hypergraph's own types** (`hg/…`) can't be written, edited or deleted by apps, and app rules don't
+  apply to them (an app rule rejecting unknown types would drop removals).
+- **Settings**: `hg.setSetting(name, value)` with any JSON value, `hg.settings()` → `{ name: value }`,
+  latest wins per name (records are only added; a setting set many times keeps every version).
 
 **Not in story 3, flagged for story 4**: a second device of an owner, admin or moderator is not a
 writer of the spaces' decision logs (it writes records, not decisions), and removing a device doesn't

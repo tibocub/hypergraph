@@ -1,7 +1,7 @@
 # Hypergraph's new core: concepts
 
 `require('hypergraph/next')`: the redesigned core (spec 011, `specs/011-spaces-core/`). ALPHA: it grows
-story by story; this page covers what exists (stories 1 and 2). The API is in [api.md](api.md); the worked
+story by story; this page covers what exists (stories 1 to 3). The API is in [api.md](api.md); the worked
 example is the forum in `test/next/forum/forum.js`.
 
 ## Spaces
@@ -37,13 +37,38 @@ Logs are append-only: nothing is changed in place.
   wipes its copy. A modified app, or a device that was offline and never got the delete, may still keep
   a copy: deleting on a network of peers cannot be stronger than that.
 
-"The latest" is decided by a **stamp** on each record: the later of the device's clock and one more
-than the newest record of that person the device has seen (and, for an edit, one more than the version
-it replaces). So a change made after seeing an earlier one always wins, even if a clock is wrong.
-Exact ties are settled the same way everywhere. A stamp more than 10 minutes ahead of your clock is
-flagged (`record.futureStamp`), never reordered.
-
 Types declared `onePerMember` (votes) count each member's latest record only.
+
+## Latest wins
+
+A person may write from several devices (a laptop and a phone), and clocks are often wrong. "The
+latest" version of a record, or a person's latest vote, is decided by a **stamp** on each record: the
+later of the device's clock and one more than the newest record of that person the device has seen —
+on any of their devices, in any space, after a restart too — and, for an edit, one more than the
+version it replaces. So a change made after seeing an earlier one always wins, even when the other
+device's clock is an hour ahead. Two changes made at the same moment on two offline devices: one wins,
+the same one everywhere (exact ties go to the same device everywhere). A stamp more than 10 minutes
+ahead of your clock is flagged (`record.futureStamp`), never reordered.
+
+## Devices and the personal space
+
+A person has one **identity** (from the recovery phrase) and one or more **devices**. Each device
+writes its own log in each space, with a proof that it belongs to the identity; records show the
+person. A new device joins with a code shown by one already in, and receives the recovery phrase.
+
+Every identity has a **personal space**, shared by its devices only: the list of devices, the spaces
+the person is in (each device joins them all), their settings, how far each device has written in each
+space ("heads"), and your app's own private records. Its key comes from the recovery phrase, so a
+device restored from the phrase alone finds it; its content is encrypted, and nobody else's records
+count in it.
+
+**Removing a lost device needs the recovery phrase** (typed, or unlocked by its password on another
+device): the removal is signed by the identity itself, written in every space, and cuts the lost
+device's logs where your device holds them (or further, if its last heads say so). What it wrote
+before stays for everyone; what it writes after counts for nobody. A thief with your phone but not its
+password can't remove your laptop. Known limit (until story 4): a removed device that recorded
+decisions for a space (an owner's or admin's) still can; and a second device of an owner or admin
+writes records but doesn't record decisions yet.
 
 ## Decisions
 
@@ -82,6 +107,6 @@ what is known to exist but not held yet, and returns `{ items, complete }`.
 
 `complete: false` means: some record this member knows exists isn't held yet (its log is longer than
 what has arrived), or no other member has been reached since the app started. The answer is still
-useful — show it, and read again later (or use a live query). A space where you are the only member is
-always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
+useful — show it, and read again later (or use a live query). A space where you are the only member,
+on your only device, is always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
 of can't be waited for. Records deleted by their authors leave nothing to wait for either.

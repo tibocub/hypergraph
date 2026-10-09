@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 and 2 (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1, 2 and 3 (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 
@@ -36,8 +36,9 @@ const hg = await Hypergraph.open('./data', {
 //   (RULE_REJECTED). A member's own records are never dropped, so others fetch, check and drop them.
 hg.identity            // ✓ sync: { publicKey } — the person
 hg.device              // ✓ sync: { publicKey } — this device
-await hg.recoveryPhrase(password)  // ✓ the 24 words, for the user to write down; null once forgotten here (or on a
-                                   //   device added by another: story 3); NOT_ALLOWED without the right password once protected
+await hg.recoveryPhrase(password)  // ✓ the 24 words, for the user to write down; null once forgotten here;
+                                   //   NOT_ALLOWED without the right password once protected. A device added by code
+                                   //   holds them too (story 3): the app asks for that device's own password
 await hg.protectRecoveryPhrase(password)   // ✓ keep it on this device, sealed by a password
 await hg.forgetRecoveryPhrase()            // ✓ erase it from this device; the identity keeps working here
 // ✓ Until the person chooses, the phrase stays on the device as is: apps ask right after showing it.
@@ -50,13 +51,24 @@ await hg.close()                   // ✓ safe to call twice
 
 ```js
 // On a device already in:
-const { code, added } = await hg.addDevice()   // code: short text (also shown as QR); added: Promise<{ publicKey }>
-// On the new device:
-const hg2 = await Hypergraph.open('./data2', { types, joinCode: code })
-await hg.devices()                 // [{ publicKey, name, current }]
-await hg.removeDevice(publicKey)   // cut where this device holds it, in every space
-hg.personal                        // sync: the personal Space (only this identity's devices)
-await hg.personal.put('swarmfs/held', { root, path })   // any app record, private to the identity
+const { code, added } = await hg.addDevice({ password })   // ✓ code: text (~106 characters; show it as a QR too);
+                                   //   added: Promise<{ publicKey, name } | null> (null: expired unused, `timeout`,
+                                   //   default 10 min). The new device receives the recovery phrase, so this needs
+                                   //   it: `password` if protected here, `recoveryPhrase` if forgotten here
+                                   //   (NOT_ALLOWED otherwise). One use.
+// On the new device (an empty folder; NOT_ALLOWED if it holds an account):
+const hg2 = await Hypergraph.open('./data2', { types, joinCode: code, deviceName: 'phone' })   // ✓ connected;
+                                   //   INVITE_INVALID for a wrong code, or no answer within `joinTimeout` (60 s)
+await hg.devices()                 // ✓ [{ publicKey, name, current }], removed devices left out
+await hg.removeDevice(publicKey, { password })   // ✓ or { recoveryPhrase }: needs the phrase (research.md A7);
+                                   //   in every space, what it wrote up to where this device holds it (or its own
+                                   //   last heads say) stays, nothing after counts; its app gets DEVICE_REMOVED
+hg.personal                        // ✓ sync: the personal Space (only this identity's devices; encrypted; not in spaces())
+await hg.personal.put('held', { path, holder })   // ✓ any app record (types from open()), private to the identity
+await hg.setSetting('theme', 'dark')   // ✓ any JSON value; the latest set on any device wins
+await hg.settings()                // ✓ { theme: 'dark' }
+// ✓ Every device joins the spaces any of them created or joined. Opening a folder with `deviceName` names this
+//   device in devices(). Restoring from the phrase (`mnemonic`) finds the same personal space.
 ```
 
 ## Spaces
@@ -185,6 +197,9 @@ forum.addProtocol('swarmfs/transfer', {
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
 `INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`.
+
+Story 3 adds: `DEVICE_REMOVED` (writing from a device removed from the account), `NOT_ALLOWED` for
+adding or removing a device without the recovery phrase, `INVITE_INVALID` for a device code.
 
 Story 2 adds: `RULE_REJECTED` (an app rule refused the record, named in the message), `NOT_ALLOWED`
 for roles and moderation beyond one's rank or permissions, `NOT_FOUND` for an unknown role.

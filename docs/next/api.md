@@ -1,6 +1,6 @@
 # Hypergraph's new core: API
 
-`require('hypergraph/next')`, the surface of stories 1 and 2 (spec 011). Concepts: [concepts.md](concepts.md). The
+`require('hypergraph/next')`, the surface of stories 1 to 3 (spec 011). Concepts: [concepts.md](concepts.md). The
 full planned surface, with what is built marked ✓: `specs/011-spaces-core/contracts/api.md`. The forum
 in `test/next/forum/forum.js` uses all of it.
 
@@ -33,6 +33,43 @@ behind a password (`protectRecoveryPhrase`), or forget it here because it is wri
 (`forgetRecoveryPhrase`). Until they choose, it stays in the instance folder as is, readable by anything
 that can read that folder. This device keeps its identity either way; the phrase is only needed to
 restore the identity on another computer.
+
+## Devices and the personal space
+
+One person, several devices (a laptop, a phone), one identity. A device already in shows a code; the
+new device is opened with it:
+
+```js
+// On the laptop:
+const { code, added } = await hg.addDevice({ password })   // show `code` as text or a QR code
+const device = await added                                   // { publicKey, name }, or null if it expired (10 min)
+// On the phone, in an empty folder:
+const phone = await Hypergraph.open('./data', { types, rules, joinCode: code, deviceName: 'phone' })
+
+await hg.devices()                      // [{ publicKey, name, current }]
+await hg.removeDevice(lost.publicKey, { password })   // or { recoveryPhrase: words }
+await hg.setSetting('theme', 'dark')    // any JSON value, the same on every device
+await hg.settings()                     // { theme: 'dark' }
+hg.personal                             // the personal space
+await hg.personal.put('held', { path: '/music/a.mp3', holder: hg.device.publicKey })
+```
+
+The new device receives the **recovery phrase** over the pairing connection (encrypted to it): ask the
+person to protect it there with that device's own password (`protectRecoveryPhrase`), as after signing
+up. Adding a device needs the phrase (`password` if it is protected on this device, `recoveryPhrase` if
+it was forgotten here), and so does **removing a lost device**: a removal is signed by the identity
+key, never by a device alone, so a stolen device without the password can't remove yours. A removal
+applies in every space: what the lost device wrote up to where you hold it stays, nothing after counts,
+for everyone, newcomers included. The lost device's own app gets `DEVICE_REMOVED`.
+
+Records show the person: `author` is the identity on every device, `device` is the device that wrote
+the current version. Every device joins the spaces any of them created or joined, and shares the
+settings. The **personal space** is shared by your devices only: nobody else can find it, its blocks
+are encrypted, and anything someone else writes into it is ignored. Put your app's own private records
+there (declare their types in `types` like any other). It isn't listed in `hg.spaces()`.
+
+The **latest change wins** across devices: a change made on a device after it has seen an earlier one
+wins, even if the other device's clock is ahead (see [concepts.md](concepts.md#latest-wins)).
 
 ## Types
 

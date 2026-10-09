@@ -18,11 +18,25 @@ design brief's measurements.
 - Private spaces: `fields` and `links` sealed (`{ epoch, nonce (24 B), box }`, XChaCha20-Poly1305, AD =
   space + log + seq + epoch, spec 008).
 - Built-in types: `hg/relation { from, to, type, value?, data? (≤ 4 KB) }`, `hg/tag { target, tag }`,
-  `hg/grant { recipient (16 B prefix), epoch, commit (8 B), sealed, granter, sig }`,
-  `hg/device-remove { device, cut, attestation }`.
+  `hg/grant { recipient (16 B prefix), epoch, commit (8 B), sealed, granter, sig }` (later stories);
+  story 3 (research.md A7): `hg/device-remove { removed (device key), cut ([{ log, length }]), proof
+  (the identity key's signature over space, device and cut) }`, only in an **identity log** (a log
+  whose header is signed by the identity key itself, one per device that removed a device, never cut by
+  a removal); in the personal space only: `hg/device { key, name }`, `hg/space { space, name }`,
+  `hg/setting { name, value (JSON) }` (index `name`), `hg/heads { heads ([{ space, log, length }]) }`.
+  Apps can't write `hg/` types; app rules don't apply to them.
 
 **Validation (the gate, R11)**: header proof valid and identity a member (or allowed by write rules) and
-device not removed; seq < cut; decodes; type rules (links' targets, editors); app rules; write limit.
+device not removed; seq < cut (the decisions' cut, and for a removed device the lowest of its removals'
+cuts: a log a removal doesn't name counts for nothing); decodes; type rules (links' targets, editors;
+built-in types only where they belong); app rules; write limit.
+
+### The personal space (research.md A7)
+
+A space whose only member is the identity: an Autobase whose first writer's key pair, and an encryption
+key, are derived from the recovery phrase (so its key is too), with Hypercore block encryption on every
+log and Autobase's `encryptionKey`. Created with the identity; not listed in `spaces()`; no roles,
+moderation or invites. Space channels (all spaces) use the space's discovery key as Protomux id.
 
 ### Decision log (an Autobase per space)
 
@@ -70,8 +84,8 @@ adds `period, start` to log entries.
 | `records` | `space, id` | type, author, device log, seq, stamp, current fields, links, flags (hidden, removed, deleted, edited) |
 | `logs` | `space, log` | identity, device, indexed length, cut, refused? |
 | `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2); also found by its own id (`changes-by-id`, for cuts) |
-| `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent |
-| `meta` | `name` | declared types (compat check), identity (proof, recovery phrase), budgets, schema version |
+| `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent (not the personal space) |
+| `meta` | `name` | declared types (compat check), identity (proof), `personal` (key, encryption key), `alone` (a new identity, no device added yet), budgets, schema version |
 
 Indexes: `by-type (space, type, stamp)`, `by-author (space, author, stamp)`, `by-link (space, target,
 type, stamp)`, `by-ix (space, app key…)` (map over declared `index`), `one-per-member (space, type,
@@ -89,5 +103,6 @@ bytes (block + ~130 B) per space.
   deleted (hidden, bytes cleared) ; or hidden ↔ revealed ; or removed (moderation, permanent) ; or cut
   (ban / device removal: rows deleted, never re-indexed).
 - **Log**: announced → header checked → accepted (indexed as it grows) | refused (blocks cleared).
-- **Device**: attested → active → removed (cut per space; identity-attested removal overrides).
+- **Device**: joined by code (or restored from the phrase) → active → removed (a removal signed by the
+  identity key in every space; removals only lower limits, so they never conflict).
 - **Space on a device**: joined → syncing → held (policy met) | below policy → left (data dropped).
