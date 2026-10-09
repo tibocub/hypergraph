@@ -366,7 +366,7 @@ within 30 s (SC-008, measured alone).
   and the forum's own with their permissions; forum.js's `makeEditor` defines `editor` only when missing;
   test/next/forum/devices.js: a phone of an owner or an admin hides, flags and lets people in right after
   joining with no retry (it waits, within the bound, to record decisions) — the retries removed
-- [ ] T059a [P] [US6] test/next/forum/inspect.js: `space.inspect()` on three members: logs (key, device,
+- [X] T059a [P] [US6] test/next/forum/inspect.js: `space.inspect()` on three members: logs (key, device,
   identity, length, held, indexed, cut, refused), the decision log (length, settled, settlers), records
   by type, storage (stored, budget, share, policy, belowPolicy, held), peers, complete; read-only (nothing
   written, nothing fetched); a banned member's log shows its cut, a refused log is listed as refused
@@ -401,7 +401,7 @@ within 30 s (SC-008, measured alone).
 
 - [X] T062 [US6] lib/space.js `roles()`; a device whose member may decide waits (within `readTimeout`) to
   become a decision writer, claiming again at once instead of failing; forum.js `makeEditor`
-- [ ] T062a [US6] lib/space.js `inspect()`; lib/index.js `storage()`
+- [X] T062a [US6] lib/space.js `inspect()`; lib/index.js `storage()`
 - [X] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
   outside this device's own log)
 - [X] T062c [US6] lib/storage.js (new): app budget (default from free disk), shares, stored-bytes estimate;

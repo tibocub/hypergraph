@@ -100,15 +100,20 @@ test('settings set many times and heads written many times leave one of each, on
   await phone.setSetting('theme', 'phone 1')
   t.ok(await eventually(async () => (await theme(laptop)) === 'phone 1', 10000), 'the laptop shows the phone\'s latest')
 
-  const one = async (hg) => (await testing.rowCount(hg.personal, 'hg/setting')) === 1 && (await testing.rowCount(hg.personal, 'hg/heads')) <= 2
+  const one = async (hg) => {
+    const { records } = await hg.personal.inspect()
+    return records['hg/setting'] === 1 && records['hg/heads'] <= 2
+  }
   t.ok(await eventually(async () => (await one(laptop)) && (await one(phone)), 10000), 'one setting row and one heads row per device, on each device')
 
-  const laptopLog = testing.ownLog(laptop.personal)
+  const logOn = async (hg, key) => (await hg.personal.inspect()).logs.find((l) => l.key === key)
+  const laptopLog = await logOn(laptop, testing.ownLog(laptop.personal))
+  t.is(laptopLog.held, laptopLog.length, 'the laptop\'s own log stays whole')
   const phoneLog = testing.ownLog(phone.personal)
-  t.is(await testing.heldBlocks(laptop.personal, laptopLog), await testing.logLength(laptop.personal, laptopLog), 'the laptop\'s own log stays whole')
-  t.ok(await eventually(async () => (await testing.heldBlocks(laptop.personal, phoneLog)) < (await testing.logLength(laptop.personal, phoneLog)), 5000), 'the phone\'s superseded settings are cleared on the laptop')
+  const cleared = async () => { const l = await logOn(laptop, phoneLog); return l.held < l.length }
+  t.ok(await eventually(cleared, 5000), 'the phone\'s superseded settings are cleared on the laptop')
   await sleep(2000)
-  t.ok((await testing.heldBlocks(laptop.personal, phoneLog)) < (await testing.logLength(laptop.personal, phoneLog)), 'and not fetched again')
+  t.ok(await cleared(), 'and not fetched again')
 
   // A third device, and a restart, show the same, complete.
   const { code: code2 } = await laptop.addDevice()

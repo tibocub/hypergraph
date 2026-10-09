@@ -254,6 +254,33 @@ forum.addProtocol('swarmfs/transfer', {
 })   // sync; opened on every connection of this space, next to hypergraph's own
 ```
 
+## Diagnostics (✓ story 6)
+
+```js
+const snap = await forum.inspect()   // read-only: writes nothing, fetches nothing (counting records reads the
+                                     //   space's whole index: not for a hot path). Also hg.personal.inspect().
+// {
+//   key, name, personal,            // the space
+//   complete,                       // as reads say it (isComplete: every known block held, a member reached)
+//   peers,                          // connections with this space's channel open
+//   logs: [{                        // every device log this member knows of in the space
+//     key, identity, device,        //   z32 (identity/device null for a log refused before its header was read)
+//     own,                          //   this device's
+//     length, held, indexed,        //   blocks known to exist, held here, indexed (everything below it done)
+//     cut,                          //   where a ban or removal cut it (null: none)
+//     dropped,                      //   records whose content was dropped here (budgets)
+//     refused, waiting              //   not kept: refused for good, or waiting for its author to become a member
+//   }],
+//   decisions: { length, settled, settlers: [key], writers: [{ key, identity, device, settler }] },
+//   records: { post: 12, comment: 30, 'hg/tag': 2 },   // rows in this member's index, by type (shown or not)
+//   storage: { policy, held, stored, share, budget, belowPolicy },   // as status() gives them
+//   warnings: [{ code, message }]   // as status() gives them
+// }
+```
+
+The shape is stable: fields may be added, none renamed or removed without a CHANGELOG entry (the inspector tool
+relies on it).
+
 ## Error codes
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
