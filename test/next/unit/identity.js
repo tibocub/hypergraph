@@ -4,7 +4,11 @@
 const test = require('brittle')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
+const c = require('compact-encoding')
+const IdentityKey = require('keet-identity-key')
 const { Identity } = require('../../../lib/identity.js')
+const { readHeader } = require('../../../lib/log.js')
+const enc = require('../../../lib/encodings.js')
 
 test('a new identity comes with a recovery phrase that restores it', async (t) => {
   const a = await Identity.create({ device: crypto.keyPair() })
@@ -21,17 +25,31 @@ test('a device proof verifies to its identity and device', async (t) => {
   t.alike(info.device, a.device.publicKey)
 })
 
-test('a device attested by another device verifies to the same identity', async (t) => {
+// Every device proves itself straight from the identity key (research.md A7,
+// A8): a device attesting another one would let a stolen device mint devices
+// that no removal names, so such a chain never verifies.
+test('a device attested by another device does not verify', async (t) => {
   const a = await Identity.create({ device: crypto.keyPair() })
-  const second = crypto.keyPair()
-  const proof = a.attestDevice(second.publicKey)
-  const b = Identity.fromProof({ device: second, proof })
-  t.alike(b.publicKey, a.publicKey)
-  t.is(b.recoveryPhrase, null, 'a second device has no phrase')
-  const signed = b.attest(b4a.from('hello'))
-  const info = Identity.verify(signed, b4a.from('hello'))
+  const minted = crypto.keyPair()
+  const proof = IdentityKey.attestDevice(minted.publicKey, a.device, a.proof)
+  t.is(Identity.verifyDevice(proof), null, 'not as a device proof')
+  t.is(Identity.fromProof({ device: minted, proof }), null)
+  const signed = IdentityKey.attestData(b4a.from('hello'), minted, proof)
+  t.is(Identity.verify(signed, b4a.from('hello')), null, 'nor what the minted device signs')
+
+  const space = crypto.randomBytes(32)
+  const core = crypto.keyPair()
+  const header = c.encode(enc.header, { version: enc.VERSION, space, decisions: space, proof: IdentityKey.attestData(b4a.concat([b4a.from('hypergraph/log\0'), core.publicKey, space]), minted, proof) })
+  t.is(readHeader(header, core.publicKey, space), null, 'nor a log it heads')
+})
+
+test('the identity key itself, and a device bootstrapped from it, verify', async (t) => {
+  const a = await Identity.create({ device: crypto.keyPair() })
+  const { keyPair } = await Identity.secrets(a.recoveryPhrase)
+  const info = Identity.verify(Identity.attestAsIdentity(b4a.from('x'), keyPair), b4a.from('x'))
   t.alike(info.identity, a.publicKey)
-  t.alike(info.device, second.publicKey)
+  t.alike(info.device, a.publicKey, 'signed by the identity key: its "device" is the identity')
+  t.alike(Identity.verify(a.attest(b4a.from('x')), b4a.from('x')).device, a.device.publicKey)
 })
 
 test('attested data verifies, and tampered data does not', async (t) => {

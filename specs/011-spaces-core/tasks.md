@@ -160,7 +160,7 @@ devices no removal names — fixed first.
 
 ### Security first: decision rights follow devices
 
-- [ ] T054 [US4] Test test/next/unit/identity.js: a proof made by a device attesting another device
+- [X] T054 [US4] Test test/next/unit/identity.js: a proof made by a device attesting another device
   (`IdentityKey.attestDevice`, a chain of two) doesn't verify, for logs and for data (a stolen device can't
   mint new devices that no removal names); then lib/identity.js accepts chains of zero (the identity key)
   or one (a device bootstrapped from it) only; drop the unused `attestDevice`
