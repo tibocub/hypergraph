@@ -23,6 +23,17 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-10 (review of the core follow-ups)** — Accepted and merged into `011-spaces-core` (202/202 on
+  Node and on Bare, both re-run in the lead conversation on the merged branch). The link consistency
+  bug is fixed (a link to a wrong-type target counts for nothing, on every member, whatever the order).
+  New reads: `members()`, `decisions()` (a moderation log), `hg.types()`, `tags()`, `peers()`, events,
+  `inspect({ records })`; the inspector uses them. Routed to story 8 (first): members re-exchange the
+  log directory summary periodically, so a missed announcement of a log is recovered without a
+  reconnect. Accepted limits: a decision by a moderator demoted before it settles can vanish from
+  `decisions()`; members on an older app version count links through fields they don't know.
+  Pending with Tibo: the swarm now uses each device's own key (needed for `peers()` to prove who a peer
+  is), so peers see a device key on connecting.
+
 - **2026-10-09 (review of spec 011 story 7 and the inspector)** — Both accepted and merged into
   `011-spaces-core` (story 7: 188/188 on Node and Bare; inspector: read-only, `node
   tools/inspector/demo.js` plays a three-member forum at http://127.0.0.1:4401-4403). On the merged
@@ -169,5 +180,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 6. Story 5 done and reviewed.
 7. Story 6 done and reviewed.
 8. Story 7 and the inspector done, reviewed, merged into `011-spaces-core`.
-9. **Worker session**: core follow-ups (above), then story 8 (sub-spaces, private), then story 9 (big
-   spaces). SwarmFS spec session in parallel (folder decision pending with Tibo).
+9. Core follow-ups done, reviewed, merged.
+10. **Worker session**: story 8 (sub-spaces, private), then story 9 (big spaces). SwarmFS spec session in
+    parallel (folder decision pending with Tibo).
