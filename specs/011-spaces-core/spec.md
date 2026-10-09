@@ -147,9 +147,9 @@ hour ahead, remove a lost device.
    seen the laptop's vote, **Then** the -1 counts everywhere, even if the laptop's clock is an hour ahead.
 5. **Given** truly simultaneous edits from two offline devices, **When** both reach everyone, **Then**
    every member settles on the same version.
-6. **Given** a lost device, **When** the member removes it from another device (or with the recovery
-   phrase), **Then** every member ignores what that device writes afterwards and keeps what it wrote
-   before.
+6. **Given** a lost device, **When** the member removes it from another device with the recovery phrase
+   (typed, or unlocked by the password that protects it on that device), **Then** every member ignores
+   what that device writes afterwards and keeps what it wrote before.
 
 ---
 
@@ -425,9 +425,11 @@ per period; spam with thousands of throwaway keys doesn't enter members' lists.
   logs with a proof that it belongs to the identity, checked once per device by readers. Conflicting
   versions MUST resolve to the latest, stamped as the later of the device's clock and one more than the
   newest record of that member the device has seen; exact ties MUST be settled the same way everywhere.
-- **FR-025**: A device MUST be able to add another device with a short code (shown as text or QR) and
-  remove a lost one (from another device or with the recovery phrase); every member then ignores what
-  the removed device wrote after the point the removing device held.
+- **FR-025**: A device MUST be able to add another device with a short code (shown as text or QR); the
+  new device receives the recovery phrase over the pairing connection. Removing a lost device MUST
+  require the identity's recovery phrase (typed, or kept on a device behind a password): removals are
+  signed by the identity key, never by a device alone; every member then ignores what the removed
+  device wrote after the point the removing device held. (Changed 2026-10-09, research.md A7.)
 - **FR-026**: Every identity MUST have a personal space, readable and writable only by its own devices,
   holding its device list, the spaces it belongs to, its settings, and app records such as "this device
   holds X".

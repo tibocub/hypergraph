@@ -7,7 +7,17 @@ const { tmpDir, testBootstrap, bounded } = require('../helpers.js')
 async function account (t, label, opts = {}) {
   const dir = opts.dir || tmpDir(t, label)
   const bootstrap = await testBootstrap(t)
-  const hg = opts.phrase ? await forum.restore(dir, opts.phrase, { bootstrap }) : await forum.signUp(dir, { bootstrap })
+  const hg = opts.phrase ? await forum.restore(dir, opts.phrase, { bootstrap, deviceName: label }) : await forum.signUp(dir, { bootstrap, deviceName: label })
+  t.teardown(() => bounded(hg.close(), 10000, `${label}.close()`), { order: 0 })
+  hg.dir = dir
+  return hg
+}
+
+// Another device of an account, joined with a code from addDevice.
+async function device (t, label, code, opts = {}) {
+  const dir = opts.dir || tmpDir(t, label)
+  const bootstrap = await testBootstrap(t)
+  const hg = await forum.joinWithCode(dir, code, { bootstrap, deviceName: label, ...opts })
   t.teardown(() => bounded(hg.close(), 10000, `${label}.close()`), { order: 0 })
   hg.dir = dir
   return hg
@@ -24,4 +34,4 @@ async function threeMembers (t) {
   return { a, b, c, fa, fb, fc, all: [fa, fb, fc] }
 }
 
-module.exports = { account, threeMembers }
+module.exports = { account, device, threeMembers }

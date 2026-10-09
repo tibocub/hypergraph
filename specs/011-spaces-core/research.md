@@ -441,3 +441,59 @@ first cut stays its cut" (A4) still holds. `from` must be one of the banned memb
 this member holds (`NOT_ALLOWED` otherwise). The forum bans a spammer in one call (`forum.ban(f, who,
 { from: firstSpam })`), replacing A5's "ban, then take down each spam since a time". Test:
 `test/next/forum/moderation.js` ("a ban from the first spam…").
+
+### A7. Story 3: devices, the personal space, removals with the recovery phrase (decided by Tibo, 2026-10-09)
+
+**Removing a device needs the recovery phrase** (Tibo's decision, replacing R9's "attested by another
+device; identity-attested removals override device-made ones"). R9's rule let two devices remove each
+other; each removal sat in a log the other one cut, so a member that had fetched both and a newcomer
+that fetched only up to the cuts would disagree (constitution Principle I), unless every member kept
+downloading a removed device's log past its cut to look for removals (a thief writing junk would cost
+everyone bandwidth). Now there is one kind of removal, signed by the identity key:
+- `hg.removeDevice(publicKey, { password })` (the phrase kept on this device behind a password) or
+  `{ recoveryPhrase }` (typed; needed once the device forgot it). Without either: `NOT_ALLOWED`.
+- **Every device holds the phrase**: a device added by code receives it over the pairing connection
+  (blind-pairing's reply is encrypted to the new device) and the app asks the person for that device's
+  own password, as after signing up (A4's choices hold per device: protect, forget, or neither yet).
+  `addDevice()` therefore needs the phrase too: `{ password }` if protected, `{ recoveryPhrase }` if
+  forgotten here.
+- Since every device holds the phrase, **each device proves itself straight from the identity key**
+  (`bootstrap`, a chain of one), instead of T048's `attestDevice` by the adding device: no device
+  depends on another, so removing one never strands the devices it added.
+- A removal is an `hg/device-remove` record `{ device, cut, proof }` (`proof`: the identity key's
+  signature over space, device and cut) written in the remover's **identity log** of every space: a
+  log whose header is signed by the identity key itself, not by a device. No removal can touch an
+  identity log, so no removal ever cuts the log holding another removal, and every member reads every
+  removal: removals only ever lower a log's limit, the same everywhere, in any order of arrival.
+  Records in an identity log other than signed removals are ignored; signed removals in a device log
+  too.
+- The cut of each of the removed device's logs in a space is where the remover holds it, or the
+  device's own last **head** (its log lengths, written to the personal space every minute and at close)
+  if that is further. A log of the removed device the removal doesn't name counts for nothing (a log
+  made after the removal, or one nobody had heard of).
+- The removed device's own app refuses to write once it learns (`DEVICE_REMOVED`). It can still read
+  the personal space it already holds (taking that away is key rotation, story 8).
+- Forgotten password: recovering it from another device is a later task (tasks.md, phase 12).
+
+**The personal space** is a space whose only member is the identity, so every device of it may write
+and nobody else's records count (the gate as for any space). It is **encrypted** (Hypercore block
+encryption and Autobase's `encryptionKey`) with a key derived from the identity, and its key is
+derived from the identity too (its first writer's key pair comes from the phrase): a device restored
+from the phrase alone finds the same personal space. It is not listed in `hg.spaces()`. Built-in
+records: `hg/device { device, name }` (each device writes its own), `hg/space { space, name }` (written
+when the identity creates or joins a space; every device joins the listed spaces), `hg/setting { name,
+value }` (`hg.setSetting`, `hg.settings()`, latest wins per name), `hg/heads`. Apps add their own types
+(`hg.personal.put('held', …)`). Space channels now use the space's discovery key as their Protomux id
+(it used the key, which told every connected peer the keys of all the spaces held, the personal one
+included).
+
+**Stamps** (T050): "newest own seen" already covered every device of the identity (the indexer feeds the
+stamper any record whose log is the identity's, in any space, the personal one included). Added: on
+opening a space, the last record of each of the identity's logs held is fed to it, so a device whose
+clock was ahead and is now right still stamps its next change above its earlier ones after a restart.
+
+**Not in story 3, flagged for story 4**: a second device of an owner, admin or moderator is not a
+writer of the spaces' decision logs (it writes records, not decisions), and removing a device doesn't
+stop that device's key from recording decisions where it was a writer. Both need decision-log writer
+management (add a device's writer key, remove a removed device's), which story 4 reworks anyway
+(admins as indexers).

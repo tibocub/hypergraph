@@ -47,7 +47,47 @@ function forgetPhrase (hg) {
   return hg.forgetRecoveryPhrase()
 }
 
+// --- devices ---
+
+// On a device already in: a code for the new one (show it as text or a QR).
+// `password`: the one protecting the recovery phrase on this device.
+function addDevice (hg, password) {
+  return hg.addDevice({ password })
+}
+
+// On the new device: the same person, with their forums and settings. It
+// receives the recovery phrase: ask the person to protect it here too.
+async function joinWithCode (dir, code, opts = {}) {
+  const hg = await Hypergraph.open(dir, { types, rules, joinCode: code, ...opts })
+  await hg.connectToSwarm()
+  return hg
+}
+
+function devices (hg) {
+  return hg.devices()
+}
+
+// A lost device: what it wrote so far stays, nothing after counts. Needs the
+// recovery phrase, unlocked here by its password.
+function removeDevice (hg, device, password) {
+  return hg.removeDevice(device, { password })
+}
+
+// The person's settings, the same on all their devices.
+function setSetting (hg, name, value) {
+  return hg.setSetting(name, value)
+}
+
+async function setting (hg, name) {
+  return (await hg.settings())[name]
+}
+
 // --- forums ---
+
+// The forums this person is in (on any of their devices).
+function forums (hg) {
+  return hg.spaces()
+}
 
 function createForum (hg, name) {
   return hg.createSpace({ name })
@@ -164,6 +204,13 @@ module.exports = {
   recoveryPhrase,
   protectPhrase,
   forgetPhrase,
+  addDevice,
+  joinWithCode,
+  devices,
+  removeDevice,
+  setSetting,
+  setting,
+  forums,
   createForum,
   invite,
   join,
