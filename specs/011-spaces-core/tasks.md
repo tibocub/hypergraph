@@ -389,7 +389,7 @@ within 30 s (SC-008, measured alone).
   member whose budget is too small is told (`belowPolicy`, a `status` event) and still answers honestly;
   given room again it gets everything back and is no longer below; `setPolicy` by the owner reaches every
   member, refused (`NOT_ALLOWED`) for a member; an `auto` space doesn't fetch dropped content back
-- [ ] T061 [P] [US6] test/next/forum/rebuild.js (US6 #6, FR-012): the index folder deleted → reopened, the
+- [X] T061 [P] [US6] test/next/forum/rebuild.js (US6 #6, FR-012): the index folder deleted → reopened, the
   member shows the same posts, comments, scores, edits, tags, roles, settings and devices, complete, offline;
   a damaged index (unreadable files) → the same; a simulated crash in the middle of indexing (a write
   that never commits) → reopened, only the blocks after the last saved batch are indexed again
@@ -410,7 +410,7 @@ within 30 s (SC-008, measured alone).
   downloads restarted past it), restoring it on read (flag `READ`); lib/index/query.js and lib/space.js:
   reads fetch dropped content within their bound, `complete: false` when they can't; `setBudget`,
   `hg.setBudget`, policies (`settings/set`, `setPolicy`), `status()` and the `status` event
-- [ ] T062d [US6] Rebuild: lib/index.js (`instance.json`, a lost or unreadable index moved aside and rebuilt),
+- [X] T062d [US6] Rebuild: lib/index.js (`instance.json`, a lost or unreadable index moved aside and rebuilt),
   lib/space.js (held logs found in the Corestore when the index knows none); lib/testing.js (`compact`,
   `crashAfter`)
 - [ ] T062e [US6] bench/next/rebuild.js: 100,000 records, index deleted, time to rebuild (SC-008: ≤ 30 s);
