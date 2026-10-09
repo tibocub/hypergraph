@@ -194,17 +194,17 @@ devices no removal names — fixed first.
 
 ### Invites complete (spec 008's design, FR-023)
 
-- [ ] T054g [P] [US4] Test test/next/unit/decisions-invites.js: `invite/revoke` (by `decide`, or the maker)
+- [X] T054g [P] [US4] Test test/next/unit/decisions-invites.js: `invite/revoke` (by `decide`, or the maker)
   stops later redemptions; uses counted per distinct person; expiry against the recorder's stamp; who may
   invite to what (`mayInvite`: `invite` permission, never owner, below one's rank except member and guest,
   only permissions one holds; custom roles allowed); a role is never lowered by a redemption
-- [ ] T054h [P] [US4] test/next/forum/invites.js (US4 #1–4): redeemed while the inviter is offline and another
+- [X] T054h [P] [US4] test/next/forum/invites.js (US4 #1–4): redeemed while the inviter is offline and another
   admin online; expired → `INVITE_EXPIRED`, used up → `INVITE_USED_UP`, revoked → `INVITE_REVOKED`, an
   inviter whose role can't give the role → `NOT_ALLOWED` (at `createInvite`, and for a link made anyway), each
   within the read bound instead of a generic error after 60 s; `redemptions(link)`; a public link
   (`uses: Infinity`) lets many in, revoking it stops new joins and members stay; nobody able to let us in
   online → `INVITE_INVALID` after the bound (`timeout` overrides it)
-- [ ] T054i [US4] Implementation: lib/invites.js (`refusal(state, invite, identity, now)`: the reason, the same
+- [X] T054i [US4] Implementation: lib/invites.js (`refusal(state, invite, identity, now)`: the reason, the same
   pure checks `apply` makes), lib/decisions/apply.js (`invite/revoke`, `mayInvite`), lib/space.js
   (`createInvite` checks, `revokeInvite`, `redemptions`; the newcomer judges refusals from its own copy of the
   decision log), lib/index.js (`redeemInvite` waits `readTimeout` by default)

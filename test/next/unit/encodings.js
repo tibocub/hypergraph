@@ -55,12 +55,14 @@ test('every decision of data-model.md round trips', (t) => {
     { type: 'moderate', stamp: 7, action: 'hide', target: id, reason: 'spam', cut: [] },
     { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: 'spam', cut: [{ log: key(), length: 12 }] },
     { type: 'invite/create', stamp: 9, invite: crypto.randomBytes(100) },
-    { type: 'invite/revoke', stamp: 10, id: crypto.randomBytes(16) },
+    { type: 'invite/revoke', stamp: 10, invite: crypto.randomBytes(100) },
     { type: 'invite/redeem', stamp: 11, redemption: crypto.randomBytes(300) },
     { type: 'key/rotate', stamp: 12, epoch: 1, commit: key() },
     { type: 'subspace/create', stamp: 13, key: key(), name: 'News', private: false, writeRoles: ['moderator'] },
     { type: 'settings/set', stamp: 14, policy: 'everything', writeLimit: null },
-    { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 } }
+    { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 } },
+    { type: 'writer/add', stamp: 16, key: crypto.randomBytes(32), proof: crypto.randomBytes(140) },
+    { type: 'device/remove', stamp: 17, device: crypto.randomBytes(32), cut: crypto.randomBytes(40), proof: crypto.randomBytes(140) }
   ]
   for (const d of all) roundTrip(t, enc.decision, d, d.type)
   t.exception(() => c.encode(enc.decision, { type: 'nope', stamp: 1 }))

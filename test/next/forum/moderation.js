@@ -8,7 +8,7 @@ const test = require('brittle')
 const forum = require('./forum.js')
 const testing = require('../../../lib/testing.js')
 const { account } = require('./_setup.js')
-const { eventually, sleep, open } = require('../helpers.js')
+const { eventually, sleep, open, codeOf } = require('../helpers.js')
 
 // a owns the forum, b moderates, c writes, d is a member who goes offline.
 async function community (t) {
@@ -135,7 +135,11 @@ test('a demoted moderator: later decisions ignored, earlier ones kept', async (t
   await forum.giveRole(fa, b.identity.publicKey, 'member')
   t.ok(await eventually(async () => (await forum.roleOf(fb, b.identity.publicKey)) === 'member', 5000))
   try { await forum.hide(fb, two); t.fail('should be refused') } catch (err) { t.is(err.code, 'NOT_ALLOWED', 'b\'s app refuses') }
-  await testing.decide(fb, { type: 'moderate', action: 'hide', target: two.id, reason: '', cut: [] }) // written anyway
+  // Written anyway: b's device is no longer a writer of the decision log
+  // (story 4, research.md A8), so it can't even append; if it could, apply
+  // would ignore it (test/next/unit/decisions-writers.js).
+  const written = await codeOf(testing.decide(fb, { type: 'moderate', action: 'hide', target: two.id, reason: '', cut: [] }))
+  t.ok(written === null || written === 'NOT_ALLOWED')
   await sleep(1000)
   t.ok(await agree([fa, fc, fd], comments, two.id, 3000), 'ignored by everyone; the earlier hide stays')
 })

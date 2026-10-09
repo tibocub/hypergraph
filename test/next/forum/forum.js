@@ -93,10 +93,28 @@ function createForum (hg, name) {
   return hg.createSpace({ name })
 }
 
+// A link for one person, sent any way you like.
 function invite (forum) {
   return forum.createInvite({ role: 'member' })
 }
 
+// An open forum: a public link for anyone, until revoked.
+function openLink (forum) {
+  return forum.createInvite({ role: 'member', uses: Infinity })
+}
+
+// Nobody else gets in with it; who came in stays.
+function revokeLink (forum, link) {
+  return forum.revokeInvite(link)
+}
+
+// Who came in with a link: [{ identity, at }].
+function whoJoined (forum, link) {
+  return forum.redemptions(link)
+}
+
+// Refused with the reason: INVITE_EXPIRED, INVITE_USED_UP, INVITE_REVOKED,
+// NOT_ALLOWED; INVITE_INVALID if nobody able to let us in is online.
 function join (hg, link, opts) {
   return hg.redeemInvite(link, opts)
 }
@@ -213,6 +231,9 @@ module.exports = {
   forums,
   createForum,
   invite,
+  openLink,
+  revokeLink,
+  whoJoined,
   join,
   giveRole,
   roleOf,
