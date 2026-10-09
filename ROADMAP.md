@@ -23,6 +23,13 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09** — **An inspector**: a read-only web page (local Node server + browser) showing what is
+  inside a hypergraph (spaces, members, roles, decisions, logs and devices, records by type, storage,
+  peers). For Tibo to see the core work during development, for app developers to debug, and later
+  HyperBrowser's developer-tools panel. Guardrails against rot: read-only first; public API plus one
+  documented diagnostics method (`space.inspect()`, built in story 6); a smoke test in the suite; its
+  own folder, built by its own session alongside story 7. (Tibo's idea, agreed by the lead.)
+
 - **2026-10-09 (review of spec 011 story 5)** — Story 5 accepted (153/153 on Node and Bare, re-run in the
   lead conversation; `011-spaces-core` fast-forwarded). Accepted by the lead (research.md A9): a link or
   tag counts only if its author may edit the source record (so nobody labels others' posts; community
