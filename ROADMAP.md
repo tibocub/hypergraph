@@ -23,6 +23,18 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09 (review of spec 011 story 4)** — Story 4 accepted (128/128 on Node and Bare, re-run in the
+  lead conversation; `011-spaces-core` fast-forwarded). Security: a device counts only if the identity
+  key itself vouched for it (a stolen device could mint devices no removal named); decision rights
+  follow devices; one settler device per decider (Tibo); unban = the member writes in a new log (Tibo);
+  write limits for open spaces moved to story 9 (Tibo). Settled by the lead: joining waits 30 s by
+  default (connecting alone can take 5 s on a real network) while reads keep 5 s; a decision method
+  first catches up with connected decision writers (bounded) before refusing, and NOT_ALLOWED says why
+  (story 5: the forum test had to retry setRole after an unban); the "new log prepared during a ban"
+  gap (modified apps only) goes with story 9's spam work; a space whose only settler is lost for good
+  can't settle again — docs say "give a space an admin", `status()` warns about a single settler, and
+  Autobase `fork()` is studied with spec 009 (resilience).
+
 - **2026-10-09 (review of spec 011 story 3)** — Story 3 accepted (99/99 on Node and Bare, re-run in the
   lead conversation; `011-spaces-core` fast-forwarded). **SwarmFS can start on the core.** Decided by
   Tibo: **removing a device needs the recovery phrase** (signed by the identity key, never by another
@@ -110,5 +122,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 2. Story 1 done and reviewed (branch `011-spaces-core`).
 3. Story 2 done and reviewed.
 4. Story 3 done and reviewed → **SwarmFS can start** (its own repo and spec, prompt written with Tibo).
-5. **Worker session 4**: story 4 (invites, unban, admins settle decisions, removed devices lose decision
-   rights).
+5. Story 4 done and reviewed.
+6. **Worker session 5**: story 5 (graph vocabulary, shared editing). SwarmFS spec session once Tibo has
+   renamed the old SwarmFS folder.
