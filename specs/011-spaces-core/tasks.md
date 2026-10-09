@@ -139,7 +139,7 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 - [X] T050 [US3] lib/stamp.js integration: "newest own seen" includes the identity's other devices' logs and the personal space
 - [X] T051 [US3] `hg.devices()`, `hg.removeDevice()`: `hg/device-remove` records (attested) in this device's log of every space, with cuts from device heads or held lengths; lib/gate.js applies them; identity-attested removals override — *changed by Tibo (research.md A7): every removal is signed by the identity key (`{ password }` or `{ recoveryPhrase }`), in an identity log; no device-made removals*
 - [X] T052 [US3] docs/next/api.md (devices, personal space), docs/next/concepts.md (latest wins); CHANGELOG.md
-- [ ] T053 [US3] Checkpoint: stories 1–3 pass on Node and Bare; v1 and hyperDNS suites pass; tell the lead conversation SwarmFS can start
+- [X] T053 [US3] Checkpoint: stories 1–3 pass on Node and Bare; v1 and hyperDNS suites pass; tell the lead conversation SwarmFS can start — *next 99/99 on Node and Bare, v1 390/390, hyperDNS 46/46 (2026-10-09)*
 
 ---
 
