@@ -117,3 +117,32 @@ test('the author keeps all its own records over its budget, and is told', async 
   t.is(await forum.setting(b, 'theme'), 'dark', 'the reader\'s settings')
   t.is(await forum.roleOf(bOwn, b.identity.publicKey), 'member', 'and the decisions')
 })
+
+test('a forum indexing several fields stays within its budget on disk (core follow-ups: index entries count)', async (t) => {
+  // The app's next version indexes items by three fields.
+  const types = { ...forum.types, item: { fields: { kind: 'string', owner: 'string', place: 'string', text: 'text' }, index: [['kind', 'stamp'], ['owner', 'stamp'], ['place', 'stamp']] } }
+  const a = await account(t, 'author', { types })
+  const b = await account(t, 'reader', { types })
+  const fa = await forum.createForum(a, 'Items')
+  const fb = await forum.join(b, await forum.invite(fa))
+  await forum.setAppBudget(b, 2 * MB)
+  const N = 1600
+  let last = null
+  for (let i = 0; i < N; i++) last = await fa.put('item', { kind: 'kind-' + (i % 40), owner: 'owner-number-' + (i % 300), place: 'place-' + i, text: 'x'.repeat(600) })
+  t.ok(await eventually(async () => {
+    const s = fb.status()
+    return (await fb.get(last.id, { timeout: 0 })).record && s.held === 'part' && s.stored <= s.share * 1.1
+  }, 60000), 'the reader holds part of it, within its share')
+  // The reader downloaded everything once, then dropped the oldest content
+  // (research.md A10): RocksDB's write-ahead log holds that churn until it
+  // flushes, so disk is measured once it has (compacting after each look).
+  let disk = 0
+  const within = await eventually(async () => {
+    await testing.compact(b)
+    disk = diskUse(b.dir)
+    return disk <= 2.2 * MB
+  }, 20000, 500)
+  t.ok(within, `measured on disk: ${disk} B (app budget 2 MB +10%)`)
+  const page = await fb.query('item').where({ kind: 'kind-1' }).latest(100, { timeout: 10000 })
+  t.is(page.items.length, N / 40, 'every item still found by its index')
+})

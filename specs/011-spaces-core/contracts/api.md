@@ -61,6 +61,8 @@ await hg.storage()                 // { budget, used, free }: used is estimated 
 // last). A dropped record keeps its place in lists, counts, votes, tags and edits: a read that needs its content
 // fetches it within its bound (and keeps it), or leaves it out and says complete: false. Never dropped: this
 // identity's records, decision logs, the personal space, records under 256 bytes (votes, tags), hypergraph's own.
+// ✓ core follow-ups: the estimate counts each app index entry and tag key (~160 B plus its key twice), kept with
+//   the record's row (never dropped).
 ```
 
 ## Devices and the personal space

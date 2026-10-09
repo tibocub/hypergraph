@@ -165,7 +165,8 @@ it back once it fits, and until then `status().belowPolicy` is true and a `statu
 
 Never dropped: your own records (from any of your devices), decision logs, the personal space, small
 records (votes, tags: under 256 bytes) and hypergraph's own records. The list of records itself (about
-0.5 KB per record) is kept too; a space whose list alone is bigger than its share is reported
+0.5 KB per record, plus about 0.2 KB per app index entry or tag a record has: index fields you query by, not
+everything) is kept too; a space whose list alone is bigger than its share is reported
 (`OVER_BUDGET`) — split very big archives into sub-spaces. Disk space freed by dropping comes back when the
 database compacts, which hypergraph asks for after dropping a tenth of its budget (at most every 10
 minutes). Budgets cover hypergraph's data, not files an app moves itself.

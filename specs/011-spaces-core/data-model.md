@@ -97,7 +97,7 @@ adds `period, start` to log entries.
 | `logs` | `space, log` | identity, device, indexed length, cut, refused? |
 | `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2); also found by its own id (`changes-by-id`, for cuts) |
 | `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent (not the personal space) |
-| `meta` | `name` | declared types (`types`: per type its fields and kinds, links, onePerMember, editable, indexes; compat check and, story 7, which types to index again), identity (proof), `personal` (key, encryption key), `alone` (a new identity, no device added yet), `budget` (the app's, if set), `budget:<space>` (a space's own), `dropped:<space>:<log>` (`{ bytes, blocks }` of content dropped from a log: the compact `log` schema can't grow; research.md A10) |
+| `meta` | `name` | declared types (`types`: per type its fields and kinds, links, onePerMember, editable, indexes; compat check and, story 7, which types to index again), identity (proof), `personal` (key, encryption key), `alone` (a new identity, no device added yet), `budget` (the app's, if set), `budget:<space>` (a space's own), `dropped:<space>:<log>` (`{ bytes, blocks, ix }`: content dropped from a log, and, core follow-ups, the bytes its rows' app index entries and tag keys cost: the compact `log` schema can't grow; research.md A10) |
 
 Indexes: `by-type (space, type, stamp)`, `by-author (space, author, stamp)`, `by-link (space, target,
 type, stamp)`, `by-ix (space, app key…)` (map over declared `index`, and the record's tags as keys ` #<tag>`: research.md A9), `one-per-member (space, type,
@@ -108,7 +108,7 @@ target, author)`, `grants-for (space, recipient prefix, epoch)` (story 8). `reco
 
 Device logs (own and others'), decision logs, the personal space's logs. Budget accounting (story 6,
 `lib/storage.js`) = stored bytes, estimated: per record held, its content + ~150 B in its log and its
-content + ~550 B in the index; a dropped record keeps only its ~550 B row.
+content + ~550 B in the index, plus ~160 B + twice its key per app index entry or tag key; a dropped record keeps only its ~550 B row and its index entries.
 
 ### Beside the index (story 6, research.md A10)
 

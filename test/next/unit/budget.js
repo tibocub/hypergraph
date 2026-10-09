@@ -65,3 +65,11 @@ test('free disk is reported on this runtime (Node and Bare)', async (t) => {
   t.ok(typeof free === 'number' && free > 0, `free: ${free}`)
   t.is(await storage.freeDisk('/no/such/folder/at/all'), null, 'null when it can\'t tell')
 })
+
+test('app index entries count (core follow-ups): each ~160 B plus its key twice (the row and the index)', (t) => {
+  t.is(storage.ixCost([]), 0)
+  t.is(storage.ixCost(['topic\0rust']), storage.IX_OVERHEAD + 2 * 10, 'measured: bench/next/ix-cost.js')
+  const without = storage.stored({ content: 1000, blocks: 10 })
+  t.is(storage.stored({ content: 1000, blocks: 10, ixBytes: 1800 }), without + 1800, 'added as they are: never dropped')
+  t.is(storage.stored({ content: 1000, blocks: 10, droppedContent: 1000, droppedBlocks: 10, ixBytes: 1800 }), 10 * storage.ROW_OVERHEAD + 1800, 'a dropped record keeps its entries')
+})
