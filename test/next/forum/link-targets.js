@@ -58,6 +58,7 @@ test('a link to a disallowed type counts for nothing, in either order of arrival
       const r1 = (await f.get(c1)).record
       const r2 = (await f.get(c2)).record
       if (!r1 || !r2 || (await f.get(vc)).record === null || (await f.get(bad)).record === null) return false
+      if (!(await f.get(va.id)).record || (await forum.score(f, p)) !== 2) return false
     }
     return true
   }, 15000)

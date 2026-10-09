@@ -538,24 +538,24 @@ only); the two formerly flaky files pass 10 runs each under the full suite's loa
 
 ### Tests (write first, they fail)
 
-- [ ] F001 [P] test/next/forum/link-targets.js (item 1, Principle I): c (modified app) writes a comment and a
+- [X] F001 [P] test/next/forum/link-targets.js (item 1, Principle I): c (modified app) writes a comment and a
   poll whose `on` points at a vote (a type `on` doesn't allow): on a member that held the vote first and on
   one that got the comment first (the vote written later, delivered after), the record is kept on both, its
   `on` shows `null`, it isn't in `linked(vote)`, `count`, `sum` or `query().on(vote)`; both show the same
   lists; a newcomer (joined afterwards) shows the same; a link to a target not held yet counts as written
   until the target arrives; deleting the target restores the link as written on every member, newcomer
   included
-- [ ] F002 [P] test/next/forum/versions.js: the bad poll (on a comment) is now kept by every version, with
+- [X] F002 [P] test/next/forum/versions.js: the bad poll (on a comment) is now kept by every version, with
   its link ignored (shown `on: null`, not under the comment); test/next/unit/types.js: `stale()` no longer
   lists a type that only gained a link field with allowed targets
-- [ ] F003 [P] test/next/forum/versions.js (item 2): a record of a hypergraph type this version doesn't know
+- [X] F003 [P] test/next/forum/versions.js (item 2): a record of a hypergraph type this version doesn't know
   (`hg/future`, written raw) is kept and counted by type on every member (`inspect().records`), not refused;
   later records of that log are indexed
-- [ ] F004 [P] Items 3: test/next/forum/budgets.js #2 waits until the oldest post's content is dropped
+- [X] F004 [P] Items 3: test/next/forum/budgets.js #2 waits until the oldest post's content is dropped
   (instead of checking at once); test/next/forum/inspect.js waits for every condition it checks (logs held
   and indexed, the decisions settled) with `eventually`/`within`; each file run 10 times under the full
   suite's load on Node and on Bare
-- [ ] F005 [P] test/next/forum/members.js (item 4): `space.members()` → `[{ identity, role, you, banned,
+- [X] F005 [P] test/next/forum/members.js (item 4): `space.members()` → `[{ identity, role, you, banned,
   removed, devices: [{ device, log }] }]` (banned and removed members listed with their state, role null);
   `space.decisions({ limit, after })` → newest first `[{ seq, type, by, device, at, counted, ... }]` (a role
   given, a ban with its reason, an invite redeemed, a decision by a demoted moderator `counted: false`),
@@ -563,18 +563,18 @@ only); the two formerly flaky files pass 10 runs each under the full suite's loa
   hypergraph's own marked `builtin`); `space.tags(record)` → sorted tag names; `space.peers()` → `[{ identity,
   device }]` of connected members; events: `space.on('peers')` when one connects or leaves, `space.on('logs')`
   when a log is accepted or grows
-- [ ] F006 [P] test/next/forum/inspect.js (item 4): `inspect({ records: { type, limit, after } })` lists every
+- [X] F006 [P] test/next/forum/inspect.js (item 4): `inspect({ records: { type, limit, after } })` lists every
   row of a type, hidden, superseded, dropped and edited ones included, with their state flags;
   `inspect({ record: id })` → its versions (the put and every edit, with who, when and whether it counts)
   and deletes, also for a deleted record
-- [ ] F007 [P] test/next/tools/inspector.js (item 4, Node only): the views use the new reads (members with
+- [X] F007 [P] test/next/tools/inspector.js (item 4, Node only): the views use the new reads (members with
   roles and banned state, decisions, types, tags, peers) and the page updates from events (no polling)
-- [ ] F008 [P] test/next/unit/budget.js (item 5): `stored()` counts index entry bytes; test/next/forum/budgets.js:
+- [X] F008 [P] test/next/unit/budget.js (item 5): `stored()` counts index entry bytes; test/next/forum/budgets.js:
   a forum indexing several fields stays within its budget on disk (+10%)
-- [ ] F009 [P] test/next/unit/types.js and test/next/forum/post-comment-vote.js (item 6): a field passed as
+- [X] F009 [P] test/next/unit/types.js and test/next/forum/post-comment-vote.js (item 6): a field passed as
   `undefined` counts as absent in `put` and `edit` (an old helper passing a field the type doesn't have, or a
   new one passing nothing); an unknown field with a value (a typo) still throws `INVALID_RECORD`
-- [ ] F010 [P] test/next/forum/rules.js (item 7): the space records its creator's rule ids; a member whose app
+- [X] F010 [P] test/next/forum/rules.js (item 7): the space records its creator's rule ids; a member whose app
   has another rule set gets `RULES_DIFFER` in `status()` (and a `status` event) naming them; `setRules()` by
   the owner records this app's, the warning goes away there and appears for members on the old rules;
   refused (`NOT_ALLOWED`) for a member; test/next/unit/decisions-basic.js: `settings/set { rules }` applied by
@@ -582,20 +582,20 @@ only); the two formerly flaky files pass 10 runs each under the full suite's loa
 
 ### Implementation
 
-- [ ] F011 lib/gate.js (no link check at arrival), lib/index/indexer.js (records kept whatever their links
+- [X] F011 lib/gate.js (no link check at arrival), lib/index/indexer.js (records kept whatever their links
   point at), lib/index/query.js + lib/space.js (links judged when read: `linkedRows`, `Query.on`, `shape`),
   lib/types.js (`stale()` without link fields)
-- [ ] F012 lib/gate.js: unknown `hg/` types kept like unknown app types
-- [ ] F013 lib/decisions/apply.js (the decision list `~log:<n>`, `settings/set { rules }`), state.js
+- [X] F012 lib/gate.js: unknown `hg/` types kept like unknown app types
+- [X] F013 lib/decisions/apply.js (the decision list `~log:<n>`, `settings/set { rules }`), state.js
   (`rules`), log.js (`list()`), encodings.js (optional trailing `rules`)
-- [ ] F014 lib/space.js: `members()`, `decisions()`, `tags()`, `peers()`, events `peers` and `logs`,
+- [X] F014 lib/space.js: `members()`, `decisions()`, `tags()`, `peers()`, events `peers` and `logs`,
   `inspect({ records })`, `inspect({ record })`, `setRules()`, `RULES_DIFFER`; lib/index.js: `types()`,
   `createSpace` records rule ids; lib/network.js (device key pair), lib/directory.js (`hello`)
-- [ ] F015 lib/storage.js + lib/index/indexer.js + lib/space.js: index entry bytes per log in the estimate
-- [ ] F016 lib/types.js `validate()` and lib/space.js `edit()`: `undefined` is absent
-- [ ] F017 tools/inspector/: members, decisions, types, tags, peers from the new reads; events instead of
+- [X] F015 lib/storage.js + lib/index/indexer.js + lib/space.js: index entry bytes per log in the estimate
+- [X] F016 lib/types.js `validate()` and lib/space.js `edit()`: `undefined` is absent
+- [X] F017 tools/inspector/: members, decisions, types, tags, peers from the new reads; events instead of
   3-second polling; README
-- [ ] F018 test/next/forum/forum.js, contracts/api.md, data-model.md, docs/next/api.md and concepts.md,
+- [X] F018 test/next/forum/forum.js, contracts/api.md, data-model.md, docs/next/api.md and concepts.md,
   research.md A12, CHANGELOG.md
 - [ ] F019 Checkpoint: `npm run test:next` and `npm run test:next:bare`; the two formerly flaky files 10 runs
   each under load; v1's `npm test` and hyperDNS's `npm test`; forum.js line count

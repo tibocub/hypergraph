@@ -49,6 +49,9 @@ async function grown (t) {
 
 test('a forum with its own budget keeps within it; the other within the rest; disk within the app budget', { timeout: 120000 }, async (t) => {
   const { b, bOwn, bShared } = await grown(t)
+  // Blocks still arriving (comments, votes) can push a space past its share
+  // until the next budget pass: wait for both within their limits.
+  await eventually(() => bOwn.status().stored <= 1.1 * MB && bShared.status().stored <= bShared.status().share * 1.1, 20000)
   const s1 = bOwn.status()
   const s2 = bShared.status()
   t.is(s1.budget, 1 * MB, 'its own budget')
@@ -87,7 +90,8 @@ test('the newest part is held, the oldest content dropped first; the reader show
   t.ok(page.items.every((p) => p.text.length > 7000), 'with its content')
 
   for (const [full, reader, p] of [[own, bOwn, posts.own[0]], [shared, bShared, posts.shared[1]]]) {
-    t.is(await forum.score(reader, p), await forum.score(full, p), 'the same score as a full member')
+    // The vote and the comment are small records sent after the posts.
+    t.ok(await eventually(async () => (await forum.score(reader, p)) === (await forum.score(full, p)) && (await reader.count('comment', { on: p })).value === 1, 20000), 'the same score as a full member')
     const n = await reader.count('comment', { on: p })
     t.is(n.value, 1, 'the same count of comments')
     t.ok(n.complete)
