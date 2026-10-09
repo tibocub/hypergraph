@@ -123,6 +123,32 @@ test('a ban from the first spam: earlier votes count, the spam goes, nothing aft
   t.ok(fine)
 })
 
+test('unban: let back in, they write again; what they wrote during the ban stays ignored, newcomers included', async (t) => {
+  const { c, fa, fb, fc } = await community(t)
+  const who = c.identity.publicKey
+  const before = await forum.post(fc, 'before the ban', '')
+  const titles = (f) => forum.latest(f).then((xs) => xs.map((x) => x.title).sort().join())
+  t.ok(await agree([fa, fb], titles, 'before the ban'))
+  await forum.ban(fb, who, { reason: 'heated' })
+  t.ok(await eventually(async () => (await forum.roleOf(fc, who)) === null, 5000))
+  await testing.writeRaw(fc, { kind: 'put', type: 'post', fields: { title: 'during the ban', text: '' } })
+  t.is(await codeOf(forum.giveRole(fa, who, 'member')), 'NOT_ALLOWED', 'banned: not let back in')
+
+  await forum.unban(fb, who)
+  t.ok(await eventually(async () => {
+    try { await forum.giveRole(fa, who, 'member'); return true } catch { return false }
+  }, 10000), 'once a holds the unban, it lets c back in')
+  t.ok(await eventually(async () => {
+    try { return !!(await forum.post(fc, 'after the unban', '')) } catch { return false }
+  }, 10000), 'c writes again')
+  const expected = ['after the unban', 'before the ban'].join()
+  t.ok(await agree([fa, fb, fc], titles, expected), 'what c wrote during the ban stays ignored')
+  const n = await account(t, 'newcomer')
+  const fn = await forum.join(n, await forum.invite(fa))
+  t.ok(await agree([fn], titles, expected), 'for a newcomer too')
+  t.ok(before)
+})
+
 test('a demoted moderator: later decisions ignored, earlier ones kept', async (t) => {
   const { b, fa, fb, fc, fd } = await community(t)
   const p = await forum.post(fa, 'Welcome', '')

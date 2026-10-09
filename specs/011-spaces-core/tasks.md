@@ -211,10 +211,10 @@ devices no removal names — fixed first.
 
 ### Unban (decided 2026-10-09)
 
-- [ ] T054j [P] [US4] test/next/forum/moderation.js: `moderateAction('unban', who)`, then an invite or
+- [X] T054j [P] [US4] test/next/forum/moderation.js: `moderateAction('unban', who)`, then an invite or
   `setRole`: they write again (in a new log); what they wrote during the ban stays ignored for everyone,
   newcomers included; until unbanned, neither an invite nor `setRole` lets them in
-- [ ] T054k [US4] Implementation: `unban` in the moderation actions, apply lifts `banned:` (the cut stays);
+- [X] T054k [US4] Implementation: `unban` in the moderation actions, apply lifts `banned:` (the cut stays);
   forum.js `unban()`
 
 ### Small API additions

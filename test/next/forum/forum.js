@@ -157,7 +157,13 @@ function flag (forum, record, reason) {
   return forum.moderateAction('flag', record, { reason })
 }
 
-// Out for good: what they wrote up to what this moderator holds stays,
+// Lifts a ban: they can be let back in (an invite, or giveRole); what they
+// wrote during the ban never counts.
+function unban (forum, who) {
+  return forum.moderateAction('unban', who)
+}
+
+// Out until unbanned: what they wrote up to what this moderator holds stays,
 // anything after is ignored. `from` (one of their records, e.g. the first
 // spam): that record and everything after it in the same log go too.
 function ban (forum, who, { reason = '', from } = {}) {
@@ -244,6 +250,7 @@ module.exports = {
   takeDown,
   flag,
   ban,
+  unban,
   post,
   comment,
   vote,
