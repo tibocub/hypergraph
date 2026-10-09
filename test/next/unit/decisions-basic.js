@@ -168,7 +168,7 @@ test('the decision list (core follow-ups): every decision in order, who, what, w
   await applyNodes([
     node(space, { ...init, proof: initProof(owner, space, space) }),
     node(space, { type: 'role/set', identity: x, role: 'moderator', cut: [] }),
-    node(space, { type: 'moderate', action: 'hide', target: crypto.randomBytes(33), reason: 'spam', cut: [] }),
+    node(space, { type: 'moderate', action: 'hide', target: enc.idBytes({ log: crypto.randomBytes(32), seq: 1 }), reason: 'spam', cut: [] }),
     node(stranger, { type: 'member/add', identity: x }),
     { from: { key: space }, value: b4a.from([99, 1, 2]) }
   ], view, null, { space })

@@ -597,8 +597,10 @@ only); the two formerly flaky files pass 10 runs each under the full suite's loa
   3-second polling; README
 - [X] F018 test/next/forum/forum.js, contracts/api.md, data-model.md, docs/next/api.md and concepts.md,
   research.md A12, CHANGELOG.md
-- [ ] F019 Checkpoint: `npm run test:next` and `npm run test:next:bare`; the two formerly flaky files 10 runs
-  each under load; v1's `npm test` and hyperDNS's `npm test`; forum.js line count
+- [X] F019 Checkpoint: `npm run test:next` and `npm run test:next:bare`; the two formerly flaky files 10 runs
+  each under load; v1's `npm test` and hyperDNS's `npm test`; forum.js line count — *next 202/202 on Node and Bare;
+  budgets.js, inspect.js and link-targets.js 10 runs each beside a full suite, Node and Bare: all passed (after fixing
+  three test races the first round found); v1 390/390; hyperDNS 46/46; forum.js 361 lines (2026-10-09)*
 
 ## Phase 10: User Story 8 — Sub-spaces, private ones included (Priority: P3)
 
