@@ -138,7 +138,7 @@ test('unban: let back in, they write again; what they wrote during the ban stays
   // No retry: a decision method first catches up with the connected members
   // who record decisions (ROADMAP 2026-10-09), and so does writing.
   await forum.giveRole(fa, who, 'member')
-  t.pass('a, right after b's unban, lets c back in')
+  t.pass('a, right after the unban by b, lets c back in')
   t.ok(await forum.post(fc, 'after the unban', ''), 'c writes again at once')
   const expected = ['after the unban', 'before the ban'].join()
   t.ok(await agree([fa, fb, fc], titles, expected), 'what c wrote during the ban stays ignored')
@@ -173,9 +173,8 @@ test('two admins deciding conflicting things at once end the same everywhere', a
   const { b, c, fa, fb, fc, fd } = await community(t)
   const who = c.identity.publicKey
   await forum.giveRole(fa, b.identity.publicKey, 'admin')
-  t.ok(await eventually(async () => {
-    try { await forum.addRole(fb, 'helper', ['post']); return true } catch { return false }
-  }, 10000), 'b records decisions')
+  await forum.addRole(fb, 'helper', ['post'])
+  t.pass('b records decisions at once')
 
   // b, offline, takes c out; a, meanwhile, makes c a moderator.
   await b.close()
@@ -204,6 +203,7 @@ test('NOT_ALLOWED says why', async (t) => {
   await has(forum.giveRole(fc, outsider.identity.publicKey, 'member'), /role is member/, 'a role too low')
   await has(forum.giveRole(fa, a.identity.publicKey, 'admin'), /owner/, 'giving the owner a role')
   await forum.ban(fb, c.identity.publicKey, { reason: 'test' })
+  t.ok(await eventually(async () => (await forum.roleOf(fa, c.identity.publicKey)) === null, 5000))
   await has(forum.giveRole(fa, c.identity.publicKey, 'member'), /banned/, 'a banned member')
   await has(forum.hide(fc, (await forum.post(fa, 'x', '')), 'x'), /not a member|banned/, 'banned themselves')
 })

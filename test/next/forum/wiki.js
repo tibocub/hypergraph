@@ -88,6 +88,7 @@ test('only the author and moderators delete; a blanked page comes back with the 
 test('an editor who loses the permission: before the cut stays, after counts for no one, early member and newcomer alike', async (t) => {
   const { a, c, fa, fb, fc, fd } = await wiki(t)
   const page = await forum.writePage(fb, 'Home', 'welcome')
+  t.ok(await agree([fc], bodyOf(page.id), 'welcome'))
   await forum.edit(fc, page, { body: 'welcome, by c' })
   t.ok(await agree([fa, fb, fc, fd], bodyOf(page.id), 'welcome, by c'), 'c\'s edit, everywhere')
 
@@ -114,15 +115,14 @@ test('an editor who loses the permission: before the cut stays, after counts for
 
   // Given it back, c edits again (in a new log).
   await forum.makeEditor(fa2, c.identity.publicKey)
-  t.ok(await eventually(async () => {
-    try { return !!(await forum.edit(fc, page, { body: 'back, by c' })) } catch { return false }
-  }, 10000), 'c edits again once its app sees the role')
+  t.ok(await forum.edit(fc, page, { body: 'back, by c' }), 'c edits again at once (its app catches up with the decision first)')
   t.ok(await agree([fa2, fb, fd, fn], bodyOf(page.id), 'back, by c'), 'and everyone shows it')
 })
 
 test('a type any member edits', async (t) => {
   const { fb, fd, all } = await wiki(t)
   const note = await forum.pin(fb, 'meeting at 5')
+  t.ok(await agree([fd], async (f) => (await f.get(note.id)).record?.text, 'meeting at 5'))
   await forum.edit(fd, note, { text: 'meeting at 6' })
   t.ok(await agree(all, async (f) => (await f.get(note.id)).record?.text, 'meeting at 6'), 'a plain member\'s edit counts')
   t.is(await codeOf(forum.remove(fd, note)), 'NOT_ALLOWED', 'but only the author deletes it')
