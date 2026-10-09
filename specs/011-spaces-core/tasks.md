@@ -316,10 +316,110 @@ allowed edit winning, losing the right to edit as a cut (A4); the follow-ups set
 
 ## Phase 8: User Story 6 — Holding part of a space, honestly (Priority: P2)
 
-- [ ] T059 [P] [US6] test/next/forum/budgets.js: app budget shared by spaces; a space with its own budget keeps within it and the others share the rest; own logs, decision logs, personal space never dropped; disk within limits +10% (SC-011)
-- [ ] T060 [P] [US6] test/next/forum/policies.js: a small space held entirely by default; `everything` required by the creator; a member below it is told (status event)
-- [ ] T061 [P] [US6] test/next/forum/rebuild.js: a deleted index is rebuilt from held logs; after a simulated crash only the unfinished part is redone
-- [ ] T062 [US6] lib/replication.js complete (budgets per research R14, eviction oldest-unread first, policies, `status()`), free-disk check on both runtimes (or the 5 GB default), index rebuild; `setBudget`; docs; CHANGELOG
+**Goal**: every member keeps its spaces within its storage budget without changing what it shows: one
+budget for the app, an optional budget per space taken out of it, policies `auto` and `everything`, reads
+that fetch dropped content within their bound or say they are incomplete; a lost or damaged index rebuilt
+from the held logs; superseded personal-space records cleared; `space.inspect()` for the inspector; the
+follow-ups of story 5's review.
+**Independent test**: budgets, policies, rebuild and diagnostics scenarios pass on Node and Bare; disk stays
+within each limit +10% while spaces grow past them (SC-011); a lost index of 100,000 records is rebuilt
+within 30 s (SC-008, measured alone).
+
+**Choices made before starting** (research.md A10; for the lead's review):
+- **Dropping content, not records** (Tibo: "eviction drops the oldest unread content first"). A dropped
+  record keeps its row in the local index (type, author, time, links, tags: ~0.5 KB) and loses its content
+  (its block and the copy of its fields in the row). So counts, votes, edits, tags and links stay exact for
+  every member whatever it holds; a read that needs dropped content fetches it within its bound (and keeps
+  it: "plus what was read"), or leaves it out and says `complete: false`. Records under 256 bytes (votes,
+  tags, relations) and hypergraph's own records are never dropped: dropping saves little and sums need
+  them. The record list itself is never dropped: a space whose list alone outgrows its share is reported
+  (`status()` warning); spaces bigger than that are story 9's (members who don't list every record).
+- **Stored bytes are estimated** (v2's lesson: count what storing costs, not content): measured on the real
+  core, a record costs its content plus ~150 B in the logs and its content plus ~550 B in the index
+  (2 KB posts: 4.7 KB stored per record). The app's total is checked against real disk use in the test,
+  after compaction (RocksDB's write-ahead log holds recent writes until it flushes).
+- **Shares**: the app budget (default 5 GB, or less if half the free disk is smaller: `statfs` works on Node
+  and on Bare, else 5 GB) minus the spaces' own budgets and what is never dropped elsewhere, shared by the
+  other spaces in proportion to what each holds. Never dropped: this identity's records (any of its
+  devices), decision logs, the personal space.
+- **Oldest first**: records are dropped oldest first (by when they were put); records fetched back by a
+  read go last. Dropped blocks are never fetched again unless read (downloads restart past them), even
+  when room comes back — except in a space whose creator chose `everything`, where a member gets them
+  back once they fit again (that is the creator's requirement).
+- **Policies**: `auto` (default) and `everything` (`createSpace({ policy })`, changed later by who may
+  decide with `space.setPolicy()`, a `settings/set` decision). A member keeping less than `everything`
+  asks (its budget, or the space doesn't fit) is told: `status().belowPolicy` and a `status` event.
+- **Rebuild**: what the index can't be rebuilt from (identity proof, personal space keys, the spaces held
+  and their storage namespaces, declared types, budgets) is also kept in a small file next to it
+  (`<dir>/instance.json`, written atomically). A lost or unreadable index is moved aside and rebuilt: the
+  held logs are found in the Corestore (`store.list()`, each log's header names its space), checked by
+  the gate and indexed again; content this member had dropped is fetched again once (then dropped again).
+  After a crash, indexing resumes where each log's last saved batch ended (already true since story 1).
+- **Superseded personal-space records** (ROADMAP 2026-10-09): an `hg/heads` replaced by a newer one of the
+  same device, an `hg/setting` by a newer one of the same name: the older row goes and its block is cleared
+  — except in this device's own log, which stays whole (FR-027, as A5: other devices fetch from it, so they
+  never meet a hole nobody can fill).
+
+### Tests for User Story 6 (write first, they fail)
+
+- [ ] T059 [P] [US6] test/next/forum/roles.js (story 5's follow-ups): `space.roles()` lists the built-in roles
+  and the forum's own with their permissions; forum.js's `makeEditor` defines `editor` only when missing;
+  test/next/forum/devices.js: a phone of an owner or an admin hides, flags and lets people in right after
+  joining with no retry (it waits, within the bound, to record decisions) — the retries removed
+- [ ] T059a [P] [US6] test/next/forum/inspect.js: `space.inspect()` on three members: logs (key, device,
+  identity, length, held, indexed, cut, refused), the decision log (length, settled, settlers), records
+  by type, storage (stored, budget, share, policy, belowPolicy, held), peers, complete; read-only (nothing
+  written, nothing fetched); a banned member's log shows its cut, a refused log is listed as refused
+- [ ] T059b [P] [US6] test/next/forum/personal.js: settings set many times and heads written many times
+  leave one row each on every device; another device's superseded blocks are cleared here; this device's
+  own log stays whole; a newcomer device and a restart show the same settings, complete
+- [ ] T059c [P] [US6] test/next/forum/budgets.js (US6 #2, #3, SC-011): a reader with a small app budget and
+  one space given its own budget, two spaces growing past them: the space with its own budget stays within
+  it, the other within the rest, real disk within the app budget +10% (after compaction); the newest part
+  is held, the oldest content dropped first; the reader shows the same lists, counts and scores as a full
+  member, `complete` where nothing dropped is needed; paging back fetches dropped posts within the bound
+  and keeps them (held after the read); a dropped block is not fetched again while nobody reads it; the
+  author's own records, the decision log and the personal space are never dropped (the author over its
+  budget keeps them and is warned); `hg.setBudget()`, `space.setBudget(bytes | null)`, `hg.storage()`
+- [ ] T059d [P] [US6] test/next/net/bounded.js (US6 #4, SC-007): content dropped here and its only other
+  holder offline: the read returns within its bound, without it, `complete: false`; the holder back, the same
+  read is complete and shows it
+- [ ] T060 [P] [US6] test/next/forum/policies.js (US6 #1, #5): a small space with default settings is held
+  entirely by every member (nothing dropped, `held: 'all'`); a forum whose creator chose `everything`: a
+  member whose budget is too small is told (`belowPolicy`, a `status` event) and still answers honestly;
+  given room again it gets everything back and is no longer below; `setPolicy` by the owner reaches every
+  member, refused (`NOT_ALLOWED`) for a member; an `auto` space doesn't fetch dropped content back
+- [ ] T061 [P] [US6] test/next/forum/rebuild.js (US6 #6, FR-012): the index folder deleted → reopened, the
+  member shows the same posts, comments, scores, edits, tags, roles, settings and devices, complete, offline;
+  a damaged index (unreadable files) → the same; a simulated crash in the middle of indexing (a write
+  that never commits) → reopened, only the blocks after the last saved batch are indexed again
+- [ ] T061a [P] [US6] test/next/unit/budget.js: shares (own budgets first, the rest in proportion to what
+  each space holds, never below what can't be dropped), the stored-bytes estimate, the default budget from
+  free disk (and 5 GB when the runtime can't tell)
+
+### Implementation for User Story 6
+
+- [ ] T062 [US6] lib/space.js `roles()`; a device whose member may decide waits (within `readTimeout`) to
+  become a decision writer, claiming again at once instead of failing; forum.js `makeEditor`
+- [ ] T062a [US6] lib/space.js `inspect()`; lib/index.js `storage()`
+- [ ] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
+  outside this device's own log)
+- [ ] T062c [US6] lib/storage.js (new): app budget (default from free disk), shares, stored-bytes estimate;
+  lib/index/build.js: `log` gains `dropped` and `droppedBlocks` (append-only); lib/replication.js and
+  lib/index/indexer.js: dropping content oldest first (flag `DROPPED`, fields cleared, block cleared,
+  downloads restarted past it), restoring it on read (flag `READ`); lib/index/query.js and lib/space.js:
+  reads fetch dropped content within their bound, `complete: false` when they can't; `setBudget`,
+  `hg.setBudget`, policies (`settings/set`, `setPolicy`), `status()` and the `status` event
+- [ ] T062d [US6] Rebuild: lib/index.js (`instance.json`, a lost or unreadable index moved aside and rebuilt),
+  lib/space.js (held logs found in the Corestore when the index knows none); lib/testing.js (`compact`,
+  `crashAfter`)
+- [ ] T062e [US6] bench/next/rebuild.js: 100,000 records, index deleted, time to rebuild (SC-008: ≤ 30 s);
+  run alone, once
+- [ ] T062f [US6] test/next/forum/forum.js (budgets, keep-everything, roles), contracts/api.md (budgets,
+  policies, status, "Diagnostics": `inspect()`), data-model.md, docs/next/api.md and concepts.md
+  (holding part of a space, rebuild), research.md A10, CHANGELOG.md
+- [ ] T062g [US6] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
+  hyperDNS's `npm test` pass; forum.js line count; the 100k rebuild time
 
 ## Phase 9: User Story 7 — App versions (Priority: P2)
 
