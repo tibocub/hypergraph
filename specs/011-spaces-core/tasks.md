@@ -231,8 +231,9 @@ devices no removal names — fixed first.
 
 - [X] T054o [US4] contracts/api.md, data-model.md, docs/next/api.md and concepts.md (decision rights and
   devices, settling, invites, unban), research.md A8, CHANGELOG.md
-- [ ] T055 [US4] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
-  hyperDNS's `npm test` pass; forum.js line count
+- [X] T055 [US4] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
+  hyperDNS's `npm test` pass; forum.js line count — *next 128/128 on Node and Bare, v1 390/390, hyperDNS 46/46,
+  forum.js 265 lines (2026-10-09)*
 
 ## Phase 7: User Story 5 — Graph vocabulary, shared editing (Priority: P2)
 
