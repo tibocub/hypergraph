@@ -7,6 +7,7 @@
 
 const test = require('brittle')
 const forum = require('./forum.js')
+const z32 = require('z32')
 const testing = require('../../../lib/testing.js')
 const { account, device } = require('./_setup.js')
 const { eventually, open, codeOf } = require('../helpers.js')
@@ -149,6 +150,67 @@ test('someone else can\'t remove your device, even with their own recovery phras
   await forum.post(fp, 'still here', '')
   t.ok(await agree([fl, fp, fc], titles, ['phone is in', 'still here'].join()), 'the phone\'s posts still count everywhere')
   t.is((await forum.devices(laptop)).length, 2)
+})
+
+// Story 4 (research.md A8): decision rights follow devices.
+
+test('the owner\'s phone moderates and lets people in, with the laptop offline, no extra step', async (t) => {
+  const { laptop, fp, fc } = await twoDevices(t)
+  const rude = await forum.post(fc, 'rude', '')
+  t.ok(await eventually(async () => (await fp.get(rude.id)).record, 10000))
+  t.ok(await eventually(async () => {
+    try { await forum.hide(fp, rude, 'rude'); return true } catch { return false }
+  }, 15000), 'the phone records decisions')
+  t.ok(await agree([fc], (f) => forum.latest(f).then((xs) => xs.some((x) => x.id === rude.id)), false), 'everyone applies its hide')
+
+  await laptop.close()
+  const d = await account(t, 'd')
+  const fd = await forum.join(d, await forum.invite(fp))
+  t.ok(fd, 'a newcomer is let in by the phone while the laptop is offline')
+})
+
+test('an admin\'s phone moderates', async (t) => {
+  const { laptop, fl, fc, c } = await twoDevices(t)
+  await forum.giveRole(fl, c.identity.publicKey, 'admin')
+  const { code } = await forum.addDevice(c)
+  const cPhone = await device(t, 'c-phone', code)
+  const p = await forum.post(fl, 'Welcome', '')
+  const fcp = await eventually(async () => {
+    try { const f = cPhone.space(fl.key); return (await f.get(p.id)).record ? f : null } catch { return null }
+  }, 15000)
+  t.ok(fcp, 'c\'s phone holds the forum')
+  t.ok(await eventually(async () => {
+    try { await forum.hide(fcp, p, 'test'); return true } catch { return false }
+  }, 15000), 'c\'s phone records decisions')
+  t.ok(await agree([fl, fc], titles, 'phone is in'), 'hidden for everyone')
+  t.ok(laptop)
+})
+
+test('a removed device\'s decisions afterwards are ignored by everyone, a newcomer included', async (t) => {
+  const { laptop, phone, c, fl, fp, fc } = await twoDevices(t)
+  // The phone records decisions (it claimed its writer key).
+  t.ok(await eventually(async () => {
+    try { await forum.flag(fp, (await forum.latest(fp))[0], 'check'); return true } catch { return false }
+  }, 15000), 'the phone records decisions')
+  await forum.protectPhrase(laptop, 'pw')
+  const phoneDir = phone.dir
+  await phone.close()
+  await forum.removeDevice(laptop, phone.device.publicKey, 'pw')
+
+  // The stolen phone, offline, bans c; then it connects.
+  const thief = await open(t, { dir: phoneDir, types: forum.types, rules: forum.rules })
+  const ft = thief.space(fl.key)
+  await testing.decide(ft, { type: 'moderate', action: 'ban', target: z32.decode(c.identity.publicKey), reason: 'stolen', cut: [] })
+  t.is(await forum.roleOf(ft, c.identity.publicKey), null, 'the stolen phone, offline, banned c')
+  await thief.connectToSwarm()
+
+  const role = (f) => forum.roleOf(f, c.identity.publicKey)
+  t.ok(await agree([fl, fc], role, 'member'), 'c is still a member for everyone')
+  const d = await account(t, 'newcomer')
+  const fd = await forum.join(d, await forum.invite(fl))
+  t.ok(await agree([fd], role, 'member'), 'and for a newcomer')
+  t.ok(await eventually(async () => (await codeOf(forum.post(ft, 'more', ''))) === 'DEVICE_REMOVED', 10000), 'the stolen phone\'s app learns it was removed')
+  t.ok(fp)
 })
 
 test('once the phrase is forgotten on a device, it is typed to add or remove a device', async (t) => {

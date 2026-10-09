@@ -175,7 +175,7 @@ devices no removal names — fixed first.
   (the owner's first, an admin's first); a removed settling device hands over to another writer key of the
   same person; demotion below `decide` stops settling (moderators write, don't settle); the last settler is
   never removed (Autobase refuses: `host.removeable`); two orders of the same concurrent decisions converge
-- [ ] T054c [P] [US4] test/next/forum/devices.js: an owner's second device moderates and invites with no
+- [X] T054c [P] [US4] test/next/forum/devices.js: an owner's second device moderates and invites with no
   extra step (it claims its writer key itself); an admin's phone moderates; a removed device's decisions
   written afterwards (raw, `testing.decide`) are ignored by every member, a newcomer included
 - [ ] T054d [US4] Implementation: lib/encodings.js (`writer/add`, `device/remove` appended to the decision
