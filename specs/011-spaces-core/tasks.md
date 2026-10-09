@@ -424,8 +424,80 @@ within 30 s (SC-008, measured alone).
 
 ## Phase 9: User Story 7 — App versions (Priority: P2)
 
-- [ ] T063 [P] [US7] test/next/forum/versions.js: two type versions in one space read each other's records; a bad change (reorder, kind change, removal) refused at open with INCOMPATIBLE_TYPES naming type and field
-- [ ] T064 [US7] lib/types.js persisted declaration in the index's `meta`; records of unknown types kept and indexed by type; docs; CHANGELOG
+**Goal**: members on two versions of an app share a space: each reads the other's records (the old app
+ignores the fields it doesn't know, the new one sees them empty on old records); the declared types are
+stored in the index's `meta`, and at open any change other than appending fields or adding types throws
+`INCOMPATIBLE_TYPES` naming the type and the field; records of types the app doesn't know are kept and
+indexed by type, and shown correctly once the app learns the type. Mixed versions never make members
+disagree on what exists, only on which fields they can show (constitution Principle I).
+**Independent test**: `test/next/forum/versions.js` on Node and Bare: two instances with different type
+versions in one space, both directions; each kind of bad change refused.
+
+**Already there** (stories 1–6): the tagged field encoding skips unknown fields (experiment 6),
+`Types.describe()` / `checkCompatible()` run at open and the declaration is stored in `meta` (and
+`instance.json`), unknown types pass the gate with `values: null` and get a row by type.
+
+**Gaps found while refining** (choices for the lead's review, research.md A11):
+- **An old app editing a newer record erased the fields it doesn't know** (an edit carries all the fields
+  of the new version, A3). Now an edit keeps the current version's unknown fields as they are, and the
+  current version's links first, in place (an unknown field may be a link into that list).
+- **What the index derives from a declaration goes stale when the app learns more**: rows of a type the
+  app didn't know have no one-per-member grouping, no app index keys, no link-target or rule check, edits
+  by others judged as "author only"; a type that gains an index has old rows missing from it; a link field
+  added with allowed targets was never checked. At open, if a type is new, gains an index, or gains a link
+  field with allowed targets, **and** this member's index holds records of it, the index is rebuilt from
+  the held logs (story 6's rebuild): the member then shows exactly what a member who always had this
+  version shows. Rare (an app update), costs one rebuild (100k records: ~20 s); reads say
+  `complete: false` meanwhile.
+- **Declarations that changed meaning while looking compatible** are refused: `describe()` now stores
+  indexes too; appending a link field with allowed targets is allowed (it failed as "links changed");
+  changing the allowed targets of an existing link field is refused naming the field; appending the first
+  link field of a one-per-member type is refused (it would change what "one per member" groups by).
+- Opening a folder with an older declaration than the one it stored (a downgrade) is refused like any
+  removal, and leaves the folder as it was.
+
+### Tests for User Story 7 (write first, they fail)
+
+- [ ] T063 [P] [US7] test/next/unit/types.js: `describe()` includes indexes; appending a link field with
+  allowed targets passes `checkCompatible`; adding an index passes; changing an existing link field's
+  allowed targets throws `INCOMPATIBLE_TYPES` naming type and field; appending the first link field to a
+  one-per-member type throws naming type and field; `stale(stored)` lists the new types, the types that
+  gained an index and the types that gained a link field with allowed targets (not those that only gained
+  plain fields)
+- [ ] T063a [P] [US7] test/next/unit/fields.js: encoding an edit with `keep` (the current version's fields
+  and links) keeps the fields this codec doesn't know, byte for byte, and the current links in place; a
+  codec that knows them decodes the edit with the old app's change and the new fields intact
+- [ ] T063b [P] [US7] test/next/forum/versions.js (US7 #1): an old app (the forum without `post.topic` and
+  `poll`) and the current one in one space, both directions: each reads the other's posts and comments
+  (old: no `topic`; new: `topic: null` on old posts); the same post lists, comment counts and scores on both
+  (Principle I); the old app edits a new post's text: its topic stays, on both
+- [ ] T063c [P] [US7] test/next/forum/versions.js (US7 #1, R6): polls written by the new app are kept by
+  the old one and counted by type (`inspect().records.poll`), not readable there (`INVALID_TYPE`); a bad
+  poll (linking to a comment, written by a misbehaving member) is refused by the new app, kept as unknown by
+  the old; the old member reopened with the current types (the app updated) shows the same polls as the new
+  member, the bad one refused, and `byTopic` finds the posts it received while it was old; a later restart
+  doesn't rebuild again
+- [ ] T063d [P] [US7] test/next/forum/versions.js (US7 #2, FR-004): each bad change refused at open with
+  `INCOMPATIBLE_TYPES` whose message names the type and the field: fields reordered, a field's kind changed,
+  a field removed, a type removed, `editable` changed, `onePerMember` changed, a link field's targets
+  changed; the old declaration on a folder the new one opened (a downgrade); after a refusal the folder
+  opens again with the right types, unchanged
+
+### Implementation for User Story 7
+
+- [ ] T064 [US7] lib/fields.js and lib/types.js: `encode(values, links, keep)` keeps unknown fields and the
+  current links; lib/space.js `edit()` passes the current version
+- [ ] T064a [US7] lib/types.js: `describe()` with indexes, `checkCompatible()` per link field and
+  one-per-member target, `stale(stored)`; lib/index.js: at open, a stale type with rows held → the index is
+  replaced and rebuilt from the held logs (lib/instance.js `remove`)
+- [ ] T064b [US7] test/next/forum/forum.js: `post.topic` (with an index) and `poll` (the app's new
+  version), `byTopic`, `ask`, `polls`; contracts/api.md ("Types": app versions), docs/next/api.md and
+  concepts.md, data-model.md (`meta.types`), research.md A11, CHANGELOG.md
+- [ ] T064c [US7] SC-002: forum.js holds only app code (what a real forum writes with hypergraph); test
+  plumbing (faking bad members, waiting for peers) lives in `_setup.js` or the test files; report its line
+  count (all lines, and without blank and comment lines)
+- [ ] T064d [US7] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
+  hyperDNS's `npm test` pass; forum.js line count
 
 ## Phase 10: User Story 8 — Sub-spaces, private ones included (Priority: P3)
 
