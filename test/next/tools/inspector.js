@@ -13,7 +13,7 @@ if (typeof Bare !== 'undefined') {
   })
 } else {
   const forum = require('../forum/forum.js')
-  const { open } = require('../helpers.js')
+  const { open, eventually, within } = require('../helpers.js')
   const { serveInspector } = require('../../../tools/inspector')
 
   test('inspector: the page and every view answer; read-only', async (t) => {
@@ -42,6 +42,7 @@ if (typeof Bare !== 'undefined') {
     t.is(inst.device, hg.device.publicKey)
     t.ok(Array.isArray(inst.devices) && inst.devices.length === 1, 'devices')
     t.ok(inst.storage.used > 0 && inst.storage.budget > 0, 'storage')
+    t.alike(inst.types.comment.links, { on: ['post', 'comment'] }, 'the declared types (hg.types())')
 
     const spaces = (await json('api/spaces')).body
     t.is(spaces.length, 2, 'the personal space and the forum')
@@ -60,6 +61,13 @@ if (typeof Bare !== 'undefined') {
     t.is(space.members.length, 1)
     t.is(space.members[0].role, 'owner')
     t.is(space.members[0].you, true)
+    t.is(space.members[0].banned, false, 'from space.members()')
+    t.is(space.members[0].settler, true)
+    t.alike(space.peerList, [], 'nobody connected (space.peers())')
+    t.ok(space.recent.some((d) => d.type === 'space/init' && d.by === hg.identity.publicKey && d.counted), 'the decisions (space.decisions())')
+    const decisions = (await json('api/decisions?key=' + f.key + '&limit=1')).body
+    t.is(decisions.items.length, 1)
+    t.is((await json('api/decisions?key=' + f.key + '&after=' + decisions.next)).body.items[0].seq, decisions.next - 1, 'paged')
     t.ok(space.roles.some((r) => r.name === 'owner'), 'roles')
     t.is(space.status.policy, 'auto')
     t.is((await json('api/space?key=personal')).body.personal, true, 'the personal space')
@@ -82,7 +90,20 @@ if (typeof Bare !== 'undefined') {
     const one = (await json(`api/record?key=${f.key}&id=${p.id}`)).body
     t.is(one.record.id, p.id)
     t.is(one.linked.filter((r) => r.type === 'comment').length, 4, 'what points at it')
-    t.alike(one.tags, ['rust'])
+    t.alike(one.tags, ['rust'], 'its tags (space.tags())')
+    t.alike(one.history.versions.map((v) => [v.kind, v.text]), [['put', 'world'], ['edit', 'world (edited)']], 'its history (inspect({ record }))')
+
+    // Hidden and deleted records: rows and history.
+    const gone = await forum.post(f, 'Gone', '')
+    await forum.remove(f, gone)
+    await forum.hide(f, c, 'spam')
+    const shown = (await json(`api/records?key=${f.key}&type=comment&limit=50`)).body
+    t.absent(shown.items.some((r) => r.id === c.id), 'a hidden comment is left out of the list')
+    const all = (await json(`api/rows?key=${f.key}&type=comment&limit=50`)).body
+    t.ok(all.items.some((r) => r.id === c.id && r.state.hidden), 'and shown in all rows (inspect({ records }))')
+    const deleted = (await json(`api/record?key=${f.key}&id=${gone.id}`)).body
+    t.is(deleted.record, null)
+    t.is(deleted.history.deleted, true, 'a deleted record: its history says so')
 
     t.is((await json(`api/record?key=${f.key}&id=nope`)).status, 404, 'a bad id')
     t.is((await json('api/space?key=nope')).status, 404, 'a bad space')
@@ -95,6 +116,24 @@ if (typeof Bare !== 'undefined') {
     const before = (await f.inspect()).logs[0].length
     await json('api/space?key=' + f.key)
     t.is((await f.inspect()).logs[0].length, before, 'nothing written')
+
+    // Live: the page hears of new records and growing logs from events, with
+    // no polling (the page itself has no timer).
+    t.absent(require('fs').readFileSync(require('path').join(__dirname, '../../../tools/inspector/page.js'), 'utf8').includes('setInterval'), 'no polling in the page')
+    const res = await fetch(url + 'api/events')
+    const reader = res.body.getReader()
+    const heard = (async () => {
+      let text = ''
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) return false
+        text += new TextDecoder().decode(value)
+        if (text.includes('"logs":true')) return true
+      }
+    })()
+    await forum.post(f, 'Another', '')
+    t.ok(await within(heard, 10000), 'a logs event reaches the page')
+    await reader.cancel()
 
     await close()
     await close()

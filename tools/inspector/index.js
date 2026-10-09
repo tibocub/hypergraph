@@ -27,9 +27,9 @@ async function serveInspector (hg, { port = 0, host = '127.0.0.1' } = {}) {
   const watched = new WeakSet()
   const clients = new Set()
 
-  // Live updates: a space's 'change' and 'status', and new connections, nudge
-  // every open page to read again (it also reads every few seconds, for what
-  // has no event: logs growing, blocks arriving).
+  // Live updates: a space's 'change', 'status', 'logs' (a log arrived or
+  // grew) and 'peers' (one connected or left), and new connections, nudge
+  // every open page to read again. No polling.
   const nudge = (what) => {
     for (const res of clients) res.write(`data: ${JSON.stringify(what)}\n\n`)
   }
@@ -38,22 +38,26 @@ async function serveInspector (hg, { port = 0, host = '127.0.0.1' } = {}) {
     watched.add(space)
     space.on('change', ({ types } = {}) => nudge({ space: space.key, change: types || [] }))
     space.on('status', () => nudge({ space: space.key, status: true }))
+    space.on('logs', () => nudge({ space: space.key, logs: true }))
+    space.on('peers', () => nudge({ space: space.key, peers: true }))
   }
   const onConnection = () => nudge({ connection: true })
   hg.on('connection', onConnection)
 
   const spaceOf = (key) => {
-    if (key === 'personal') return hg.personal
-    const space = hg.space(key)
+    const space = key === 'personal' ? hg.personal : hg.space(key)
     watch(space)
     return space
   }
+  watch(hg.personal)
 
   const routes = {
     '/api/instance': () => instance(hg),
     '/api/spaces': () => spaces(hg, watch),
     '/api/space': (q) => space(hg, spaceOf(q.get('key'))),
     '/api/records': (q) => records(spaceOf(q.get('key')), q.get('type'), q.get('after'), Number(q.get('limit')) || PAGE_SIZE),
+    '/api/rows': (q) => rows(spaceOf(q.get('key')), q.get('type'), q.get('after'), Number(q.get('limit')) || PAGE_SIZE),
+    '/api/decisions': (q) => decisionList(spaceOf(q.get('key')), q.get('after'), Number(q.get('limit')) || 50),
     '/api/record': (q) => record(spaceOf(q.get('key')), q.get('id'))
   }
 
@@ -116,7 +120,8 @@ async function instance (hg) {
     device: hg.device.publicKey,
     devices: await hg.devices(),
     storage: await hg.storage(),
-    spaces: hg.spaces().length
+    spaces: hg.spaces().length,
+    types: hg.types()
   }
 }
 
@@ -148,42 +153,40 @@ async function summary (space, { key, name, parent }) {
   }
 }
 
-// One space: the inspect() snapshot, its roles, and its members as far as
-// this member can tell (identities of the logs and decision writers it knows).
+// One space: the inspect() snapshot, its roles, its members (space.members():
+// roles, banned and removed people) with their logs' state and decision
+// rights, the latest decisions, and the connected peers.
 async function space (hg, space) {
   const snap = await space.inspect()
   const status = space.status()
   const roles = space.personal ? [] : await space.roles()
-
-  const people = new Map()
-  const person = (identity) => {
-    if (!people.has(identity)) people.set(identity, { identity, you: identity === hg.identity.publicKey, role: null, devices: new Map(), settler: false, decides: false })
-    return people.get(identity)
-  }
-  person(hg.identity.publicKey)
-  for (const log of snap.logs) {
-    if (!log.identity) continue
-    const p = person(log.identity)
-    if (log.device) p.devices.set(log.device, { device: log.device, log: log.key, cut: log.cut, refused: log.refused, waiting: log.waiting })
-  }
-  for (const w of snap.decisions.writers) {
-    const p = person(w.identity)
-    p.decides = true
-    if (w.settler) p.settler = true
-  }
+  const logs = new Map(snap.logs.map((l) => [l.key, l]))
   const names = new Map((await hg.devices()).map((d) => [d.publicKey, d.name]))
-  const members = []
-  for (const p of people.values()) {
-    if (!space.personal) p.role = await space.getRole(p.identity)
-    members.push({
-      ...p,
-      devices: [...p.devices.values()].map((d) => ({ ...d, name: names.get(d.device) || null }))
-    })
-  }
-  const rank = new Map(roles.map((r, i) => [r.name, i]))
-  members.sort((a, b) => (rank.get(a.role) ?? 99) - (rank.get(b.role) ?? 99) || (b.you - a.you))
+  const members = (await space.members()).map((m) => {
+    const writers = snap.decisions.writers.filter((w) => w.identity === m.identity)
+    // Logs not kept (refused, waiting) aren't held: they come from the snapshot.
+    const devices = m.devices.map((d) => ({ ...d, cut: logs.get(d.log)?.cut ?? null, refused: false, waiting: false }))
+    for (const l of snap.logs) {
+      if (l.identity === m.identity && (l.refused || l.waiting) && l.device && !devices.some((d) => d.log === l.key)) devices.push({ device: l.device, log: l.key, cut: l.cut, refused: l.refused, waiting: l.waiting })
+    }
+    return { ...m, devices: devices.map((d) => ({ ...d, name: names.get(d.device) || null })), decides: writers.length > 0, settler: writers.some((w) => w.settler) }
+  })
+  const recent = await space.decisions({ limit: 50 })
+  return { ...snap, status, roles, members, peerList: space.peers(), recent: recent.items, types: Object.keys(snap.records).sort(typeOrder) }
+}
 
-  return { ...snap, status, roles, members, types: Object.keys(snap.records).sort(typeOrder) }
+// A page of decisions, newest first (space.decisions()).
+async function decisionList (space, after, limit) {
+  const { items, complete } = await space.decisions({ limit: Math.max(1, Math.min(MAX_PAGE, limit)), after: after ? Number(after) : null })
+  return { items, complete, next: items.length ? items.at(-1).seq : null }
+}
+
+// Every row of a type as held here, those no list shows included (hidden,
+// superseded, dropped): inspect({ records }).
+async function rows (space, type, after, limit) {
+  if (!type) throw Object.assign(new Error('Which type? ?type=post'), { code: 'NOT_FOUND' })
+  const { rows } = await space.inspect({ records: { type, limit: Math.max(1, Math.min(MAX_PAGE, limit)), after: after || null } })
+  return { type, ...rows }
 }
 
 // The app's types first, hypergraph's own (hg/...) after.
@@ -206,23 +209,23 @@ async function records (space, type, after, limit) {
   return { type, items: items.slice(0, limit), complete, next: more ? items[limit - 1].id : null }
 }
 
-// One record (get() also finds hidden ones) and what points at it.
+// One record (get() also finds hidden ones), what points at it, its tags,
+// and its history (inspect({ record }): every version and delete, also for a
+// record deleted or taken down).
 async function record (space, id) {
   const { record, complete } = await space.get(id, { timeout: 0 })
-  if (!record) return { record: null, complete, linked: [], edges: null }
+  const { record: history } = await space.inspect({ record: id })
+  if (!record) return { record: null, complete, linked: [], edges: [], tags: [], history }
   const linked = await space.linked(record, null, { timeout: 0 })
   const edges = await space.edges(record, { timeout: 0 })
-  // There is no "tags of a record" read: the tag records pointing at it, the
-  // newest per tag name wins (tag, untag, tag again...).
-  const tagRows = await space.query('hg/tag').on(record).latest(MAX_PAGE, { timeout: 0 })
-  const latest = new Map()
-  for (const t of tagRows.items) if (!latest.has(t.tag)) latest.set(t.tag, t)
+  const tags = await space.tags(record, { timeout: 0 })
   return {
     record,
-    complete: complete && linked.complete && edges.complete && tagRows.complete,
+    complete: complete && linked.complete && edges.complete && tags.complete,
     linked: linked.items,
     edges: edges.items,
-    tags: [...latest.values()].filter((t) => !t.off).map((t) => t.tag).sort()
+    tags: tags.items,
+    history
   }
 }
 

@@ -1,7 +1,7 @@
 // The inspector's page: reads the JSON views and draws them. Read-only: it
 // only ever sends GET requests.
 
-const state = { space: null, tab: 'overview', type: null, pages: [null], page: 0, instance: null }
+const state = { space: null, tab: 'overview', type: null, pages: [null], page: 0, instance: null, allRows: false }
 const $ = (sel) => document.querySelector(sel)
 
 // --- small helpers ---
@@ -123,7 +123,8 @@ function overview (s) {
     <dl class="facts">
       <dt>${tip('Complete', 'Yes when every block this device knows exists is held here, and it reached another member since it opened (or it is the only one). When not, reads answer with what is here and say complete: false.')}</dt>
       <dd>${s.complete ? '<span class="ok">yes</span>' : '<span class="warn">not yet</span>'}</dd>
-      <dt>${tip('Peers', 'Other devices connected right now for this space.')}</dt><dd>${s.peers}</dd>
+      <dt>${tip('Peers', 'Other devices connected right now for this space: the person and the device.')}</dt>
+      <dd>${s.peerList.length ? s.peerList.map((p) => `${p.identity ? who(p.identity) : '<span class="muted">someone</span>'} <span class="muted">on</span> ${deviceName(p.device)}`).join('<br>') : '0'}</dd>
       <dt>${tip('Policy', '"auto": each member keeps what fits its budget, the newest part first. "everything": members are asked to keep it all (an archive).')}</dt><dd>${esc(st.policy)}</dd>
       <dt>${tip('Held here', '"all": every record\'s content is on this device. "part": some old content of others was dropped to stay within the budget; it is fetched back when a read needs it.')}</dt><dd>${esc(st.held)}</dd>
       <dt>${tip('Stored', 'Bytes this space takes on this device (an estimate).')}</dt><dd>${bytes(st.stored)}</dd>
@@ -133,14 +134,14 @@ function overview (s) {
       <dt>${tip('Below policy', 'The space asks to keep everything and this device can\'t (not enough room).')}</dt><dd>${yes(st.belowPolicy)}</dd>
       <dt>${tip('Rows', 'Records in this device\'s index, every type, shown or not (hidden, deleted and older versions included).')}</dt><dd>${total}</dd>
       <dt>${tip('Device logs', 'Logs this device knows of in the space (one per device of each member).')}</dt><dd>${s.logs.length}</dd>
-      <dt>${tip('Decisions', 'Entries in the shared decision log.')}</dt><dd>${s.decisions.length}</dd>
+      <dt>${tip('Decisions', 'Entries in the shared decision log (the log’s own acknowledgements included; the Decisions tab lists the decisions).')}</dt><dd>${s.decisions.length}</dd>
     </dl>`
 }
 
 function members (s) {
   if (s.personal) return '<p class="help">The personal space has no roles: only this person\'s devices are in it.</p>' + memberTable(s)
   return `
-    <p class="help">Everyone whose writing this device has seen, with their role here. "out" means not a member any more (removed or banned): what they wrote before stays, nothing after counts.</p>
+    <p class="help">The members with their role here, then people banned or removed: what they wrote before stays, nothing after counts.</p>
     ${memberTable(s)}
     <h3 title="What each role may do. Built-in roles first, highest first; then the roles this space defined.">Roles</h3>
     <div class="table-wrap"><table>
@@ -159,10 +160,10 @@ const PERMS = {
 
 function memberTable (s) {
   return `<div class="table-wrap"><table>
-    <tr><th>Person</th><th>${tip('Role', 'Their role in this space. "out": no longer a member.')}</th><th>${tip('Devices', 'The devices this person writes from, here.')}</th><th>${tip('Decides', 'Their devices may record decisions (owner, admins, moderators). A settler also settles the order of decisions.')}</th></tr>
+    <tr><th>Person</th><th>${tip('Role', 'Their role in this space; banned or removed: no longer a member.')}</th><th>${tip('Devices', 'The devices this person writes from, here.')}</th><th>${tip('Decides', 'Their devices may record decisions (owner, admins, moderators). A settler also settles the order of decisions.')}</th></tr>
     ${s.members.map((m) => `<tr>
       <td>${who(m.identity)}</td>
-      <td>${s.personal ? '<span class="muted">—</span>' : m.role ? esc(m.role) : '<span class="chip bad">out</span>'}</td>
+      <td>${s.personal ? '<span class="muted">—</span>' : m.role ? esc(m.role) : m.banned ? '<span class="chip bad" title="Banned: not let back in until unbanned.">banned</span>' : m.removed ? '<span class="chip bad" title="Taken out of the space.">removed</span>' : '<span class="chip bad">out</span>'}</td>
       <td>${m.devices.map((d) => `${d.name ? esc(d.name) : keyHtml(d.device, 'device')}${d.cut !== null ? ` <span class="chip bad" title="Cut at block ${d.cut}: nothing this device wrote after counts.">cut</span>` : ''}${d.refused ? ' <span class="chip bad" title="Not kept: refused for good.">refused</span>' : ''}${d.waiting ? ' <span class="chip warn" title="Not kept yet: waiting for its author to become a member.">waiting</span>' : ''}`).join('<br>') || '<span class="muted">nothing written yet</span>'}</td>
       <td>${m.settler ? '<span title="Records decisions and settles their order">settler</span>' : m.decides ? 'yes' : '<span class="muted">no</span>'}</td>
     </tr>`).join('')}
@@ -174,7 +175,7 @@ function decisions (s) {
   return `
     <p class="help">Roles, invites and moderation are decisions: entries in one shared log that every member applies in the same order. The owner and admins (one device each) are the settlers: they agree on that order. Settled entries are final.</p>
     <dl class="facts">
-      <dt>${tip('Entries', 'Decisions in the log, as far as this device knows.')}</dt><dd>${d.length}</dd>
+      <dt>${tip('Entries', 'Entries in the log as far as this device knows, the log’s own acknowledgements included.')}</dt><dd>${d.length}</dd>
       <dt>${tip('Settled', 'Entries whose order the settlers agreed on: final.')}</dt><dd>${d.settled} of ${d.length}</dd>
       <dt>${tip('Settlers', 'Devices that settle the order of decisions. With one only, the space can\'t settle new decisions if it is lost: give the space an admin.')}</dt><dd>${d.settlers.length}</dd>
     </dl>
@@ -183,7 +184,31 @@ function decisions (s) {
       <tr><th>Person</th><th>Device</th><th>${tip('Settler', 'Also settles the order.')}</th><th>Writer key</th></tr>
       ${d.writers.map((w) => `<tr><td>${who(w.identity)}</td><td>${w.device ? deviceName(w.device) : '<span class="muted">—</span>'}</td><td>${w.settler ? 'yes' : '<span class="muted">no</span>'}</td><td>${keyHtml(w.key, 'decision writer key')}</td></tr>`).join('')}
     </table></div>
-    <p class="help">The decisions themselves (who was given which role, who was banned and why) are not listed: the core doesn't expose them yet.</p>`
+    <h3 title="Every decision in the order every member applies it, newest first.">What was decided</h3>
+    <div class="table-wrap"><table>
+      <tr><th>#</th><th>${tip('When', 'The decider\'s clock when it was made.')}</th><th>Who</th><th>What</th><th>${tip('Why', 'The reason given (moderation).')}</th><th>${tip('Counted', 'no: its author wasn\'t allowed to make it at that point; listed, it changed nothing.')}</th></tr>
+      ${s.recent.map((x) => `<tr><td class="num">${x.seq}</td><td>${when(x.at)}</td><td>${x.by ? who(x.by) : '<span class="muted">nobody</span>'}</td><td>${what(x)}</td><td>${esc(x.reason || '')}</td><td>${x.counted ? 'yes' : '<span class="chip bad">no</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">none</td></tr>'}
+    </table></div>
+    ${s.recent.length >= 50 ? '<p class="help">The 50 newest (api/decisions?key=…&after=… pages further).</p>' : ''}`
+}
+
+// A decision in words.
+function what (x) {
+  const target = (k) => isRecordId(k) ? `<a class="link" data-open="${esc(k)}">a record</a>` : who(k)
+  switch (x.type) {
+    case 'space/init': return `created the space “${esc(x.name)}”`
+    case 'member/add': return `added ${who(x.identity)}`
+    case 'member/remove': return `removed ${who(x.identity)}`
+    case 'role/define': return `defined the role <b>${esc(x.name)}</b>: ${(x.permissions || []).map((p) => `<span class="chip">${esc(p)}</span>`).join('')}`
+    case 'role/set': return `gave ${who(x.identity)} the role <b>${esc(x.role)}</b>`
+    case 'moderate': return `<b>${esc(x.action)}</b> ${target(x.target)}`
+    case 'invite/redeem': return `let ${who(x.identity)} in as <b>${esc(x.role)}</b> (an invite by ${who(x.maker)})`
+    case 'invite/revoke': return `revoked an invite (${esc(x.role)}) by ${who(x.maker)}`
+    case 'settings/set': return [x.policy && `storage policy <b>${esc(x.policy)}</b>`, x.rules && `app rules: ${x.rules.map((r) => `<span class="chip">${esc(r)}</span>`).join('') || 'none'}`].filter(Boolean).join('; ')
+    case 'writer/add': return `a device of theirs records decisions ${keyHtml(x.key, 'writer key')}`
+    case 'device/remove': return `removed their device ${keyHtml(x.removed, 'device')}`
+    default: return esc(x.type)
+  }
 }
 
 function logs (s) {
@@ -214,16 +239,19 @@ async function records (s) {
   if (!s.types.length) return '<p class="help">No records yet.</p>'
   if (!state.type || !s.types.includes(state.type)) { state.type = s.types[0]; state.pages = [null]; state.page = 0 }
   const after = state.pages[state.page]
-  const r = await get(`api/records?key=${encodeURIComponent(state.space)}&type=${encodeURIComponent(state.type)}${after ? '&after=' + encodeURIComponent(after) : ''}`)
+  const r = await get(`api/${state.allRows ? 'rows' : 'records'}?key=${encodeURIComponent(state.space)}&type=${encodeURIComponent(state.type)}${after ? '&after=' + encodeURIComponent(after) : ''}`)
+  const decl = state.instance && state.instance.types[state.type]
   if (r.next) state.pages[state.page + 1] = r.next
   const rows = s.records[state.type]
   return `
     <div class="pager">
       <label title="hg/... types are hypergraph's own: tags, relations, devices, settings.">Type <select id="type">${s.types.map((t) => `<option ${t === state.type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
       <span class="muted" title="Rows in the index count every version, hidden and deleted records included; the list shows what an app's query shows.">${rows} row${rows === 1 ? '' : 's'} in the index</span>
-      ${r.complete ? '' : '<span class="warn" title="Some records known to exist are not held here (or no other member was reached yet). The inspector never waits or fetches.">not complete</span>'}
+      ${r.complete === false ? '<span class="warn" title="Some records known to exist are not held here (or no other member was reached yet). The inspector never waits or fetches.">not complete</span>' : ''}
+      <label title="Every row this device holds of the type: hidden, superseded (an older vote), and those whose content was dropped here, too."><input type="checkbox" id="all-rows" ${state.allRows ? 'checked' : ''}> all rows</label>
     </div>
-    <p class="help">Newest first, as an app's query shows them: hidden and deleted records are left out (click a link to see one). Click a row for its details.</p>
+    <p class="help">${decl ? `Declared: ${Object.entries(decl.fields).map(([f, k]) => `<b>${esc(f)}</b> <span class="muted">${esc(k)}${decl.links[f] ? ' → ' + esc(decl.links[f].join(' | ')) : ''}</span>`).join(', ')}${decl.index.length ? `; indexed by ${decl.index.map((i) => esc(i.join(', '))).join('; ')}` : ''}${decl.onePerMember ? '; one per member' : ''}; edited by ${esc(typeof decl.editable === 'string' ? decl.editable : 'permission ' + decl.editable.permission)}.` : 'A type this app doesn\'t declare (another version\'s): kept, counted, not readable.'}</p>
+    <p class="help">Newest first${state.allRows ? ': every row held, those no list shows included' : ', as an app\'s query shows them: hidden and deleted records are left out (click a link to see one)'}. Click a row for its details.</p>
     <div class="table-wrap"><table>
       <tr><th>Fields</th><th>Author</th><th>Device</th><th>${tip('Put', 'When it was put (its stamp).')}</th><th>${tip('Flags', 'edited: changed since it was put. hidden: hidden by a moderator. flagged: flagged by a moderator. future: stamped more than 10 minutes ahead.')}</th></tr>
       ${r.items.map((rec) => `<tr data-id="${esc(rec.id)}" style="cursor:pointer">
@@ -237,7 +265,7 @@ async function records (s) {
     </div>`
 }
 
-const SKIP = new Set(['id', 'type', 'author', 'device', 'stamp', 'edited', 'hidden', 'flagged', 'futureStamp'])
+const SKIP = new Set(['id', 'type', 'author', 'device', 'stamp', 'edited', 'hidden', 'flagged', 'futureStamp', 'state'])
 
 function fieldList (rec) {
   const items = Object.entries(rec).filter(([k]) => !SKIP.has(k))
@@ -254,12 +282,15 @@ function value (v) {
 }
 
 function flags (rec) {
-  return [rec.edited && '<span class="chip">edited</span>', rec.hidden && '<span class="chip bad">hidden</span>', rec.flagged && '<span class="chip warn">flagged</span>', rec.futureStamp && '<span class="chip warn">future</span>'].filter(Boolean).join('')
+  const st = rec.state || {}
+  return [rec.edited && '<span class="chip">edited</span>', (rec.hidden || st.hidden) && '<span class="chip bad">hidden</span>', rec.flagged && '<span class="chip warn">flagged</span>', rec.futureStamp && '<span class="chip warn">future</span>', st.superseded && '<span class="chip" title="An older one of the same member: only the latest counts.">superseded</span>', st.dropped && '<span class="chip warn" title="Its content was dropped here to stay within the budget.">dropped</span>'].filter(Boolean).join('')
 }
 
 function wireRecords () {
   const sel = $('#type')
   if (sel) sel.onchange = () => { state.type = sel.value; state.pages = [null]; state.page = 0; refresh() }
+  const all = $('#all-rows')
+  if (all) all.onchange = () => { state.allRows = all.checked; state.pages = [null]; state.page = 0; refresh() }
   const prev = $('#prev'); const next = $('#next')
   if (prev) prev.onclick = () => { state.page--; refresh() }
   if (next) next.onclick = () => { state.page++; refresh() }
@@ -271,12 +302,25 @@ function wireLinks (root) {
   for (const a of root.querySelectorAll('a[data-open]')) a.onclick = (e) => { e.stopPropagation(); openRecord(a.dataset.open) }
 }
 
+// A record's versions and deletes (inspect({ record })).
+function history (h) {
+  if (!h || (!h.versions.length && !h.deletes.length)) return ''
+  const counts = (c) => c === null ? '<span class="muted">?</span>' : c ? 'yes' : '<span class="chip bad">no</span>'
+  return `<h3 title="Its first version and every edit and delete held here, oldest first. Counts: whether it is allowed (an edit by someone who may not edit it doesn't count).">History</h3>
+    <div class="table-wrap"><table>
+      <tr><th>What</th><th>Who</th><th>When</th><th>Counts</th><th>Fields</th></tr>
+      ${h.versions.map((v) => `<tr><td>${v.kind}</td><td>${who(v.by)}</td><td>${when(v.stamp)}</td><td>${counts(v.counts)}</td><td>${fieldList(Object.fromEntries(Object.entries(v).filter(([k]) => !['id', 'kind', 'by', 'device', 'stamp', 'counts'].includes(k))))}</td></tr>`).join('')}
+      ${h.deletes.map((d) => `<tr><td>delete</td><td>${who(d.by)}</td><td>${when(d.stamp)}</td><td>${counts(d.counts)}</td><td></td></tr>`).join('')}
+    </table></div>`
+}
+
 async function openRecord (id) {
   const box = $('#record-body')
   try {
     const r = await get(`api/record?key=${encodeURIComponent(state.space)}&id=${encodeURIComponent(id)}`)
     if (!r.record) {
-      box.innerHTML = `<h3>Record ${keyHtml(id, 'record id')}</h3><p class="help">Not here: deleted, taken down, or not held by this device${r.complete ? '' : ' (this device is not complete yet)'}.</p>`
+      const h = r.history
+      box.innerHTML = `<h3>Record ${keyHtml(id, 'record id')}</h3><p class="help">${h.removed ? 'Taken down by a moderator.' : h.deleted ? 'Deleted by its author.' : `Not here: not held by this device${r.complete ? '' : ' (this device is not complete yet)'}.`}</p>${history(h)}`
     } else {
       const rec = r.record
       box.innerHTML = `
@@ -292,6 +336,7 @@ async function openRecord (id) {
         ${r.linked.length ? `<ul class="fields">${r.linked.map((l) => `<li><a class="link" data-open="${esc(l.id)}">${esc(l.type)}</a> by ${who(l.author)} ${when(l.stamp)} ${flags(l)}</li>`).join('')}</ul>` : '<p class="muted">nothing</p>'}
         <h3 title="Relations (relate/unrelate) from or to this record.">Relations (${r.edges.length})</h3>
         ${r.edges.length ? `<ul class="fields">${r.edges.map((e) => `<li>${e.from === rec.id ? 'this' : `<a class="link" data-open="${esc(e.from)}">${esc(short(e.from))}</a>`} —<b>${esc(e.type)}</b>→ ${e.to === rec.id ? 'this' : `<a class="link" data-open="${esc(e.to)}">${esc(short(e.to))}</a>`}${e.data ? ` <span class="muted">“${esc(e.data)}”</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">none</p>'}
+        ${history(r.history)}
         ${r.complete ? '' : '<p class="warn">Not complete: some of this may be missing here.</p>'}`
     }
   } catch (err) {
@@ -302,7 +347,7 @@ async function openRecord (id) {
   if (!dlg.open) dlg.showModal()
 }
 
-// --- refresh: on events, and every few seconds ---
+// --- refresh: on the app's events (records, status, logs, peers) ---
 
 let busy = false
 let again = false
@@ -326,7 +371,6 @@ function live () {
   events.onopen = () => { $('#live').textContent = 'live' }
   events.onerror = () => { $('#live').textContent = 'reconnecting… (has the app stopped?)' }
   events.onmessage = () => { if (!$('#record').open) refresh() }
-  setInterval(() => { if (!$('#record').open && document.visibilityState === 'visible') refresh() }, 3000)
 }
 
 refresh()

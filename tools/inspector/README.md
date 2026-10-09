@@ -28,8 +28,8 @@ await close()
 ```
 
 It listens on `127.0.0.1` only (`{ host }` changes that: anyone who can reach it reads everything,
-the personal space included). The page updates by itself: right away when records or a space's
-status change, and every 3 seconds for the rest (logs growing, blocks arriving).
+the personal space included). The page updates by itself, from the app's events: records changed, a
+space's status, logs arriving or growing (`logs`), peers connecting or leaving (`peers`). It never polls.
 
 ## The demo
 
@@ -48,16 +48,17 @@ Ctrl-C stops it and removes its temp folders. Options: `--port 5000` (first port
 
 | View | From |
 |---|---|
-| This app: person, devices, disk used and budget | `hg.identity`, `hg.device`, `hg.devices()`, `hg.storage()` |
+| This app: person, devices, disk used and budget, declared types | `hg.identity`, `hg.device`, `hg.devices()`, `hg.storage()`, `hg.types()` |
 | Spaces: name, complete, peers, members, rows, warnings | `hg.spaces()`, `hg.personal`, `space.inspect()` |
-| Overview: policy, held, stored, share, budget, warnings | `space.inspect()`, `space.status()` |
-| Members & roles | the identities in `inspect()`'s logs and decision writers, `space.getRole()`, `space.roles()` |
-| Decisions: entries, settled, settlers, who records them | `inspect().decisions` |
+| Overview: policy, held, stored, share, budget, warnings, who is connected | `space.inspect()`, `space.status()`, `space.peers()` |
+| Members & roles: roles, banned and removed people, their devices, who decides | `space.members()`, `space.roles()`, `inspect().decisions.writers` |
+| Decisions: who decided what, when, why, and whether it counted; settled, settlers | `space.decisions()`, `inspect().decisions` |
 | Device logs: known, held, indexed, dropped, cut, refused, waiting | `inspect().logs` |
-| Records by type, newest first, 25 a page; one record with what points at it, its relations and tags | `space.query(type).latest()`, `get()`, `linked()`, `edges()`, `query('hg/tag').on()` |
+| Records by type, newest first, 25 a page (or every row: hidden, superseded, dropped); one record with what points at it, its relations, tags and history (versions, deletes) | `space.query(type).latest()`, `inspect({ records })`, `get()`, `linked()`, `edges()`, `space.tags()`, `inspect({ record })` |
 
 JSON views (the page uses them; handy with `curl`): `api/instance`, `api/spaces`, `api/space?key=`,
-`api/records?key=&type=&after=&limit=`, `api/record?key=&id=`, and `api/events` (server-sent events).
+`api/records?key=&type=&after=&limit=`, `api/rows?key=&type=&after=&limit=` (every row),
+`api/decisions?key=&after=&limit=`, `api/record?key=&id=`, and `api/events` (server-sent events).
 `key=personal` is the personal space.
 
 ## Rules for changing it
