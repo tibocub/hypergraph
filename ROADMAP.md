@@ -23,6 +23,9 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09** — Shared records (wiki pages, shared folders): **only the author and moderators can
+  delete**; other allowed editors can only edit (a blanked page is restored by the next edit). (Tibo)
+
 - **2026-10-09 (review of spec 011 story 4)** — Story 4 accepted (128/128 on Node and Bare, re-run in the
   lead conversation; `011-spaces-core` fast-forwarded). Security: a device counts only if the identity
   key itself vouched for it (a stolen device could mint devices no removal named); decision rights
