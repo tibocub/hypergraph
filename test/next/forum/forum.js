@@ -5,14 +5,18 @@
 
 const { Hypergraph } = require('hypergraph/next')
 
+// The app's second version added post topics (with an index) and polls.
+// Between versions, only add fields at the end of a type and add types:
+// members on either version read each other's records.
 const types = {
-  post: { fields: { title: 'string', text: 'text' } },
+  post: { fields: { title: 'string', text: 'text', topic: 'string' }, index: [['topic', 'stamp']] },
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } },
   vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true },
   // The forum's wiki: editors (the 'edit-pages' permission) edit any page.
   page: { fields: { title: 'string', body: 'text' }, editable: { permission: 'edit-pages' } },
   // A notice board any member edits.
-  note: { fields: { text: 'text' }, editable: 'members' }
+  note: { fields: { text: 'text' }, editable: 'members' },
+  poll: { fields: { question: 'string', on: 'link' }, links: { on: ['post'] } }
 }
 
 // The forum's own rules: every member checks them before keeping a record.
@@ -205,8 +209,8 @@ function ban (forum, who, { reason = '', from } = {}) {
 
 // --- posting ---
 
-function post (forum, title, text) {
-  return forum.put('post', { title, text })
+function post (forum, title, text, topic) {
+  return forum.put('post', { title, text, topic })
 }
 
 // On a post, or a reply to a comment.
@@ -246,6 +250,10 @@ async function thread (forum, record) {
 
 async function score (forum, on) {
   return (await forum.sum('vote', 'value', { on })).value
+}
+
+async function byTopic (forum, topic, n = 20) {
+  return (await forum.query('post').where({ topic }).latest(n)).items
 }
 
 // A page of posts, newest first: { after } the last post of the previous page.
@@ -306,6 +314,15 @@ function pin (forum, text) {
   return forum.put('note', { text })
 }
 
+// A poll under a post.
+function ask (forum, on, question) {
+  return forum.put('poll', { on, question })
+}
+
+async function polls (forum, on) {
+  return (await forum.linked(on, 'poll')).items
+}
+
 // Calls onUpdate(posts) now and whenever posts change; returns stop().
 function liveLatest (forum, onUpdate, n = 20) {
   return forum.query('post').live(({ items }) => onUpdate(items), { limit: n })
@@ -357,6 +374,7 @@ module.exports = {
   thread,
   score,
   postsPage,
+  byTopic,
   tag,
   untag,
   tagged,
@@ -367,5 +385,7 @@ module.exports = {
   writePage,
   readPage,
   pin,
+  ask,
+  polls,
   liveLatest
 }
