@@ -58,3 +58,23 @@ test('each device\'s heads (its log lengths) reach the person\'s other devices',
     return heads.some((h) => h.log === log && h.length >= 2)
   }, 10000), 'the laptop knows how far the phone wrote')
 })
+
+// Story 4 (ROADMAP 2026-10-09): what one device wrote, e.g. SwarmFS's "what does this device hold".
+test('query(type).fromDevice(key): what one device wrote, page by page', async (t) => {
+  const laptop = await open(t, { label: 'laptop', types })
+  await laptop.connectToSwarm()
+  const { code } = await laptop.addDevice()
+  const phone = await open(t, { label: 'phone', types, joinCode: code })
+  for (const p of ['/a', '/b', '/c']) await laptop.personal.put('held', { path: p, holder: '' })
+  t.ok(await eventually(async () => {
+    try { return !!(await phone.personal.put('held', { path: '/phone', holder: '' })) } catch { return false }
+  }, 10000))
+  const paths = (r) => r.items.map((x) => x.path).join()
+  const from = (hg, dev, n = 10, opts) => hg.personal.query('held').fromDevice(dev.device.publicKey).latest(n, opts)
+  t.ok(await eventually(async () => paths(await from(phone, laptop)) === '/c,/b,/a', 10000), 'the phone lists what the laptop holds')
+  t.ok(await eventually(async () => paths(await from(laptop, phone)) === '/phone', 10000), 'and the laptop what the phone holds')
+  const first = await from(phone, laptop, 2)
+  t.is(paths(first), '/c,/b')
+  const next = await from(phone, laptop, 2, { after: first.items.at(-1) })
+  t.is(paths(next), '/a', 'paging, no gaps or repeats')
+})

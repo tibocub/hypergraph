@@ -7,7 +7,8 @@ const { tmpDir, testBootstrap, bounded } = require('../helpers.js')
 async function account (t, label, opts = {}) {
   const dir = opts.dir || tmpDir(t, label)
   const bootstrap = await testBootstrap(t)
-  const hg = opts.phrase ? await forum.restore(dir, opts.phrase, { bootstrap, deviceName: label }) : await forum.signUp(dir, { bootstrap, deviceName: label })
+  const extra = opts.password ? { password: opts.password } : {}
+  const hg = opts.phrase ? await forum.restore(dir, opts.phrase, { bootstrap, deviceName: label, ...extra }) : await forum.signUp(dir, { bootstrap, deviceName: label, ...extra })
   t.teardown(() => bounded(hg.close(), 10000, `${label}.close()`), { order: 0 })
   hg.dir = dir
   return hg

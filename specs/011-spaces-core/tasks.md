@@ -219,12 +219,12 @@ devices no removal names — fixed first.
 
 ### Small API additions
 
-- [ ] T054l [P] [US4] test/next/forum/sign-up.js and devices.js: `Hypergraph.open(dir, { password })` (new
+- [X] T054l [P] [US4] test/next/forum/sign-up.js and devices.js: `Hypergraph.open(dir, { password })` (new
   account, restore from the phrase, or `joinCode`) keeps the phrase sealed from the first moment: never in
   the folder in plain text; `recoveryPhrase(password)` reads it
-- [ ] T054m [P] [US4] test/next/forum/personal.js: `query(type).fromDevice(key)` lists what one device wrote
+- [X] T054m [P] [US4] test/next/forum/personal.js: `query(type).fromDevice(key)` lists what one device wrote
   (SwarmFS: "what does this device hold"), with paging
-- [ ] T054n [US4] Implementation: lib/phrase.js (`saveSealed`), lib/index.js, lib/index/query.js
+- [X] T054n [US4] Implementation: lib/phrase.js (`saveSealed`), lib/index.js, lib/index/query.js
   (`fromDevice`)
 
 ### Docs and checkpoint

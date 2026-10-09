@@ -18,7 +18,8 @@ const rules = [
 
 // --- accounts ---
 
-// A new account in this folder, online.
+// A new account in this folder, online. `{ password }` keeps the recovery
+// phrase sealed by it from the first moment (show it with recoveryPhrase()).
 async function signUp (dir, opts = {}) {
   const hg = await Hypergraph.open(dir, { types, rules, ...opts })
   await hg.connectToSwarm()

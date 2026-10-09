@@ -213,6 +213,22 @@ test('a removed device\'s decisions afterwards are ignored by everyone, a newcom
   t.ok(fp)
 })
 
+test('a device joining with a code and a password keeps the phrase sealed from the first moment', async (t) => {
+  const laptop = await account(t, 'laptop', { password: 'laptop pw' })
+  const { code } = await forum.addDevice(laptop, 'laptop pw')
+  const phone = await device(t, 'phone', code, { password: 'phone pw' })
+  const words = await forum.recoveryPhrase(phone, 'phone pw')
+  t.is(words, await forum.recoveryPhrase(laptop, 'laptop pw'), 'the phone holds the phrase, behind its own password')
+  const fs = require('fs')
+  const path = require('path')
+  const all = (dir) => fs.readdirSync(dir).flatMap((n) => {
+    const full = path.join(dir, n)
+    if (fs.statSync(full).isDirectory()) return all(full)
+    try { return [fs.readFileSync(full).toString('latin1')] } catch { return [] }
+  })
+  t.absent(all(phone.dir).some((s) => s.includes(words)), 'never in the phone\'s folder in plain text')
+})
+
 test('once the phrase is forgotten on a device, it is typed to add or remove a device', async (t) => {
   const laptop = await account(t, 'laptop')
   const words = await forum.recoveryPhrase(laptop)

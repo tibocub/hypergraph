@@ -73,3 +73,17 @@ test('the person may protect the phrase with a password', async (t) => {
   await forum.forgetPhrase(again)
   t.is(await forum.recoveryPhrase(again, 'correct horse'), null, 'a protected phrase can be forgotten too')
 })
+
+// Story 4 (ROADMAP 2026-10-09, research.md A7): the phrase protected from the first moment.
+test('opened with a password, the phrase is never in the folder in plain text', async (t) => {
+  const first = await account(t, 'sealed', { password: 'correct horse' })
+  const phrase = await forum.recoveryPhrase(first, 'correct horse')
+  t.is(phrase.split(' ').length, 24, 'the app shows it with the password')
+  t.absent(onDisk(first.dir, phrase), 'never written in plain text')
+  await t.exception(forum.recoveryPhrase(first), /password/, 'needs the password')
+
+  const elsewhere = await account(t, 'sealed-restore', { phrase, password: 'other' })
+  t.is(elsewhere.identity.publicKey, first.identity.publicKey)
+  t.absent(onDisk(elsewhere.dir, phrase), 'restored with a password: sealed too')
+  t.is(await forum.recoveryPhrase(elsewhere, 'other'), phrase)
+})
