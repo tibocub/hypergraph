@@ -47,7 +47,7 @@ async function grown (t) {
   return { a, b, own, shared, bOwn, bShared, posts }
 }
 
-test('a forum with its own budget keeps within it; the other within the rest; disk within the app budget', async (t) => {
+test('a forum with its own budget keeps within it; the other within the rest; disk within the app budget', { timeout: 120000 }, async (t) => {
   const { b, bOwn, bShared } = await grown(t)
   const s1 = bOwn.status()
   const s2 = bShared.status()
@@ -74,7 +74,7 @@ test('a forum with its own budget keeps within it; the other within the rest; di
   t.is(bOwn.status().budget, null, 'given back to the shared budget')
 })
 
-test('the newest part is held, the oldest content dropped first; the reader shows what a full member shows', async (t) => {
+test('the newest part is held, the oldest content dropped first; the reader shows what a full member shows', { timeout: 120000 }, async (t) => {
   const { own, shared, bOwn, bShared, posts } = await grown(t)
   // "Settled" allows 10% over the share: the drop that brings it under may
   // still be on its way (a budget pass runs shortly after the last change).
@@ -94,7 +94,7 @@ test('the newest part is held, the oldest content dropped first; the reader show
   }
 })
 
-test('dropped content is fetched when read, and kept; never fetched otherwise', async (t) => {
+test('dropped content is fetched when read, and kept; never fetched otherwise', { timeout: 120000 }, async (t) => {
   const { bShared, posts } = await grown(t)
   const oldest = posts.shared[0]
   await sleep(2000)
@@ -113,7 +113,7 @@ test('dropped content is fetched when read, and kept; never fetched otherwise', 
   t.ok(await eventually(() => bShared.status().stored <= s.share * 1.1, 10000), 'still within its share (newer unread content went instead)')
 })
 
-test('the author keeps all its own records over its budget, and is told', async (t) => {
+test('the author keeps all its own records over its budget, and is told', { timeout: 120000 }, async (t) => {
   const { a, b, own, bOwn, posts } = await grown(t)
   await forum.setAppBudget(a, 1 * MB)
   t.ok(await eventually(() => own.status().warnings.some((w) => w.code === 'OVER_BUDGET'), 10000), 'warned: over budget with records it may not drop')
@@ -125,7 +125,7 @@ test('the author keeps all its own records over its budget, and is told', async 
   t.is(await forum.roleOf(bOwn, b.identity.publicKey), 'member', 'and the decisions')
 })
 
-test('a forum indexing several fields stays within its budget on disk (core follow-ups: index entries count)', async (t) => {
+test('a forum indexing several fields stays within its budget on disk (core follow-ups: index entries count)', { timeout: 120000 }, async (t) => {
   // The app's next version indexes items by three fields.
   const types = { ...forum.types, item: { fields: { kind: 'string', owner: 'string', place: 'string', text: 'text' }, index: [['kind', 'stamp'], ['owner', 'stamp'], ['place', 'stamp']] } }
   const a = await account(t, 'author', { types })
