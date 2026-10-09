@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09 (review of spec 011 story 5)** — Story 5 accepted (153/153 on Node and Bare, re-run in the
+  lead conversation; `011-spaces-core` fast-forwarded). Accepted by the lead (research.md A9): a link or
+  tag counts only if its author may edit the source record (so nobody labels others' posts; community
+  labels would be a separate feature); the owner holds every permission, app ones included; a custom
+  role can't lose an app permission (like `post`); an edit made by a modified app before its author got
+  the permission starts counting once given (everyone still agrees). Next story: `space.roles()`, and a
+  device just made admin/moderator waits (bounded) until it may record decisions instead of failing
+  (the device tests still retry).
+
 - **2026-10-09** — Shared records (wiki pages, shared folders): **only the author and moderators can
   delete**; other allowed editors can only edit (a blanked page is restored by the next edit). (Tibo)
 
@@ -126,5 +135,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 3. Story 2 done and reviewed.
 4. Story 3 done and reviewed → **SwarmFS can start** (its own repo and spec, prompt written with Tibo).
 5. Story 4 done and reviewed.
-6. **Worker session 5**: story 5 (graph vocabulary, shared editing). SwarmFS spec session once Tibo has
-   renamed the old SwarmFS folder.
+6. Story 5 done and reviewed.
+7. **Worker session 6**: story 6 (holding part of a space: budgets, policies, bounded reads, rebuild).
+   SwarmFS spec session once Tibo has renamed the old SwarmFS folder.
