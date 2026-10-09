@@ -57,6 +57,9 @@ test('two versions in one forum read each other\'s records', async (t) => {
   t.is(onNew.text, 'from the old app')
   t.is(onNew.topic, null, 'the new app sees it empty on an old post')
   t.is(ids(await forum.byTopic(fa, 'rust')), fresh.id, 'topics work on the new version')
+  // Records without a topic (all the old app's) aren't in the topic index:
+  // asking for them is an error, not an answer that differs between members.
+  await t.exception(forum.byTopic(fa, null), /no value/)
 })
 
 test('a phone not updated yet edits a post: the topic it doesn\'t know stays', async (t) => {

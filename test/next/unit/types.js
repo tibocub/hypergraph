@@ -7,6 +7,7 @@ const test = require('brittle')
 const crypto = require('hypercore-crypto')
 const z32 = require('z32')
 const { Types } = require('../../../lib/types.js')
+const { ixKeys } = require('../../../lib/index/indexer.js')
 const { idToString } = require('../../../lib/encodings.js')
 
 const forum = {
@@ -144,4 +145,11 @@ test('hypergraph\'s graph types: relations and tags (story 5)', (t) => {
   t.alike(types.get('hg/tag').fields.map(f => [f.name, f.kind]), [['on', 'link'], ['tag', 'string'], ['off', 'bool']])
   t.absent(types.describe()['hg/relation'], 'not part of the app\'s declaration')
   code(t, () => new Types({ 'hg/relation': { fields: { a: 'string' } } }), 'INVALID_TYPE', 'hg/')
+})
+
+test('app indexes leave out records whose indexed fields are all empty (story 7)', (t) => {
+  const types = new Types({ ...forum, pair: { fields: { a: 'string', b: 'string' }, index: [['a', 'b', 'stamp']] } })
+  t.alike(ixKeys(types, 'post', { title: 't', text: '', forum: 'news' }), ['forum news'])
+  t.alike(ixKeys(types, 'post', { title: 't', text: '', forum: null }), [], 'no forum: not in the index (an older version wrote it)')
+  t.alike(ixKeys(types, 'pair', { a: 'x', b: null }), ['a,b x '], 'one of several is enough')
 })
