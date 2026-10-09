@@ -78,6 +78,7 @@ await forum.moderateAction('reveal', comment)                     // shown again
 await forum.moderateAction('flag', post, { reason: 'check' })     // record.flagged
 await forum.moderateAction('remove', comment)                     // gone for good
 await forum.moderateAction('ban', someone, { reason: 'spam' })    // out for good
+await forum.moderateAction('ban', someone, { from: firstSpam })   // and drop that record and all after it
 ```
 
 Built-in roles: `owner` (everything), `admin` (members, roles, invites, moderation), `moderator`
@@ -89,8 +90,9 @@ demoted later: what they decided before stays, what they decide after counts for
 
 Removing or banning someone keeps what they wrote up to what you held at that moment, for everyone,
 including people who join later; anything they write after is ignored everywhere. A ban keeps their
-earlier votes too; take down their spam with `remove`. Let in again (after a removal, not a ban), they
-write again.
+earlier votes too. To drop the spam that led to the ban, ban `from` its first record: that record and
+everything they wrote after it (on that device) go too, for everyone, in the same decision. Let in again
+(after a removal, not a ban), they write again.
 
 A hidden record is left out of `query`, `linked`, `count` and `sum`; `get(id)` still returns it with
 `hidden: true`, so you can show "hidden by moderators" and let moderators reveal it.

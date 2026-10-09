@@ -430,3 +430,14 @@ Test: `test/next/unit/stamp.js` ("a version stamped a day ahead loses to an edit
   Worth reporting upstream.
 - **Holes are looked at again** after a short wait growing to 5 s while none fills: a block's arrival can
   be missed, and a missed hole stayed "missing" for good.
+
+### A6. A ban can start from a chosen record (decided by Tibo, 2026-10-09)
+
+Answers A5's open question. `moderateAction('ban', who, { from: record })`: the cut of the log holding
+`record` is that record's position, so it and everything after it in that log are dropped for everyone;
+the banned identity's other logs are cut where the moderator holds them, as before. Without `from`,
+unchanged. Nothing new on the wire: the ban's cut entries already carry a length per log, and "a log's
+first cut stays its cut" (A4) still holds. `from` must be one of the banned member's records in a log
+this member holds (`NOT_ALLOWED` otherwise). The forum bans a spammer in one call (`forum.ban(f, who,
+{ from: firstSpam })`), replacing A5's "ban, then take down each spam since a time". Test:
+`test/next/forum/moderation.js` ("a ban from the first spam…").

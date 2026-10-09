@@ -92,7 +92,7 @@ test('taking down is for good: gone everywhere, blocks cleared, never revealed',
   t.is((await forum.comments(fa, p)).length, 0, 'a reveal does not bring it back')
 })
 
-test('a ban: earlier votes count, the spam goes, nothing after is kept; an offline member agrees', async (t) => {
+test('a ban from the first spam: earlier votes count, the spam goes, nothing after is kept; an offline member agrees', async (t) => {
   const { c, d, fa, fb, fc, fd } = await community(t)
   const who = c.identity.publicKey
   const p = await forum.post(fa, 'Vote', '')
@@ -107,7 +107,8 @@ test('a ban: earlier votes count, the spam goes, nothing after is kept; an offli
   const titles = (f) => forum.latest(f).then((xs) => xs.map((x) => x.title).sort().join())
   t.ok(await agree([fb], titles, ['A fine post', 'Vote', ...spam.map((x) => x.title)].sort().join()), 'b sees the spam')
 
-  await forum.ban(fb, who, { reason: 'spam', since: spam[0].stamp })
+  await t.exception(forum.ban(fb, who, { from: p }), /NOT_ALLOWED|not theirs/, 'a ban from someone else\'s record is refused')
+  await forum.ban(fb, who, { reason: 'spam', from: spam[0] })
   t.ok(await eventually(async () => (await forum.roleOf(fc, who)) === null, 5000), 'c is out')
   await testing.writeRaw(fc, { kind: 'put', type: 'post', fields: { title: 'still spamming', text: '' } })
   await testing.writeRaw(fc, { kind: 'put', type: 'vote', fields: { on: p.id, value: -1 } })

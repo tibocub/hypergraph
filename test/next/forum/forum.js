@@ -100,15 +100,10 @@ function flag (forum, record, reason) {
 }
 
 // Out for good: what they wrote up to what this moderator holds stays,
-// anything after is ignored. `since` (a time): also take down their posts
-// and comments written since then (the spam the moderator saw).
-async function ban (forum, who, { reason = '', since = 0 } = {}) {
-  await forum.moderateAction('ban', who, { reason })
-  if (!since) return
-  for (const type of ['post', 'comment']) {
-    const { items } = await forum.query(type).by(who).latest(1000)
-    for (const r of items) if (r.stamp >= since) await takeDown(forum, r, reason)
-  }
+// anything after is ignored. `from` (one of their records, e.g. the first
+// spam): that record and everything after it in the same log go too.
+function ban (forum, who, { reason = '', from } = {}) {
+  return forum.moderateAction('ban', who, { reason, from })
 }
 
 // --- posting ---

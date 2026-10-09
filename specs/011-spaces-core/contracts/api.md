@@ -145,6 +145,8 @@ await forum.removeRole(someone)       // ✓ takes them out of the space (v1's m
 await forum.moderateAction('hide', post.id, { reason: 'spam' })   // ✓ flag | hide | reveal | remove (for good)
 await forum.moderateAction('ban', someone, { reason: 'spam' })    // ✓ out for good: kept up to where this
                                       //   moderator holds them, ignored after; not let back in (no unban yet)
+await forum.moderateAction('ban', someone, { from: spam })        // ✓ the same, and that record and everything
+                                      //   after it in its log go too, for everyone (NOT_ALLOWED if not theirs)
 // ✓ moderators, admins, owner (NOT_ALLOWED otherwise); a demoted moderator's later decisions are ignored
 //   by every member, earlier ones stay. Each call resolves once this member applied the decision.
 ```

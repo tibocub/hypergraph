@@ -146,7 +146,9 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 ## Phase 6: User Story 4 — Invites and joining (Priority: P2)
 
 - [ ] T054 [P] [US4] test/next/forum/invites.js: redeem while the inviter is offline and another admin online; expired, used-up, revoked links refused with their codes; an inviter whose role can't give the role → refused; a public link with unlimited uses; revoking it stops new joins, members stay; a write limit per period enforced by every member (US4 #1–4, FR-023)
-- [ ] T055 [US4] lib/invites.js complete (uses, expiry, revocation, redemptions, recorded by any decision writer, never downgrades — spec 008's design), `settings/set { writeLimit }` in the gate; `revokeInvite`, `redemptions`, `setWriteLimit`; docs; CHANGELOG
+- [ ] T054a [P] [US4] test/next/forum/moderation.js: **unban** — a banned member let back in (`moderateAction('unban', who)`, then an invite or `setRole`) writes again; what they wrote during the ban stays ignored for everyone, newcomers included; new writes count from the unban (ROADMAP 2026-10-09)
+- [ ] T054b [P] [US4] test/next/net/indexers.js: **admins share the settling of the decision order with the owner** — members with `decide` are Autobase indexers; with the owner gone for good, two admins still settle new decisions (a role, a ban, a redemption) that every member applies the same way; an admin demoted later stops being an indexer (v1 spec 003's lesson; ROADMAP 2026-10-09)
+- [ ] T055 [US4] lib/invites.js complete (uses, expiry, revocation, redemptions, recorded by any decision writer, never downgrades — spec 008's design), `settings/set { writeLimit }` in the gate; `revokeInvite`, `redemptions`, `setWriteLimit`; unban (a `moderate` action lifting `banned:`; the ban's cut stays, so the member writes again in a new device log, as after a removal — research.md A4); decision-log indexers = members with `decide` (`host.addWriter(key, { indexer: true })`, removed when demoted); docs; CHANGELOG
 
 ## Phase 7: User Story 5 — Graph vocabulary, shared editing (Priority: P2)
 
