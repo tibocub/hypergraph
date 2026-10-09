@@ -164,14 +164,14 @@ devices no removal names — fixed first.
   (`IdentityKey.attestDevice`, a chain of two) doesn't verify, for logs and for data (a stolen device can't
   mint new devices that no removal names); then lib/identity.js accepts chains of zero (the identity key)
   or one (a device bootstrapped from it) only; drop the unused `attestDevice`
-- [ ] T054a [P] [US4] Test test/next/unit/decisions-writers.js (in-memory view, as decisions-roles.js):
+- [X] T054a [P] [US4] Test test/next/unit/decisions-writers.js (in-memory view, as decisions-roles.js):
   `writer/add { key, proof }` (a device's claim, signed on its identity's behalf) makes the key a writer only
   for a member whose role has `decide` or `moderate`, once, and never for a removed device; a forged or
   someone else's claim is ignored; `device/remove { device, cut, proof }` (the identity key's signed removal,
   the same bytes as the record) drops every writer key of that device, its later decisions are ignored and
   its later claims refused; only that identity's own key counts; losing both `decide` and `moderate`
   (demotion, removal, ban) drops the member's writer keys
-- [ ] T054b [P] [US4] Same file: settlers (Autobase indexers) are one writer key per member with `decide`
+- [X] T054b [P] [US4] Same file: settlers (Autobase indexers) are one writer key per member with `decide`
   (the owner's first, an admin's first); a removed settling device hands over to another writer key of the
   same person; demotion below `decide` stops settling (moderators write, don't settle); the last settler is
   never removed (Autobase refuses: `host.removeable`); two orders of the same concurrent decisions converge
