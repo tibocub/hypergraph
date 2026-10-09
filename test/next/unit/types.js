@@ -108,3 +108,11 @@ test('compatibility: anything else throws INCOMPATIBLE_TYPES naming type and fie
   const editable = new Types({ ...forum, post: { ...forum.post, editable: 'members' } })
   code(t, () => editable.checkCompatible(before), 'INCOMPATIBLE_TYPES', 'post', 'editable')
 })
+
+test('hypergraph\'s graph types: relations and tags (story 5)', (t) => {
+  const types = new Types(forum)
+  t.alike(types.get('hg/relation').fields.map(f => [f.name, f.kind]), [['from', 'link'], ['to', 'link'], ['rel', 'string'], ['value', 'float'], ['data', 'text'], ['off', 'bool']])
+  t.alike(types.get('hg/tag').fields.map(f => [f.name, f.kind]), [['on', 'link'], ['tag', 'string'], ['off', 'bool']])
+  t.absent(types.describe()['hg/relation'], 'not part of the app\'s declaration')
+  code(t, () => new Types({ 'hg/relation': { fields: { a: 'string' } } }), 'INVALID_TYPE', 'hg/')
+})
