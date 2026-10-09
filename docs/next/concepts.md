@@ -24,20 +24,31 @@ Records show the person, not the device: `record.author` is the identity (the pe
 phrase), `record.device` the device that wrote the current version.
 
 Records can **link** to other records (a comment's `on` field points at a post). "What points at X" is
-a query: `space.linked(post, 'comment')`.
+a query: `space.linked(post, 'comment')`. Besides link fields, v1's graph vocabulary is there:
+**relations** (`relate(a, b, 'cites')`, a type, a number and small data, seen in `edges()` out of one
+and into the other) and **tags**. Both are records too, said by whoever may edit the record they start
+from (its author, by default); the latest relate or unrelate, tag or untag wins.
 
 ## Edits and deletes
 
 Logs are append-only: nothing is changed in place.
 
 - An **edit** is a new record that replaces an earlier one. The record keeps its id; everyone shows the
-  latest version. Who may edit is part of the type (its author, by default); anyone else's edit is
-  refused by your app and ignored by every member.
-- A **delete** is a record that marks one as deleted (a tombstone). Every member stops showing it and
-  wipes its copy. A modified app, or a device that was offline and never got the delete, may still keep
+  latest version. Who may edit is part of the type: its author (the default), any member, or members
+  whose role has a permission (a wiki's editors). Anyone else's edit is refused by your app and ignored
+  by every member.
+- A **delete** is a record that marks one as deleted (a tombstone), and only the author's counts: on a
+  shared page, an editor who doesn't like it edits it (the next edit can restore it), and moderators
+  take records down by decision. Every member stops showing it and wipes its copy. A modified app, or a device that was offline and never got the delete, may still keep
   a copy: deleting on a network of peers cannot be stronger than that.
 
 Types declared `onePerMember` (votes) count each member's latest record only.
+
+Losing the right to edit works like a ban, for edits only: the decision taking the permission away
+records how far the decider held the editor's logs (a **cut**). Edits below it stay valid for everyone;
+edits past it count for no one — members who had shown them take them back, newcomers never show them.
+That is the only way members who saw things at different times agree: records aren't ordered against
+decisions, so "did they still have the permission?" can't be answered by the clock.
 
 ## Latest wins
 
@@ -83,8 +94,8 @@ Decisions apply as soon as they arrive; their order is then **settled** by the o
 one device each: once most of them have seen a decision, its place in the order is final. So a space
 outlives its owner: with the owner gone for good and two admins online, decisions keep settling.
 Settling needs most of the settlers online at once; a space whose only settler is lost for good still
-applies new decisions, but never settles them again (the unsettled part keeps growing), so give a space
-an admin or two.
+applies new decisions, but never settles them again (the unsettled part keeps growing), so **give a
+space an admin** or two. `space.status()` warns while only one member settles (`SINGLE_SETTLER`).
 
 ## Roles and moderation
 

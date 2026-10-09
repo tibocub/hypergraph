@@ -164,7 +164,7 @@ test('paging through posts by three members never skips or repeats, equal stamps
   const seen = []
   let after
   for (;;) {
-    const page = await forum.page(fb, 7, after)
+    const page = await forum.postsPage(fb, 7, after)
     if (!page.length) break
     t.ok(page.length <= 7)
     seen.push(...page)
@@ -194,4 +194,7 @@ test('a member offline meanwhile shows the same edges and tags', async (t) => {
   const expected = { refs: { from: [r.id], count: 1 }, tagged: [p.id] }
   const state = async (f) => ({ refs: await forum.referencedBy(f, q), tagged: (await forum.tagged(f, 'a')).map((x) => x.id) })
   t.ok(await agree([fa, fb, fc2], state, expected), 'the same everywhere')
+  const n = await account(t, 'newcomer')
+  const fn = await forum.join(n, await forum.invite(fa))
+  t.ok(await agree([fn], state, expected), 'for a newcomer too')
 })

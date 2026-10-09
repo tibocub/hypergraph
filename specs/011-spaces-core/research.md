@@ -67,7 +67,7 @@ cross-space query) — rejected.
   record keeps its id; its current version is the latest allowed edit.
 - Records are at most 64 KB; content held elsewhere uses spec 001's reference envelope (`src`, `size`,
   `type`, `digest: "blake3:…"`, e.g. `swarmwire://<root>`). `relate` and `tag` are records of built-in
-  types `hg/relation` (from, to, type, value, data ≤ 4 KB) and `hg/tag`.
+  types `hg/relation` (from, to, type, value, data ≤ 4 KB) and `hg/tag` (shapes amended by A9).
 - Compact encoding throughout (`compact-encoding`), no JSON.
 
 **Why**: append-only underneath, mutable on the surface (Tibo, 2026-10-08); one log per device
@@ -613,3 +613,71 @@ disagree. `setWriteLimit` stays out of the API (tasks.md T071a).
 still-plain phrase of an existing folder. `query(type).fromDevice(key)`: records one device put
 (`row.device`), filtered while reading the type's index (no new HyperDB index: a folder made before
 would miss old rows; a `by-device` index can come when a big space needs it).
+
+### A9. Story 5: the graph vocabulary, shared editing, follow-ups of story 4's review (2026-10-09)
+
+**Relations and tags** (FR-007, FR-008, R5): records of built-in types in their author's own log,
+`hg/relation { from, to, rel, value, data, off }` and `hg/tag { on, tag, off }` (R5's field `type` is
+`rel`: `type` is the record's own). They are never edited or deleted: `unrelate` and `untag` write a
+new one with `off: true`, and the latest wins per (from, to, rel) and per (record, tag). So an
+unrelate is undone by relating again (v1: "after unrelate, relate again recreates the edge"), the same
+everywhere in any order of arrival; v1's "relating twice doesn't duplicate" holds too. A delete that is
+final (A3) would have let one member erase what others can't restore.
+- **Who says it** (worker's choice, for the lead's review): a relation from X, or a tag on X, counts only
+  if its author **may edit X** — X's author by default (v1's from-ownership rule, test/brittle/core/
+  relations.js: a forged edge "from the victim's post" is ignored at apply time), its editors for a
+  shared type, with the same cuts as edits. This also gives v1's "any authorized writer can unrelate"
+  its new-core meaning: any editor of X. Tags in v1 had no owner; here a tag is the record's (the
+  author's, or editors'), like an edit. Personal tags (bookmarks) belong in the personal space.
+  Alternative considered: per-author edges and tags (anyone tags anything, `untag` removes only your
+  own): simpler, but lets any member hang labels on anyone's records and breaks v1's from-ownership.
+- **Edges are computed when read**, from the by-link index (relations touching one record are few):
+  group per (from, to, rel), keep the latest allowed, drop `off`. An edge whose `from` isn't held
+  doesn't show (its author can't be checked). `edges()` returns `{ items, count, complete }` (the
+  contract's "items carry count" made concrete: `count` is before `limit`).
+- **Tags live on the tagged row** as index keys (`\0#<tag>`, next to the app's `index` keys in `by-ix`),
+  recomputed when a tag record arrives, the target arrives, an edit or resettle rewrites the row's keys,
+  a tag record is cut, hidden or taken down, and when edit rights change. So `getByTag` and
+  `query(type).tag()` are newest first by when the record was put and page like any query, with no new
+  HyperDB index. `getByTag` without a type merges the app's types.
+- **Queries compose** (v1: "chained filters compose with AND"): one filter picks the index (where/tag →
+  by-ix, `on` → by-link, `by` → by-author, else by-type), the others are checked on each row; `since`
+  (inclusive) and `until` (exclusive) bound the stamp. Paging with `after` was already exact for equal
+  stamps (rows are ordered by stamp, then id); now tested with three members' records tied.
+- `linked(x)` without a type leaves hypergraph's own records out (relations and tags link too).
+
+**Shared editing** (FR-003, US5 #4):
+- **Deletes**: only the author's own delete counts, whatever the type (Tibo, 2026-10-09). A moderator who
+  isn't the author calling `del()` gets a `remove` decision (A5): ordered and permission-checked at its
+  point, so it needs no cut, unlike a "moderators may delete" record rule would (a moderator demoted
+  later: was their delete allowed?).
+- **Edits by permission use A4's cut**: `role/set` already carries the decider's held lengths; apply now
+  also records them under `editcut:<id>` for each app permission the role change takes away (not
+  `post`, which has its own cut, nor hypergraph's decision rights, which are ordered). An edit (or
+  relation, or tag) by someone other than the author counts if its position is below the editor's cut
+  for that permission, or, for a log no cut names, while the editor holds it. Two consequences, both
+  converging: edits made before the permission was given count once it is (only a modified app writes
+  them: the API refuses); and given it back, the editor writes in a new log (its app switches before
+  writing, as after an unban), since a log's first cut stays.
+- `editable: 'members'` relies on the log limit (A4), as before.
+- **A custom role never loses an app permission** (extends A5's rule for `post`): its holders can't be
+  listed reliably to cut each one. It may lose `decide`, `moderate`, `invite`, `roles`.
+- **The owner holds every permission**, the app's included (it had only hypergraph's: an owner couldn't
+  edit a wiki page without giving itself a role).
+- When edit rights change (who holds an app permission used by a type, or a new edit cut), the indexer
+  judges the edits of those types and the tags on their records again (`Indexer.reauthorize`: a scan of
+  the space's `changes` and tag rows; decisions are rare). It also runs once at open.
+
+**Follow-ups settled in story 4's review (ROADMAP 2026-10-09)**:
+- `redeemInvite` waits 30 s by default; reads keep `readTimeout`.
+- **Catching up before refusing**: role, moderation and invite methods, and `put`/`edit`/`del`/`relate`/
+  `tag`, check first; if refused, they catch up with the connected decision writers (`Decisions.catchUp`:
+  `core.update({ wait: true })` on every writer's log of the decision log, a wakeup hint to Autobase, then
+  wait until it applied what is new, within `readTimeout`) and check again. Only refusals pay the wait,
+  and only while connected peers know more. `NOT_ALLOWED` names the reason (banned, not a member, your
+  role, their role at or above yours, the permission a type needs). The forum tests' retries after an
+  unban and after promoting an admin are gone. A device just *promoted to record decisions* may still
+  wait up to 5 s to become a writer (`Decisions.append`); the devices tests keep their retries for that.
+- `space.status()` → `{ peers, settlers, warnings }`, with `SINGLE_SETTLER` while one member settles
+  (not for the personal space, whose settler comes back from the phrase); docs say "give a space an
+  admin".

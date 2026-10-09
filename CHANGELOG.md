@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-09: `hypergraph/next` — story 5, the graph vocabulary and shared editing (ALPHA, breaking within `next`)
+
+- v1's graph vocabulary: `relate(a, b, type, { value, data })`, `unrelate`, `edges(record, { direction,
+  type, order, limit })` → `{ items, count, complete }`, `tag`, `untag`, `getByTag(tag, { type, limit,
+  after })`; `query(type).tag()`, `.on(record)`, `.since()`, `.until()`, combining with `.by()` and `.where()`.
+  Relations and tags are said by who may edit the record they start from.
+- Shared editing: types `editable: 'members'` or `{ permission }`; the latest allowed edit wins; only the
+  author deletes (a moderator's `del()` takes the record down); an editor who loses the permission is cut,
+  the same for every member.
+- Decision methods and writes catch up with connected decision writers before refusing, and `NOT_ALLOWED`
+  says why; `space.status()` warns while a space has a single settler; `redeemInvite` waits 30 s by default.
+- Breaking within `next`: a delete by a non-author editor of a `'members'` / `{ permission }` type no longer
+  counts; a custom role can't lose an app permission; the owner holds every permission; `linked()` without a
+  type leaves relations and tags out. Details: `specs/011-spaces-core/research.md` A9.
+
 ### 2026-10-09: `hypergraph/next` — story 4, invites and decision rights that follow devices (ALPHA, breaking within `next`)
 
 - Security: a device proof must come straight from the identity key (a stolen device could mint new

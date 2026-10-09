@@ -221,7 +221,7 @@ async function score (forum, on) {
 }
 
 // A page of posts, newest first: { after } the last post of the previous page.
-async function page (forum, n, after) {
+async function postsPage (forum, n, after) {
   return (await forum.query('post').latest(n, { after })).items
 }
 
@@ -323,7 +323,7 @@ module.exports = {
   comments,
   thread,
   score,
-  page,
+  postsPage,
   tag,
   untag,
   tagged,

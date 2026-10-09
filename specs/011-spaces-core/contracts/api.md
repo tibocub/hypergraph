@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1, 2, 3 and 4 (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1 to 5 (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 
@@ -83,15 +83,18 @@ await hg.settings()                // ✓ { theme: 'dark' }
 ```js
 const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name (policy kept, applied in story 6; private: story 8)
 const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connecting if needed); resolves to the Space once a
-                                                // member who records decisions let us in. ✓ story 4: waits up to
-                                                // readTimeout by default; refused: INVITE_EXPIRED, INVITE_USED_UP,
+                                                // member who records decisions let us in. ✓ story 5: waits up to
+                                                // 30 s by default (reads keep readTimeout); refused: INVITE_EXPIRED, INVITE_USED_UP,
                                                 // INVITE_REVOKED, NOT_ALLOWED; nobody answered: INVITE_INVALID
 hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
 hg.space(key)                                   // ✓ sync: the Space; NOT_FOUND if not held here
 await hg.leaveSpace(key)                        // drops its data from this device
 
 forum.key; forum.name; forum.parent             // ✓ sync
-forum.status()                                  // sync: { policy, held, budget, belowPolicy, peers }
+forum.status()                                  // sync: { policy, held, budget, belowPolicy, peers, settlers, warnings }
+                                                // ✓ story 5: { peers, settlers, warnings: [{ code, message }] };
+                                                //   SINGLE_SETTLER while only one member settles decisions
+                                                //   ("give a space an admin"); policy, budget: story 6
 forum.setBudget(1e9)                            // or null: share the app budget
 forum.on('change', ({ types }) => {})           // ✓ records of these types changed
 forum.on('status', (status) => {})
@@ -111,7 +114,9 @@ types: {
 // editable: 'author' (default) | 'members' | { permission: name }
 // Only appending fields or adding types is allowed between app versions; anything else throws INCOMPATIBLE_TYPES.
 // ✓ story 1: all kinds, links, onePerMember (one per member per its first link field), editable 'author';
-//   bad declarations throw INVALID_TYPE naming type and field. Field names id, type, author, device,
+//   bad declarations throw INVALID_TYPE naming type and field.
+// ✓ story 5: editable 'members' and { permission }: the latest allowed edit wins; only the author's delete
+//   counts (a moderator's del() is a take-down); an editor who loses the permission is cut (research.md A9). Field names id, type, author, device,
 //   stamp, edited, futureStamp are taken by the record itself.
 ```
 
@@ -125,7 +130,11 @@ const post = await forum.put('post', { title: 'Hello', text: 'First!' })   // �
 const { record, complete } = await forum.get(post.id)   // ✓ record null if not held (or deleted)
 await forum.edit(post.id, { text: 'First! (edited)' })   // ✓ changes these fields, keeps the others; resolves to the
                                                          //   new version; NOT_ALLOWED unless the type lets this member edit
-await forum.del(post.id)                                 // ✓ every member stops showing it and clears its blocks
+await forum.del(post.id)                                 // ✓ every member stops showing it and clears its blocks;
+                                                         //   ✓ story 5: only the author deletes; a moderator who isn't
+                                                         //   the author takes it down (moderateAction('remove'));
+                                                         //   NOT_ALLOWED for other editors
+// ✓ story 5: put, edit and del first catch up with connected decision writers before refusing (NOT_ALLOWED with why)
 ```
 
 ## Queries and the graph
@@ -135,7 +144,9 @@ const { items, complete } = await forum.query('post').latest(20)   // ✓ newest
 await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-declared index (INVALID_TYPE if not declared)
 await forum.query('comment').by(someone).latest(20)                // ✓ by author (identity key)
 await hg.personal.query('held').fromDevice(device).latest(20)      // ✓ story 4: what one device put (device key)
-await forum.query('post').tag('rust').latest(20)
+await forum.query('post').tag('rust').latest(20)                    // ✓ story 5
+await forum.query('comment').on(post).by(someone).latest(20)       // ✓ story 5: by link; filters combine (AND)
+await forum.query('post').since(t0).until(t1).latest(20)           // ✓ story 5: put at or after t0, before t1
 await forum.query('post').latest(20, { after: items.at(-1), timeout: 2000 })   // ✓ paging: after the last record of
                                                                    //   the previous page; own bound
 const stop = forum.query('post').live(({ items, complete }) => render(items), { limit: 20 })   // ✓ sync; returns stop();
@@ -145,11 +156,18 @@ await forum.linked(post, 'comment', { timeout })   // ✓ { items, complete } �
 await forum.count('comment', { on: post })         // ✓ { value, complete }
 await forum.sum('vote', 'value', { on: post })     // ✓ { value, complete } — one per member, latest
 
-await forum.relate(a, b, 'cites', { value: 1, data })   // data ≤ 4 KB
-await forum.unrelate(a, b, 'cites')
-await forum.edges(a, { direction: 'out', type: 'cites' })   // { items, complete }, items carry count
-await forum.tag(post, 'rust'); await forum.untag(post, 'rust')
-await forum.getByTag('rust', { limit: 20 })        // { items, complete }
+await forum.relate(a, b, 'cites', { value: 1, data })   // ✓ story 5: value a finite number, data text ≤ 4 KB
+                                                   //   (INVALID_RECORD); { id, from, to, type, value, data, author,
+                                                   //   stamp }; said by who may edit `a` (NOT_ALLOWED); again: replaces
+await forum.unrelate(a, b, 'cites')                // ✓ NOT_FOUND if there is none; relate again brings it back
+await forum.edges(a, { direction: 'out', type: 'cites', order: 'asc', limit })   // ✓ { items, count, complete };
+                                                   //   direction 'out' | 'in' | 'both' (default); count before limit
+await forum.tag(post, 'rust'); await forum.untag(post, 'rust')   // ✓ by who may edit it; untag: NOT_FOUND if not tagged
+await forum.getByTag('rust', { type, limit: 20, after })   // ✓ { items, complete }, newest first (put time); no type:
+                                                   //   all the app's types
+// ✓ story 5 (research.md A9): relations and tags are records (hg/relation, hg/tag) in their author's log; the
+//   latest relate/unrelate per (from, to, type) and tag/untag per (record, tag) wins, among who may edit `from`
+//   (or the tagged record), cuts included. linked() without a type leaves them out.
 ```
 
 ## Roles and moderation
@@ -157,7 +175,8 @@ await forum.getByTag('rust', { limit: 20 })        // { items, complete }
 ```js
 await forum.defineRole('editor', ['post', 'edit-pages'])   // ✓ owner/admins; hypergraph's own permissions (post,
                                       //   moderate, invite, roles, decide) and the app's; a role may gain
-                                      //   permissions, never lose 'post'
+                                      //   permissions, never lose 'post' (✓ story 5: nor an app permission;
+                                      //   decide, moderate, invite, roles it may). The owner holds every permission.
 await forum.setRole(someone, 'moderator')   // ✓ built-in (admin, moderator, member, guest) or defined; adds
                                       //   non-members (v1); NOT_ALLOWED at or above your rank, NOT_FOUND for an
                                       //   unknown role; a role without 'post' cuts like a removal
@@ -174,6 +193,9 @@ await forum.moderateAction('ban', someone, { from: spam })        // ✓ the sam
                                       //   after it in its log go too, for everyone (NOT_ALLOWED if not theirs)
 // ✓ moderators, admins, owner (NOT_ALLOWED otherwise); a demoted moderator's later decisions are ignored
 //   by every member, earlier ones stay. Each call resolves once this member applied the decision.
+// ✓ story 5: before refusing, every role, moderation and invite method catches up with the connected members
+//   who record decisions (within readTimeout); NOT_ALLOWED says why (banned, not a member, role too low, their
+//   role at or above yours). setRole to a role without an app permission cuts the member's edits relying on it.
 ```
 
 ## Invites
@@ -212,6 +234,10 @@ forum.addProtocol('swarmfs/transfer', {
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
 `INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`.
+
+Story 5 uses: `INVALID_RECORD` (a relation's value or data, an empty type or tag), `NOT_ALLOWED` (relating from,
+tagging or editing a record you may not edit; deleting someone else's record without moderating; a role losing
+an app permission; with the reason), `NOT_FOUND` (unrelating or untagging what isn't there).
 
 Story 4 uses: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `NOT_ALLOWED` (refused redemptions, with
 their reason, within the read bound), `INVITE_INVALID` (nobody able to let us in answered in time),
