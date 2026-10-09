@@ -305,12 +305,38 @@ its own records, the decisions, the list of records — is already more than its
 await forum.roles()   // [{ name, permissions, custom }]: owner, admin, moderator, member, guest, then the space's own
 ```
 
+## Who, what, who is online
+
+```js
+await forum.members()       // [{ identity, role, you, banned, removed, devices: [{ device, log }] }]: members
+                            // highest role first, then people banned or removed (role null)
+await forum.decisions({ limit: 50, after })   // { items, complete }: newest first, what was decided —
+                            // { seq, type, by, device, at, counted, ...what }: who (identity and device), when
+                            // (their clock), what (identity, role, action, target, reason, name, permissions,
+                            // policy, rules), and whether it counted. `after`: the last item of the previous page
+await forum.tags(post)      // { items: ['rust', ...], complete }: a record's tags, sorted
+forum.peers()               // [{ identity, device }]: connected right now (identity null for a moment)
+hg.types()                  // { post: { fields: { title: 'string', ... }, links, onePerMember, editable, index,
+                            //   builtin } }: the declared types, hypergraph's own marked builtin
+forum.on('peers', (peers) => {})   // someone connected or left
+forum.on('logs', () => {})         // a member's log arrived or grew (at most every 100 ms)
+```
+
+`decisions()` is a moderation log your app can show ("bob hid this: off topic"): every member lists the
+same, in the order every member applies them. A decision whose author wasn't allowed to make it at that
+point is listed with `counted: false` and changed nothing. `peers()` is proven: a peer sends its device
+proof, checked against the key of the connection.
+
 ## Diagnostics
 
 ```js
 await forum.inspect()   // read-only snapshot: logs (length, held, indexed, cut, dropped, refused, waiting),
                         // the decision log (length, settled, settlers, writers), records by type, storage, peers,
                         // complete, warnings
+await forum.inspect({ records: { type: 'post', limit: 25, after } })   // + rows: { items, next }: every row of the
+                        // type, hidden, superseded and dropped ones included, each with `state`
+await forum.inspect({ record: id })   // + record: its versions (the put, every edit: who, when, counts) and
+                        // deletes, also for a record deleted or taken down
 ```
 
 For debugging and for the inspector tool. It writes nothing and fetches nothing, but counts every record

@@ -783,3 +783,52 @@ those records aren't indexed and `where()` with no value throws `INVALID_RECORD`
   Predates story 7; story 7's rebuild doesn't change it.
 - A record of a hypergraph type (`hg/…`) this version doesn't know is refused: a future hypergraph version
   adding a built-in type would be disagreed on by members on the older one.
+
+### A12. Core follow-ups of the review of story 7 and the inspector (2026-10-09)
+
+**Link targets are judged when read** (Principle I, A11's limit). A link field's allowed targets were checked
+when the record arrived, only if the target was held then, and never again: a member that held the target first
+refused the record, one that got the record first kept it, and a misbehaving member could make them disagree.
+Now a record is kept whatever its links point at, and every read that follows a link (`linked`, `count`, `sum`,
+`query().on()`, and the link field shown on the record) looks at the target: held here with a type the field
+doesn't allow → that link counts for nothing (the field reads `null`, the record isn't "on" it); not held → the
+link stands as written. A record's type never changes, and a target that isn't held is either on its way or gone
+on every member (deleted, taken down, cut), so every member judges alike whatever arrived first.
+Considered: marking rows when the target arrives (reads stay free) — rejected: once a target is deleted its type
+is gone, so a member that marked the row and a newcomer that never saw the target would disagree. Costs: one
+index lookup per target followed (cached per read); a record whose content was dropped here (story 6) is fetched
+to tell which of its fields points at the target only when that matters (some fields allow the type, others
+don't), or the answer says `complete: false`. Consequence: a type gaining a link field with targets no longer
+rebuilds the index (A11's `stale()` drops that case). Known limit, as for fields: an older app version that
+doesn't know a link field counts a link through it as written. Test: `test/next/forum/link-targets.js` (both
+orders of arrival, a newcomer, the target deleted).
+
+**Future hypergraph types** (`hg/…` unknown to this version) are kept and counted by type like unknown app types
+(`test/next/forum/versions.js`).
+
+**Flaky tests.** `budgets.js` #2 checked the drop before the budget pass made it: it waits for it now. Disk is
+measured once RocksDB flushed its write-ahead log (compacting until within, bounded): right after a reader
+downloaded and dropped a lot, that log holds the churn (seen at 0.8 MB). `inspect.js`'s stranger announced its log
+once; a member whose header fetch missed it never heard again (by design: someone may offer it again): the
+stranger now keeps pushing while waited for, as a spammer would. Tests' own limits are above their waits.
+
+**Reads for the inspector**: `space.members()` (members by role, then banned and removed people), `space.decisions()`
+(a list apply writes into the decision log's view — `~log:<n>`, after every other key so the state's read skips it —
+so it follows Autobase's reorders and every member lists the same once settled; a decision is `counted` when it
+changed the view; one by a removed writer key that Autobase never applies is not listed), `hg.types()`,
+`space.tags(record)`, `space.peers()` (the swarm uses the device key pair, so a connection's remote key is the
+peer's device key; each side sends its device proof, `hello`, checked against it), `inspect({ records })`,
+`inspect({ record })`, events `peers` and `logs` (at most every 100 ms). Renamed inside: `space.decisionLog` (the
+Autobase), `hg._types`, to free the method names. The inspector uses them and no longer polls.
+
+**Storage estimate**: app index entries and tag keys are counted per log (`meta dropped:<space>:<log>` gains `ix`),
+each ~160 B plus twice its key (`bench/next/ix-cost.js`: 175–183 B per entry with ~10-character keys). A reader of a
+forum indexing three fields went 25% over its budget on disk before (2.74 MB for 2 MB once flushed).
+
+**`undefined` is absent** in `put` and `edit` (an edit leaves the field as it was), known to the type or not; an unknown
+field with a value (`null` included) is still a typo (`INVALID_RECORD`).
+
+**App rules are code**: `settings/set` gains `rules` (a trailing field, absent from older entries), recorded by who
+may decide (`createSpace` records the creator's app's, `space.setRules()` this app's); `status()` warns `RULES_DIFFER`
+naming the ids that differ. Nothing can make every member run the same rules; this only detects it. A rule changed
+in place under the same id goes unnoticed: change the id with the behavior (docs/next/api.md).

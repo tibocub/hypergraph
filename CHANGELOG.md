@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-09: `hypergraph/next` — core follow-ups of story 7 (ALPHA, breaking within `next`)
+
+- Fix (consistency): a link to a type its field doesn't allow is judged when read, on every member: the record is
+  kept, the link counts for nothing (the field reads `null`; not in `linked`/`count`/`sum`/`on()`). Before, members
+  could disagree depending on what arrived first. Records of hypergraph types a newer version adds are kept.
+- New reads: `space.members()`, `space.decisions({ limit, after })` (a moderation log: who, what, when, why,
+  counted), `space.tags(record)`, `space.peers()`, `hg.types()`, events `peers` and `logs`, `inspect({ records })`
+  and `inspect({ record })`. The swarm now uses the device key pair (a connection's key is the peer's device).
+- App rules: a space records the rule ids it runs (`createSpace`, `space.setRules()`); `status()` warns
+  `RULES_DIFFER`. `put`/`edit`: a field passed as `undefined` is absent. The storage estimate counts app index
+  entries and tags. The inspector uses the new reads and no longer polls. Details: `specs/011-spaces-core/research.md` A12.
+
 ### 2026-10-09: `hypergraph/next` — story 7, app versions (ALPHA, breaking within `next`)
 
 - Members on two versions of an app share a space and read each other's records; an older app's edit keeps

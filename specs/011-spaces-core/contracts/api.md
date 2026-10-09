@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 to 6 (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1 to 7 and the core follow-ups (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 
@@ -104,6 +104,9 @@ const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connectin
                                                 // 30 s by default (reads keep readTimeout); refused: INVITE_EXPIRED, INVITE_USED_UP,
                                                 // INVITE_REVOKED, NOT_ALLOWED; nobody answered: INVITE_INVALID
 hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
+hg.types()                                      // ✓ core follow-ups: sync { name: { fields: { field: kind }, links,
+                                                //   onePerMember, editable ('author' | 'members' | { permission }),
+                                                //   index, builtin } }
 hg.space(key)                                   // ✓ sync: the Space; NOT_FOUND if not held here
 await hg.leaveSpace(key)                        // drops its data from this device
 
@@ -124,6 +127,20 @@ await forum.setRules()                          // ✓ core follow-ups: records 
                                                 //   code: mismatches can't be prevented, only detected (RULES_DIFFER)
 forum.on('change', ({ types }) => {})           // ✓ records of these types changed
 forum.on('status', (status) => {})              // ✓ story 6: when policy, held, belowPolicy, budget or warnings change
+forum.on('peers', (peers) => {})                // ✓ core follow-ups: a peer connected or left (peers() as argument)
+forum.on('logs', () => {})                      // ✓ core follow-ups: a log was accepted or what is indexed of one moved
+                                                //   (at most every 100 ms)
+await forum.members()                           // ✓ core follow-ups: [{ identity, role, you, banned, removed, devices:
+                                                //   [{ device, log }] }], members highest role first, then banned and
+                                                //   removed people (role null)
+await forum.decisions({ limit: 50, after })     // ✓ core follow-ups: { items, complete }, newest first: [{ seq, type, by,
+                                                //   device, at, counted, ...what }] — by/device: the writer key's identity
+                                                //   and device then (null: it spoke for nobody); at: the decider's stamp;
+                                                //   what: identity, role, action, target, reason, name, permissions,
+                                                //   policy, rules, invite, maker, key, removed; counted: it changed the
+                                                //   state. `after`: an item (or its seq)
+forum.peers()                                   // ✓ core follow-ups: sync [{ identity, device }] connected on this space
+                                                //   (identity null until its device proof arrived)
 ```
 
 ## Types
@@ -204,6 +221,7 @@ await forum.unrelate(a, b, 'cites')                // ✓ NOT_FOUND if there is 
 await forum.edges(a, { direction: 'out', type: 'cites', order: 'asc', limit })   // ✓ { items, count, complete };
                                                    //   direction 'out' | 'in' | 'both' (default); count before limit
 await forum.tag(post, 'rust'); await forum.untag(post, 'rust')   // ✓ by who may edit it; untag: NOT_FOUND if not tagged
+await forum.tags(post)                             // ✓ core follow-ups: { items: [tag names, sorted], complete }
 await forum.getByTag('rust', { type, limit: 20, after })   // ✓ { items, complete }, newest first (put time); no type:
                                                    //   all the app's types
 // ✓ story 5 (research.md A9): relations and tags are records (hg/relation, hg/tag) in their author's log; the
@@ -297,6 +315,12 @@ const snap = await forum.inspect()   // read-only: writes nothing, fetches nothi
 //   storage: { policy, held, stored, share, budget, belowPolicy },   // as status() gives them
 //   warnings: [{ code, message }]   // as status() gives them
 // }
+await forum.inspect({ records: { type, limit: 25, after } })   // ✓ core follow-ups: adds rows: { items, next }: every
+//   row of the type held here, newest first, hidden, superseded and dropped included: the record as get() shapes it
+//   plus state: { hidden, superseded, edited, flagged, dropped, read }; `after`: `next` of the previous page
+await forum.inspect({ record: id })   // ✓ core follow-ups: adds record: { id, type, deleted, removed, versions: [{ id,
+//   kind: 'put' | 'edit', by, device, stamp, counts, ...fields }], deletes: [{ id, by, device, stamp, counts }] }
+//   (fields absent where the content isn't held; counts null when it can't be told)
 ```
 
 The shape is stable: fields may be added, none renamed or removed without a CHANGELOG entry (the inspector tool

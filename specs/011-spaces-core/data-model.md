@@ -78,11 +78,16 @@ View keys (research.md A4–A5, A8): `meta`, `member:<id>` `{ role, by, stamp, w
 `role:<name>` `{ permissions }`, `cut:<id>` `{ logs: { <log>: length } }`, `editcut:<id>` `{ perms: { <permission>:
 { <log>: length } } }` (research.md A9), `banned:<id>`,
 `mod:<record id>` `{ flagged, hidden, removed }`, `redeemed:<invite>:<id>`, `uses:<invite>`,
-`revoked:<invite>`. A redemption is `{ invite, identity, writer, proof }`.
+`revoked:<invite>`. A redemption is `{ invite, identity, writer, proof }`. Core follow-ups: `~log:<seq, 12 digits>`
+`{ type, at, writer, by, device, counted, ...what }` (every decodable decision in the order applied, for
+`space.decisions()`; after every other key so the state's read skips it) and `~count`; `meta.rules` (the app rule
+ids the space runs).
 
 ### Space channel messages (Protomux `hypergraph/space`, id = the space's discovery key, research.md A7)
 
-`summary { count, digest (32 B XOR) }`, `want {}`, `logs [log key]`, `notice { log }`, `get { log }`
+`summary { count, digest (32 B XOR) }`, `want {}`, `logs [log key]`, `notice { log }`, `get { log }`, `hello { proof }`
+(core follow-ups: the sender's device proof, checked against the connection's key — the swarm uses the device key
+pair — so `space.peers()` knows each peer's identity)
 (experiment 1), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3), `ask
 { decision }` (a `writer/add` or `device/remove` for any writer to record, research.md A8); story 9
 adds `period, start` to log entries.
