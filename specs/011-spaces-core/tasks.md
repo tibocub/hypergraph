@@ -20,7 +20,7 @@ written at the start of each story.
 - Any change to the public API updates `test/next/forum/` and `contracts/api.md` in the same commit.
 - Keep runs short; ask before long benchmarks (machine load).
 
-**Granularity**: Phases 1–5 (setup, foundation, stories 1–3) are detailed: they are the first worker
+**Granularity**: Phases 1–6 (setup, foundation, stories 1–4) are detailed: they are the first worker
 sessions. Phases 6–12 are deliberately coarser; the lead conversation refines them after reviewing
 stories 1–3, when the real API exists.
 
@@ -143,13 +143,96 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 
 ---
 
-## Phase 6: User Story 4 — Invites and joining (Priority: P2)
+## Phase 6: User Story 4 — Invites, joining, decision rights that follow devices (Priority: P2)
 
-- [ ] T054 [P] [US4] test/next/forum/invites.js: redeem while the inviter is offline and another admin online; expired, used-up, revoked links refused with their codes; an inviter whose role can't give the role → refused; a public link with unlimited uses; revoking it stops new joins, members stay; a write limit per period enforced by every member (US4 #1–4, FR-023)
-- [ ] T054a [P] [US4] test/next/forum/moderation.js: **unban** — a banned member let back in (`moderateAction('unban', who)`, then an invite or `setRole`) writes again; what they wrote during the ban stays ignored for everyone, newcomers included; new writes count from the unban (ROADMAP 2026-10-09)
-- [ ] T054b [P] [US4] test/next/net/indexers.js: **admins share the settling of the decision order with the owner** — members with `decide` are Autobase indexers; with the owner gone for good, two admins still settle new decisions (a role, a ban, a redemption) that every member applies the same way; an admin demoted later stops being an indexer (v1 spec 003's lesson; ROADMAP 2026-10-09)
-- [ ] T054c [P] [US4] test/next/forum/devices.js: an owner's second device moderates and invites (its decision-log key becomes a writer); a removed device's later decisions are ignored by every member (research.md A7)
-- [ ] T055 [US4] lib/invites.js complete (uses, expiry, revocation, redemptions, recorded by any decision writer, never downgrades — spec 008's design), `settings/set { writeLimit }` in the gate; `revokeInvite`, `redemptions`, `setWriteLimit`; a second device of a member with `decide` or `moderate` becomes a decision-log writer too (a signed claim, like a redemption), and removing a device removes its writer key (research.md A7); unban (a `moderate` action lifting `banned:`; the ban's cut stays, so the member writes again in a new device log, as after a removal — research.md A4); decision-log indexers = members with `decide` (`host.addWriter(key, { indexer: true })`, removed when demoted); docs; CHANGELOG
+**Goal**: decision rights follow devices (a removed device loses them everywhere; a member's other devices
+gain them); admins settle the decision order with the owner; invites complete (uses, expiry, revocation,
+redemptions, refusals with their reason, public links); unban; `open({ password })`; `fromDevice()`.
+**Independent test**: invites, unban, devices and settling scenarios pass on Node and Bare.
+
+**Decided with Tibo before starting (2026-10-09, research.md A8)**: the decision order is settled by **one
+device per decider person** (owner and admins), not by every device of theirs; **unban** keeps the ban's
+cut and the member writes in a new log once let back in (the brief's "reverse cut from held lengths" can't
+work: members stop downloading at the cut); the **write limit is postponed to story 9** (a per-log rule
+needs earlier records' times, which deletes wipe: members would disagree). Found while reading: a device
+proof whose chain has a device attesting another device verifies today, so a stolen device could mint
+devices no removal names — fixed first.
+
+### Security first: decision rights follow devices
+
+- [ ] T054 [US4] Test test/next/unit/identity.js: a proof made by a device attesting another device
+  (`IdentityKey.attestDevice`, a chain of two) doesn't verify, for logs and for data (a stolen device can't
+  mint new devices that no removal names); then lib/identity.js accepts chains of zero (the identity key)
+  or one (a device bootstrapped from it) only; drop the unused `attestDevice`
+- [ ] T054a [P] [US4] Test test/next/unit/decisions-writers.js (in-memory view, as decisions-roles.js):
+  `writer/add { key, proof }` (a device's claim, signed on its identity's behalf) makes the key a writer only
+  for a member whose role has `decide` or `moderate`, once, and never for a removed device; a forged or
+  someone else's claim is ignored; `device/remove { device, cut, proof }` (the identity key's signed removal,
+  the same bytes as the record) drops every writer key of that device, its later decisions are ignored and
+  its later claims refused; only that identity's own key counts; losing both `decide` and `moderate`
+  (demotion, removal, ban) drops the member's writer keys
+- [ ] T054b [P] [US4] Same file: settlers (Autobase indexers) are one writer key per member with `decide`
+  (the owner's first, an admin's first); a removed settling device hands over to another writer key of the
+  same person; demotion below `decide` stops settling (moderators write, don't settle); the last settler is
+  never removed (Autobase refuses: `host.removeable`); two orders of the same concurrent decisions converge
+- [ ] T054c [P] [US4] test/next/forum/devices.js: an owner's second device moderates and invites with no
+  extra step (it claims its writer key itself); an admin's phone moderates; a removed device's decisions
+  written afterwards (raw, `testing.decide`) are ignored by every member, a newcomer included
+- [ ] T054d [US4] Implementation: lib/encodings.js (`writer/add`, `device/remove` appended to the decision
+  types), lib/decisions/apply.js + state.js (writers carry `{ identity, device, indexer }`, removed devices,
+  settlers), lib/space.js (a device claims its writer key when its member may decide or moderate; a device
+  removal also records `device/remove` in every space where that device could decide; a device that can't
+  write the decision log yet asks peers to record it: an `ask` message on the space channel, as
+  redemptions), lib/directory.js (the message), lib/testing.js (`settled()`)
+
+### Admins settle the decision order with the owner
+
+- [ ] T054e [P] [US4] test/next/net/indexers.js: owner + two admins; the owner closes for good; the admins
+  make decisions (a role, a ban, a redemption); both settle them (settled length grows on each) and a newcomer
+  shows the same roles and members; an admin demoted later stops settling (v1 spec 003's lesson)
+- [ ] T054f [US4] Implementation in T054d's modules (`host.addWriter(key, { indexer })`, handover, demotion)
+
+### Invites complete (spec 008's design, FR-023)
+
+- [ ] T054g [P] [US4] Test test/next/unit/decisions-invites.js: `invite/revoke` (by `decide`, or the maker)
+  stops later redemptions; uses counted per distinct person; expiry against the recorder's stamp; who may
+  invite to what (`mayInvite`: `invite` permission, never owner, below one's rank except member and guest,
+  only permissions one holds; custom roles allowed); a role is never lowered by a redemption
+- [ ] T054h [P] [US4] test/next/forum/invites.js (US4 #1–4): redeemed while the inviter is offline and another
+  admin online; expired → `INVITE_EXPIRED`, used up → `INVITE_USED_UP`, revoked → `INVITE_REVOKED`, an
+  inviter whose role can't give the role → `NOT_ALLOWED` (at `createInvite`, and for a link made anyway), each
+  within the read bound instead of a generic error after 60 s; `redemptions(link)`; a public link
+  (`uses: Infinity`) lets many in, revoking it stops new joins and members stay; nobody able to let us in
+  online → `INVITE_INVALID` after the bound (`timeout` overrides it)
+- [ ] T054i [US4] Implementation: lib/invites.js (`refusal(state, invite, identity, now)`: the reason, the same
+  pure checks `apply` makes), lib/decisions/apply.js (`invite/revoke`, `mayInvite`), lib/space.js
+  (`createInvite` checks, `revokeInvite`, `redemptions`; the newcomer judges refusals from its own copy of the
+  decision log), lib/index.js (`redeemInvite` waits `readTimeout` by default)
+
+### Unban (decided 2026-10-09)
+
+- [ ] T054j [P] [US4] test/next/forum/moderation.js: `moderateAction('unban', who)`, then an invite or
+  `setRole`: they write again (in a new log); what they wrote during the ban stays ignored for everyone,
+  newcomers included; until unbanned, neither an invite nor `setRole` lets them in
+- [ ] T054k [US4] Implementation: `unban` in the moderation actions, apply lifts `banned:` (the cut stays);
+  forum.js `unban()`
+
+### Small API additions
+
+- [ ] T054l [P] [US4] test/next/forum/sign-up.js and devices.js: `Hypergraph.open(dir, { password })` (new
+  account, restore from the phrase, or `joinCode`) keeps the phrase sealed from the first moment: never in
+  the folder in plain text; `recoveryPhrase(password)` reads it
+- [ ] T054m [P] [US4] test/next/forum/personal.js: `query(type).fromDevice(key)` lists what one device wrote
+  (SwarmFS: "what does this device hold"), with paging
+- [ ] T054n [US4] Implementation: lib/phrase.js (`saveSealed`), lib/index.js, lib/index/query.js
+  (`fromDevice`)
+
+### Docs and checkpoint
+
+- [ ] T054o [US4] contracts/api.md, data-model.md, docs/next/api.md and concepts.md (decision rights and
+  devices, settling, invites, unban), research.md A8, CHANGELOG.md
+- [ ] T055 [US4] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
+  hyperDNS's `npm test` pass; forum.js line count
 
 ## Phase 7: User Story 5 — Graph vocabulary, shared editing (Priority: P2)
 
@@ -180,6 +263,7 @@ members agree. **Independent test**: forum scenarios of story 1 pass on Node and
 
 - [ ] T069 [P] [US9] test/next/net/activity.js: entries gain (period, start); readers open only active logs; false and spam entries dropped and not passed on; 10,000 throwaway-key entries add nothing (SC-006)
 - [ ] T070 [P] [US9] bench/next/first-page.js: newcomer's latest 20 posts at 10k and 1M records (SC-004) — 1M only after asking
+- [ ] T071a [US9] The write limit for open spaces (`setWriteLimit({ records, periodMs })`, `settings/set { writeLimit }` in the gate), postponed from story 4 (research.md A8): a rule every member judges the same although deletes wipe earlier records' times
 - [ ] T071 [US9] lib/directory.js periods and the switch-over point (measured), active-log reads in lib/index/query.js; docs; CHANGELOG
 
 ## Phase 12: Polish & cross-cutting
