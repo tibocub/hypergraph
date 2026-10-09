@@ -734,3 +734,42 @@ one listener per account); `settings/set { policy }` applied by who may decide.
 
 **Routed to story 9** (lead, 2026-10-09): a newcomer to a space bigger than its share still downloads it
 once, then drops the oldest part.
+
+### A11. Story 7: app versions (2026-10-09)
+
+R6's check at open and experiment 6's encoding were already there; building the forum test found three gaps.
+
+**An older app's edit erased the fields it doesn't know.** An edit carries all the fields of the new version
+(A3), and the old app only knows its own. Now an edit keeps the replaced version's unknown field entries byte
+for byte, and with them that version's links first, in place: an unknown field may be a link into that list,
+and the old app can't tell. Cost: when such a record's known link field is re-pointed by the old app, the
+earlier target stays in its links (`linked(old target)` still lists it). Rare; the same on every member.
+
+**The index derives things from declarations, and they go stale when the app learns more.** Rows of a type
+the app didn't know have no one-per-member grouping, no app index keys, no link-target or rule check, and
+others' edits are judged "author only"; a type that gains an index has its old rows missing from it; a link
+field appended with allowed targets was never checked. At open, if a type is new, gained an index, or gained
+a link field with allowed targets, **and** the index holds records of it, the index is replaced and rebuilt
+from the held logs (A10's rebuild; the old one is removed, not set aside: it isn't damaged). The member then
+shows exactly what a member who always had this version shows (Principle I). Considered: re-judging only the
+rows of those types (a scan per type) — rejected for now: the rows of a newly checked type can depend on
+records refused earlier (cut, rules) and on content dropped since, which the rebuild already handles. Cost:
+one rebuild per such update (100k records ~20 s, A10), reads `complete: false` meanwhile. A type gaining a
+plain field rebuilds nothing.
+
+**Declarations that looked compatible but changed meaning.** `describe()` now stores indexes (folders that
+stored none are taken as unchanged). Appending a link field with allowed targets is allowed (it failed as
+"links changed"); changing an existing link field's targets is refused naming the field; appending the first
+link field of a one-per-member type is refused (it would change what one per member groups by). A downgrade
+(opening with an older declaration than the one stored) is refused like any removal and leaves the folder
+unchanged.
+
+**Limits found, not fixed here** (for the lead):
+- App `rules` are code: a newer version refusing what an older one accepted (or the reverse) makes members
+  disagree on what exists. Documented (docs/next/api.md); hypergraph can't detect it.
+- A link field's allowed targets are checked when the record arrives, only if its target is already held
+  (A3: "checked when the target is held"); nothing re-checks the record when the target arrives later. A
+  misbehaving member can therefore make two honest members disagree (one held the target first, one didn't).
+  Predates story 7; story 7's rebuild doesn't change it.
+- A record of a hypergraph type (`hg/…`) this version doesn't know is refused: a future hypergraph version
+  adding a built-in type would be disagreed on by members on the older one.

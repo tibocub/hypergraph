@@ -29,6 +29,16 @@ a query: `space.linked(post, 'comment')`. Besides link fields, v1's graph vocabu
 and into the other) and **tags**. Both are records too, said by whoever may edit the record they start
 from (its author, by default); the latest relate or unrelate, tag or untag wins.
 
+## App versions
+
+Members never all update an app at once. A record's fields are numbered in the order its type declares
+them, and a reader skips numbers it doesn't know, so as long as a new version only adds fields at the
+end and adds types, members on both versions read each other's records: the old app doesn't see the new
+fields (its edits keep them), the new one sees them empty on old records. A record of a type the app
+doesn't know yet is kept (it may be another version's) and shown once an update declares the type: at
+that first start the app indexes what it holds again, like a member that always had the new version.
+Other changes would make two versions read the same bytes differently, so they are refused at open.
+
 ## Edits and deletes
 
 Logs are append-only: nothing is changed in place.

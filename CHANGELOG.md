@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-09: `hypergraph/next` — story 7, app versions (ALPHA, breaking within `next`)
+
+- Members on two versions of an app share a space and read each other's records; an older app's edit keeps
+  the fields it doesn't know. Records of types the app doesn't know are kept; once it declares them, its index
+  is rebuilt at open (also when a type gains an index or a link field with allowed targets) and shows them.
+- Type changes between versions: appending a link field with `links` and adding indexes are now allowed;
+  changing a link field's targets, or appending the first link field of a `onePerMember` type, throws
+  `INCOMPATIBLE_TYPES` naming the field. Opening a folder with an older declaration throws too.
+  Details: `specs/011-spaces-core/research.md` A11.
+
 ### 2026-10-09: `hypergraph/next` — story 6, holding part of a space, rebuild, diagnostics (ALPHA, breaking within `next`)
 
 - Storage budgets: `hg.setBudget()`, `hg.storage()`, `space.setBudget(bytes | null)` (default 5 GB, less on a nearly

@@ -132,7 +132,14 @@ types: {
 }
 // field kinds: string, text, int, uint, float, bool, bytes, ref (spec 001 envelope), link (a record), space (a space key)
 // editable: 'author' (default) | 'members' | { permission: name }
-// Only appending fields or adding types is allowed between app versions; anything else throws INCOMPATIBLE_TYPES.
+// Between app versions only appending fields (link fields with their `links`), adding types and adding
+// indexes is allowed; anything else throws INCOMPATIBLE_TYPES at open, naming the type and the field.
+// ✓ story 7: members on two versions read each other's records: the old app ignores fields it doesn't know
+//   (and its edits keep them), the new one sees them null on old records. Records of types the app doesn't
+//   know are kept and counted by type (inspect().records), not readable (query() throws INVALID_TYPE). Once
+//   the app learns a type it holds records of (or a type gains an index or a link field with targets), the
+//   index is rebuilt from the held logs at open (reads say complete: false meanwhile). Opening a folder with
+//   an older declaration than it stored (a downgrade) throws INCOMPATIBLE_TYPES.
 // ✓ story 1: all kinds, links, onePerMember (one per member per its first link field), editable 'author';
 //   bad declarations throw INVALID_TYPE naming type and field.
 // ✓ story 5: editable 'members' and { permission }: the latest allowed edit wins; only the author's delete

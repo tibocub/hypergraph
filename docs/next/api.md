@@ -97,9 +97,19 @@ Field kinds: `string`, `text`, `int`, `uint`, `float`, `bool`, `bytes`, `ref` (c
 link field may point at. `onePerMember`: only each member's latest counts (per its first link field).
 `index: [['forum', 'stamp']]` adds a query by field (`where`). `editable` says who may edit a record
 besides its author: `'author'` (the default), `'members'` (any member), or `{ permission }` (members whose
-role has that permission, e.g. one you define with `defineRole`; see [Shared editing](#shared-editing)). Between app versions you may only add
-fields at the end of a type and add types; anything else throws `INCOMPATIBLE_TYPES` at open. Field
+role has that permission, e.g. one you define with `defineRole`; see [Shared editing](#shared-editing)). Field
 names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are taken by the record.
+
+**App versions.** Members never all update at once, so between versions you may only add fields at the
+end of a type (a link field with its `links`), add types and add indexes; anything else (reordering,
+removing or retyping a field, removing a type, changing `editable`, `onePerMember` or a link field's
+targets, or opening a folder with an older version than last time) throws `INCOMPATIBLE_TYPES` at open,
+naming the type and the field. Members on two versions share a space: the old app doesn't see the new
+fields (and its edits keep them), the new one sees them `null` on old records. Records of a type the app
+doesn't know yet are kept; once an update declares it, the app rebuilds its local index at the first
+start (seconds for a big space; reads say `complete: false` meanwhile) and shows them like everyone else.
+App `rules` are code: a newer version refusing what an older one accepted makes members disagree, so make
+new rules accept what earlier versions wrote.
 
 ## Spaces and invites
 
