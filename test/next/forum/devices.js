@@ -141,6 +141,16 @@ test('a lost device: removed with the recovery phrase; what it wrote before stay
   t.ok(await agree([fd], titles, expected), 'a newcomer shows the same')
 })
 
+test('someone else can\'t remove your device, even with their own recovery phrase', async (t) => {
+  const { laptop, phone, c, fl, fp, fc } = await twoDevices(t)
+  const words = await forum.recoveryPhrase(c)
+  t.is(await codeOf(c.removeDevice(phone.device.publicKey, { recoveryPhrase: words })), 'NOT_FOUND', 'c\'s app refuses: not one of c\'s devices')
+  await testing.removeDeviceAnyway(c, phone.device.publicKey, words) // c's removal is written anyway
+  await forum.post(fp, 'still here', '')
+  t.ok(await agree([fl, fp, fc], titles, ['phone is in', 'still here'].join()), 'the phone\'s posts still count everywhere')
+  t.is((await forum.devices(laptop)).length, 2)
+})
+
 test('once the phrase is forgotten on a device, it is typed to add or remove a device', async (t) => {
   const laptop = await account(t, 'laptop')
   const words = await forum.recoveryPhrase(laptop)

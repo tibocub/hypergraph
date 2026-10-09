@@ -506,9 +506,16 @@ clock was ahead and is now right still stamps its next change above its earlier 
   from: any peer learnt the keys of all the spaces held, the personal one included. Now the discovery
   key.
 
+- **A removal counts only for the devices of the identity that signed it.** Removals were first kept
+  by device key alone, so any member of a shared space could sign, with their own phrase, a removal of
+  someone else's device, and every member would cut it. Test: `test/next/forum/devices.js` ("someone
+  else can't remove your device…", writing the removal through `lib/testing.js` since the API refuses
+  it: `NOT_FOUND`, not one of your devices).
+
 **Smaller choices**:
 - **Each device writes its own `hg/device` record** once it is in the personal space (`deviceName`
-  from `open()`); a device added by code sends its name with the request, and `added` resolves with it.
+  from `open()`); a device added by code sends its name with the request, `added` resolves with it, and
+  the adding device lists it at once. `removeDevice` refuses a key that isn't listed (`NOT_FOUND`).
 - **Spaces are listed by whichever device creates or joins them**, and every device keeps the list and
   what it holds in step (it joins listed spaces, lists the ones it holds), so a device that joined a
   space before its personal space had synced still lists it later.

@@ -17,5 +17,5 @@ test('test-only helpers are not on the public classes', (t) => {
 })
 
 test('tests reach them through lib/testing.js', (t) => {
-  for (const name of ['writeRaw', 'holdsBlock', 'logs', 'ownLog', 'openSpace', 'personalKeys', 'announce', 'rawBlock', 'setClock', 'writeHeads', 'headsOf']) t.is(typeof testing[name], 'function', name)
+  for (const name of ['writeRaw', 'holdsBlock', 'logs', 'ownLog', 'openSpace', 'personalKeys', 'announce', 'rawBlock', 'setClock', 'writeHeads', 'headsOf', 'removeDeviceAnyway']) t.is(typeof testing[name], 'function', name)
 })

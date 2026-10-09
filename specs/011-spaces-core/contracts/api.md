@@ -62,7 +62,8 @@ const hg2 = await Hypergraph.open('./data2', { types, joinCode: code, deviceName
 await hg.devices()                 // ✓ [{ publicKey, name, current }], removed devices left out
 await hg.removeDevice(publicKey, { password })   // ✓ or { recoveryPhrase }: needs the phrase (research.md A7);
                                    //   in every space, what it wrote up to where this device holds it (or its own
-                                   //   last heads say) stays, nothing after counts; its app gets DEVICE_REMOVED
+                                   //   last heads say) stays, nothing after counts; its app gets DEVICE_REMOVED;
+                                   //   NOT_FOUND for a key that isn't one of this account's devices
 hg.personal                        // ✓ sync: the personal Space (only this identity's devices; encrypted; not in spaces())
 await hg.personal.put('held', { path, holder })   // ✓ any app record (types from open()), private to the identity
 await hg.setSetting('theme', 'dark')   // ✓ any JSON value; the latest set on any device wins
