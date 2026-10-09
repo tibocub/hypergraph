@@ -23,6 +23,17 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-09 (review of spec 011 story 3)** — Story 3 accepted (99/99 on Node and Bare, re-run in the
+  lead conversation; `011-spaces-core` fast-forwarded). **SwarmFS can start on the core.** Decided by
+  Tibo: **removing a device needs the recovery phrase** (signed by the identity key, never by another
+  device alone); each device keeps the phrase encrypted with a password by default (Argon2id via
+  sodium), forgetting it is opt-in; a device added by code receives the phrase over the pairing
+  connection. Routed to story 4 (first): a removed device that could record decisions must lose that
+  right (a stolen owner laptop could still ban people), and a member's other devices can record
+  decisions; `Hypergraph.open(dir, { password })` / `{ joinCode, password }` so the phrase is protected
+  from the first moment; `query().fromDevice(key)` for apps like SwarmFS. Routed to story 6: superseded
+  personal-space records (device heads, settings) are cleared locally so they don't pile up.
+
 - **2026-10-09 (review of spec 011 story 2)** — Story 2 and the review fixes accepted (87/87 on Node and
   Bare, re-run in the lead conversation; `011-spaces-core` fast-forwarded). Decided: a ban can start
   from a chosen record ("drop everything from this post on"; built with story 3); **unban** comes with
@@ -98,4 +109,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    76 tasks).
 2. Story 1 done and reviewed (branch `011-spaces-core`).
 3. Story 2 done and reviewed.
-4. **Worker session 3**: story 3 (devices, personal space) + ban from a record → SwarmFS can start.
+4. Story 3 done and reviewed → **SwarmFS can start** (its own repo and spec, prompt written with Tibo).
+5. **Worker session 4**: story 4 (invites, unban, admins settle decisions, removed devices lose decision
+   rights).
