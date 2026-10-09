@@ -24,7 +24,10 @@ Records show the person, not the device: `record.author` is the identity (the pe
 phrase), `record.device` the device that wrote the current version.
 
 Records can **link** to other records (a comment's `on` field points at a post). "What points at X" is
-a query: `space.linked(post, 'comment')`. Besides link fields, v1's graph vocabulary is there:
+a query: `space.linked(post, 'comment')`. A link field can be limited to some types (`links: { on:
+['post', 'comment'] }`); a record whose link points at another type (written by a modified app) is still
+kept, but that link counts for nothing: the field shows `null` and the record isn't "on" its target. Each
+member judges it when reading, from the target's type, so all agree whatever arrived first. Besides link fields, v1's graph vocabulary is there:
 **relations** (`relate(a, b, 'cites')`, a type, a number and small data, seen in `edges()` out of one
 and into the other) and **tags**. Both are records too, said by whoever may edit the record they start
 from (its author, by default); the latest relate or unrelate, tag or untag wins.
@@ -37,6 +40,8 @@ end and adds types, members on both versions read each other's records: the old 
 fields (its edits keep them), the new one sees them empty on old records. A record of a type the app
 doesn't know yet is kept (it may be another version's) and shown once an update declares the type: at
 that first start the app indexes what it holds again, like a member that always had the new version.
+The same holds for hypergraph's own record types: one added by a newer hypergraph is kept and counted by
+type by older ones.
 Other changes would make two versions read the same bytes differently, so they are refused at open.
 
 ## Edits and deletes
@@ -120,7 +125,8 @@ that point is ignored by everyone (a demoted moderator's earlier decisions stay)
 
 Every member checks what it receives **before keeping, indexing or passing it on**: that a log belongs
 to a member of the space (a proof signed by the member's device), that each record decodes and fits its
-type, that links point at allowed types, that edits come from allowed editors. What fails is never
+type, that edits come from allowed editors (links to types a field doesn't allow are judged when read,
+see [Records](#records)). What fails is never
 shown, and a stranger's log is never kept nor passed on, so spam costs members almost nothing.
 
 Your app's **rules** (`rules: [{ id, validate }]`) are checked the same way: a record that breaks one

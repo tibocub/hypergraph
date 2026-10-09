@@ -126,15 +126,17 @@ test('compatibility (story 7): indexes and link fields', (t) => {
 })
 
 test('stale (story 7): what the index derived from the declaration may be out of date', (t) => {
+  // A link field with allowed targets derives nothing: links are judged when
+  // read (research.md A12), so it needs no rebuild.
   const before = new Types(forum).describe()
   const after = new Types({
     ...forum,
-    post: { ...forum.post, fields: { ...forum.post.fields, replyTo: 'link' }, links: { replyTo: ['post'] } }, // a link field with targets
+    post: { ...forum.post, fields: { ...forum.post.fields, replyTo: 'link' }, links: { replyTo: ['post'] } }, // a link field with targets: nothing derived
     page: { ...forum.page, fields: { ...forum.page.fields, summary: 'text' } }, // a plain field: nothing derived
     comment: { ...forum.comment, index: [['on', 'stamp']] }, // an index
     poll: { fields: { q: 'string' } } // a new type
   })
-  t.alike(after.stale(before).sort(), ['comment', 'poll', 'post'])
+  t.alike(after.stale(before).sort(), ['comment', 'poll'])
   t.alike(new Types(forum).stale(before), [], 'nothing changed')
   t.alike(new Types(forum).stale(null), [], 'nothing stored yet')
 })

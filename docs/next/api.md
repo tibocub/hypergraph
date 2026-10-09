@@ -94,7 +94,9 @@ const types = {
 
 Field kinds: `string`, `text`, `int`, `uint`, `float`, `bool`, `bytes`, `ref` (content held elsewhere:
 `{ src: [addresses], size, type, digest }`), `link` (a record), `space` (a space). `links` limits what a
-link field may point at. `onePerMember`: only each member's latest counts (per its first link field).
+link field may point at: your app refuses to write anything else (`INVALID_RECORD`), and a record from a
+modified app pointing elsewhere is kept with that link ignored (the field reads `null`, the record isn't in
+`linked()`, `count()`, `sum()` or `query().on()` of its target). `onePerMember`: only each member's latest counts (per its first link field).
 `index: [['forum', 'stamp']]` adds a query by field (`where`; records with no value in those fields aren't in it). `editable` says who may edit a record
 besides its author: `'author'` (the default), `'members'` (any member), or `{ permission }` (members whose
 role has that permission, e.g. one you define with `defineRole`; see [Shared editing](#shared-editing)). Field

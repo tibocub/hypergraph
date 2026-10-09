@@ -106,9 +106,9 @@ test('records of a type the app doesn\'t know are kept, and shown once it learns
 
   const polls = async (f) => (await f.inspect()).records.poll || 0
   t.ok(await eventually(async () => (await forum.latest(fb)).length === 2 && (await polls(fb)) === 2, 5000), 'the old app keeps both polls, by type')
-  t.ok(await eventually(async () => (await forum.latest(fa)).length === 2, 5000), 'a has c\'s later post')
-  t.is(await polls(fa), 1, 'the new app refused the bad poll')
+  t.ok(await eventually(async () => (await forum.latest(fa)).length === 2 && (await polls(fa)) === 2, 5000), 'a has c\'s later post, and keeps both polls (research.md A12)')
   t.is(ids(await forum.polls(fa, p)), good.id)
+  t.is(ids(await forum.polls(fa, cm)), '', 'the bad poll\'s link counts for nothing: it isn\'t under the comment')
   t.exception(() => fb.query('poll'), /Unknown type "poll"/, 'the old app can\'t read polls')
   const before = await view(fa)
   t.is(await view(fb), before, 'both versions show the same posts')
@@ -117,7 +117,8 @@ test('records of a type the app doesn\'t know are kept, and shown once it learns
   await b.close()
   const updated = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules, readTimeout: 200 })
   const fu = updated.space(fa.key)
-  t.ok(await eventually(async () => ids(await forum.polls(fu, p)) === good.id && (await polls(fu)) === 1, 10000), 'the poll is shown, the bad one refused')
+  t.ok(await eventually(async () => ids(await forum.polls(fu, p)) === good.id && (await polls(fu)) === 2, 10000), 'the poll is shown; the bad one kept, its link ignored')
+  t.is(ids(await forum.polls(fu, cm)), '', 'not under the comment there either')
   t.ok(await eventually(async () => ids(await forum.byTopic(fu, 'meta')) === ids([p, after]), 10000), 'posts received while it was old are found by topic')
   t.is(await view(fu), before, 'the same forum as the others')
   await updated.close()
@@ -126,6 +127,19 @@ test('records of a type the app doesn\'t know are kept, and shown once it learns
   const fg = again.space(fa.key)
   t.is(ids(await forum.polls(fg, p)), good.id, 'restarted: the same')
   t.is(testing.indexedBlocks(fg), 0, 'and nothing indexed again')
+})
+
+test('a record of a hypergraph type this version doesn\'t know (a future version\'s) is kept and counted', async (t) => {
+  const a = await account(t, 'a')
+  const b = await account(t, 'b')
+  const fa = await forum.createForum(a, 'Fans')
+  const fb = await forum.join(b, await forum.invite(fa))
+  await testing.writeRaw(fb, { kind: 'put', type: 'hg/future', fields: {} })
+  const later = await forum.post(fb, 'Later', '')
+  for (const [name, f] of [['a', fa], ['b', fb]]) {
+    t.ok(await eventually(async () => ((await f.inspect()).records['hg/future'] || 0) === 1, 10000), `${name} keeps it, counted by type`)
+    t.ok(await eventually(async () => (await f.get(later.id)).record, 10000), `${name} indexes what comes after it`)
+  }
 })
 
 test('any other change to the types is refused at open, naming the type and the field', async (t) => {

@@ -137,9 +137,13 @@ types: {
 // ✓ story 7: members on two versions read each other's records: the old app ignores fields it doesn't know
 //   (and its edits keep them), the new one sees them null on old records. Records of types the app doesn't
 //   know are kept and counted by type (inspect().records), not readable (query() throws INVALID_TYPE). Once
-//   the app learns a type it holds records of (or a type gains an index or a link field with targets), the
+//   the app learns a type it holds records of (or a type gains an index), the
 //   index is rebuilt from the held logs at open (reads say complete: false meanwhile). Opening a folder with
 //   an older declaration than it stored (a downgrade) throws INCOMPATIBLE_TYPES.
+// ✓ core follow-ups (research.md A12): `links` is judged when read: a record whose link field points at a type
+//   it doesn't allow (a modified app) is kept, the link counts for nothing (the field reads null; not in
+//   linked/count/sum/on of the target); a target not held counts as written. Records of hypergraph types this
+//   version doesn't know (a newer hypergraph's) are kept and counted by type, like unknown app types.
 // ✓ story 1: all kinds, links, onePerMember (one per member per its first link field), editable 'author';
 //   bad declarations throw INVALID_TYPE naming type and field.
 // ✓ story 5: editable 'members' and { permission }: the latest allowed edit wins; only the author's delete
