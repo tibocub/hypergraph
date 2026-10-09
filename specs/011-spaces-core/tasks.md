@@ -237,9 +237,81 @@ devices no removal names — fixed first.
 
 ## Phase 7: User Story 5 — Graph vocabulary, shared editing (Priority: P2)
 
-- [ ] T056 [P] [US5] test/next/forum/graph.js: the meanings of v1's test/brittle/core/relations.js, tags.js and query.js (relate with type/value/data ≤ 4 KB, unrelate, edges in/out with counts, tag/untag/getByTag newest first, paging without gaps or repeats)
-- [ ] T057 [P] [US5] test/next/forum/wiki.js: a page type editable by permission `edit-pages`; three editors, the latest allowed edit wins; an edit without the permission ignored (US5 #4)
-- [ ] T058 [US5] `hg/relation` and `hg/tag` built-in types, `relate/unrelate/edges/tag/untag/getByTag`, `editable` by permission or members in the gate; docs; CHANGELOG
+**Goal**: v1's graph vocabulary on the new core (relations, edges with counts, tags, queries by type,
+author, tag, link and time with paging); types editable by members or by a permission, the latest
+allowed edit winning, losing the right to edit as a cut (A4); the follow-ups settled in story 4's review.
+**Independent test**: graph and wiki scenarios pass on Node and Bare, with a member offline meanwhile.
+
+**Choices made before starting** (research.md A9; for the lead's review):
+- Relations and tags are records of built-in types in their author's own log: `hg/relation { from, to,
+  rel, value, data, off }`, `hg/tag { on, tag, off }`. They are never edited or deleted: `unrelate` and
+  `untag` write a new one with `off: true`, and the latest wins per (from, to, type) and per (record,
+  tag) — so an unrelate is undone by relating again, the same everywhere in any order of arrival.
+- **A relation from X, or a tag on X, counts only if its author may edit X**: X's author by default (v1's
+  "an edge from a record is said by who owns it", test/brittle/core/relations.js), its editors for a
+  shared type — the same check as edits, cuts included. So any editor of X can relate or unrelate from
+  it (v1: "any authorized writer can unrelate").
+- Edges are computed when read, from the by-link index (few per record); tags are kept on the tagged
+  record's row as index keys, so tagged lists are newest first by when the record was put and page
+  like any query (no new HyperDB index).
+- **Shared deletes** (Tibo, 2026-10-09): only the author's own delete counts. `del()` by a moderator
+  who isn't the author is a `remove` decision (ordered and permission-checked at its point, so no cut is
+  needed); by anyone else, `NOT_ALLOWED`.
+- **Losing an edit permission is a cut** (A4's pattern): `role/set` already carries the decider's cut;
+  apply now also records it (view `editcut:<id>`) for every app permission the member loses. Edits,
+  relations and tags of that member below it count for everyone, those past it for no one; a log
+  without such a cut counts while the member holds the permission. A custom role never loses an app's
+  permission (as `post`, A5: its holders can't be listed reliably). Given the permission back, the
+  member's app writes in a new log (as after an unban).
+
+### Tests for User Story 5 (write first, they fail)
+
+- [ ] T056 [P] [US5] test/next/unit/types.js and test/next/unit/gate.js (new): `hg/relation` and `hg/tag`
+  are declared; `gate.mayChange` with cuts — the author always; `'members'`; `{ permission }` below the
+  editor's cut yes, past it no, no cut: while holding it; a delete only by the target's author;
+  relations and tags only as puts, `data` ≤ 4 KB, a finite `value`, a non-empty type or tag
+- [ ] T056a [P] [US5] test/next/unit/decisions-roles.js: `role/set` to a role without an app permission
+  records `editcut:<id>` for it with the decider's lengths (a log's first cut stays); `state.editLimit`;
+  `role/define` dropping an app permission is ignored (dropping `decide`, `moderate`, `invite`, `roles`
+  still works)
+- [ ] T056b [P] [US5] test/next/forum/graph.js (the meanings of v1's relations.js, tags.js, query.js):
+  relate with a type, a number and data ≤ 4 KB → out-edges of one, in-edges of the other, on every
+  member, with counts; filters by type, order and limit; relating the same triple twice → one edge (the
+  latest value); unrelate → gone everywhere; relate again → the new value; unrelating nothing →
+  `NOT_FOUND`; bad value or data over 4 KB → `INVALID_RECORD`; a relation from someone else's record
+  refused locally (`NOT_ALLOWED`) and, written raw, ignored by every member; tag / untag / getByTag
+  (newest first, paged, empty for an unused tag); `query(type).tag()`, `.by()`, `.on()`, `.since()`,
+  `.until()` compose; paging 25 posts by three members in pages of 7 never skips or repeats (equal
+  stamps included); a member offline meanwhile shows the same edges and tags; `linked()` without a type
+  leaves hypergraph's own records out
+- [ ] T056c [P] [US5] test/next/forum/wiki.js (US5 #4): a page type editable by `edit-pages`; three
+  editors edit, every member shows the latest; a member without it: refused (`NOT_ALLOWED`), written raw
+  ignored; an editor's delete refused, written raw ignored; a moderator's delete takes it down
+  everywhere; a blanked page is restored by the next edit; an editor losing the permission — an edit
+  before the cut stays, one after is ignored, by a member who had shown it and by a newcomer alike;
+  given it back, they edit again; a type editable by `'members'`
+- [ ] T056d [P] [US5] Follow-ups (ROADMAP 2026-10-09): test/next/forum/invites.js — joining waits past
+  `readTimeout` by default (an instance with `readTimeout: 500` joins an inviter who comes online 2 s
+  later); test/next/forum/moderation.js — after an unban, `setRole` from another admin works at once (the
+  retry removed), and `NOT_ALLOWED` says why (banned, not a member, role too low); test/next/net/indexers.js
+  — `status()` warns while the owner is the only settler, not once an admin settles too
+
+### Implementation for User Story 5
+
+- [ ] T057 [US5] lib/types.js (built-ins), lib/gate.js (`mayChange` with cuts, `mayEdit`, relation and tag
+  checks), lib/decisions/apply.js + state.js (`editcut`, `editLimit`, `role/define` keeps app permissions)
+- [ ] T057a [US5] lib/index/indexer.js: tags as index keys of the tagged row (on insert, edit, resettle,
+  cut, moderation); edits and tags looked at again when edit rights change
+- [ ] T057b [US5] lib/index/query.js: `edges()`, `getByTag()`, `Query.tag/on/since/until` composing;
+  `linked()` without a type skips `hg/` types
+- [ ] T057c [US5] lib/space.js: `relate`, `unrelate`, `edges`, `tag`, `untag`, `getByTag`; `del()` by a
+  moderator; a new own log when an edit permission comes back; decision methods catch up with connected
+  decision writers before refusing, with the reason; `status()`; lib/index.js: `redeemInvite` waits 30 s
+  by default
+- [ ] T058 [US5] test/next/forum/forum.js (tags, relations, pages, editors), contracts/api.md, data-model.md,
+  docs/next/api.md and concepts.md ("give a space an admin"), research.md A9, CHANGELOG.md
+- [ ] T058a [US5] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
+  hyperDNS's `npm test` pass; forum.js line count
 
 ## Phase 8: User Story 6 — Holding part of a space, honestly (Priority: P2)
 
