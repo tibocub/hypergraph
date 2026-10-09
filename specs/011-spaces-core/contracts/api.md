@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1, 2 and 3 (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1, 2, 3 and 4 (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 
@@ -25,6 +25,8 @@ const hg = await Hypergraph.open('./data', {
   budget: 5e9,          // bytes for the whole app (default 5 GB)
   readTimeout: 5000,    // default bound for reads, ms
   mnemonic: undefined,  // restore an identity from its recovery phrase
+  password: undefined,  // ✓ story 4: the recovery phrase is sealed by it from the first moment (new account,
+                        //   mnemonic or joinCode); on a folder whose phrase is still in plain text, protects it
   bootstrap: undefined  // DHT nodes (tests use a local DHT)
 })
 
@@ -64,6 +66,10 @@ await hg.removeDevice(publicKey, { password })   // ✓ or { recoveryPhrase }: n
                                    //   in every space, what it wrote up to where this device holds it (or its own
                                    //   last heads say) stays, nothing after counts; its app gets DEVICE_REMOVED;
                                    //   NOT_FOUND for a key that isn't one of this account's devices
+// ✓ story 4 (research.md A8): decision rights follow devices. Where this identity may decide or moderate, every
+//   device of it records decisions with no extra step (it claims its writer key; any member who records
+//   decisions lets it); removeDevice also takes a device's decision rights away in every space. Device proofs
+//   must come straight from the identity key (a device attesting another one is refused).
 hg.personal                        // ✓ sync: the personal Space (only this identity's devices; encrypted; not in spaces())
 await hg.personal.put('held', { path, holder })   // ✓ any app record (types from open()), private to the identity
 await hg.setSetting('theme', 'dark')   // ✓ any JSON value; the latest set on any device wins
@@ -76,8 +82,10 @@ await hg.settings()                // ✓ { theme: 'dark' }
 
 ```js
 const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name (policy kept, applied in story 6; private: story 8)
-const joined = await hg.redeemInvite(link, { timeout: 60000 })  // ✓ joins (connecting if needed); resolves to the Space once a
-                                                // member who records decisions let us in; INVITE_INVALID after timeout
+const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connecting if needed); resolves to the Space once a
+                                                // member who records decisions let us in. ✓ story 4: waits up to
+                                                // readTimeout by default; refused: INVITE_EXPIRED, INVITE_USED_UP,
+                                                // INVITE_REVOKED, NOT_ALLOWED; nobody answered: INVITE_INVALID
 hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
 hg.space(key)                                   // ✓ sync: the Space; NOT_FOUND if not held here
 await hg.leaveSpace(key)                        // drops its data from this device
@@ -126,6 +134,7 @@ await forum.del(post.id)                                 // ✓ every member sto
 const { items, complete } = await forum.query('post').latest(20)   // ✓ newest first (by when it was put)
 await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-declared index (INVALID_TYPE if not declared)
 await forum.query('comment').by(someone).latest(20)                // ✓ by author (identity key)
+await hg.personal.query('held').fromDevice(device).latest(20)      // ✓ story 4: what one device put (device key)
 await forum.query('post').tag('rust').latest(20)
 await forum.query('post').latest(20, { after: items.at(-1), timeout: 2000 })   // ✓ paging: after the last record of
                                                                    //   the previous page; own bound
@@ -156,8 +165,11 @@ await forum.getRole(someone)          // ✓ 'member' | 'moderator' | ... | null
 await forum.removeRole(someone)       // ✓ takes them out of the space (v1's meaning); what they wrote up to where
                                       //   this member holds them stays for everyone, nothing after counts
 await forum.moderateAction('hide', post.id, { reason: 'spam' })   // ✓ flag | hide | reveal | remove (for good)
-await forum.moderateAction('ban', someone, { reason: 'spam' })    // ✓ out for good: kept up to where this
-                                      //   moderator holds them, ignored after; not let back in (no unban yet)
+await forum.moderateAction('ban', someone, { reason: 'spam' })    // ✓ out: kept up to where this moderator
+                                      //   holds them, ignored after; not let back in until unbanned
+await forum.moderateAction('unban', someone)   // ✓ story 4: may be let back in (invite, setRole); writes in a
+                                      //   new log; what they wrote while banned never counts. NOT_FOUND if not
+                                      //   banned; NOT_ALLOWED below the rank of who banned
 await forum.moderateAction('ban', someone, { from: spam })        // ✓ the same, and that record and everything
                                       //   after it in its log go too, for everyone (NOT_ALLOWED if not theirs)
 // ✓ moderators, admins, owner (NOT_ALLOWED otherwise); a demoted moderator's later decisions are ignored
@@ -168,11 +180,13 @@ await forum.moderateAction('ban', someone, { from: spam })        // ✓ the sam
 
 ```js
 const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.now() + 7 * 864e5, subspaces: [] })
-// ✓ story 1: a string 'hg:…'; uses default 1; recorded by a member who records decisions (owner, admins)
-//   while online; NOT_ALLOWED if this member's role can't invite
-await forum.revokeInvite(link)
-await forum.redemptions(link)         // [{ identity, at }]
-await forum.setWriteLimit({ records: 50, periodMs: 3600e3 })   // open spaces
+// ✓ a string 'hg:…'; uses default 1 (Infinity: a public link, until revoked); recorded by any member who
+//   records decisions, the maker online or not. Who may invite to what: a role with `invite`, to a role below
+//   theirs or to member / guest, never owner, with no permission they lack (NOT_ALLOWED; NOT_FOUND for an
+//   unknown role); a redemption never lowers a role
+await forum.revokeInvite(link)        // ✓ its maker or who may decide; members who came in stay
+await forum.redemptions(link)         // ✓ [{ identity, at }], oldest first
+await forum.setWriteLimit({ records: 50, periodMs: 3600e3 })   // open spaces: story 9 (research.md A8)
 ```
 
 ## Sub-spaces
@@ -198,6 +212,10 @@ forum.addProtocol('swarmfs/transfer', {
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
 `INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`.
+
+Story 4 uses: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `NOT_ALLOWED` (refused redemptions, with
+their reason, within the read bound), `INVITE_INVALID` (nobody able to let us in answered in time),
+`NOT_ALLOWED` / `NOT_FOUND` for `createInvite`, `revokeInvite` and `unban`.
 
 Story 3 adds: `DEVICE_REMOVED` (writing from a device removed from the account), `NOT_ALLOWED` for
 adding or removing a device without the recovery phrase, `INVITE_INVALID` for a device code.

@@ -50,29 +50,38 @@ point.
 | `member/remove` | `identity, cut ([{log, length}])` — research.md A4 |
 | `role/define` | `name, permissions[]` (custom roles; never takes 'post' away: research.md A5) |
 | `role/set` | `identity, role, cut ([{log, length}])` — the cut counts only if the role takes 'post' away |
-| `moderate` | `action (flag\|hide\|remove\|reveal\|ban), target (record id \| identity), reason, cut ([{log, length}]: bans)` |
-| `invite/create`, `invite/revoke`, `invite/redeem` | spec 008's invite and redemption |
+| `moderate` | `action (flag\|hide\|remove\|reveal\|ban\|unban), target (record id \| identity), reason, cut ([{log, length}]: bans)` — `unban` lifts `banned:`, the cut stays (research.md A8) |
+| `invite/redeem` | spec 008's redemption (`invite/create` is unused: an invite carries its maker's signature) |
+| `invite/revoke` | `invite` (the encoded invite: its maker, or who may decide, revokes it) |
+| `writer/add` | `key, proof` — a device's claim of its decision-log writer key, signed on its identity's behalf; counts for a member who may decide or moderate, from a device not removed (research.md A8) |
+| `device/remove` | `device, cut, proof` — the identity key's signed removal (the same bytes as the `hg/device-remove` record): the device's writer keys go, for good |
 | `key/rotate` | `epoch, commit` (private) |
 | `subspace/create` | `key, name, private, writeRoles[]` |
 | `settings/set` | `policy?, writeLimit? { records, periodMs }` |
 
 **State** (rebuilt by applying the log): members, roles and permissions, custom roles, moderation flags
-per record, bans and removals with cuts (`cut:<identity>`: first cut per log wins), invites and redemptions, epochs, sub-spaces, settings. A sub-space's
+per record, bans and removals with cuts (`cut:<identity>`: first cut per log wins), invites, redemptions
+and revocations, writers and settlers, removed devices, epochs, sub-spaces, settings. A sub-space's
 effective state = parent's members, roles, bans, then its own decisions; parent bans always win.
 
 Built-in roles and permissions (as v1): `owner` (all), `admin` (decide, moderate, invite, roles below
 admin), `moderator` (moderate), `member` (post), `guest` (post in its sub-space). Permission `decide` or
-`moderate` makes a member's device a decision-log writer (its key comes with its invite redemption).
+`moderate` makes a member's devices decision-log writers (the first key comes with its invite
+redemption, the others by `writer/add`); losing both drops them. **Settlers** (Autobase indexers): one
+writer key per member with `decide`, the first; a removed one hands over to another of the same
+person; Autobase keeps its last settler, which then counts for nothing here (research.md A8).
 
-View keys (research.md A4–A5): `meta`, `member:<id>` `{ role, by, stamp, writer }`, `writer:<key>`,
+View keys (research.md A4–A5, A8): `meta`, `member:<id>` `{ role, by, stamp, writer, writerDevice }`,
+`writer:<key>` `{ identity, device, indexer }`, `writers:<id>` `{ keys }`, `gone:<id>:<device>`,
 `role:<name>` `{ permissions }`, `cut:<id>` `{ logs: { <log>: length } }`, `banned:<id>`,
-`mod:<record id>` `{ flagged, hidden, removed }`, `redeemed:<invite>:<id>`, `uses:<invite>`.
-A redemption is `{ invite, identity, writer, proof }`.
+`mod:<record id>` `{ flagged, hidden, removed }`, `redeemed:<invite>:<id>`, `uses:<invite>`,
+`revoked:<invite>`. A redemption is `{ invite, identity, writer, proof }`.
 
-### Space channel messages (Protomux `hypergraph/space`, id = space key)
+### Space channel messages (Protomux `hypergraph/space`, id = the space's discovery key, research.md A7)
 
 `summary { count, digest (32 B XOR) }`, `want {}`, `logs [log key]`, `notice { log }`, `get { log }`
-(experiment 1), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3); story 9
+(experiment 1), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3), `ask
+{ decision }` (a `writer/add` or `device/remove` for any writer to record, research.md A8); story 9
 adds `period, start` to log entries.
 
 ## On the device only (never replicated)

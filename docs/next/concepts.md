@@ -66,22 +66,32 @@ count in it.
 device): the removal is signed by the identity itself, written in every space, and cuts the lost
 device's logs where your device holds them (or further, if its last heads say so). What it wrote
 before stays for everyone; what it writes after counts for nobody. A thief with your phone but not its
-password can't remove your laptop. Known limit (until story 4): a removed device that recorded
-decisions for a space (an owner's or admin's) still can; and a second device of an owner or admin
-writes records but doesn't record decisions yet.
+password can't remove your laptop. Every device proves itself straight from the identity: a device
+can't make other devices (a stolen one minting new ones that no removal names).
+
+**Decision rights follow devices.** Where your role lets you decide or moderate, each of your devices
+records decisions; a removed device loses that right in every space, the same for everyone.
 
 ## Decisions
 
 What the space must agree on — who is a member, roles, moderation, invites — goes into the space's
-**decision log**, one per space, written by the members allowed to decide (the owner, admins) and
-applied by every member in the same order. A decision counts only if its author was allowed to make it
-at that point of the order. Records are never decisions.
+**decision log**, one per space, written by the devices of members allowed to decide or moderate (the
+owner, admins, moderators) and applied by every member in the same order. A decision counts only if its
+author was allowed to make it at that point of the order. Records are never decisions.
+
+Decisions apply as soon as they arrive; their order is then **settled** by the owner and the admins,
+one device each: once most of them have seen a decision, its place in the order is final. So a space
+outlives its owner: with the owner gone for good and two admins online, decisions keep settling.
+Settling needs most of the settlers online at once; a space whose only settler is lost for good still
+applies new decisions, but never settles them again (the unsettled part keeps growing), so give a space
+an admin or two.
 
 ## Roles and moderation
 
 Each member has a **role**: `owner`, `admin`, `moderator`, `member`, `guest`, or one your app defines
 with its own permissions. Roles say who may write, invite, give roles and moderate. Moderators
-**flag**, **hide** and **reveal** records, **remove** them for good, and **ban** people. These are
+**flag**, **hide** and **reveal** records, **remove** them for good, **ban** people and lift a ban
+(**unban**: what they wrote while banned never counts). These are
 decisions: every member applies them in the same order, and one made by someone who wasn't allowed at
 that point is ignored by everyone (a demoted moderator's earlier decisions stay).
 

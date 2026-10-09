@@ -16,8 +16,9 @@ const { Hypergraph } = require('hypergraph/next')
 const hg = await Hypergraph.open('./data', {
   types,                 // your record types (below)
   rules,                 // your app's rules (below)
-  readTimeout: 5000,     // how long reads wait for known-but-missing data, ms
-  mnemonic: undefined    // a recovery phrase, to restore an identity in a new folder
+  readTimeout: 5000,     // how long reads (and joining) wait for known-but-missing data, ms
+  mnemonic: undefined,   // a recovery phrase, to restore an identity in a new folder
+  password: undefined    // keeps the recovery phrase sealed by it from the first moment
 })
 hg.identity.publicKey            // the person
 hg.device.publicKey              // this device
@@ -31,8 +32,10 @@ await hg.close()
 Right after showing the recovery phrase, ask the person what to do with it: keep it on this device
 behind a password (`protectRecoveryPhrase`), or forget it here because it is written down
 (`forgetRecoveryPhrase`). Until they choose, it stays in the instance folder as is, readable by anything
-that can read that folder. This device keeps its identity either way; the phrase is only needed to
-restore the identity on another computer.
+that can read that folder. Better: ask for the password before creating the account and open with
+`{ password }` (also with `mnemonic` or `joinCode`): the phrase is then never in the folder in plain
+text. This device keeps its identity either way; the phrase is needed to restore the identity on
+another computer, and to add or remove a device.
 
 ## Devices and the personal space
 
@@ -61,6 +64,12 @@ it was forgotten here), and so does **removing a lost device**: a removal is sig
 key, never by a device alone, so a stolen device without the password can't remove yours. A removal
 applies in every space: what the lost device wrote up to where you hold it stays, nothing after counts,
 for everyone, newcomers included. The lost device's own app gets `DEVICE_REMOVED`.
+
+**Decision rights follow devices.** If you are an owner, admin or moderator somewhere, every device of
+yours records decisions there with no extra step (each claims its right, and any member able to record
+decisions lets it, your other device included), and a removed device loses that right in every space:
+whatever it decides after the removal counts for nobody. A device made by another device never counts:
+every device proves itself straight from the identity.
 
 Records show the person: `author` is the identity on every device, `device` is the device that wrote
 the current version. Every device joins the spaces any of them created or joined, and shares the
@@ -92,15 +101,25 @@ names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are tak
 
 ```js
 const forum = await hg.createSpace({ name: 'Hypergraph fans' })
-const link = await forum.createInvite({ role: 'member' })   // one use by default; send it any way
+const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.now() + 7 * 864e5 })
+const open = await forum.createInvite({ uses: Infinity })   // a public link: an open forum
 const joined = await hg.redeemInvite(link)                 // on the newcomer's app: resolves once let in
+await forum.revokeInvite(open)                             // no one else gets in with it; members stay
+await forum.redemptions(link)                              // [{ identity, at }]: who came in with it
 hg.spaces()            // [{ key, name, parent }]
 hg.space(forum.key)    // the Space
 forum.on('change', ({ types }) => {})   // records of these types changed
 ```
 
-In story 1 an invite is recorded by a member who records decisions (the owner) while online. Offline
-inviters, expiry, revocation and public links come with story 4.
+A link is signed by its maker and holds no key; send it any way you like. One use by default. It works
+while its maker is offline, as long as some member able to record decisions (the owner, an admin) is
+online. Who may invite to what: a role with `invite` (owner, admins), to a role below theirs, or to
+`member` and `guest`; never to owner. `redeemInvite` waits up to the read bound (`{ timeout }`
+overrides it) and says why when it is refused: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`,
+`NOT_ALLOWED` (its maker may not give that role, or you are banned); `INVITE_INVALID` if nobody able to
+let you in answered in time (try again later). The maker or an admin revokes a link. Joining never
+lowers a role someone already has. A limit on how much a newcomer of an open space may write comes
+later (story 9).
 
 ## Roles and moderation
 
@@ -114,8 +133,9 @@ await forum.moderateAction('hide', comment, { reason: 'rude' })   // left out of
 await forum.moderateAction('reveal', comment)                     // shown again
 await forum.moderateAction('flag', post, { reason: 'check' })     // record.flagged
 await forum.moderateAction('remove', comment)                     // gone for good
-await forum.moderateAction('ban', someone, { reason: 'spam' })    // out for good
+await forum.moderateAction('ban', someone, { reason: 'spam' })    // out, and not let back in
 await forum.moderateAction('ban', someone, { from: firstSpam })   // and drop that record and all after it
+await forum.moderateAction('unban', someone)                      // may be let back in (invite, setRole)
 ```
 
 Built-in roles: `owner` (everything), `admin` (members, roles, invites, moderation), `moderator`
@@ -129,7 +149,8 @@ Removing or banning someone keeps what they wrote up to what you held at that mo
 including people who join later; anything they write after is ignored everywhere. A ban keeps their
 earlier votes too. To drop the spam that led to the ban, ban `from` its first record: that record and
 everything they wrote after it (on that device) go too, for everyone, in the same decision. Let in again
-(after a removal, not a ban), they write again.
+(after a removal, or a ban lifted with `unban`), they write again; what they wrote while out never
+counts. `unban` is for a moderator at least at the rank of whoever banned.
 
 A hidden record is left out of `query`, `linked`, `count` and `sum`; `get(id)` still returns it with
 `hidden: true`, so you can show "hidden by moderators" and let moderators reveal it.
@@ -166,6 +187,7 @@ await forum.del(post.id)
 const { items, complete } = await forum.query('post').latest(20)
 const next = await forum.query('post').latest(20, { after: items.at(-1) })   // the next page
 await forum.query('comment').by(someone).latest(20)     // by author
+await hg.personal.query('held').fromDevice(phone).latest(20)   // what one device put (its device key)
 await forum.query('post').where({ forum: 'news' }).latest(20)   // a declared index
 const stop = forum.query('post').live(({ items }) => render(items), { limit: 20 })
 

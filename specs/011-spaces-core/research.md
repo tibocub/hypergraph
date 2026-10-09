@@ -533,3 +533,83 @@ writer of the spaces' decision logs (it writes records, not decisions), and remo
 stop that device's key from recording decisions where it was a writer. Both need decision-log writer
 management (add a device's writer key, remove a removed device's), which story 4 reworks anyway
 (admins as indexers).
+*(Done in story 4: A8.)*
+
+### A8. Story 4: decision rights follow devices, settlers, invites, unban (decided by Tibo, 2026-10-09)
+
+**Found first, fixed first: a device could mint devices.** keet-identity-key verifies a proof chain of
+any length (identity → device → device …), and only the last key is the "device". A stolen device could
+attest a new device key; that one's logs and decisions passed every check, and no removal named it.
+A7 already made every device prove itself straight from the identity key, so `Identity.verify` now
+accepts chains of zero (the identity key itself: identity logs, removals) or one (a bootstrapped
+device) only. Test: `test/next/unit/identity.js`.
+
+**Decision rights follow devices** (FR-019, A7's flag):
+- A device of a member whose role has `decide` or `moderate` **claims** its decision-log writer key:
+  `writer/add { key, proof }`, the proof signed by the device on its identity's behalf (the same
+  signable as `space/init`'s). It can't append it itself (not a writer yet), so it sends it on the space
+  channel in an `ask` message; any writer records it after checking it would count (the member's other
+  device, an admin). Sent when the decisions change (at most every 5 s) and on every new channel.
+- A device removal (A7's identity-key-signed `hg/device-remove` record) also goes into the decision log
+  as `device/remove { device, cut, proof }`, with the record's exact bytes. **Any writer that indexes a
+  removal record records it** (and a device of the same identity asks if it can't): so it reaches the
+  decision log even when the remover can't write there, and also in spaces where the device has no
+  writer key yet (a member promoted later can't have a removed device claim one). Apply drops every
+  writer key of that device and marks it `gone:`, refusing its later claims.
+- Losing both `decide` and `moderate` (demotion, removal, ban) drops all the member's writer keys, from
+  the view and from Autobase (`host.removeWriter`). Before, a demoted moderator stayed a writer whose
+  decisions were ignored; now it can't even append. Promoted again, the redemption's key comes back
+  and other devices claim again.
+- Apply checks it, not only Autobase: a decision ordered after a removal is ignored because its writer
+  key no longer has a `writer:` entry, whatever Autobase does with removed writers. "After" is the
+  settled order (constitution Principle I): a decision the settlers saw before the removal settled
+  counts, like a demoted moderator's earlier ones. Test: `test/next/forum/devices.js` ("a removed
+  device's decisions afterwards…": the stolen phone, offline, bans someone; nobody, newcomer included,
+  applies it; the test fails without the removal decision).
+
+**Settlers: one device per decider person** (Tibo, 2026-10-09; the brief said every device of members
+with `decide`). Autobase indexers settle the order once most of them have seen a decision. With every
+device a settler, a person with a laptop and a rarely-opened phone would need both online to settle,
+and a lone owner losing one of two devices would stall settling for good. So: the first writer key of
+each member with `decide` settles (owner: the space's first writer; an admin: its redemption's key or
+first claim); removing that device hands settling over to another key of the same person; demoted to
+moderator, they write but don't settle. Owner gone for good with two admins: 2 of 3 settle (test:
+`test/next/net/indexers.js`). Limits, stated in docs/next/concepts.md: Autobase never removes its last
+settler (`host.removeable`): a lone owner whose only settling device is lost keeps applying new
+decisions but never settles them again; and if that device is stolen, the thief as sole settler
+decides the order (its decisions can stay ahead of the removal). A space should have an admin.
+Open: Autobase's `fork()` (new settlers when most are gone for good) wasn't tried.
+
+**Invites complete** (FR-023): `invite/revoke { invite }` (body changed from `id`, never written
+before: the whole invite, so apply can check its maker), by the maker or who may decide;
+`redemptions(link)`; `uses: Infinity` for a public link (encoded 0, as before); who may invite to
+what is one pure function (`mayInvite`, used by `createInvite` and apply): `invite` permission, never
+owner, below one's rank or member / guest, only permissions held; custom roles allowed (before:
+built-in only). A redemption never lowers a role (custom roles by rank).
+**Refusals say why, judged by the newcomer itself**: while waiting, the newcomer applies the
+recorder's checks (`State.inviteRefusal`: expired, revoked, used up, maker not allowed or newcomer
+banned) to its own copy of the decision log, once a member was reached. No refusal message on the wire:
+a peer could lie, the decision log can't. Uses and revocations only grow, so a copy that lags never
+refuses wrongly for them; "not allowed" from a lagging copy could (the maker's promotion not received
+yet): a small risk, noted. `redeemInvite` waits `readTimeout` by default (was 60 s) and drops the space
+it opened if refused (`Network.leave`); nobody answering is still `INVITE_INVALID`.
+
+**Unban** (Tibo, 2026-10-09: "new log after unban"): `moderateAction('unban', who)` lifts `banned:`;
+the ban's cut stays for good, so once let back in (invite or `setRole`) the member's app writes in a new
+log, as after a removal (A4). The brief's "record the lengths held at unban time, like a cut in reverse"
+can't work: members stop downloading a banned member's logs at the cut, so they hold nothing from the
+ban; ban-time writes would count again. Only someone at least at the rank of who banned lifts a ban.
+**Known gap** (also true for a removed member let back in since A4): a modified app could prepare a
+brand-new log during the ban (no cut names it) that counts once they're back. Closing it needs a log
+header proving it was made after being let back in (e.g. a random code from that decision); later.
+
+**Write limit postponed to story 9** (Tibo, 2026-10-09). A per-log rule ("a record counts if the one N
+places earlier is at least a period older") needs earlier records' stamps, but deleted and taken-down
+records are wiped everywhere: a newcomer never sees those stamps, older members did, and they would
+disagree. `setWriteLimit` stays out of the API (tasks.md T071a).
+
+**Small additions**: `Hypergraph.open(dir, { password })` seals the phrase at once for a new account,
+`mnemonic` or `joinCode` (`phrase.saveSealed`: never in the folder in plain text), and protects a
+still-plain phrase of an existing folder. `query(type).fromDevice(key)`: records one device put
+(`row.device`), filtered while reading the type's index (no new HyperDB index: a folder made before
+would miss old rows; a `by-device` index can come when a big space needs it).

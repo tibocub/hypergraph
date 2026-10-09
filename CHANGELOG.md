@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-09: `hypergraph/next` — story 4, invites and decision rights that follow devices (ALPHA, breaking within `next`)
+
+- Security: a device proof must come straight from the identity key (a stolen device could mint new
+  devices no removal named). Decision rights follow devices: every device of an owner, admin or moderator
+  records decisions with no extra step; a removed device loses that right in every space.
+- Admins settle the decision order with the owner (one device each), so a space keeps settling with its
+  owner gone for good.
+- Invites: `revokeInvite(link)`, `redemptions(link)`, `createInvite({ uses: Infinity })` for a public link,
+  invites to custom roles; `redeemInvite` says why it was refused (`INVITE_EXPIRED`, `INVITE_USED_UP`,
+  `INVITE_REVOKED`, `NOT_ALLOWED`) and waits `readTimeout` by default (was 60 s).
+- `moderateAction('unban', who)`; `Hypergraph.open(dir, { password })` keeps the recovery phrase sealed from
+  the first moment; `query(type).fromDevice(key)`.
+- Breaking within `next`: a demoted moderator's device is no longer a decision-log writer; `invite/revoke`
+  carries the whole invite. The write limit for open spaces moves to story 9. Details:
+  `specs/011-spaces-core/research.md` A8.
+
 ### 2026-10-09: `hypergraph/next` — story 3, devices and the personal space (ALPHA, breaking within `next`)
 
 - Devices: `hg.addDevice({ password })` → `{ code, added }`; `Hypergraph.open(dir, { joinCode, deviceName })`
