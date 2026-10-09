@@ -155,3 +155,11 @@ test('app indexes leave out records whose indexed fields are all empty (story 7)
   t.alike(ixKeys(types, 'post', { title: 't', text: '', forum: null }), [], 'no forum: not in the index (an older version wrote it)')
   t.alike(ixKeys(types, 'pair', { a: 'x', b: null }), ['a,b x '], 'one of several is enough')
 })
+
+test('a field passed as undefined counts as absent; a typo with a value still throws (core follow-ups)', (t) => {
+  const types = new Types(forum)
+  t.alike(types.validate('post', { title: 't', text: undefined }), { title: 't' }, 'a known field undefined: absent')
+  t.alike(types.validate('post', { title: 't', topic: undefined }), { title: 't' }, 'an unknown field undefined (an older or newer helper): absent')
+  code(t, () => types.validate('post', { title: 't', titel: 'x' }), 'INVALID_RECORD', 'post', 'titel')
+  code(t, () => types.validate('post', { title: 't', titel: null }), 'INVALID_RECORD', 'post', 'titel')
+})

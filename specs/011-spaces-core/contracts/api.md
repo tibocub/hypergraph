@@ -165,6 +165,8 @@ await forum.del(post.id)                                 // ✓ every member sto
                                                          //   ✓ story 5: only the author deletes; a moderator who isn't
                                                          //   the author takes it down (moderateAction('remove'));
                                                          //   NOT_ALLOWED for other editors
+// ✓ core follow-ups: a field passed as undefined is absent in put and edit (edit leaves it as it was), known to
+//   the type or not; an unknown field with a value (null included) throws INVALID_RECORD naming it
 // ✓ story 5: put, edit and del first catch up with connected decision writers before refusing (NOT_ALLOWED with why)
 ```
 

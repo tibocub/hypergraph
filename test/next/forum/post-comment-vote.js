@@ -67,3 +67,18 @@ test('votes: one per member, the latest counts, the same everywhere', async (t) 
   }, 1000), 'score 3 everywhere: one vote per member, the latest')
   t.is((await fa.count('vote', { on: p })).value, 3, 'three votes, not four')
 })
+
+test('a field passed as undefined counts as absent: old and new helpers share code; typos still throw', async (t) => {
+  const { a } = await threeMembers(t)
+  const f = a.spaces().length ? a.space(a.spaces()[0].key) : null
+  // An older version's helper passing a field this version dropped from its
+  // call, and a newer one passing a field this version doesn't have yet.
+  const p = await f.put('post', { title: 'Hi', text: 'one', topic: 'rust', mood: undefined })
+  t.is(p.topic, 'rust')
+  const e = await f.edit(p.id, { text: 'two', topic: undefined, mood: undefined })
+  t.is(e.text, 'two')
+  t.is(e.topic, 'rust', 'undefined in an edit leaves the field as it was')
+  const err = await f.put('post', { title: 'Hi', txet: 'typo' }).then(() => null, (x) => x)
+  t.is(err && err.code, 'INVALID_RECORD', 'an unknown field with a value is a typo')
+  t.ok(err && /txet/.test(err.message), 'named')
+})

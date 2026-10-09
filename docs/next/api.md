@@ -209,6 +209,10 @@ await forum.edit(post.id, { text: 'First! (edited)' })   // other fields kept; N
 await forum.del(post.id)   // yours; a moderator's del() of someone else's record takes it down
 ```
 
+A field passed as `undefined` counts as absent, in `put` and `edit` (where it leaves the field as it was),
+even if the type doesn't have it: helpers written for an older or a newer version of your types keep
+working. A field the type doesn't have, with a value (`null` included), is a typo: `INVALID_RECORD`.
+
 ## Shared editing
 
 A type with `editable: 'members'` or `{ permission: 'edit-pages' }` lets others edit its records (wikis,
