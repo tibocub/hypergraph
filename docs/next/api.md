@@ -111,7 +111,7 @@ fields (and its edits keep them), the new one sees them `null` on old records. R
 doesn't know yet are kept; once an update declares it, the app rebuilds its local index at the first
 start (seconds for a big space; reads say `complete: false` meanwhile) and shows them like everyone else.
 App `rules` are code: a newer version refusing what an older one accepted makes members disagree, so make
-new rules accept what earlier versions wrote.
+new rules accept what earlier versions wrote (see [App rules](#app-rules): mismatches are detected).
 
 ## Spaces and invites
 
@@ -197,6 +197,13 @@ const hg = await Hypergraph.open('./data', { types, rules })
 breaks a rule (`RULE_REJECTED`, naming the rule), and every member checks it before keeping it: a
 record from someone else's app that breaks it is never shown, indexed or passed on. Keep rules
 deterministic and about the record alone: every member must reach the same verdict.
+
+**Rules are code, so members can run different ones** (an app not updated yet, a modified app), and then
+they disagree on which records exist. Hypergraph can't prevent that, only show it: a space records the ids
+of the rules it runs (`createSpace` records the creator's; `await forum.setRules()` records this app's,
+for who may decide), and `status()` warns `RULES_DIFFER` (with a `status` event) on a member whose app
+runs other ids, naming them. So give a rule a new id whenever you change what it accepts, make new rules
+accept what earlier versions wrote, and record the new set when you ship it.
 
 ## Records
 

@@ -112,10 +112,14 @@ forum.status()                                  // ✓ sync: { policy, held, sto
                                                 //   the first budget pass); budget: its own or null.
                                                 //   Warnings: SINGLE_SETTLER (story 5: "give a space an admin"),
                                                 //   BELOW_POLICY (keep-everything asked, this device can't), OVER_BUDGET
-                                                //   (what it may not drop already exceeds its share)
+                                                //   (what it may not drop already exceeds its share), RULES_DIFFER
+                                                //   (this app's rule ids differ from the ones the space recorded, named)
 await forum.setBudget(1e9)                      // ✓ story 6: its own budget out of the app's, or null: share it;
                                                 //   NOT_ALLOWED if the spaces' own budgets would exceed the app's
 await forum.setPolicy('everything')             // ✓ story 6: 'auto' | 'everything' for every member; who may decide
+await forum.setRules()                          // ✓ core follow-ups: records this app's rule ids as the ones the space
+                                                //   runs (who may decide; createSpace records the creator's). Rules are
+                                                //   code: mismatches can't be prevented, only detected (RULES_DIFFER)
 forum.on('change', ({ types }) => {})           // ✓ records of these types changed
 forum.on('status', (status) => {})              // ✓ story 6: when policy, held, belowPolicy, budget or warnings change
 ```

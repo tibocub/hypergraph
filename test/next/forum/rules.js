@@ -65,3 +65,33 @@ test('a non-member\'s records are never kept', async (t) => {
     t.absent((await forum.latest(f)).some((p) => p.title === 'spam'))
   }
 })
+
+test('app rules are code: the space records which are active, and members on other rules are warned', async (t) => {
+  // b runs a newer app with one more rule; c an older one with none.
+  const noEmpty = { id: 'no-empty-text', validate: (r) => r.type !== 'post' || !!r.text }
+  const a = await account(t, 'a')
+  const b = await account(t, 'b', { rules: [...forum.rules, noEmpty] })
+  const c = await account(t, 'c', { rules: [] })
+  const fa = await forum.createForum(a, 'Rules')
+  const fb = await forum.join(b, await forum.invite(fa))
+  const fc = await forum.join(c, await forum.invite(fa))
+  const warning = (f) => f.status().warnings.find((w) => w.code === 'RULES_DIFFER')
+
+  t.absent(warning(fa), 'the creator\'s rules are the space\'s')
+  t.ok(await eventually(() => warning(fb) && warning(fc), 10000), 'members on other rules are warned')
+  t.ok(/no-empty-text/.test(warning(fb).message), 'naming the rule the space doesn\'t have')
+  t.ok(/title-length/.test(warning(fc).message), 'naming the rule this app doesn\'t have')
+
+  // b's app is the forum's next version: an admin records its rules.
+  await forum.giveRole(fa, b.identity.publicKey, 'admin')
+  const told = new Promise((resolve) => fa.on('status', (s) => { if (s.warnings.some((w) => w.code === 'RULES_DIFFER')) resolve() }))
+  await eventually(async () => {
+    try { await fb.setRules(); return true } catch { return false }
+  }, 10000)
+  t.absent(warning(fb), 'recorded: b runs the space\'s rules')
+  t.ok(await eventually(() => warning(fa), 10000), 'the owner, on the older rules, is warned now')
+  await told
+  t.pass('with a status event')
+  t.ok(/no-empty-text/.test(warning(fa).message))
+  t.is((await fc.setRules().then(() => null, (e) => e)).code, 'NOT_ALLOWED', 'a member may not record them')
+})

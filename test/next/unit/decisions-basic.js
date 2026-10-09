@@ -129,3 +129,31 @@ test('settings/set changes the policy; only who may decide; only auto or everyth
   await applyNodes([node(other, { type: 'settings/set', policy: 'auto', writeLimit: null })], view, null, { space })
   t.is(State.from(view.map).policy, 'everything', 'a moderator may not change it')
 })
+
+test('settings/set records the app rules a space runs (core follow-ups); only who may decide; old entries decode', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  await applyNodes([node(space, { ...init, proof: initProof(owner, space, space) })], view, null, { space })
+  t.is(State.from(view.map).rules, null, 'none recorded')
+  await applyNodes([node(space, { type: 'settings/set', policy: null, writeLimit: null, rules: ['title-length', 'b'] })], view, null, { space })
+  const state = State.from(view.map)
+  t.alike(state.rules, ['b', 'title-length'], 'recorded, sorted')
+  t.is(state.policy, 'auto', 'the policy unchanged')
+
+  // An entry written before rules existed (no trailing field) still decodes.
+  const old = { type: 'settings/set', stamp: 1, policy: 'everything', writeLimit: null }
+  const body = c.encode(enc.decision, { ...old, rules: null })
+  t.alike(c.decode(enc.decision, body).rules, null)
+  const legacy = b4a.concat([c.encode(c.uint, enc.DECISION_TYPES.indexOf('settings/set')), c.encode(c.uint, 1), c.encode(c.bool, true), c.encode(c.string, 'everything'), c.encode(c.bool, false)])
+  const d = c.decode(enc.decision, legacy)
+  t.is(d.policy, 'everything')
+  t.is(d.rules, null, 'no rules in an older entry')
+
+  const other = crypto.randomBytes(32)
+  const m = crypto.randomBytes(32)
+  await view.put(`writer:${hex(other)}`, { identity: hex(m) })
+  await view.put(`member:${hex(m)}`, { role: 'moderator', by: '', stamp: 0 })
+  await applyNodes([node(other, { type: 'settings/set', policy: null, writeLimit: null, rules: [] })], view, null, { space })
+  t.alike(State.from(view.map).rules, ['b', 'title-length'], 'a moderator may not change them')
+})
