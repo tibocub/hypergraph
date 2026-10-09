@@ -303,3 +303,8 @@ await forum.inspect()   // read-only snapshot: logs (length, held, indexed, cut,
 For debugging and for the inspector tool. It writes nothing and fetches nothing, but counts every record
 of the space: don't call it on every render. The shape is in `specs/011-spaces-core/contracts/api.md`
 ("Diagnostics").
+
+**The inspector** shows all of this as a web page, from inside your app (Node only):
+`const { url } = await require('hypergraph/tools/inspector').serveInspector(hg, { port: 4400 })`. Read-only.
+`node tools/inspector/demo.js` plays a forum between three people with an inspector each. See
+[tools/inspector/README.md](../../tools/inspector/README.md).

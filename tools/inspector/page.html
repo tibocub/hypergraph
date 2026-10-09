@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hypergraph inspector</title>
+<link rel="stylesheet" href="page.css">
+</head>
+<body>
+<header>
+  <h1>Hypergraph inspector <span class="badge" title="This page only reads. Nothing here can change the data.">read-only</span></h1>
+  <div id="live" class="muted" title="The page updates by itself when something changes, and every few seconds.">connecting…</div>
+</header>
+<main>
+  <nav>
+    <section id="instance"></section>
+    <h2 title="Spaces are the groups this person is in: a forum, a chat, a wiki. The personal space is shared only by this person's own devices.">Spaces</h2>
+    <ul id="spaces"></ul>
+  </nav>
+  <article id="view"><p class="muted">Pick a space on the left.</p></article>
+</main>
+<dialog id="record"><form method="dialog"><button class="close" title="Close">×</button></form><div id="record-body"></div></dialog>
+<script src="page.js"></script>
+</body>
+</html>

@@ -35,7 +35,7 @@ const GROUPS = {
   forum: ['test/brittle/forum/index.js'],
   integration: 'test/brittle/integration',
   v2: 'test/brittle/v2',
-  next: ['test/next/unit', 'test/next/net', 'test/next/forum']
+  next: ['test/next/unit', 'test/next/net', 'test/next/forum', 'test/next/tools']
 }
 const DEFAULT_GROUPS = ['core', 'networking', 'replication', 'forum', 'integration', 'v2']
 
