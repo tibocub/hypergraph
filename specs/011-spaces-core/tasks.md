@@ -413,7 +413,7 @@ within 30 s (SC-008, measured alone).
 - [X] T062d [US6] Rebuild: lib/index.js (`instance.json`, a lost or unreadable index moved aside and rebuilt),
   lib/space.js (held logs found in the Corestore when the index knows none); lib/testing.js (`compact`,
   `crashAfter`)
-- [ ] T062e [US6] bench/next/rebuild.js: 100,000 records, index deleted, time to rebuild (SC-008: ≤ 30 s);
+- [X] T062e [US6] bench/next/rebuild.js: 100,000 records, index deleted, time to rebuild (SC-008: ≤ 30 s);
   run alone, once
 - [ ] T062f [US6] test/next/forum/forum.js (budgets, keep-everything, roles), contracts/api.md (budgets,
   policies, status, "Diagnostics": `inspect()`), data-model.md, docs/next/api.md and concepts.md

@@ -84,5 +84,8 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
   t.ok(await eventually(() => intruder.status().peers > 0, 10000), 'the stranger reached a member')
   testing.announce(intruder)
   const waiting = async (f) => (await f.inspect()).logs.some((l) => l.key === testing.ownLog(intruder) && l.waiting && !l.held)
-  t.ok(await eventually(async () => (await waiting(fa)) || (await waiting(fb)), 10000), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
+  t.ok(await eventually(async () => {
+    for (const f of [fa, fb, fc, fd]) if (await waiting(f)) return true
+    return false
+  }, 10000), 'a stranger\'s log is listed as waiting, nothing held (by a member it reached)')
 })

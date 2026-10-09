@@ -87,20 +87,20 @@ test('an unreadable index: set aside and rebuilt', async (t) => {
 test('a crash in the middle of indexing: only what wasn\'t saved is indexed again', async (t) => {
   const a = await account(t, 'a')
   const fa = await forum.createForum(a, 'Many')
-  for (let i = 0; i < 400; i++) await forum.post(fa, `p${i}`, '')
+  for (let i = 0; i < 1000; i++) await forum.post(fa, `p${i}`, '')
   await a.close()
   fs.rmSync(path.join(a.dir, 'index'), { recursive: true, force: true })
 
   // Rebuilding; the process "dies" once a few batches were saved.
-  testing.crashAfter(4)
+  testing.crashAfter(2)
   const crashed = await open(t, { dir: a.dir, ...opts })
   t.ok(await eventually(() => testing.crashed(crashed), 10000), 'it crashed while indexing')
   await crashed.close()
 
   const again = await open(t, { dir: a.dir, ...opts })
   const f = again.space(fa.key)
-  t.ok(await eventually(async () => (await forum.latest(f, 500)).length === 400, 20000), 'everything is shown after the restart')
+  t.ok(await eventually(async () => (await forum.latest(f, 2000)).length === 1000, 20000), 'everything is shown after the restart')
   const redone = testing.indexedBlocks(f)
-  t.ok(redone < 400, `only the unsaved part was indexed again (${redone} of 401 blocks)`)
+  t.ok(redone < 1000, `only the unsaved part was indexed again (${redone} of 1000 records)`)
   t.ok(redone > 0)
 })
