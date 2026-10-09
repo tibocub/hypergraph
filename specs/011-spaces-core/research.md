@@ -681,3 +681,56 @@ final (A3) would have let one member erase what others can't restore.
 - `space.status()` → `{ peers, settlers, warnings }`, with `SINGLE_SETTLER` while one member settles
   (not for the personal space, whose settler comes back from the phrase); docs say "give a space an
   admin".
+
+### A10. Story 6: holding part of a space, rebuild, diagnostics (2026-10-09)
+
+**Dropping content, not records** (R14 left open what eviction does to the index). A dropped record keeps
+its row in the local index (type, author, time, links, tag keys: ~0.5 KB) and loses its content: its block
+is cleared and the copy of its fields in the row too (flag `DROPPED`). So lists, counts, votes, edits, tags
+and edges stay exact on every member whatever it holds (constitution Principle I: holding less changes
+only whether an answer is complete). A read needing dropped content fetches it within its bound and keeps
+it (flag `READ`, dropped last); if it can't, it leaves the record out and says `complete: false`.
+Alternative considered: dropping whole rows past a time horizon (bounded disk whatever the size), rejected
+for now: a record fetched back would lose edits and tags dropped with it, and a member couldn't tell. Cost:
+the list itself is never dropped, so a space whose list outgrows its share is reported (`OVER_BUDGET`);
+members that don't list every record are story 9's. Records under 256 B (votes, tags) and `hg/` records
+are never dropped (little to gain; sums need them); nor this identity's records, decision logs, the
+personal space. Only rows below their log's `indexed` are dropped, and downloads restart there, so a
+dropped block is never fetched again unless read. In an `everything` space, dropped content comes back
+once it fits; in `auto`, only when read.
+
+**Stored bytes are estimated** (v2's lesson), measured on this core: content + ~150 B per record in its log,
+content + ~550 B in the index (`lib/storage.js`). The SC-011 test measures real disk: 2.84–2.89 MB for a
+3 MB budget on Node and Bare, the estimate within 0.2% of it.
+
+**Hypergraph compacts the storage itself.** Block contents ≥ 4 KB live in RocksDB blob files
+(hypercore-storage: 256 MB files, garbage collected from the oldest quarter), so dropped content stayed on
+disk (+0.5 MB over a 3 MB budget on Bare). After dropping a tenth of its budget, at most every 10 minutes,
+an instance compacts both databases, forcing blob collection of its oldest files.
+
+**Dropped counters live in the index's `meta` rows** (`dropped:<space>:<log>`), written in the same
+transaction: hyperschema refuses to grow a compact struct, so `@hg/log` couldn't take new fields.
+
+**Rebuild** (FR-012): `instance.json` keeps what the index can't be rebuilt from (identity proof, personal
+space keys, spaces and their Corestore namespaces, types, budgets) and an append-only `logs` file names
+every accepted log (64 B each). The plan said "found in the Corestore" (`store.list()`): rejected because
+the personal space's logs are encrypted, so telling them apart from other cores means guessing encryption
+on cores that aren't ours (and a refused probe clears block 0). An unreadable index is set aside
+(`index.broken-<time>`), never deleted. Content dropped before is fetched again once. Found while building:
+a rebuilt personal space indexing at open made the instance join a listed space it was still opening, which
+opened its Autobase twice and hung (fixed: joining listed spaces waits until open is done; opening a space
+by key dedupes). The rebuild got 2.7× faster by skipping lookups a space can't need (edits, tags and rows
+that came before, when its index held none at open) and 256 blocks per transaction.
+
+**Superseded personal records** (ROADMAP 2026-10-09): only the latest `hg/setting` per name and `hg/heads`
+per device keep a row; older blocks are cleared, **except in this device's own log**, kept whole (FR-027,
+as A5): other devices fetch and check from it, so none meets a hole nobody can fill. A device's own old
+heads and settings therefore stay in its own log (small, written at most every 10 minutes).
+
+**Smaller**: `space.inspect()` (contract "Diagnostics"); `space.roles()`; a device just able to record
+decisions waits within `readTimeout` (at least 5 s), claiming its writer key again every second; a new
+device code replaces an unused or just-used one (a second code crashed the process: blind-pairing allows
+one listener per account); `settings/set { policy }` applied by who may decide.
+
+**Routed to story 9** (lead, 2026-10-09): a newcomer to a space bigger than its share still downloads it
+once, then drops the oldest part.

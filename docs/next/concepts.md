@@ -131,3 +131,38 @@ what has arrived), or no other member has been reached since the app started. Th
 useful — show it, and read again later (or use a live query). A space where you are the only member,
 on your only device, is always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
 of can't be waited for. Records deleted by their authors leave nothing to wait for either.
+
+## Holding part of a space
+
+Each device keeps its spaces within its **storage budget**: one for the whole app (5 GB by default, less on
+a nearly full disk), out of which a space can be given its own. A small space is simply held entirely by
+every member — nobody chooses anything. A space bigger than its share keeps its newest part plus what was
+read: **content is dropped oldest first**, and content fetched back by a read goes last.
+
+Dropping content never changes what a member shows. A dropped record keeps its place in the local index
+(its type, author, time, links, tags, votes and edits), so lists, counts and scores stay the same. A read
+that needs its content fetches it from whoever holds it (its author always does), within the read's
+bound, and keeps it; if nobody holding it answers in time, the record is left out and the answer says
+`complete: false`. Dropped content is never fetched again unless read — except in a space whose creator
+asked members to **keep everything** (`policy: 'everything'`): there a device that had to drop some gets
+it back once it fits, and until then `status().belowPolicy` is true and a `status` event says so.
+
+Never dropped: your own records (from any of your devices), decision logs, the personal space, small
+records (votes, tags: under 256 bytes) and hypergraph's own records. The list of records itself (about
+0.5 KB per record) is kept too; a space whose list alone is bigger than its share is reported
+(`OVER_BUDGET`) — split very big archives into sub-spaces. Disk space freed by dropping comes back when the
+database compacts, which hypergraph asks for after dropping a tenth of its budget (at most every 10
+minutes). Budgets cover hypergraph's data, not files an app moves itself.
+
+Today a newcomer to a space bigger than its share still downloads it once before dropping the oldest
+part; fetching only the newest part comes with big spaces (story 9).
+
+## Rebuilding the index
+
+The local index is never replicated and can always be rebuilt from the logs the device holds. If it is
+deleted or can't be read (it is then kept aside as `index.broken-<time>`, never deleted), the next start
+rebuilds it: the device shows the same spaces and records as before, even offline. What the index can't
+be rebuilt from is also kept in two small files next to it: `instance.json` (the identity's proof, the
+personal space's keys, the spaces held, types, budgets) and `logs` (every log accepted in a space).
+Content this device had dropped is fetched again once, then dropped again. After a crash, only the
+records after the last saved batch are indexed again.

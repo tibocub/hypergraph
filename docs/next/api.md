@@ -1,6 +1,6 @@
 # Hypergraph's new core: API
 
-`require('hypergraph/next')`, the surface of stories 1 to 5 (spec 011). Concepts: [concepts.md](concepts.md). The
+`require('hypergraph/next')`, the surface of stories 1 to 6 (spec 011). Concepts: [concepts.md](concepts.md). The
 full planned surface, with what is built marked ✓: `specs/011-spaces-core/contracts/api.md`. The forum
 in `test/next/forum/forum.js` uses all of it.
 
@@ -256,3 +256,40 @@ record tags it, and the latest `tag` or `untag` wins. Both are records in your o
 types `hg/relation` and `hg/tag`), so every member applies them the same way, in any order of arrival.
 `getByTag` without a `type` looks at all your types.
 
+
+## Storage: budgets and policies
+
+```js
+await hg.setBudget(3e9)                 // bytes the app may use on this device (null: the default)
+await hg.storage()                      // { budget, used, free } — used is an estimate, free the disk's free bytes
+await forum.setBudget(1e9)              // this forum's own share, out of the app's (null: share the app's)
+await forum.setPolicy('everything')     // owner/admins: every member is asked to keep it all ('auto' is the default)
+await hg.createSpace({ name, policy: 'everything' })
+forum.status()                          // { policy, held: 'all' | 'part', stored, share, budget, belowPolicy,
+                                        //   peers, settlers, warnings }
+forum.on('status', (s) => {})           // policy, held, belowPolicy, budget or warnings changed
+```
+
+The default budget is 5 GB, or what the app holds plus half the free disk if that is smaller. Spaces with
+their own budget get it; the others share the rest in proportion to what each holds. See
+[concepts.md](concepts.md#holding-part-of-a-space). Warnings: `BELOW_POLICY` (the space asks to keep
+everything and this device can't: give it more room), `OVER_BUDGET` (what this device may not drop —
+its own records, the decisions, the list of records — is already more than its share).
+
+## Roles, listed
+
+```js
+await forum.roles()   // [{ name, permissions, custom }]: owner, admin, moderator, member, guest, then the space's own
+```
+
+## Diagnostics
+
+```js
+await forum.inspect()   // read-only snapshot: logs (length, held, indexed, cut, dropped, refused, waiting),
+                        // the decision log (length, settled, settlers, writers), records by type, storage, peers,
+                        // complete, warnings
+```
+
+For debugging and for the inspector tool. It writes nothing and fetches nothing, but counts every record
+of the space: don't call it on every render. The shape is in `specs/011-spaces-core/contracts/api.md`
+("Diagnostics").

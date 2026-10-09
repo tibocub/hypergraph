@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 to 5 (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1 to 6 (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 

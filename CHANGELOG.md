@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-09: `hypergraph/next` — story 6, holding part of a space, rebuild, diagnostics (ALPHA, breaking within `next`)
+
+- Storage budgets: `hg.setBudget()`, `hg.storage()`, `space.setBudget(bytes | null)` (default 5 GB, less on a nearly
+  full disk). Past its share a space drops content oldest first; dropped records stay listed, reads fetch
+  their content within the bound or say `complete: false`. Own records, decision logs and the personal space
+  are never dropped. Disk measured within the budget (+10%) on Node and Bare.
+- Policies `auto` / `everything` (`createSpace({ policy })`, `space.setPolicy()`); `status()` gains `policy, held,
+  stored, share, budget, belowPolicy`, warnings `BELOW_POLICY` and `OVER_BUDGET`, and a `status` event.
+- A lost or unreadable index is rebuilt from the held logs (new files `instance.json` and `logs` in the
+  instance folder); after a crash only the unsaved part is redone.
+- `space.inspect()` (read-only diagnostics, for the inspector), `space.roles()`; a device just able to record
+  decisions waits instead of failing.
+- Fixes: a second `addDevice()` code crashed the process (a new code now replaces the previous one); superseded
+  settings and device heads no longer pile up. Details: `specs/011-spaces-core/research.md` A10.
+
 ### 2026-10-09: `hypergraph/next` — story 5, the graph vocabulary and shared editing (ALPHA, breaking within `next`)
 
 - v1's graph vocabulary: `relate(a, b, type, { value, data })`, `unrelate`, `edges(record, { direction,

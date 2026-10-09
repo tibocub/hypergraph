@@ -352,8 +352,8 @@ within 30 s (SC-008, measured alone).
 - **Rebuild**: what the index can't be rebuilt from (identity proof, personal space keys, the spaces held
   and their storage namespaces, declared types, budgets) is also kept in a small file next to it
   (`<dir>/instance.json`, written atomically). A lost or unreadable index is moved aside and rebuilt: the
-  held logs are found in the Corestore (`store.list()`, each log's header names its space), checked by
-  the gate and indexed again; content this member had dropped is fetched again once (then dropped again).
+  held logs are named in an append-only `<dir>/logs` file (amended, A10: not `store.list()`, which can't
+  tell the personal space's encrypted logs apart without guessing), checked by the gate and indexed again; content this member had dropped is fetched again once (then dropped again).
   After a crash, indexing resumes where each log's last saved batch ended (already true since story 1).
 - **Superseded personal-space records** (ROADMAP 2026-10-09): an `hg/heads` replaced by a newer one of the
   same device, an `hg/setting` by a newer one of the same name: the older row goes and its block is cleared
@@ -405,7 +405,8 @@ within 30 s (SC-008, measured alone).
 - [X] T062b [US6] lib/index/indexer.js: superseded `hg/heads` and `hg/setting` dropped (rows, and blocks
   outside this device's own log)
 - [X] T062c [US6] lib/storage.js (new): app budget (default from free disk), shares, stored-bytes estimate;
-  lib/index/build.js: `log` gains `dropped` and `droppedBlocks` (append-only); lib/replication.js and
+  dropped counters per log in the index's `meta` rows (amended, A10: the compact `log` schema can't
+  grow); self-compaction after dropping a tenth of the budget (A10); lib/replication.js and
   lib/index/indexer.js: dropping content oldest first (flag `DROPPED`, fields cleared, block cleared,
   downloads restarted past it), restoring it on read (flag `READ`); lib/index/query.js and lib/space.js:
   reads fetch dropped content within their bound, `complete: false` when they can't; `setBudget`,
@@ -415,11 +416,11 @@ within 30 s (SC-008, measured alone).
   `crashAfter`)
 - [X] T062e [US6] bench/next/rebuild.js: 100,000 records, index deleted, time to rebuild (SC-008: ≤ 30 s);
   run alone, once
-- [ ] T062f [US6] test/next/forum/forum.js (budgets, keep-everything, roles), contracts/api.md (budgets,
+- [X] T062f [US6] test/next/forum/forum.js (budgets, keep-everything, roles), contracts/api.md (budgets,
   policies, status, "Diagnostics": `inspect()`), data-model.md, docs/next/api.md and concepts.md
   (holding part of a space, rebuild), research.md A10, CHANGELOG.md
-- [ ] T062g [US6] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
-  hyperDNS's `npm test` pass; forum.js line count; the 100k rebuild time
+- [X] T062g [US6] Checkpoint: `npm run test:next` and `npm run test:next:bare` pass; v1's `npm test` and
+  hyperDNS's `npm test` pass; forum.js line count; the 100k rebuild time — *next 180/180 on Node and Bare, v1 390/390, hyperDNS 46/46, forum.js 371 lines, 100k rebuild 20.6 s (2026-10-09)*
 
 ## Phase 9: User Story 7 — App versions (Priority: P2)
 
@@ -439,6 +440,7 @@ within 30 s (SC-008, measured alone).
 - [ ] T070 [P] [US9] bench/next/first-page.js: newcomer's latest 20 posts at 10k and 1M records (SC-004) — 1M only after asking
 - [ ] T071a [US9] The write limit for open spaces (`setWriteLimit({ records, periodMs })`, `settings/set { writeLimit }` in the gate), postponed from story 4 (research.md A8): a rule every member judges the same although deletes wipe earlier records' times
 - [ ] T071 [US9] lib/directory.js periods and the switch-over point (measured), active-log reads in lib/index/query.js; docs; CHANGELOG
+- [ ] T071b [US9] A newcomer to a space bigger than its share fetches only the newest part (today it downloads the whole space once, then drops the oldest content: research.md A10; routed here by the lead, 2026-10-09); and members that don't list every record, for spaces whose list alone outgrows a share
 
 ## Phase 12: Polish & cross-cutting
 
