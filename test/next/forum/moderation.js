@@ -135,12 +135,11 @@ test('unban: let back in, they write again; what they wrote during the ban stays
   t.is(await codeOf(forum.giveRole(fa, who, 'member')), 'NOT_ALLOWED', 'banned: not let back in')
 
   await forum.unban(fb, who)
-  t.ok(await eventually(async () => {
-    try { await forum.giveRole(fa, who, 'member'); return true } catch { return false }
-  }, 10000), 'once a holds the unban, it lets c back in')
-  t.ok(await eventually(async () => {
-    try { return !!(await forum.post(fc, 'after the unban', '')) } catch { return false }
-  }, 10000), 'c writes again')
+  // No retry: a decision method first catches up with the connected members
+  // who record decisions (ROADMAP 2026-10-09), and so does writing.
+  await forum.giveRole(fa, who, 'member')
+  t.pass('a, right after b's unban, lets c back in')
+  t.ok(await forum.post(fc, 'after the unban', ''), 'c writes again at once')
   const expected = ['after the unban', 'before the ban'].join()
   t.ok(await agree([fa, fb, fc], titles, expected), 'what c wrote during the ban stays ignored')
   const n = await account(t, 'newcomer')
@@ -194,4 +193,17 @@ test('two admins deciding conflicting things at once end the same everywhere', a
   await sleep(1000)
   const settled = await Promise.all([fa, fb2, fc, fd].map(roles))
   t.ok(settled.every((r) => r === settled[0]), `and stays there (${settled[0]})`)
+})
+
+test('NOT_ALLOWED says why', async (t) => {
+  const { a, c, fa, fb, fc } = await community(t)
+  const outsider = await account(t, 'outsider')
+  const has = async (promise, re, what) => {
+    try { await promise; t.fail(what) } catch (err) { t.is(err.code, 'NOT_ALLOWED'); t.ok(re.test(err.message), `${what}: ${err.message}`) }
+  }
+  await has(forum.giveRole(fc, outsider.identity.publicKey, 'member'), /role is member/, 'a role too low')
+  await has(forum.giveRole(fa, a.identity.publicKey, 'admin'), /owner/, 'giving the owner a role')
+  await forum.ban(fb, c.identity.publicKey, { reason: 'test' })
+  await has(forum.giveRole(fa, c.identity.publicKey, 'member'), /banned/, 'a banned member')
+  await has(forum.hide(fc, (await forum.post(fa, 'x', '')), 'x'), /not a member|banned/, 'banned themselves')
 })

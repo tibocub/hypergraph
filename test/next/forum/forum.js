@@ -8,7 +8,11 @@ const { Hypergraph } = require('hypergraph/next')
 const types = {
   post: { fields: { title: 'string', text: 'text' } },
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } },
-  vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true }
+  vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true },
+  // The forum's wiki: editors (the 'edit-pages' permission) edit any page.
+  page: { fields: { title: 'string', body: 'text' }, editable: { permission: 'edit-pages' } },
+  // A notice board any member edits.
+  note: { fields: { text: 'text' }, editable: 'members' }
 }
 
 // The forum's own rules: every member checks them before keeping a record.
@@ -216,6 +220,64 @@ async function score (forum, on) {
   return (await forum.sum('vote', 'value', { on })).value
 }
 
+// A page of posts, newest first: { after } the last post of the previous page.
+async function page (forum, n, after) {
+  return (await forum.query('post').latest(n, { after })).items
+}
+
+// --- tags and links between posts ---
+
+// Tags are the post's: its author (or an editor, for pages) tags it.
+function tag (forum, record, name) {
+  return forum.tag(record, name)
+}
+
+function untag (forum, record, name) {
+  return forum.untag(record, name)
+}
+
+// Posts with a tag, newest first; { after } pages.
+async function tagged (forum, name, { limit = 20, after } = {}) {
+  return (await forum.getByTag(name, { type: 'post', limit, after })).items
+}
+
+// "See also": a link from one of your posts to any post, with a note.
+function seeAlso (forum, from, to, note) {
+  return forum.relate(from, to, 'see-also', { data: note })
+}
+
+function unlink (forum, from, to) {
+  return forum.unrelate(from, to, 'see-also')
+}
+
+// The posts pointing at this one with "see also", and how many.
+async function referencedBy (forum, record) {
+  const { items, count } = await forum.edges(record, { direction: 'in', type: 'see-also' })
+  return { from: items.map((e) => e.from), count }
+}
+
+// --- the wiki ---
+
+// Editors: members who may edit any page (and post). Defining a role again
+// with the same permissions changes nothing.
+async function makeEditor (forum, who) {
+  await forum.defineRole('editor', ['post', 'edit-pages'])
+  await forum.setRole(who, 'editor')
+}
+
+function writePage (forum, title, body) {
+  return forum.put('page', { title, body })
+}
+
+async function readPage (forum, id) {
+  return (await forum.get(id)).record
+}
+
+// A note on the board, edited by any member.
+function pin (forum, text) {
+  return forum.put('note', { text })
+}
+
 // Calls onUpdate(posts) now and whenever posts change; returns stop().
 function liveLatest (forum, onUpdate, n = 20) {
   return forum.query('post').live(({ items }) => onUpdate(items), { limit: n })
@@ -261,5 +323,16 @@ module.exports = {
   comments,
   thread,
   score,
+  page,
+  tag,
+  untag,
+  tagged,
+  seeAlso,
+  unlink,
+  referencedBy,
+  makeEditor,
+  writePage,
+  readPage,
+  pin,
   liveLatest
 }
