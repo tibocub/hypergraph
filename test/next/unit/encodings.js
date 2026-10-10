@@ -20,7 +20,9 @@ test('record ids: bytes, objects and z32 strings agree', (t) => {
 })
 
 test('log header round trip', (t) => {
-  roundTrip(t, enc.header, { version: 1, space: key(), decisions: key(), proof: crypto.randomBytes(180) })
+  roundTrip(t, enc.header, { version: 1, space: key(), decisions: key(), proof: crypto.randomBytes(180), admitted: null })
+  // story 9: the code of the decision that let its author back in, trailing
+  roundTrip(t, enc.header, { version: 1, space: key(), decisions: key(), proof: crypto.randomBytes(180), admitted: key() })
 })
 
 test('records of each kind round trip', (t) => {
