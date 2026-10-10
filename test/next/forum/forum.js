@@ -158,13 +158,16 @@ function follow (hg, record) {
   return hg.space(record.to)
 }
 
-// A link for one person, sent any way you like.
-function invite (forum) {
-  return forum.createInvite({ role: 'member' })
+// A link for one person, sent any way you like; `subforums`: private ones
+// they get in too.
+function invite (forum, { subforums = [] } = {}) {
+  return forum.createInvite({ role: 'member', subspaces: subforums })
 }
 
-// An open forum: a public link for anyone, until revoked.
-function openLink (forum) {
+// An open forum: a public link for anyone, until revoked. `perHour`: how
+// much each device may post in an hour (against spam).
+async function openLink (forum, { perHour } = {}) {
+  if (perHour) await forum.setWriteLimit({ records: perHour, periodMs: 3600e3 })
   return forum.createInvite({ role: 'member', uses: Infinity })
 }
 
