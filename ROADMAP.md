@@ -31,8 +31,9 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
   log directory summary periodically, so a missed announcement of a log is recovered without a
   reconnect. Accepted limits: a decision by a moderator demoted before it settles can vanish from
   `decisions()`; members on an older app version count links through fields they don't know.
-  Pending with Tibo: the swarm now uses each device's own key (needed for `peers()` to prove who a peer
-  is), so peers see a device key on connecting.
+  The swarm now uses each device's own key (so `peers()` can prove who a peer is): peers see a device
+  key on connecting. Tibo: accepted for now; **later**, a random key per connection with identity
+  proven inside the space channel (better privacy) — not urgent, planned with story 9 or after.
 
 - **2026-10-09 (review of spec 011 story 7 and the inspector)** — Both accepted and merged into
   `011-spaces-core` (story 7: 188/188 on Node and Bare; inspector: read-only, `node
