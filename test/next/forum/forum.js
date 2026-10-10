@@ -102,8 +102,9 @@ function forums (hg) {
 
 // `keepEverything`: every member is asked to keep the whole forum (an
 // archive); by default each keeps what fits, then the newest part.
-function createForum (hg, name, { keepEverything = false } = {}) {
-  return hg.createSpace({ name, policy: keepEverything ? 'everything' : 'auto' })
+// `private`: only its members read it (relays and storers can't).
+function createForum (hg, name, { keepEverything = false, private: priv = false } = {}) {
+  return hg.createSpace({ name, policy: keepEverything ? 'everything' : 'auto', private: priv })
 }
 
 function keepEverything (forum) {

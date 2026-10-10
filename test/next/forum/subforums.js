@@ -28,6 +28,10 @@ test('a sub-forum is seen inside its forum without joining; only admins create o
   t.ok(await eventually(async () => await shows(general, p.id) && await shows(gb, p.id), 5000), 'everyone sees c\'s post there')
   t.absent(await shows(fa, p.id), 'not in the forum itself')
   t.is(await codeOf(forum.createSubforum(fb, 'Mine')), 'NOT_ALLOWED', 'a member can\'t create one')
+  const deep = await forum.createSubforum(general, 'Deep')
+  const db = await opened(b, deep.key)
+  t.ok(db && db.parent === general.key, 'a sub-forum of the sub-forum, there too')
+  t.alike(forum.subforums(general).map((s) => s.name), ['Deep'])
 
   await b.close()
   const b2 = await account(t, 'b2', { dir: b.dir })
@@ -71,6 +75,11 @@ test('a guest of a sub-forum only: reads and writes there, nothing in the forum'
   t.ok(await eventually(() => shows(b.space(fa.key), marker.id), 5000))
   t.absent((await forum.latest(fa)).some((x) => x.title === 'guest in the forum'), 'its post in the forum is ignored')
   t.ok(a)
+
+  await g.close()
+  const g2 = await account(t, 'guest2', { dir: g.dir })
+  const again = await opened(g2, guests.key)
+  t.ok(again && await eventually(() => shows(again, pg.id), 10000), 'after a restart the guest has the sub-forum again')
 })
 
 test('a ban in the forum applies in the sub-forum that invited the member, whatever arrived first', async (t) => {
