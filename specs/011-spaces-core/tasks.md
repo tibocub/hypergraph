@@ -604,10 +604,87 @@ only); the two formerly flaky files pass 10 runs each under the full suite's loa
 
 ## Phase 10: User Story 8 — Sub-spaces, private ones included (Priority: P3)
 
-- [ ] T065 [P] [US8] test/next/forum/subforums.js: a sub-forum seen inside its parent without a separate join; write-restricted sub-space; a guest of the sub-space only; a parent ban applies in the sub-space even if it invited the member; a record linking to another space (US8 #1, #3–5)
-- [ ] T066 [P] [US8] test/next/forum/private.js: spec 008's private-channel scenarios on a private sub-space (grant, read, revoke, no access to new posts, invite with access) (US8 #2)
-- [ ] T067 [US8] `subspace/create`, effective state (parent then own, parent bans win), `createSubspace`, `subspaces()`, space links
-- [ ] T068 [US8] lib/private/crypto.js and grants.js adapted from src/v2/ (grants as `hg/grant` records, key/rotate decisions, revoke = rotate + re-grant); docs; CHANGELOG
+Refined 2026-10-10 by the worker session (branch `011-spaces-core-s8`). Design decided by Tibo the same day
+(research.md A13): **a sub-space's decisions live in its parent's decision log** (one log per top space,
+decisions marked with the sub-space they apply to), not in a log of its own: two logs have no common order,
+so members couldn't agree whether a demoted parent admin's decision in the sub-space came before or after.
+The sub-space keeps its own key, logs, topic, index and budget; its log headers name the top space's decision
+log (the header's `decisions` field, A3). **A private sub-space is read by the people given a role in it plus
+the parent's owner and admins.**
+
+### Fix first (routed from the review of the core follow-ups)
+
+- [X] S801 test/next/net/directory.js: drop one announcement on purpose (a member deaf to notices; then deaf to
+  notices and summaries until every peer's post-change summary was dropped): the log still arrives within a
+  bound, without a reconnect (fails before the fix); lib/testing.js `deafen()`, `digestOf()`
+- [X] S802 lib/directory.js: the summary is sent again 250 ms after the directory changes and every 10–11 s; the
+  same difference is asked about at most once a minute; data-model.md, research.md A13
+
+### Tests first (story 8)
+
+- [ ] S803 [P] test/next/unit/decisions-subspaces.js (apply and state, no network): `subspace/create` by who may
+  decide only (a member's ignored), nested under a sub-space; a `scoped` decision for an unknown sub-space
+  ignored; the effective state of a sub-space: parent members with their roles, its own guests (not members of
+  the parent), its own role overrides, `writeRoles` (only listed roles, owner and admins post), a private one
+  (own members + parent owner and admins only); **a parent ban applies below, whatever the order of the ban and
+  the sub-space's own decisions** (a guest invited in the sub-space then banned in the parent; banned first then
+  invited: refused); a parent removal takes the member's own sub-space roles away; cuts: the union (the lowest
+  length per log); a sub-space-only moderator may moderate there and not in the parent; decisions by a parent
+  admin demoted later stay valid (FR-019)
+- [ ] S804 [P] test/next/forum/subforums.js (US8 #1, #3–5, three members on the local DHT, Node and Bare):
+  a sub-forum created by the owner is seen by b and c without joining (`forum.subspaces()`, `hg.spaces()` with
+  its parent), and posts there show for everyone; non-admins can't create one (`NOT_ALLOWED`); a write-restricted
+  sub-forum ("News", only moderators): a member's post refused by its own app (`NOT_ALLOWED`) and a forced one
+  (testing.writeRaw) ignored by everyone; a guest invited to the sub-forum only reads and writes there, isn't in
+  the parent (`hg.space(parent)` NOT_FOUND) and its posts in the parent (forced) are ignored; a parent ban
+  applies in the sub-forum even though the sub-forum invited the member — both arrival orders (decided while c
+  is offline, c comes back; a newcomer who receives everything at once) end with the same posts on every member;
+  a removal in the parent takes away the member's sub-forum roles; a post linking to the sub-forum (a `space`
+  field): a member follows it and reaches the sub-forum; a link to a space it isn't in: NOT_FOUND until invited;
+  restart: sub-forums reopen
+- [ ] S805 [P] test/next/forum/private.js (US8 #2, spec 008's scenarios on a private sub-forum): created private,
+  its members (own + parent admins) read posts, a plain member of the parent doesn't get it and someone holding
+  its blocks without a grant reads nothing (the raw blocks hold no plaintext); an invite to the private
+  sub-forum gives access once a key holder is online (the inviter offline); removing a member rotates the key:
+  they still read what was written before, not what is written after; a parent ban does the same; a plaintext
+  record written into the private sub-forum (testing.writeRaw) is shown as unreadable, never as content; no key
+  material in `inspect()`, `status()` or errors
+- [ ] S806 [P] test/next/unit/private-crypto.js: seal/open of an epoch key to a device's box key (derived from
+  its device key pair), a grant for another device or with a wrong commitment ignored, record encryption with
+  the space, log, seq and epoch as additional data (a box moved elsewhere doesn't open)
+
+### Implementation
+
+- [ ] S807 lib/encodings.js: decision `scoped { space, decision }` (appended: older types keep their numbers);
+  invite links for a sub-space carry the top space's key after the invite, signed with it (top-level invites
+  unchanged); record flag `sealed` (bit 2) and `sealed { epoch, nonce, box }`
+- [ ] S808 lib/decisions/apply.js: `subspace/create` (nesting allowed), `scoped` (inner types: member/remove,
+  role/set, moderate, invite/redeem, invite/revoke, key/rotate, settings/set, subspace/create) applied to the
+  sub-space's own entries (`sub:<key>:…`) with effective roles (its own, else the parent's — for a private one
+  only owner and admin — and nobody banned above); a parent removal also drops the member's own entries below;
+  decision rights (writer keys) for members who may decide or moderate in any sub-space; settlers stay the top
+  space's deciders; `key/rotate` (epoch = current + 1); the decision list carries `space`
+- [ ] S809 lib/decisions/state.js: sub-spaces, scoped raw states, `state.sub(key)` → the effective state (the same
+  interface as State: members, roles, banned, cuts (union, lowest per log), moderation, invites, epochs, policy,
+  rules, writeRoles, private)
+- [ ] S810 lib/index.js + lib/space.js: one decision log per top space, shared by its sub-spaces;
+  `createSubspace({ name, private, writeRoles })`, `subspaces()`, `parent`, `private`; sub-spaces opened
+  automatically for members of their parent; guests join with a sub-space invite (opening the top space's
+  decision log, not its content); `@hg/spaces.parent` = the top space for a sub-space, instance.json, personal
+  `hg/space { root }` (appended field) so other devices join; bans and removals carry the cut of the member's
+  logs in every sub-space held below; log headers name the top space's decision log (checked by the gate);
+  `decisions()` per sub-space
+- [ ] S811 lib/private/crypto.js, lib/private/grants.js (from src/v2/crypto.js, grants.js): device box keys from
+  the device key pair (Ed25519 → X25519), `hg/grant` records in the granter's log found through by-ix keys
+  (`grants-for`); records sealed per epoch (fields and links; type, stamp, kind, target in clear); key holders
+  grant missing devices of entitled members, rotate when the entitled set shrinks and re-grant; a record whose
+  epoch key isn't held waits (counted as missing, indexed once the key arrives); a plaintext app record in a
+  private space is an unreadable row
+- [ ] S812 tools/inspector/: sub-spaces (parent, children) and private state (epoch, readable or not) — never keys
+- [ ] S813 test/next/forum/forum.js (sub-forums, private sub-forums, following a space link; under 400 lines),
+  contracts/api.md, docs/next/api.md and concepts.md, data-model.md, research.md A13, CHANGELOG.md
+- [ ] S814 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's
+  `npm test`, forum.js line count
 
 ## Phase 11: User Story 9 — Big spaces (Priority: P3)
 
