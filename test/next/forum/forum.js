@@ -16,7 +16,9 @@ const types = {
   page: { fields: { title: 'string', body: 'text' }, editable: { permission: 'edit-pages' } },
   // A notice board any member edits.
   note: { fields: { text: 'text' }, editable: 'members' },
-  poll: { fields: { question: 'string', on: 'link' }, links: { on: ['post'] } }
+  poll: { fields: { question: 'string', on: 'link' }, links: { on: ['post'] } },
+  // A post pointing at another forum or sub-forum, like a shortcut.
+  shortcut: { fields: { title: 'string', to: 'space' } }
 }
 
 // The forum's own rules: every member checks them before keeping a record.
@@ -123,6 +125,36 @@ function setForumBudget (forum, bytes) {
 // { budget, used, free } in bytes.
 function storage (hg) {
   return hg.storage()
+}
+
+// --- sub-forums ---
+
+// Seen by every member of the forum, no joining. `onlyRoles`: only these
+// roles post (the owner and admins always may); `private`: read only by who
+// is invited to it, plus the forum's owner and admins.
+function createSubforum (forum, name, { onlyRoles = [], private: priv = false } = {}) {
+  return forum.createSubspace({ name, writeRoles: onlyRoles, private: priv })
+}
+
+// [{ key, name, private }]; open one with hg.space(key) (members of the forum
+// have it).
+function subforums (forum) {
+  return forum.subspaces()
+}
+
+// A link for a guest of a sub-forum only: they don't see the rest.
+function inviteGuest (subforum) {
+  return subforum.createInvite({ role: 'guest' })
+}
+
+function shortcut (forum, title, to) {
+  return forum.put('shortcut', { title, to })
+}
+
+// The forum a shortcut points at; NOT_FOUND if this person isn't in it (an
+// invite lets them in).
+function follow (hg, record) {
+  return hg.space(record.to)
 }
 
 // A link for one person, sent any way you like.
@@ -352,6 +384,7 @@ module.exports = {
   types, rules, signUp, restore, recoveryPhrase, protectPhrase, forgetPhrase,
   addDevice, joinWithCode, devices, removeDevice, setSetting, setting,
   forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
+  createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, openLink, revokeLink, whoJoined, join,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
   hide, reveal, takeDown, flag, ban, unban,

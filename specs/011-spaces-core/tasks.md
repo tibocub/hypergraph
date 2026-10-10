@@ -622,7 +622,7 @@ the parent's owner and admins.**
 
 ### Tests first (story 8)
 
-- [ ] S803 [P] test/next/unit/decisions-subspaces.js (apply and state, no network): `subspace/create` by who may
+- [X] S803 [P] test/next/unit/decisions-subspaces.js (apply and state, no network): `subspace/create` by who may
   decide only (a member's ignored), nested under a sub-space; a `scoped` decision for an unknown sub-space
   ignored; the effective state of a sub-space: parent members with their roles, its own guests (not members of
   the parent), its own role overrides, `writeRoles` (only listed roles, owner and admins post), a private one
@@ -631,7 +631,7 @@ the parent's owner and admins.**
   invited: refused); a parent removal takes the member's own sub-space roles away; cuts: the union (the lowest
   length per log); a sub-space-only moderator may moderate there and not in the parent; decisions by a parent
   admin demoted later stay valid (FR-019)
-- [ ] S804 [P] test/next/forum/subforums.js (US8 #1, #3–5, three members on the local DHT, Node and Bare):
+- [X] S804 [P] test/next/forum/subforums.js (US8 #1, #3–5, three members on the local DHT, Node and Bare):
   a sub-forum created by the owner is seen by b and c without joining (`forum.subspaces()`, `hg.spaces()` with
   its parent), and posts there show for everyone; non-admins can't create one (`NOT_ALLOWED`); a write-restricted
   sub-forum ("News", only moderators): a member's post refused by its own app (`NOT_ALLOWED`) and a forced one
@@ -655,19 +655,19 @@ the parent's owner and admins.**
 
 ### Implementation
 
-- [ ] S807 lib/encodings.js: decision `scoped { space, decision }` (appended: older types keep their numbers);
+- [X] S807 lib/encodings.js: decision `scoped { space, decision }` (appended: older types keep their numbers);
   invite links for a sub-space carry the top space's key after the invite, signed with it (top-level invites
   unchanged); record flag `sealed` (bit 2) and `sealed { epoch, nonce, box }`
-- [ ] S808 lib/decisions/apply.js: `subspace/create` (nesting allowed), `scoped` (inner types: member/remove,
+- [X] S808 lib/decisions/apply.js: `subspace/create` (nesting allowed), `scoped` (inner types: member/remove,
   role/set, moderate, invite/redeem, invite/revoke, key/rotate, settings/set, subspace/create) applied to the
   sub-space's own entries (`sub:<key>:…`) with effective roles (its own, else the parent's — for a private one
   only owner and admin — and nobody banned above); a parent removal also drops the member's own entries below;
   decision rights (writer keys) for members who may decide or moderate in any sub-space; settlers stay the top
   space's deciders; `key/rotate` (epoch = current + 1); the decision list carries `space`
-- [ ] S809 lib/decisions/state.js: sub-spaces, scoped raw states, `state.sub(key)` → the effective state (the same
+- [X] S809 lib/decisions/state.js: sub-spaces, scoped raw states, `state.sub(key)` → the effective state (the same
   interface as State: members, roles, banned, cuts (union, lowest per log), moderation, invites, epochs, policy,
   rules, writeRoles, private)
-- [ ] S810 lib/index.js + lib/space.js: one decision log per top space, shared by its sub-spaces;
+- [X] S810 lib/index.js + lib/space.js: one decision log per top space, shared by its sub-spaces;
   `createSubspace({ name, private, writeRoles })`, `subspaces()`, `parent`, `private`; sub-spaces opened
   automatically for members of their parent; guests join with a sub-space invite (opening the top space's
   decision log, not its content); `@hg/spaces.parent` = the top space for a sub-space, instance.json, personal
