@@ -710,63 +710,63 @@ Refined 2026-10-10 by the worker session (branch `011-spaces-core-s9`), from T06
 
 ### Tests first
 
-- [ ] S901 [P] test/next/unit/activity.js (no network): `periodOf`; deriving a log's entries from its stamps (the first
+- [X] S901 [P] test/next/unit/activity.js (no network): `periodOf`; deriving a log's entries from its stamps (the first
   record of each period; a wiped block skipped back to the last readable one); checking an entry (start − 1 is the
   header or stamped before the period: kept; a start too late, past the log's cut, or for a log that may not write:
   refused; start − 1 not available: waiting); merging (the lowest checked start per log and period); the entry's size
   (about 40 B)
-- [ ] S902 [P] test/next/net/activity.js (US9 #2, #3; SC-006): an author's first record in a new period: every member
+- [X] S902 [P] test/next/net/activity.js (US9 #2, #3; SC-006): an author's first record in a new period: every member
   keeps the entry within a second and passes on the entry only (bytes counted on the channel); a false entry (a start
   too late) and an entry for a non-member's log are dropped and not passed on to a third member; 10,000 throwaway-key
   entries (`testing.sendActivity`) add no entry, no log and no index row on the receiver and reach no other member
-- [ ] S903 [P] test/next/net/newest-first.js (T071b, US9 #1): a space of records spread over many periods (written with
+- [X] S903 [P] test/next/net/newest-first.js (T071b, US9 #1): a space of records spread over many periods (written with
   chosen stamps): a newcomer's `latest(20)` is complete after downloading only the newest periods; a page further back
   widens; in the background the rest arrives while it fits; a newcomer whose share is smaller than the space holds the
   newest part only (never downloads the rest; `status().held` 'part'); a restart keeps the horizon; **Principle I**:
   every page, count and score equals the full member's once complete (edits, deletes, votes, hides on records in the
   page included)
-- [ ] S904 [P] test/next/net/big-directory.js (FR-029): a space whose directory is above the switch-over point (lowered
+- [X] S904 [P] test/next/net/big-directory.js (FR-029): a space whose directory is above the switch-over point (lowered
   for the test): a newcomer doesn't open every log, only those active in the periods it reads; its first page is
   complete and equals a full member's; a log active only in an old period is opened when a read goes back there
-- [ ] S905 [P] test/next/unit/write-limit.js (decisions and judging, no network) and test/next/forum/open-forum.js (T071a,
+- [X] S905 [P] test/next/unit/write-limit.js (decisions and judging, no network) and test/next/forum/open-forum.js (T071a,
   FR-023): `setWriteLimit({ records, periodMs })` by who may decide (NOT_ALLOWED otherwise); records beyond the limit
   in a log don't count for anyone, judged the same whatever each member held (a deleted record counts as the next held
   one: deleting never frees room; an old member and a newcomer agree after deletes); `put()` refuses beyond the limit
   (NOT_ALLOWED saying until when); raising or removing the limit brings refused records back; an open forum (public
   link) with a limit, three members
-- [ ] S906 [P] test/next/forum/moderation.js or members.js (story 4's gap): a banned member let back in: a log its
+- [X] S906 [P] test/next/forum/moderation.js or members.js (story 4's gap): a banned member let back in: a log its
   (modified) app prepared during the ban counts for nobody; the new log its app opens after being let back in counts
-- [ ] S907 [P] test/next/forum/private.js (routed, ROADMAP 2026-10-10): a member removed from a private forum, and a relay:
+- [X] S907 [P] test/next/forum/private.js (routed, ROADMAP 2026-10-10): a member removed from a private forum, and a relay:
   `status().access` 'none', `latest()` answers at once (within 200 ms) with `complete: false, access: 'none'`; a
   member entitled but without the key yet: 'waiting' (reads wait, as before)
-- [ ] S908 [P] test/next/forum/subforums.js or invites.js (routed): `createInvite({ subspaces: [staff] })`: the newcomer
+- [X] S908 [P] test/next/forum/subforums.js or invites.js (routed): `createInvite({ subspaces: [staff] })`: the newcomer
   gets the role in the private sub-forum too and reads it; a sub-space the maker may not invite to: NOT_ALLOWED; one not
   inside this space: NOT_FOUND
 
 ### Implementation
 
-- [ ] S909 lib/activity.js (periods, entries: derive, check, merge, encoding); lib/index/build.js: an `activity`
+- [X] S909 lib/activity.js (periods, entries: derive, check, merge, encoding); lib/index/build.js: an `activity`
   collection `(space, period, log) → start` (appended; spec regenerated)
-- [ ] S910 lib/directory.js: activity messages (entry, `want { from }`, list `{ from, entries, done }`), kept and passed on
+- [X] S910 lib/directory.js: activity messages (entry, `want { from }`, list `{ from, entries, done }`), kept and passed on
   after the checks; unknown logs from entries considered a few at a time (bounded queue); the summary carries the number
   of records (a trailing field); the switch-over (`SWITCH` logs)
-- [ ] S911 lib/index/indexer.js, lib/replication.js: a log held from `from` (saved with the log's counters); entries
+- [X] S911 lib/index/indexer.js, lib/replication.js: a log held from `from` (saved with the log's counters); entries
   derived while indexing; downloads from `from`; widening adds the blocks below as holes
-- [ ] S912 lib/space.js: the horizon (saved), widened by reads and in the background within the share; `completeFrom`
+- [X] S912 lib/space.js: the horizon (saved), widened by reads and in the background within the share; `completeFrom`
   and `_bounded` with what each read needs; records with links stamped above their held targets
-- [ ] S913 T071a: `settings/set { writeLimit }` applied (who may decide), `space.setWriteLimit`, judging in the indexer
+- [X] S913 T071a: `settings/set { writeLimit }` applied (who may decide), `space.setWriteLimit`, judging in the indexer
   (re-judged when a block in the window is wiped, and when the limit changes), `put()` refusal
-- [ ] S914 Story 4's gap: decisions that let someone in record an admission code; a log header carries the code it was
+- [X] S914 Story 4's gap: decisions that let someone in record an admission code; a log header carries the code it was
   made under (a trailing field); a log of someone cut before, not named by a cut, counts only with the latest code; an
   own log that doesn't match is replaced
-- [ ] S915 Not for me: `status().access` ('full' | 'waiting' | 'none'), reads answer at once with `access: 'none'`
-- [ ] S916 `createInvite({ subspaces })`: checks (maker may invite there; inside this space); `invite/redeem` gives the
+- [X] S915 Not for me: `status().access` ('full' | 'waiting' | 'none'), reads answer at once with `access: 'none'`
+- [X] S916 `createInvite({ subspaces })`: checks (maker may invite there; inside this space); `invite/redeem` gives the
   role in the listed sub-spaces too
 - [ ] S917 bench/next/first-page.js (SC-004): a newcomer's latest 20 posts at 10,000 records (and 1,000,000 only after
   asking Tibo: alone, few writers); activity traffic per member per period; the switch-over measured; results in
-  research.md A14
-- [ ] S918 tools/inspector: access, horizon (held from), activity entries per period
-- [ ] S919 test/next/forum/forum.js (under 400 lines), contracts/api.md, docs/next/api.md and concepts.md, data-model.md,
+  research.md A14 — *10,000 and 100,000 measured, switch-over at 300 logs (2026-10-10); 1,000,000 waits for Tibo's go*
+- [X] S918 tools/inspector: access, horizon (held from), activity entries per period
+- [X] S919 test/next/forum/forum.js (under 400 lines), contracts/api.md, docs/next/api.md and concepts.md, data-model.md,
   research.md A14, CHANGELOG.md
 - [ ] S920 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's `npm test`,
   forum.js line count

@@ -9,7 +9,7 @@ design brief's measurements.
 
 | block | content |
 |---|---|
-| 0 | **Log header**: `{ version, space (32 B), decisions (32 B, decision log key: its own, or a sub-space's top space — story 8; checked by the gate), proof (keet-identity-key device proof, 139–235 B) }` |
+| 0 | **Log header**: `{ version, space (32 B), decisions (32 B, decision log key: its own, or a sub-space's top space — story 8; checked by the gate), proof (keet-identity-key device proof, 139–235 B), admitted? (32 B, story 9: the code of the decision that let its author back in after a cut; trailing, absent otherwise) }` |
 | 1.. | **Record**: `{ kind: put \| edit \| delete, type (string), stamp (uint ms), target? (record id), links: [record id \| space key], fields (tagged bytes) , sealed? }` |
 
 - Record id: `log key (32 B) + seq (varint)`; z32 string in the API.
@@ -32,9 +32,12 @@ design brief's measurements.
   Apps can't write `hg/` types; app rules don't apply to them.
 
 **Validation (the gate, R11)**: header proof valid and identity a member (or allowed by write rules) and
-device not removed; seq < cut (the decisions' cut, and for a removed device the lowest of its removals'
-cuts: a log a removal doesn't name counts for nothing); decodes; type rules (links' targets, editors;
-built-in types only where they belong); app rules; write limit.
+device not removed; for someone cut before, a log no cut names counts only if its header's `admitted` is the
+code of the decision that let them back in (story 9); seq < cut (the decisions' cut, and for a removed device
+the lowest of its removals' cuts: a log a removal doesn't name counts for nothing); decodes; type rules
+(links' targets, editors; built-in types only where they belong); app rules; write limit (story 9,
+`lib/limit.js`: block `seq` counts if `seq ≤ records` or the first readable block from `seq − records` on is
+stamped at least `periodMs` earlier; deletes, grants and device removals never refused).
 
 ### The personal space (research.md A7)
 
@@ -63,7 +66,7 @@ point.
 | `key/rotate` | `epoch, commit` (private; epoch = current + 1, by who may decide or moderate there; a rotation ordered second at an epoch already taken is kept readable in `others`: story 8) |
 | `subspace/create` | `key, name, private, writeRoles[]` (who may decide; inside a sub-space via `scoped`: nesting) |
 | `scoped` | `space, decision` — story 8: a decision about a sub-space (member/remove, role/set, moderate, invite/redeem, invite/revoke, key/rotate, settings/set, subspace/create), kept in its top space's log |
-| `settings/set` | `policy?, writeLimit? { records, periodMs }, rules?` — story 6: `policy` ('auto' \| 'everything') by who may decide; `writeLimit` unused until story 9; core follow-ups: `rules` (ids of the app rules the space runs, sorted into `meta.rules`; a trailing field, absent from older entries) by who may decide |
+| `settings/set` | `policy?, writeLimit? { records, periodMs }, rules?` — story 6: `policy` ('auto' \| 'everything') by who may decide; story 9: `writeLimit` into `meta.writeLimit` (`records` 0 lifts it), by who may decide; core follow-ups: `rules` (ids of the app rules the space runs, sorted into `meta.rules`; a trailing field, absent from older entries) by who may decide |
 
 **State** (rebuilt by applying the log): members, roles and permissions, custom roles, moderation flags
 per record, bans and removals with cuts (`cut:<identity>`: first cut per log wins), invites, redemptions
@@ -87,7 +90,10 @@ View keys (research.md A4–A5, A8): `meta`, `member:<id>` `{ role, by, stamp, w
 `role:<name>` `{ permissions }`, `cut:<id>` `{ logs: { <log>: length } }`, `editcut:<id>` `{ perms: { <permission>:
 { <log>: length } } }` (research.md A9), `banned:<id>`,
 `mod:<record id>` `{ flagged, hidden, removed }`, `redeemed:<invite>:<id>`, `uses:<invite>`,
-`revoked:<invite>`. A redemption is `{ invite, identity, writer, proof }`. Core follow-ups: `~log:<seq, 12 digits>`
+`revoked:<invite>`, story 9: `admit:<id>` `{ code }` (hash of the writer key and the decision's bytes: the first
+decision letting someone with a cut post again; removed by their next cut). A redemption is `{ invite, identity,
+writer, proof }`; story 9: a redemption also writes `sub:<key>:member:<id>` for the sub-spaces the invite lists
+(inside the space, where its maker may invite to that role). Core follow-ups: `~log:<seq, 12 digits>`
 `{ type, at, writer, by, device, counted, ...what }` (every decodable decision in the order applied, for
 `space.decisions()`; after every other key so the state's read skips it) and `~count`; `meta.rules` (the app rule
 ids the space runs).
@@ -98,8 +104,12 @@ ids the space runs).
 (core follow-ups: the sender's device proof, checked against the connection's key — the swarm uses the device key
 pair — so `space.peers()` knows each peer's identity)
 (experiment 1; story 8, research.md A13: the summary is sent again when the directory changes and every ~10 s, the same difference asked about at most once a minute), `redeem { redemption }` (a newcomer's signed invite redemption, research.md A3), `ask
-{ decision }` (a `writer/add` or `device/remove` for any writer to record, research.md A8); story 9
-adds `period, start` to log entries.
+{ decision }` (a `writer/add` or `device/remove` for any writer to record, research.md A8). Story 9
+(research.md A14): `summary` gains `records` (how many records the sender's logs hold, trailing); `entry { log,
+period, start }` (~40 B: block `start` is the log's first record stamped in that hour or later; checked against
+the log — block `start − 1` is the header or stamped earlier — and against the gate before being kept or passed
+on; the entry is the notice), `want { from }` (every entry from that period on), `list { from (the period from
+which the sender's lists are whole; Infinity: it can't tell), entries, done }`.
 
 ## On the device only (never replicated)
 
@@ -111,7 +121,8 @@ adds `period, start` to log entries.
 | `logs` | `space, log` | identity, device, indexed length, cut, refused? |
 | `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2); also found by its own id (`changes-by-id`, for cuts) |
 | `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent (story 8: for a sub-space, its top space — whose decision log holds its decisions; not the personal space) |
-| `meta` | `name` | declared types (`types`: per type its fields and kinds, links, onePerMember, editable, indexes; compat check and, story 7, which types to index again), identity (proof), `personal` (key, encryption key), `alone` (a new identity, no device added yet), `budget` (the app's, if set), `budget:<space>` (a space's own), `dropped:<space>:<log>` (`{ bytes, blocks, ix }`: content dropped from a log, and, core follow-ups, the bytes its rows' app index entries and tag keys cost: the compact `log` schema can't grow; research.md A10) |
+| `activity` | `space, period, log` | story 9: `start`, the lowest checked start of that log's entry for that hour |
+| `meta` | `name` | declared types (`types`: per type its fields and kinds, links, onePerMember, editable, indexes; compat check and, story 7, which types to index again), identity (proof), `personal` (key, encryption key), `alone` (a new identity, no device added yet), `budget` (the app's, if set), `budget:<space>` (a space's own), `dropped:<space>:<log>` (`{ bytes, blocks, ix }`: content dropped from a log, and, core follow-ups, the bytes its rows' app index entries and tag keys cost: the compact `log` schema can't grow; research.md A10; story 9 adds `from`, the first block read here, null: none, and `act`, where deriving its activity entries stands), story 9: `reading:<space>` (`{ horizon, byActivity }`: the first period read here, null: all; by activity lists), `limit:<space>` (the write limit the index was judged by) |
 
 Indexes: `by-type (space, type, stamp)`, `by-author (space, author, stamp)`, `by-link (space, target,
 type, stamp)`, `by-ix (space, app key…)` (map over declared `index`, and the record's tags as keys ` #<tag>`: research.md A9), `one-per-member (space, type,

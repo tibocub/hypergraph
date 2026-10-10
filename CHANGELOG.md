@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-10: `hypergraph/next` — story 9, big spaces (ALPHA, breaking within `next`)
+
+- A newcomer to a big space reads it newest first: its first page is complete after the newest hour(s) only (10,000
+  and 100,000 records: ~0.23 s and ~95 KB on a local network, against 2.4 s and 1.4 MB when reading everything); older
+  pages widen what it reads; in the background it reads the rest while the space fits its share, never beyond.
+  Beyond 300 device logs it opens only the logs active in the hours it reads (activity lists: ~40-byte entries every
+  member derives, checks and passes on; false and spam entries are dropped). `status()` gains `heldFrom`.
+- Reads are complete for what they need (a page from its oldest item on, a count from its target), and never while
+  what they looked at is still being indexed or before a member's list of logs was looked at (fixes, also true
+  before). Records are now stamped above the records they link to.
+- `space.setWriteLimit({ records, periodMs })` for open spaces (judged alike by every member; deleting never frees
+  room); `createInvite({ subspaces })`; `status().access` ('full' | 'waiting' | 'none': a private space not for this
+  member answers reads at once). A log prepared during a ban no longer counts once its author is let back in.
+- Wire changes: the summary gains `records`, three channel messages (activity entry, want, list), log headers may carry
+  `admitted`; a new index collection `@hg/activity`. Details: `specs/011-spaces-core/research.md` A14.
+
 ### 2026-10-10: `hypergraph/next` — story 8, sub-spaces and private spaces (ALPHA, breaking within `next`)
 
 - Sub-spaces: `space.createSubspace({ name, private, writeRoles })`, `space.subspaces()`, `space.parent`, `space.private`.

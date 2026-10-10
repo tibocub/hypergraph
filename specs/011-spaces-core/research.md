@@ -156,7 +156,9 @@ as a QR or pasted text, long to type by hand. Bare needs 1.32+ for brittle's dep
   write rules), device not removed (FR-018, spam).
 - **Big spaces (story 9)**: entries gain `(period, start)` (~40 B, unsigned, checked against the log),
   and readers open only the logs active in the periods they read. Switch-over point fixed by measurement
-  in story 9 (design brief: the member list is the author list while it is small).
+  in story 9 (design brief: the member list is the author list while it is small). *Built in story 9: A14
+  (entries derived and checked by every member; newest first beyond 2,000 records, by activity lists beyond 300
+  logs).*
 
 **Why**: one mechanism from story 1, extended in story 9; experiment 1 measured it on a real network.
 **Alternatives**: register logs in the decision log (writers only; members can't); derive log keys from
@@ -911,3 +913,113 @@ Tests: `test/next/unit/private-crypto.js`, `decisions-subspaces.js` (key/rotate)
 read, a plain member doesn't have it, a relay holds blocks with no plaintext, keys back after a restart, an invite with
 the inviter offline, a removal and a parent ban change the key, a record in the clear is unreadable, no key shown, a
 private top-level forum).
+
+### A14. Story 9: big spaces, write limits, routed items (2026-10-10)
+
+**Periods and activity entries** (FR-029, R10). A period is an hour of record stamps (fixed; the brief's "periods
+shrink in busy spaces" is left for later: at 10,000 active authors an hour's list is ~410 KB). An entry `{ log,
+period, start }` (~40 B, `lib/activity.js`) says "block `start` is this log's first record stamped in `period` or
+later". No signature: whoever keeps it first checks it against the log (block `start − 1` is the header or a record
+stamped in an earlier period; block `start`, when held, is not earlier) and against the gate (its log was accepted:
+header proof, the author may write here, `start` below the log's cut). False entries and entries for logs that may not
+write are dropped and never passed on. The entry is as short as the brief's notice (~40 B), so **the entry itself is
+the notice**: flooding it once per connection (at most one copy per connection, tested) costs less than a notice plus
+an ask. Every member derives the entries of the logs it indexes (the first record of each period, skipping wiped
+blocks back to the last readable one, so the block before a start is always checkable) and keeps them in a new index
+collection (`@hg/activity`, appended to the HyperDB definition). When a block is wiped later (a delete, a take-down),
+an entry starting right after it is moved to start earlier, else nobody could check it any more (found by the
+newest-first test: the forum's newest post deleted made its period's entry uncheckable). Entries waiting for their
+check are bounded (1,000, dropped after 60 s; a drop makes the lists "not whole" until asked again); logs learnt from
+entries are fetched 16 at a time with at most 256 waiting: **10,000 throwaway-key entries leave no entry, no log, no
+row and reach no other member** (SC-006, `test/next/net/activity.js`).
+
+**Reading from a horizon** (US9 #1, T071b). A member reads each log from its first block in its *horizon* period on
+(null: everything, as every member before story 9 and every small space). A newcomer chooses at the first summary it
+receives (which now carries how many records the sender's logs hold): more than 2,000 records → newest first (horizon
+= the current hour; it asks one member at a time for the entries from there, `want { from }` / `list { from, entries,
+done }`, the answer saying from which period the sender's lists are whole); 300 logs or more → also by activity lists:
+it doesn't ask for the whole directory and opens only the logs the entries name. A read needing older records widens
+the horizon (to a page's oldest post's period, or one step back, the window doubling, once what it reads is all
+here). In the background, after each budget pass, it widens one step while `stored × 2 < 90%` of its share (or always
+under `everything`), and once it holds everything from the space's first period it reads everything again, as any
+member that always had it. Past its share it stops: **a newcomer to a space bigger than its share never downloads the
+rest** (`status().held` 'part', `heldFrom`). A log read from earlier keeps what it indexed (`skip`), and rows already
+indexed are never inserted twice (found by the test: a vote indexed twice superseded itself).
+
+**Complete, per read.** Reads now say what they need: a page from its oldest item on (`since` included); `linked`,
+`count`, `sum`, `edges`, `tags` from their target's stamp; `get` from the record's. A member reading everything
+answers as before (the whole space); one reading from a horizon is complete when the lists from that period were
+received whole, none waits for its check, and every log with an entry from then on is read from its start with
+nothing missing. So that whoever holds a record's period on holds what points at it, **a record is now stamped above
+the records it links to** (held where it is written; a target stamped far ahead of the writer's clock is ignored, not
+to drag its stamps into the future), as edits already were (A1). Principle I: reading fewer logs changes only
+`complete`; the tests compare pages, scores and comments with a member holding everything (`newest-first.js`,
+`big-directory.js`). **Limits** (modified apps only): records stamped out of order inside one log, or a link stamped
+below its target, can be missed by a member reading part of a space while it says complete (members holding
+everything show them); the lists a member gives are trusted to be whole, as the directory always was.
+
+**The switch-over, measured** (`bench/next/first-page.js --slices`, 10,000 records by 20 writers each writing one
+stretch of time, local DHT, one process): reading the whole directory (22 logs) 357 ms and 202 KB for the first page;
+by activity lists (3 logs opened) 375 ms and 173 KB. Each log opened costs a newcomer ~1.5 KB and ~1 ms (header,
+replication handshake; ~120 KB of memory per open log, spec 007 R1), so the switch is set at **300 logs** (~0.45 MB),
+keeping a first page under 1 MB whatever the size. (A 50-writer run stalled in its setup: many writers in one process
+spend their time in Hypercore's replication, not in hypergraph, seen in a CPU profile; also true before story 9.)
+
+**SC-004** (`bench/next/first-page.js`, 2 writers, 10% posts, 60% comments, 30% votes, ~40 posts an hour, the owner
+alone online, local DHT; 2026-10-10):
+
+| records | first page | received | as before story 9 (read everything) |
+|---|---|---|---|
+| 10,000 | 223 ms | 92 KB | 2,387 ms, 1,449 KB (SC-004 not met) |
+| 100,000 | 238 ms | 95 KB | not run |
+| 1,000,000 | not run yet (asked first: machine load) | | |
+
+100,000 vs 10,000: 1.07 times the time, 1.03 times the bytes (SC-004 asks at most 1.5 times at 1,000,000). Activity
+per member per period: one ~41-byte entry per log active in that hour, received at most once per connection.
+
+**Found by the benchmark, fixed (also true before story 9)**: (1) a newcomer counted as having "reached" a member as
+soon as any summary arrived, so a read could be complete before it had heard of the other members' logs; now only
+once a member's whole list of logs was looked at (or matched this one). (2) The indexer counted blocks as looked at
+before their batch was committed, so a read in between was complete without the newest records; now a log with an
+uncommitted batch counts as missing something, and a read is complete only if nothing was indexed while it read. (3)
+A log whose length no peer has told yet (or that a peer says is longer) counts as missing (for 2 s after it was
+accepted, if no peer ever says). Tests: `test/next/net/directory.js` (slow lists, slow commits; both fail without the
+fixes).
+
+**Write limits for open spaces** (T071a, FR-023; A8 postponed it). `setWriteLimit({ records, periodMs })` by who may
+decide (`settings/set { writeLimit }`, `meta.writeLimit`; `records` 0 lifts it). A device's log counts at most
+`records` records within any `periodMs`: block `seq` counts if `seq ≤ records`, or if the first *readable* block from
+`seq − records` on is stamped at least `periodMs` before it (`lib/limit.js`). A wiped block (deleted, taken down)
+takes the stamp of the next readable one: **deleting never frees room**, and once a member knows of a wipe it judges
+again the records just after it, so a member who saw the wiped record and a newcomer who never did agree (A8's
+problem). Deletes, grants and device removals are never refused (they still take their place). Records over the limit
+are neither indexed nor kept (their stamps are remembered for later judgments; after a restart they are fetched from
+their author again); raising or lifting the limit judges every log again and reads it again from its start, so refused
+records come back from their authors. The writer's own app refuses beyond it (`NOT_ALLOWED`, saying when). Limit:
+stamps are the writer's; a modified app gets past the limit only by stamping its records ever further in the future,
+where every member flags them `futureStamp`. Tests: `test/next/unit/write-limit.js`, `test/next/forum/open-forum.js`
+(forum.js: `openLink(forum, { perHour })`).
+
+**A log prepared during a ban** (story 4's gap, A8). A decision letting someone with a cut post again records a code
+(`admit:<id>`: hash of its writer key and bytes; the first such decision after their latest cut). Every log they make
+afterwards carries it in its header (`admitted`, trailing); a log of someone cut before that no cut names counts only
+with the current code. A log a modified app prepared during the ban can't have it (the decision didn't exist yet), so
+it counts for nobody. The app's own log made before being let back in is replaced by a new one. Not covered: edit
+cuts (A9: a log prepared while an app permission was taken away). Test: `test/next/forum/readmitted.js` (fails
+without it).
+
+**Not for me** (routed, ROADMAP 2026-10-10). `status().access`: 'full', 'waiting' (a member of a private space whose
+key hasn't arrived) or 'none' (a private space this member may not read: removed, or a relay). With 'none', reads
+answer at once with `{ items, complete: false, access: 'none' }` instead of waiting their bound for keys that will
+never come. `inspect()` and the inspector show it. Test: `test/next/forum/private.js`.
+
+**Invites with sub-spaces** (routed). `createInvite({ subspaces })`: the newcomer gets the invite's role in each listed
+sub-space (inside the space, at any depth; its maker must be able to invite to that role there, judged by the recorder
+too), a private one included: one link lets someone into a forum and its private room. Test:
+`test/next/forum/private.js`.
+
+**Not done.** (1) T071b's second half: a member that already holds everything and whose list of records alone
+outgrows its share still reports `OVER_BUDGET`; raising its horizon (dropping the rows of old periods, which come back
+when a read widens) fits this design but isn't built. (2) The horizon and `from` live in the index's meta: an index
+rebuild reads the space whole again. (3) The 1,000,000-record run of SC-004 (asked first). (4) A random key per
+connection (ROADMAP 2026-10-10: later).
