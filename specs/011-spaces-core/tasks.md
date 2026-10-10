@@ -642,14 +642,14 @@ the parent's owner and admins.**
   a removal in the parent takes away the member's sub-forum roles; a post linking to the sub-forum (a `space`
   field): a member follows it and reaches the sub-forum; a link to a space it isn't in: NOT_FOUND until invited;
   restart: sub-forums reopen
-- [ ] S805 [P] test/next/forum/private.js (US8 #2, spec 008's scenarios on a private sub-forum): created private,
+- [X] S805 [P] test/next/forum/private.js (US8 #2, spec 008's scenarios on a private sub-forum): created private,
   its members (own + parent admins) read posts, a plain member of the parent doesn't get it and someone holding
   its blocks without a grant reads nothing (the raw blocks hold no plaintext); an invite to the private
   sub-forum gives access once a key holder is online (the inviter offline); removing a member rotates the key:
   they still read what was written before, not what is written after; a parent ban does the same; a plaintext
   record written into the private sub-forum (testing.writeRaw) is shown as unreadable, never as content; no key
   material in `inspect()`, `status()` or errors
-- [ ] S806 [P] test/next/unit/private-crypto.js: seal/open of an epoch key to a device's box key (derived from
+- [X] S806 [P] test/next/unit/private-crypto.js: seal/open of an epoch key to a device's box key (derived from
   its device key pair), a grant for another device or with a wrong commitment ignored, record encryption with
   the space, log, seq and epoch as additional data (a box moved elsewhere doesn't open)
 
@@ -674,7 +674,7 @@ the parent's owner and admins.**
   `hg/space { root }` (appended field) so other devices join; bans and removals carry the cut of the member's
   logs in every sub-space held below; log headers name the top space's decision log (checked by the gate);
   `decisions()` per sub-space
-- [ ] S811 lib/private/crypto.js, lib/private/grants.js (from src/v2/crypto.js, grants.js): device box keys from
+- [X] S811 lib/private/crypto.js, lib/private/grants.js (from src/v2/crypto.js, grants.js): device box keys from
   the device key pair (Ed25519 → X25519), `hg/grant` records in the granter's log found through by-ix keys
   (`grants-for`); records sealed per epoch (fields and links; type, stamp, kind, target in clear); key holders
   grant missing devices of entitled members, rotate when the entitled set shrinks and re-grant; a record whose
