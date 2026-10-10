@@ -226,7 +226,7 @@ cover hypergraph's data only.
   exist; recipients find theirs through an index by recipient prefix. Revocation = rotate + re-grant
   (008). Copied from `src/v2/crypto.js`, `grants.js`, `invites.js`, adapted.
 
-**Why**: FR-020–022, US8; one building block (Tibo, Q8/Q14).
+**Why**: FR-020–022, US8; one building block (Tibo, Q8/Q14). *Amended by A13: a sub-space's decisions live in its parent's decision log; grants are sealed per device.*
 
 ## R16. Invites
 
@@ -845,3 +845,69 @@ period. Cost: one 40-byte message per connection per space every 10 s. Tests: `t
 whose announcement was missed still arrives": after a change, and with only the periodic summary left, which fails
 without it).
 
+
+**A sub-space's decisions live in its parent's decision log** (decided by Tibo, 2026-10-10, replacing R15's "a
+sub-space is a space whose `space/init` names its parent"). With a decision log of its own, a sub-space's decisions
+and its parent's would have no common order: when a parent admin is demoted or banned, members couldn't agree
+whether that admin's decision inside the sub-space (a guest let in) came before or after, and fixing it needed
+copying the parent's role changes into every sub-space log, with a delay during which the demoted admin still acted
+there. Now a decision about a sub-space is `scoped { space, decision }` in its top space's log, applied to the
+sub-space's own entries (`sub:<key>:…` in the view) with the roles that count there: its own, else the parent's
+(for a private one, only the parent's owner and admins), and nobody banned there or above. One order for everything:
+a parent ban always wins whatever arrives first, and FR-019 holds exactly (decisions made before losing a role stay
+valid). The sub-space keeps its own key, logs, topic, index and budget; its log headers name the top space's
+decision log (the header's `decisions` field, A3), checked by the gate. Costs: members download the sub-spaces'
+decisions too (small); a sub-space-only moderator becomes a writer of the top space's decision log (apply lets it act
+only there); settlers stay the top space's deciders. Rules (all in `lib/decisions/apply.js` and `state.js`):
+- `subspace/create { key (random), name, private, writeRoles }` by who may decide where it is recorded; nesting is a
+  `scoped` subspace/create. `writeRoles`: only those roles write (the owner and admins always may).
+- A removal from a space drops the member's own entries in every sub-space below (a parent removal applies below); a
+  ban is checked up the chain. Bans and removals carry the cut of the member's logs in the sub-spaces the decider holds
+  (`#cutOf`), and a ban records its cut even for someone with no role at that level (a guest below). Cuts are the union
+  (lowest length per log, `mergeCuts`).
+- Custom roles stay the top space's (a sub-space's own `role/define` isn't supported).
+- **Seen without joining**: members of a space open its sub-spaces they're in (`hg._openSubspaces`, after every change
+  of decisions); a guest joins with a sub-space invite, which carries the top space's key after the invite and is
+  signed with it (top-level links unchanged). The guest opens the top space's decision log only (one shared
+  `Decisions` per top space, a registry: opening one Autobase twice hangs), not its content. `@hg/spaces.parent` holds
+  the top space's key for a sub-space (the compact struct can't grow), instance.json `root`, and the personal
+  space's `hg/space` gains `root` so the person's other devices join it.
+- A device removal in a sub-space where only a sub-space is held (a guest) doesn't reach the top space's decision log
+  (its proof names the sub-space): its writer keys there stay until the top space hears of it. Rare; noted.
+- `createInvite({ subspaces })` stays unused: invite to the sub-space itself.
+Tests: `test/next/unit/decisions-subspaces.js` (apply and state), `test/next/forum/subforums.js` (seen without joining,
+nested, write roles, guests and their restart, a parent ban in both arrival orders — an offline member coming back
+and a newcomer —, a parent removal, shortcuts).
+
+**Private spaces** (FR-021, spec 008's design with grants as records). `lib/private/crypto.js`, `grants.js`:
+- A device's box key pair is its device key pair converted to X25519 (spec 008 derived one pair per identity from its
+  seed; here a device may not hold the recovery phrase unlocked, A4, and per-device grants leave a removed device
+  out). Anyone seals to a device knowing its public key, from its log header's proof.
+- `hg/grant { to, epoch, commit, sealed }` records in the granter's log of the private space (signed by that log);
+  recipients find theirs through the type's index on `to` (the "grants-for" lookup, through `by-ix`: no new HyperDB
+  index). A grant counts for whoever opens it if its key matches a commitment the decision log recorded.
+- `key/rotate { epoch, commit }`: epoch = current + 1, by who may decide or moderate there. **Two rotations at once**:
+  the first in the order becomes current; the other's commitment is kept as readable (`others`). Found while testing a
+  ban: Autobase can reorder two rotations after each rotator already used its key, so a device keyed by epoch kept the
+  losing key and couldn't open the winner's posts, and posts sealed with the losing key would have been unreadable to
+  everyone but their author. Keys are therefore looked up by commitment (a sealed record names the first 8 bytes of
+  its key's), and both keys stay readable.
+- Records are sealed per epoch: fields and links, AD = space, log, position and epoch (`OwnLog.append` writes one at a
+  time so the position is known before sealing); type, author, stamp, kind and target stay visible (metadata, as in
+  008). Deletes, grants and device removals are never sealed. A record sealed with a key this device doesn't hold is a
+  hole until the key arrives (counted as missing: `complete: false`), then indexed; a sealed record that doesn't open
+  with its key counts for nothing, for everyone. A put written in the clear in a private space is an `unreadable` row
+  (listed, no content); an edit in the clear counts for nothing.
+- Key holders grant the current key to every entitled device (members' devices in the directory, removed devices left
+  out) that lacks it. **Before writing**, a writer checks that no device holding the current key has lost access; if
+  one has, it changes the key first if it may decide or moderate, else waits (within `readTimeout`) for one who may:
+  a removed member never reads what is written after its removal by a writer who knew of it. (A writer who hadn't yet
+  heard of the removal still uses the old key: the same window spec 008 had.)
+- Keys live in memory only (a JS private field), re-opened from the grants in the index at open; never in `inspect()`,
+  `status()`, errors or the inspector (`inspect()` gives `private`, `epoch`, `readable`).
+- A member without the key (removed, or a relay) holds blocks it can't open, so its answers stay `complete: false`
+  and every read waits its full bound. Honest, but slow for such a member; a later story may let it say "not for me".
+Tests: `test/next/unit/private-crypto.js`, `decisions-subspaces.js` (key/rotate), `test/next/forum/private.js` (members
+read, a plain member doesn't have it, a relay holds blocks with no plaintext, keys back after a restart, an invite with
+the inviter offline, a removal and a parent ban change the key, a record in the clear is unreadable, no key shown, a
+private top-level forum).

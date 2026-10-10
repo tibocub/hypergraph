@@ -12,7 +12,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 to 7 and the core follow-ups (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1 to 8 and the core follow-ups (marked ✓ below). The rest is the plan for later stories.
 
 ## Opening, identity, network
 
@@ -98,7 +98,7 @@ await hg.settings()                // ✓ { theme: 'dark' }
 ## Spaces
 
 ```js
-const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name, policy (story 6); private: story 8
+const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name, policy (story 6); ✓ private (story 8)
 const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connecting if needed); resolves to the Space once a
                                                 // member who records decisions let us in. ✓ story 5: waits up to
                                                 // 30 s by default (reads keep readTimeout); refused: INVITE_EXPIRED, INVITE_USED_UP,
@@ -181,6 +181,7 @@ const post = await forum.put('post', { title: 'Hello', text: 'First!' })   // �
 // ✓ post: { id, type, author, device, stamp, edited, title, text } — id stable across edits; author is the
 //   identity, device the one that wrote the current version; futureStamp: true if stamped > 10 min ahead;
 //   ✓ hidden: true (hidden by a moderator: only get() returns it), flagged: true (flagged by a moderator)
+//   ✓ story 8: unreadable: true (written in the clear in a private space: listed, no content)
 const { record, complete } = await forum.get(post.id)   // ✓ record null if not held (or deleted)
 await forum.edit(post.id, { text: 'First! (edited)' })   // ✓ changes these fields, keeps the others; resolves to the
                                                          //   new version; NOT_ALLOWED unless the type lets this member edit
@@ -274,14 +275,33 @@ await forum.redemptions(link)         // ✓ [{ identity, at }], oldest first
 await forum.setWriteLimit({ records: 50, periodMs: 3600e3 })   // open spaces: story 9 (research.md A8)
 ```
 
-## Sub-spaces
+## Sub-spaces and private spaces (✓ story 8, research.md A13)
 
 ```js
-const news = await forum.createSubspace({ name: 'News', writeRoles: ['moderator'] })
-const staff = await forum.createSubspace({ name: 'Staff', private: true })
-await staff.createInvite({ role: 'guest' })      // a guest of the sub-space only
-forum.subspaces()                                // sync: [{ key, name, private }]
-await forum.put('post', { title: 'See', space: news.key })   // a record linking to a space
+const news = await forum.createSubspace({ name: 'News', writeRoles: ['moderator'] })   // ✓ resolves to the Space
+const staff = await forum.createSubspace({ name: 'Staff', private: true })             // ✓
+await staff.createInvite({ role: 'guest' })      // ✓ a guest of the sub-space only
+forum.subspaces()                                // ✓ sync: [{ key, name, private }], right inside it
+news.parent; staff.private                       // ✓ sync: the parent's key (null for a top space); private
+await forum.put('shortcut', { title: 'See', to: news })   // ✓ a 'space' field links to a space
+hg.space(record.to)                              // ✓ follow it: the Space if held here, NOT_FOUND otherwise
+// ✓ createSubspace: who may decide (NOT_ALLOWED), writeRoles must be known roles (NOT_FOUND); nested sub-spaces
+//   too. Members of the parent have it without joining (hg.spaces() lists it with its parent); a private one,
+//   the people given a role in it plus the parent's owner and admins. Its members and roles: the parent's, then
+//   its own (setRole, createInvite, removeRole, moderateAction on the sub-space). writeRoles: only those roles
+//   write (the owner and admins always may): put() refuses others (NOT_ALLOWED), members ignore forced records.
+//   A ban or removal in the parent applies in every sub-space below it (a removal takes away the roles given
+//   there), whatever arrives first; a ban there carries the cut of the member's logs in the sub-spaces this
+//   moderator holds. Its decisions live in the parent's decision log (space.decisions() lists its own).
+//   Its invite links carry the top space's key: a guest reads that decision log, not the parent's content.
+// ✓ private (spaces and sub-spaces): records sealed per key epoch (fields and links; type, author, stamp
+//   visible); keys reach members' devices as grants from members who hold them (a newcomer reads once one is
+//   online); when someone loses access, a member who may decide or moderate changes the key before writing
+//   again (put() waits within readTimeout for that, or NOT_ALLOWED). A member without the key: complete:
+//   false, nothing shown. A record written in the clear: listed with unreadable: true, no content. No key is
+//   ever shown (inspect(): private, epoch, readable — never the key).
+// Not built: createInvite({ subspaces }) (an invite to a space giving roles in some of its sub-spaces: invite
+//   to the sub-space instead); a sub-space's own custom roles (defineRole is the top space's).
 ```
 
 ## App protocols
@@ -300,6 +320,8 @@ const snap = await forum.inspect()   // read-only: writes nothing, fetches nothi
                                      //   space's whole index: not for a hot path). Also hg.personal.inspect().
 // {
 //   key, name, personal,            // the space
+//   parent, subspaces, private,     // ✓ story 8: the space it is in (or null), [{ key, name, private }]
+//   epoch, readable,                //   a private space's key epoch (null: none), this device holds it (never the key)
 //   complete,                       // as reads say it (isComplete: every known block held, a member reached)
 //   peers,                          // connections with this space's channel open
 //   logs: [{                        // every device log this member knows of in the space

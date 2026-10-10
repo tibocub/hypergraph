@@ -1,7 +1,7 @@
 # Hypergraph's new core: concepts
 
 `require('hypergraph/next')`: the redesigned core (spec 011, `specs/011-spaces-core/`). ALPHA: it grows
-story by story; this page covers what exists (stories 1 to 3). The API is in [api.md](api.md); the worked
+story by story; this page covers what exists (stories 1 to 8). The API is in [api.md](api.md); the worked
 example is the forum in `test/next/forum/forum.js`.
 
 ## Spaces
@@ -111,6 +111,23 @@ outlives its owner: with the owner gone for good and two admins online, decision
 Settling needs most of the settlers online at once; a space whose only settler is lost for good still
 applies new decisions, but never settles them again (the unsettled part keeps growing), so **give a
 space an admin** or two. `space.status()` warns while only one member settles (`SINGLE_SETTLER`).
+
+## Sub-spaces and private spaces
+
+A **sub-space** is a space shown inside another: a sub-forum, a folder with its own rules, a private
+room. It has its own records, logs and storage, but the members and roles of its parent, then its own
+(guests invited only there, roles given there, stricter rules on who writes). Its decisions are kept in
+its parent's decision log, marked with the sub-space: one order for everything, so a ban in the parent
+and a decision in the sub-space are never seen in different orders by different members, and a ban in
+the parent always wins. A guest of a sub-space reads that decision log (it must, to obey the parent's
+bans) but neither keeps nor sees the parent's content. Split a big space by creating sub-spaces; nothing
+splits on its own.
+
+A **private** space seals its records (their fields and links; who wrote them and when stay visible)
+with a key that only its members' devices receive, each sealed to one device in a grant record. When
+someone loses access, the key changes: they keep reading what came before, not what comes after. A
+member without a key holds the blocks it relays and reads nothing. Design and limits:
+`specs/011-spaces-core/research.md` A13.
 
 ## Roles and moderation
 

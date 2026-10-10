@@ -1,6 +1,6 @@
 # Hypergraph's new core: API
 
-`require('hypergraph/next')`, the surface of stories 1 to 6 (spec 011). Concepts: [concepts.md](concepts.md). The
+`require('hypergraph/next')`, the surface of stories 1 to 8 (spec 011). Concepts: [concepts.md](concepts.md). The
 full planned surface, with what is built marked ✓: `specs/011-spaces-core/contracts/api.md`. The forum
 in `test/next/forum/forum.js` uses all of it.
 
@@ -136,6 +136,42 @@ seconds on a real network; `{ timeout }` overrides it) and says why when it is r
 let you in answered in time (try again later). The maker or an admin revokes a link. Joining never
 lowers a role someone already has. A limit on how much a newcomer of an open space may write comes
 later (story 9).
+
+## Sub-spaces and private spaces
+
+```js
+const news = await forum.createSubspace({ name: 'News', writeRoles: ['moderator'] })  // only moderators post
+const staff = await forum.createSubspace({ name: 'Staff', private: true })            // read by who is let in
+const guests = await forum.createSubspace({ name: 'Guests' })
+const link = await guests.createInvite({ role: 'guest' })   // a guest of the sub-space only
+forum.subspaces()        // [{ key, name, private }], sync: the sub-spaces right inside it
+news.parent              // the forum's key; null for a top space
+staff.private            // true
+await staff.setRole(someone, 'member')   // let a forum member into the private room
+await staff.removeRole(someone)          // and out: the key changes, they can't read what comes next
+const club = await hg.createSpace({ name: 'Club', private: true })   // a private top space
+await forum.put('shortcut', { title: 'See News', to: news })          // a 'space' field: a link to a space
+hg.space(record.to)      // follow it: the Space if you're in it, NOT_FOUND otherwise (an invite lets you in)
+```
+
+A **sub-space** is a space inside another (a sub-forum, a folder with its own rules). Members of the
+parent have it at once, without joining (`hg.spaces()` lists it with its `parent`); it has the parent's
+members and roles, then its own: roles given in it (`setRole`, `createInvite` on the sub-space), guests
+who exist only there. It can be stricter: `writeRoles` (only those roles post; the owner and admins
+always may). A ban or a removal in the parent always applies in every sub-space below it, whatever
+arrives first. Only who may decide creates one (`NOT_ALLOWED` otherwise); nothing splits by itself.
+Sub-spaces nest. Its decisions are kept in the parent's decision log, so it needs no settling of its own.
+
+A **private** space or sub-space is read only by its members: for a private sub-space, the people given
+a role in it plus the parent's owner and admins (plain members of the parent see that it exists, not
+what is in it). Whoever relays or stores its data without being let in can't read it. Content is
+sealed with a key every member's device receives from another member who holds it, so a newcomer reads
+once such a member is online. When someone loses access (removed, banned there or in the parent, a
+device removed), a member who may decide or moderate changes the key before writing again, and those
+who left can't read what is written after; what came before stays readable to them. A member that
+can't read (no key) answers `complete: false`. A record someone wrote in the clear in a private space is
+listed as `unreadable: true`, never with its content. Keys are never shown: not by `inspect()`,
+`status()`, errors or the inspector.
 
 ## Roles and moderation
 

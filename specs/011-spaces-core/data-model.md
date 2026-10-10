@@ -9,18 +9,21 @@ design brief's measurements.
 
 | block | content |
 |---|---|
-| 0 | **Log header**: `{ version, space (32 B), decisions (32 B, decision log key), proof (keet-identity-key device proof, 139–235 B) }` |
+| 0 | **Log header**: `{ version, space (32 B), decisions (32 B, decision log key: its own, or a sub-space's top space — story 8; checked by the gate), proof (keet-identity-key device proof, 139–235 B) }` |
 | 1.. | **Record**: `{ kind: put \| edit \| delete, type (string), stamp (uint ms), target? (record id), links: [record id \| space key], fields (tagged bytes) , sealed? }` |
 
 - Record id: `log key (32 B) + seq (varint)`; z32 string in the API.
 - `fields`: per present field `number (uint) + length (uint) + value` (experiment 6); unknown numbers
   skipped. Records ≤ 64 KB.
-- Private spaces: `fields` and `links` sealed (`{ epoch, nonce (24 B), box }`, XChaCha20-Poly1305, AD =
-  space + log + seq + epoch, spec 008).
+- Private spaces (story 8, research.md A13): record flag 2 = sealed; `fields` holds `{ epoch, commit (8 B: the
+  key's commitment, which key), nonce (24 B), box }`, `links` empty, box = XChaCha20-Poly1305 of `{ fields, links }`,
+  AD = hash(space, log, seq, epoch); type, stamp, kind, target in the clear. Deletes, `hg/grant` and
+  `hg/device-remove` are never sealed.
 - Built-in types: `hg/relation { from (link), to (link), rel, value? (float), data? (text ≤ 4 KB), off }`,
   `hg/tag { on (link), tag, off }` (story 5, research.md A9: puts only, `off` undoes; latest wins per
   (from, to, rel) and (on, tag) among who may edit `from` / `on`),
-  `hg/grant { recipient (16 B prefix), epoch, commit (8 B), sealed, granter, sig }` (later stories);
+  story 8: `hg/grant { to (recipient device key, z32), epoch, commit (32 B), sealed (the epoch key sealed to the
+  device's X25519 key, converted from its device key) }` (index `to`: the grants-for lookup; signed by its log);
   story 3 (research.md A7): `hg/device-remove { removed (device key), cut ([{ log, length }]), proof
   (the identity key's signature over space, device and cut) }`, only in an **identity log** (a log
   whose header is signed by the identity key itself, one per device that removed a device, never cut by
@@ -57,14 +60,20 @@ point.
 | `invite/revoke` | `invite` (the encoded invite: its maker, or who may decide, revokes it) |
 | `writer/add` | `key, proof` — a device's claim of its decision-log writer key, signed on its identity's behalf; counts for a member who may decide or moderate, from a device not removed (research.md A8) |
 | `device/remove` | `device, cut, proof` — the identity key's signed removal (the same bytes as the `hg/device-remove` record): the device's writer keys go, for good |
-| `key/rotate` | `epoch, commit` (private) |
-| `subspace/create` | `key, name, private, writeRoles[]` |
+| `key/rotate` | `epoch, commit` (private; epoch = current + 1, by who may decide or moderate there; a rotation ordered second at an epoch already taken is kept readable in `others`: story 8) |
+| `subspace/create` | `key, name, private, writeRoles[]` (who may decide; inside a sub-space via `scoped`: nesting) |
+| `scoped` | `space, decision` — story 8: a decision about a sub-space (member/remove, role/set, moderate, invite/redeem, invite/revoke, key/rotate, settings/set, subspace/create), kept in its top space's log |
 | `settings/set` | `policy?, writeLimit? { records, periodMs }, rules?` — story 6: `policy` ('auto' \| 'everything') by who may decide; `writeLimit` unused until story 9; core follow-ups: `rules` (ids of the app rules the space runs, sorted into `meta.rules`; a trailing field, absent from older entries) by who may decide |
 
 **State** (rebuilt by applying the log): members, roles and permissions, custom roles, moderation flags
 per record, bans and removals with cuts (`cut:<identity>`: first cut per log wins), invites, redemptions
 and revocations, writers and settlers, removed devices, epochs, sub-spaces, settings. A sub-space's
-effective state = parent's members, roles, bans, then its own decisions; parent bans always win.
+effective state = parent's members and roles (a private one: only the parent's owner and admins), then its own
+(`sub:<key>:member:…` etc.); nobody banned in it or above; cuts are the union (lowest per log); a removal from the
+parent drops the member's own entries below. View keys (story 8): `subspaces` `{ keys }`, `subspace:<key>` `{ name,
+private, writeRoles, parent, by, stamp }`, `epochs` `{ current, commits: { epoch: hex }, others: { hex: epoch } }`, and
+a sub-space's own entries under `sub:<key>:`. Decision rights: who may decide or moderate in the space or any of its
+sub-spaces; settlers: the top space's deciders only.
 
 Built-in roles and permissions (as v1): `owner` (all, the app's permissions included), `admin` (decide, moderate, invite, roles below
 admin), `moderator` (moderate), `member` (post), `guest` (post in its sub-space). Permission `decide` or
@@ -101,12 +110,12 @@ adds `period, start` to log entries.
 | `records` | `space, id` | type, author, device log, seq, stamp, current fields, links, flags (hidden, removed, superseded, edited, flagged; story 6: `DROPPED` — content dropped here, fields empty, the row stays; `READ` — fetched back by a read) |
 | `logs` | `space, log` | identity, device, indexed length, cut, refused? |
 | `changes` | `space, target, id` | an edit or delete by its target: kind, type, author, device, stamp, fields, links (research.md A2); also found by its own id (`changes-by-id`, for cuts) |
-| `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent (not the personal space) |
+| `spaces` | `key` | the spaces this instance holds: Corestore namespace, name, parent (story 8: for a sub-space, its top space — whose decision log holds its decisions; not the personal space) |
 | `meta` | `name` | declared types (`types`: per type its fields and kinds, links, onePerMember, editable, indexes; compat check and, story 7, which types to index again), identity (proof), `personal` (key, encryption key), `alone` (a new identity, no device added yet), `budget` (the app's, if set), `budget:<space>` (a space's own), `dropped:<space>:<log>` (`{ bytes, blocks, ix }`: content dropped from a log, and, core follow-ups, the bytes its rows' app index entries and tag keys cost: the compact `log` schema can't grow; research.md A10) |
 
 Indexes: `by-type (space, type, stamp)`, `by-author (space, author, stamp)`, `by-link (space, target,
 type, stamp)`, `by-ix (space, app key…)` (map over declared `index`, and the record's tags as keys ` #<tag>`: research.md A9), `one-per-member (space, type,
-target, author)`, `grants-for (space, recipient prefix, epoch)` (story 8). `records` rows also carry the current version's
+target, author)`, grants-for: by-ix with type `hg/grant` and key `to <device>` (story 8: no new HyperDB index). `records` rows also carry the current version's
 `vstamp`/`vdevice` and, for one-per-member types, `opm` + `target`.
 
 ### Corestore (`<dir>/cores`)

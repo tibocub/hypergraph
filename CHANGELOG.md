@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-10: `hypergraph/next` — story 8, sub-spaces and private spaces (ALPHA, breaking within `next`)
+
+- Sub-spaces: `space.createSubspace({ name, private, writeRoles })`, `space.subspaces()`, `space.parent`, `space.private`.
+  Members of a space have its sub-spaces without joining (`hg.spaces()` lists them with their parent); a sub-space has its
+  parent's members and roles, then its own (guests invited only there, roles given there); `writeRoles` restricts who
+  writes; a ban or removal in the parent always applies below. A sub-space's decisions live in its parent's decision log.
+- Private spaces and sub-spaces (`createSpace({ private: true })`): records sealed per key epoch, keys granted to members'
+  devices, changed when someone loses access; relays and removed members read nothing new. Records written in the
+  clear show as `unreadable: true`. `inspect()` gains `parent`, `subspaces`, `private`, `epoch`, `readable` (never keys).
+- Fix: a log whose one announcement was missed arrives without a reconnect (the directory summary is sent again on
+  change and every ~10 s). Wire changes: a `scoped` decision type, a sealed record flag, invite links to a sub-space carry
+  the top space's key, log headers of a sub-space name its top space's decision log; built-in type `hg/grant`. Details:
+  `specs/011-spaces-core/research.md` A13.
+
 ### 2026-10-09: `hypergraph/next` — core follow-ups of story 7 (ALPHA, breaking within `next`)
 
 - Fix (consistency): a link to a type its field doesn't allow is judged when read, on every member: the record is
