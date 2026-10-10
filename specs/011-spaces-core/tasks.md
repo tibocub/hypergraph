@@ -683,8 +683,8 @@ the parent's owner and admins.**
 - [X] S812 tools/inspector/: sub-spaces (parent, children) and private state (epoch, readable or not) — never keys
 - [X] S813 test/next/forum/forum.js (sub-forums, private sub-forums, following a space link; under 400 lines),
   contracts/api.md, docs/next/api.md and concepts.md, data-model.md, research.md A13, CHANGELOG.md
-- [ ] S814 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's
-  `npm test`, forum.js line count
+- [X] S814 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's
+  `npm test`, forum.js line count — *next 226/226 on Node, 225/225 on Bare (the inspector test is a skip there); v1 390/390; hyperDNS 46/46; forum.js 395 lines (2026-10-10)*
 
 ## Phase 11: User Story 9 — Big spaces (Priority: P3)
 
