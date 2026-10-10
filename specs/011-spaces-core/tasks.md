@@ -768,8 +768,9 @@ Refined 2026-10-10 by the worker session (branch `011-spaces-core-s9`), from T06
 - [X] S918 tools/inspector: access, horizon (held from), activity entries per period
 - [X] S919 test/next/forum/forum.js (under 400 lines), contracts/api.md, docs/next/api.md and concepts.md, data-model.md,
   research.md A14, CHANGELOG.md
-- [ ] S920 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's `npm test`,
-  forum.js line count
+- [X] S920 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's `npm test`,
+  forum.js line count — *next 250/250 on Node, 249/249 on Bare (the inspector test is a skip there); v1 390/390;
+  hyperDNS 46/46; forum.js 398 lines (2026-10-10)*
 
 ## Phase 12: Polish & cross-cutting
 
