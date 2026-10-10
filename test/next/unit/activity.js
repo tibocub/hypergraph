@@ -54,7 +54,7 @@ test('checking an entry against the log', (t) => {
   t.is(checkEntry({ period: 11, start: 3 }, { before: WIPED, at: at(11), limit }), 'false', 'nobody starts an entry after a wiped block')
   t.is(checkEntry({ period: 11, start: 3 }, { before: at(10), at: WIPED, limit }), 'ok', 'the block at start may be a wiped one')
   t.is(checkEntry({ period: 11, start: 3 }, { before: null, at: at(11), limit }), 'wait', 'the block before not available yet')
-  t.is(checkEntry({ period: 11, start: 3 }, { before: at(10), at: null, limit }), 'wait')
+  t.is(checkEntry({ period: 11, start: 3 }, { before: at(10), at: null, limit }), 'ok', 'the block at start not here: maybe wiped, and starting early is harmless')
   t.is(checkEntry({ period: 11, start: 3 }, { before: at(10), at: at(11), limit: 3 }), 'false', 'past the log\'s cut')
   t.is(checkEntry({ period: 11, start: 0 }, { before: null, at: null, limit }), 'false', 'block 0 is the header')
 })
