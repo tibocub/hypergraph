@@ -111,3 +111,20 @@ test('a log whose announcement was missed still arrives: the summary sent every 
   restore()
   t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === p.id), 25000), 'a learnt c\'s log within the bound, connections untouched')
 })
+
+// Found by bench/next/first-page.js (story 9): a newcomer said "complete" as
+// soon as a member's summary arrived, before it had looked at that member's
+// list of logs, so a first page could be complete and wrong.
+test('a newcomer is not complete before it has looked at a member\'s list of logs', async (t) => {
+  const { fa, fb, fc } = await threeMembers(t)
+  for (const f of [fa, fb, fc]) await forum.post(f, 'hello', '')
+  t.ok(await eventually(async () => (await forum.latest(fa)).length === 3, 5000))
+  const d = await account(t, 'd')
+  testing.slowLists(d, 1500) // the lists arrive late
+  const fd = await forum.join(d, await forum.invite(fa))
+  const first = await fd.query('post').latest(20, { timeout: 0 })
+  t.ok(!first.complete || first.items.length === 3, `never complete with fewer posts (${first.items.length}, complete ${first.complete})`)
+  const later = await fd.query('post').latest(20, { timeout: 10000 })
+  t.ok(later.complete, 'complete once the list was looked at')
+  t.is(later.items.length, 3)
+})
