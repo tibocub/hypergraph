@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-10 (review of spec 011 story 8)** — Accepted and merged into `011-spaces-core` (226/226 Node,
+  225/225 Bare, re-run in the lead conversation). Tibo (in the session): a sub-space's decisions live in
+  its parent's decision log; a private sub-space is read by those invited to it plus the parent's owner
+  and admins. Settled by the lead: only someone who can read a private space changes its key (a
+  moderator who made a new key would read everything after it — that's access, not moderation); a
+  member holding a private space without its key gets a "not for me" state answered at once instead of
+  waiting for the bound (story 9); `createInvite({ subspaces })` comes with story 9; sub-spaces' own
+  custom roles later. forum.js is at 395/400: story 9 must not grow it past the limit.
+
 - **2026-10-10 (review of the core follow-ups)** — Accepted and merged into `011-spaces-core` (202/202 on
   Node and on Bare, both re-run in the lead conversation on the merged branch). The link consistency
   bug is fixed (a link to a wrong-type target counts for nothing, on every member, whatever the order).
@@ -182,5 +191,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 7. Story 6 done and reviewed.
 8. Story 7 and the inspector done, reviewed, merged into `011-spaces-core`.
 9. Core follow-ups done, reviewed, merged.
-10. **Worker session**: story 8 (sub-spaces, private), then story 9 (big spaces). SwarmFS spec session in
-    parallel (folder decision pending with Tibo).
+10. Story 8 done, reviewed, merged.
+11. **Worker session**: story 9 (big spaces) — the last story. SwarmFS spec session in parallel (folder
+    decision pending with Tibo).
