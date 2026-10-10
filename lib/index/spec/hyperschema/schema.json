@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "schema": [
     {
       "name": "record",
@@ -264,6 +264,38 @@
           "name": "value",
           "type": "buffer",
           "version": 1
+        }
+      ]
+    },
+    {
+      "name": "activity",
+      "namespace": "hg",
+      "compact": true,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "space",
+          "required": true,
+          "type": "fixed32",
+          "version": 2
+        },
+        {
+          "name": "period",
+          "required": true,
+          "type": "uint",
+          "version": 2
+        },
+        {
+          "name": "log",
+          "required": true,
+          "type": "fixed32",
+          "version": 2
+        },
+        {
+          "name": "start",
+          "required": true,
+          "type": "uint",
+          "version": 2
         }
       ]
     }

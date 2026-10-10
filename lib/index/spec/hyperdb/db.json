@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "offset": 0,
   "schema": [
     {
@@ -231,6 +231,23 @@
         "space",
         "id"
       ]
+    },
+    {
+      "name": "activity",
+      "namespace": "hg",
+      "id": 11,
+      "type": 1,
+      "version": 3,
+      "versionField": null,
+      "indexes": [],
+      "schema": "@hg/activity",
+      "derived": false,
+      "key": [
+        "space",
+        "period",
+        "log"
+      ],
+      "trigger": null
     }
   ]
 }

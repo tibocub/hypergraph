@@ -714,7 +714,7 @@ Refined 2026-10-10 by the worker session (branch `011-spaces-core-s9`), from T06
   record of each period; a wiped block skipped back to the last readable one); checking an entry (start − 1 is the
   header or stamped before the period: kept; a start too late, past the log's cut, or for a log that may not write:
   refused; start − 1 not available: waiting); merging (the lowest checked start per log and period); the entry's size
-  (≤ 40 B for a 32-byte key)
+  (about 40 B)
 - [ ] S902 [P] test/next/net/activity.js (US9 #2, #3; SC-006): an author's first record in a new period: every member
   keeps the entry within a second and passes on the entry only (bytes counted on the channel); a false entry (a start
   too late) and an entry for a non-member's log are dropped and not passed on to a third member; 10,000 throwaway-key
