@@ -208,7 +208,7 @@ first page as soon as everything from its oldest post on is held. A read reachin
 page, the votes of an old post) widens what it reads, within its bound. In the background it goes on
 reading backwards while the space fits its share — so a small space ends up held whole, as before — and
 never past it: a space bigger than the share is held from some point in time on (`status().heldFrom`).
-Beyond 1,000 device logs, a newcomer doesn't even ask for the whole list of logs: it opens only the logs
+Beyond 300 device logs, a newcomer doesn't even ask for the whole list of logs: it opens only the logs
 of the activity lists of the periods it reads.
 
 Reading part of a space never changes what is shown, only when an answer is complete: a complete page is
