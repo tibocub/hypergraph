@@ -166,6 +166,9 @@ if (typeof Bare !== 'undefined') {
     t.is(staffView.private, true)
     t.is(staffView.epoch, 0, 'the private sub-space\'s key epoch')
     t.is(staffView.readable, true, 'readable here')
+    t.is(staffView.access, 'full', 'story 9: its access')
+    t.is(forumView.reading.heldFrom, null, 'story 9: read from the beginning')
+    t.ok(staffView.reading.entries >= 1, 'a sub-space with a post has its activity entries')
     t.ok(staffView.recent.some((d) => d.type === 'key/rotate'), 'its key changes are in its decisions')
 
     const everything = JSON.stringify([spaces, forumView, staffView, await json(`api/records?key=${staff.key}&type=post`), await json(`api/rows?key=${staff.key}&type=hg/grant`)])
