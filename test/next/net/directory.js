@@ -128,3 +128,27 @@ test('a newcomer is not complete before it has looked at a member\'s list of log
   t.ok(later.complete, 'complete once the list was looked at')
   t.is(later.items.length, 3)
 })
+
+// Found by bench/next/first-page.js (story 9): the indexer counted blocks as
+// looked at before their batch was committed, so a read in between said
+// "complete" without the newest records.
+test('a read is not complete while what was looked at is still being committed', async (t) => {
+  const a = await account(t, 'a')
+  const fa = await forum.createForum(a, 'Busy')
+  for (let i = 0; i < 10; i++) await forum.post(fa, `post ${i}`, '')
+  const d = await account(t, 'd')
+  const fd = await forum.join(d, await forum.invite(fa))
+  t.ok(await eventually(async () => (await fd.query('post').latest(20, { timeout: 0 })).complete, 10000), 'd holds the forum')
+  testing.slowCommits(d, 300) // d's disk gets slow
+  let newest = null
+  for (let i = 0; i < 5; i++) newest = await forum.post(fa, `new ${i}`, '')
+  const until = Date.now() + 8000
+  let seen = false
+  while (Date.now() < until && !seen) {
+    const r = await fd.query('post').latest(20, { timeout: 0 })
+    if (r.complete) t.is(r.items[0].id, newest.id, 'a complete page starts with the newest post')
+    seen = r.complete
+    await sleep(10)
+  }
+  t.ok(seen, 'it becomes complete')
+})
