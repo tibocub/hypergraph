@@ -160,7 +160,10 @@ answers from what is held, waits (up to `readTimeout`, 5 s by default, or the re
 what is known to exist but not held yet, and returns `{ items, complete }`.
 
 `complete: false` means: some record this member knows exists isn't held yet (its log is longer than
-what has arrived), or no other member has been reached since the app started. The answer is still
+what has arrived, or a peer says it is), or this member hasn't yet looked at another member's list of the
+space's logs since the app started. A read is complete only for records it could hold: a page of the
+latest posts is complete once everything from its oldest post on is here, so a newcomer to a big space
+gets a complete first page long before it holds the whole space (see [Big spaces](#big-spaces)). The answer is still
 useful — show it, and read again later (or use a live query). A space where you are the only member,
 on your only device, is always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
 of can't be waited for. Records deleted by their authors leave nothing to wait for either.
@@ -188,8 +191,32 @@ everything) is kept too; a space whose list alone is bigger than its share is re
 database compacts, which hypergraph asks for after dropping a tenth of its budget (at most every 10
 minutes). Budgets cover hypergraph's data, not files an app moves itself.
 
-Today a newcomer to a space bigger than its share still downloads it once before dropping the oldest
-part; fetching only the newest part comes with big spaces (story 9).
+A newcomer to a big space downloads its newest part first and, past its share, never the rest (see
+[Big spaces](#big-spaces)).
+
+## Big spaces
+
+Records are grouped by **period** (an hour of their stamps). For each period, every member keeps an
+**activity list**: which device logs wrote in it, and from which record. An entry is about 40 bytes and
+carries no signature: anyone checks it against the log itself (the record before it is older than the
+period) and drops it if it is false or if its log may not write in the space; only then is it kept and
+passed on. So spam with thousands of throwaway keys costs a member a bounded queue, nothing kept.
+
+A **newcomer** to a space whose members hold many records (over 2,000) reads it **newest first**: it
+asks a member for the activity list of the newest period, opens those logs from there, and answers the
+first page as soon as everything from its oldest post on is held. A read reaching further back (an older
+page, the votes of an old post) widens what it reads, within its bound. In the background it goes on
+reading backwards while the space fits its share — so a small space ends up held whole, as before — and
+never past it: a space bigger than the share is held from some point in time on (`status().heldFrom`).
+Beyond 1,000 device logs, a newcomer doesn't even ask for the whole list of logs: it opens only the logs
+of the activity lists of the periods it reads.
+
+Reading part of a space never changes what is shown, only when an answer is complete: a complete page is
+the page a member holding everything shows. Records that point at another (a comment, a vote, an edit)
+are stamped after it, so whoever holds a record's period on holds what points at it. Limits: a modified
+app that stamps records out of order in its own log, or a link before its target, can have records a
+member reading part of the space misses while saying complete (members holding everything show them);
+and the lists a member gives are trusted to be whole, as the list of logs always was.
 
 ## Rebuilding the index
 

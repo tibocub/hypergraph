@@ -3,8 +3,11 @@
 What a developer writes. Names follow v1 where meanings hold (spec FR-008, FR-016, FR-017); every
 method is async unless marked otherwise. Reads return `{ items, complete }` (lists) or
 `{ record, complete }` (one record): `complete: false` means some record this member knows exists was
-not held within the read's bound, or no other member was reached since opening (R13, amended in
-research.md A4). Errors are `HypergraphError` with a stable `code`.
+not held within the read's bound, or no other member's list of logs was looked at since opening (R13,
+amended in research.md A4 and A14). Story 9: a read is complete for what it needs — a page from its oldest
+item on, `linked`/`count`/`sum` from their target's stamp — so a member reading part of a big space gets
+complete answers; it is never complete while records it looked at are still being indexed.
+Errors are `HypergraphError` with a stable `code`.
 The forum scenario tests (`test/next/forum/`) are the executable form of this contract; when they and
 this file disagree, fix one of them in the same change.
 
@@ -12,7 +15,7 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 to 8 and the core follow-ups (marked ✓ below). The rest is the plan for later stories.
+**Built so far**: stories 1 to 9 and the core follow-ups (marked ✓ below): all of spec 011.
 
 ## Opening, identity, network
 
@@ -111,10 +114,14 @@ hg.space(key)                                   // ✓ sync: the Space; NOT_FOUN
 await hg.leaveSpace(key)                        // drops its data from this device
 
 forum.key; forum.name; forum.parent             // ✓ sync
-forum.status()                                  // ✓ sync: { policy, held, stored, share, budget, belowPolicy, peers,
-                                                //   settlers, warnings: [{ code, message }] } — held 'all' | 'part'
-                                                //   (content dropped here); stored, share: bytes (share null until
-                                                //   the first budget pass); budget: its own or null.
+forum.status()                                  // ✓ sync: { policy, access, held, heldFrom, stored, share, budget,
+                                                //   belowPolicy, peers, settlers, warnings: [{ code, message }] } —
+                                                //   held 'all' | 'part' (content dropped here, or read from heldFrom
+                                                //   on); stored, share: bytes (share null until the first budget pass);
+                                                //   budget: its own or null. ✓ story 9: access 'full' | 'waiting' (a
+                                                //   private space's key not here yet) | 'none' (a private space not for
+                                                //   this member: removed, or relaying it); heldFrom: ms from which a big
+                                                //   space's records are read here (newest first), or null (all).
                                                 //   Warnings: SINGLE_SETTLER (story 5: "give a space an admin"),
                                                 //   BELOW_POLICY (keep-everything asked, this device can't), OVER_BUDGET
                                                 //   (what it may not drop already exceeds its share), RULES_DIFFER
@@ -272,7 +279,13 @@ const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.
 //   unknown role); a redemption never lowers a role
 await forum.revokeInvite(link)        // ✓ its maker or who may decide; members who came in stay
 await forum.redemptions(link)         // ✓ [{ identity, at }], oldest first
-await forum.setWriteLimit({ records: 50, periodMs: 3600e3 })   // open spaces: story 9 (research.md A8)
+await forum.setWriteLimit({ records: 50, periodMs: 3600e3 })   // ✓ story 9: each device's log counts at most `records`
+//   records within any periodMs (null lifts it); who may decide (NOT_ALLOWED). Judged alike by every member
+//   (lib/limit.js: a wiped record takes the next readable one's stamp; deleting never frees room); put(),
+//   edit() and graph calls refuse beyond it (NOT_ALLOWED, saying when); deletes always allowed. Raising or
+//   lifting it brings refused records back. research.md A14
+const both = await forum.createInvite({ role: 'member', subspaces: [staff] })   // ✓ story 9: the role in the listed
+//   sub-spaces too (inside this space; its maker must be able to invite there: NOT_ALLOWED / NOT_FOUND)
 ```
 
 ## Sub-spaces and private spaces (✓ story 8, research.md A13)
@@ -300,8 +313,9 @@ hg.space(record.to)                              // ✓ follow it: the Space if 
 //   again (put() waits within readTimeout for that, or NOT_ALLOWED). A member without the key: complete:
 //   false, nothing shown. A record written in the clear: listed with unreadable: true, no content. No key is
 //   ever shown (inspect(): private, epoch, readable — never the key).
-// Not built: createInvite({ subspaces }) (an invite to a space giving roles in some of its sub-spaces: invite
-//   to the sub-space instead); a sub-space's own custom roles (defineRole is the top space's).
+// ✓ story 9: a member holding a private space it may not read (removed, a relay) is told at once:
+//   status().access 'none', reads answer immediately with { items, complete: false, access: 'none' }.
+// Not built: a sub-space's own custom roles (defineRole is the top space's).
 ```
 
 ## App protocols
@@ -322,6 +336,9 @@ const snap = await forum.inspect()   // read-only: writes nothing, fetches nothi
 //   key, name, personal,            // the space
 //   parent, subspaces, private,     // ✓ story 8: the space it is in (or null), [{ key, name, private }]
 //   epoch, readable,                //   a private space's key epoch (null: none), this device holds it (never the key)
+//   access,                         // ✓ story 9: as status() gives it
+//   reading: { heldFrom, byActivity, entries },   // ✓ story 9: read from then on (null: all), by activity lists,
+//                                   //   activity entries kept here
 //   complete,                       // as reads say it (isComplete: every known block held, a member reached)
 //   peers,                          // connections with this space's channel open
 //   logs: [{                        // every device log this member knows of in the space

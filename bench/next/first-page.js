@@ -62,6 +62,7 @@ async function main () {
     const step = HOURS * PERIOD_MS / N
     const writers = []
     for (let w = 0; w < WRITERS; w++) {
+      if (w && w % 10 === 0) console.log(`  (${w} writers joined)`)
       const hg = await open('w' + w)
       const s = await hg.redeemInvite(await space.createInvite({ role: 'member' }))
       writers.push({ hg, s })
@@ -95,7 +96,14 @@ async function main () {
     }
     for (let w = 0; w < WRITERS; w++) await flush(w)
     const written = Date.now()
-    while (testing.indexedBlocks(space) < N) await sleep(100)
+    let shown = 0
+    while (testing.indexedBlocks(space) < N) {
+      await sleep(100)
+      if (Date.now() - shown > 10000) {
+        shown = Date.now()
+        console.log(`  (the owner indexed ${testing.indexedBlocks(space)} of ${N}; logs ${testing.logs(space).length})`)
+      }
+    }
     console.log(`(written in ${((written - t0) / 1000).toFixed(1)} s, held by the owner ${((Date.now() - written) / 1000).toFixed(1)} s later)`)
     while ((await testing.activity(space, periodOf(Date.now()) - 1)).length === 0) await sleep(100)
     const entries = await testing.activity(space)

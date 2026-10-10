@@ -119,6 +119,8 @@ new rules accept what earlier versions wrote (see [App rules](#app-rules): misma
 const forum = await hg.createSpace({ name: 'Hypergraph fans' })
 const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.now() + 7 * 864e5 })
 const open = await forum.createInvite({ uses: Infinity })   // a public link: an open forum
+await forum.setWriteLimit({ records: 20, periodMs: 3600e3 })   // each device posts at most 20 records an hour
+const both = await forum.createInvite({ subspaces: [staff] })  // also gives the role in the private sub-space
 const joined = await hg.redeemInvite(link)                 // on the newcomer's app: resolves once let in
 await forum.revokeInvite(open)                             // no one else gets in with it; members stay
 await forum.redemptions(link)                              // [{ identity, at }]: who came in with it
@@ -134,8 +136,21 @@ online. Who may invite to what: a role with `invite` (owner, admins), to a role 
 seconds on a real network; `{ timeout }` overrides it) and says why when it is refused: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`,
 `NOT_ALLOWED` (its maker may not give that role, or you are banned); `INVITE_INVALID` if nobody able to
 let you in answered in time (try again later). The maker or an admin revokes a link. Joining never
-lowers a role someone already has. A limit on how much a newcomer of an open space may write comes
-later (story 9).
+lowers a role someone already has.
+
+An invite can list sub-spaces of the space (`subspaces`: Space objects or keys): the newcomer gets the
+same role in each, a private one included, so one link lets someone into the forum and its private room.
+Its maker must be able to invite to that role there (`NOT_ALLOWED` otherwise, with the reason); a sub-space
+not inside this space is `NOT_FOUND`.
+
+**Write limits** (open spaces): `setWriteLimit({ records, periodMs })` (who may decide; `null` lifts it)
+lets each device's log count at most `records` records within any `periodMs`. Every member judges it the
+same way, so a record beyond it counts for nobody (a member who was there and a newcomer agree); your app's
+`put()`, `edit()` and graph calls refuse it first (`NOT_ALLOWED`, saying when the device may write
+again). Deleting is always allowed and never frees room. Raising or lifting the limit brings refused
+records back (their authors hold them). The limit is judged on records' stamps: a modified app can only
+get past it by stamping its records ever further in the future, where every member sees them as
+`futureStamp`.
 
 ## Sub-spaces and private spaces
 
@@ -169,7 +184,10 @@ sealed with a key every member's device receives from another member who holds i
 once such a member is online. When someone loses access (removed, banned there or in the parent, a
 device removed), a member who may decide or moderate changes the key before writing again, and those
 who left can't read what is written after; what came before stays readable to them. A member that
-can't read (no key) answers `complete: false`. A record someone wrote in the clear in a private space is
+can't read (no key) answers `complete: false`. One that may not read it any more (removed, or only
+relaying it) is told at once: `status().access` is `'none'` and reads answer immediately with
+`{ items, complete: false, access: 'none' }` instead of waiting for keys that will never come; a member
+whose key hasn't arrived yet is `'waiting'` (reads wait, as usual). A record someone wrote in the clear in a private space is
 listed as `unreadable: true`, never with its content. Keys are never shown: not by `inspect()`,
 `status()`, errors or the inspector.
 
@@ -324,14 +342,15 @@ await hg.storage()                      // { budget, used, free } — used is an
 await forum.setBudget(1e9)              // this forum's own share, out of the app's (null: share the app's)
 await forum.setPolicy('everything')     // owner/admins: every member is asked to keep it all ('auto' is the default)
 await hg.createSpace({ name, policy: 'everything' })
-forum.status()                          // { policy, held: 'all' | 'part', stored, share, budget, belowPolicy,
-                                        //   peers, settlers, warnings }
+forum.status()                          // { policy, access, held: 'all' | 'part', heldFrom, stored, share, budget,
+                                        //   belowPolicy, peers, settlers, warnings }
 forum.on('status', (s) => {})           // policy, held, belowPolicy, budget or warnings changed
 ```
 
 The default budget is 5 GB, or what the app holds plus half the free disk if that is smaller. Spaces with
 their own budget get it; the others share the rest in proportion to what each holds. See
-[concepts.md](concepts.md#holding-part-of-a-space). Warnings: `BELOW_POLICY` (the space asks to keep
+[concepts.md](concepts.md#holding-part-of-a-space). `heldFrom` (ms) is set while this device reads a big space
+from a point in time on (newest first, [concepts.md](concepts.md#big-spaces)); `held` is then `'part'`. Warnings: `BELOW_POLICY` (the space asks to keep
 everything and this device can't: give it more room), `OVER_BUDGET` (what this device may not drop —
 its own records, the decisions, the list of records — is already more than its share).
 
