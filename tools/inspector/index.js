@@ -143,6 +143,7 @@ async function summary (space, { key, name, parent }) {
     name,
     parent,
     personal: snap.personal,
+    private: !!snap.private, // story 8: read only with its keys (never shown)
     complete: snap.complete,
     peers: snap.peers,
     policy: snap.storage.policy,

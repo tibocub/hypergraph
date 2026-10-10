@@ -9,6 +9,10 @@ core work. Later it becomes HyperBrowser's developer-tools panel.
 has `timeout: 0`: it never waits, never fetches, never writes. A record whose content was dropped here
 (budgets) is left out, and the page says "not complete".
 
+**Sub-spaces and private spaces** (story 8): a sub-space is listed with an arrow, its overview names the
+space it is in and a space lists its sub-spaces; a private space shows its key epoch and whether this
+device can read it. Keys are never shown, anywhere.
+
 **Node only, for now.** It uses Node's `http` module. The core itself runs on Node and Bare.
 
 ## Embed it in your app

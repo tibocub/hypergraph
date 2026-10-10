@@ -680,7 +680,7 @@ the parent's owner and admins.**
   grant missing devices of entitled members, rotate when the entitled set shrinks and re-grant; a record whose
   epoch key isn't held waits (counted as missing, indexed once the key arrives); a plaintext app record in a
   private space is an unreadable row
-- [ ] S812 tools/inspector/: sub-spaces (parent, children) and private state (epoch, readable or not) — never keys
+- [X] S812 tools/inspector/: sub-spaces (parent, children) and private state (epoch, readable or not) — never keys
 - [ ] S813 test/next/forum/forum.js (sub-forums, private sub-forums, following a space link; under 400 lines),
   contracts/api.md, docs/next/api.md and concepts.md, data-model.md, research.md A13, CHANGELOG.md
 - [ ] S814 Checkpoint: `npm run test:next` and `npm run test:next:bare` (full), v1's `npm test`, hyperDNS's

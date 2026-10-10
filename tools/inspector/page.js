@@ -80,7 +80,7 @@ async function drawSpaces () {
   if (!state.space) state.space = spaces[0].key
   setHtml($('#spaces'), spaces.map((s) => `
     <li data-key="${esc(s.key)}" class="${s.key === state.space ? 'on' : ''}">
-      <div class="name">${esc(s.name || '(no name)')}${s.personal ? ' <span class="badge" title="Only this person\'s devices share it. Nobody else can find or read it.">private</span>' : ''}</div>
+      <div class="name">${s.parent ? '<span class="muted" title="A sub-space: inside another space, with its members and roles.">↳ </span>' : ''}${esc(s.name || '(no name)')}${s.personal ? ' <span class="badge" title="Only this person\'s devices share it. Nobody else can find or read it.">private</span>' : ''}${s.private ? ' <span class="badge" title="Its content is sealed: only the people let in (and the parent\'s owner and admins) read it.">private</span>' : ''}</div>
       <div class="sub">
         ${s.complete ? '<span class="ok" title="Every block this device knows of is here, and it reached another member (or it is the only one).">complete</span>' : '<span class="warn" title="Some data this device knows exists is not here yet, or it has not reached any other member since it opened. Reads say complete: false.">not complete</span>'}
         · ${tip(`${s.peers} peer${s.peers === 1 ? '' : 's'}`, 'Other devices connected right now for this space.')}
@@ -121,6 +121,9 @@ function overview (s) {
   return `
     ${s.warnings.map((w) => `<div class="warning"><b>${esc(w.code)}</b>: ${esc(w.message)}</div>`).join('')}
     <dl class="facts">
+      ${s.parent ? `<dt>${tip('Inside', 'A sub-space of another space: that space\'s members and roles count here, then its own; a ban there applies here.')}</dt><dd>${keyHtml(s.parent, 'parent space')}</dd>` : ''}
+      ${s.subspaces && s.subspaces.length ? `<dt>${tip('Sub-spaces', 'Spaces inside this one (sub-forums, folders with their own rules). Its members have them without joining; private ones only who is let in.')}</dt><dd>${s.subspaces.map((x) => esc(x.name || '(no name)') + (x.private ? ' <span class="chip">private</span>' : '')).join(', ')}</dd>` : ''}
+      ${s.private ? `<dt>${tip('Private', 'Content is sealed with a key that changes when someone loses access (the epoch counts the changes). Readable: this device holds the current key. Keys are never shown.')}</dt><dd>key epoch ${s.epoch === null ? '—' : s.epoch} · ${s.readable ? '<span class="ok">readable here</span>' : '<span class="warn">not readable here (no key)</span>'}</dd>` : ''}
       <dt>${tip('Complete', 'Yes when every block this device knows exists is held here, and it reached another member since it opened (or it is the only one). When not, reads answer with what is here and say complete: false.')}</dt>
       <dd>${s.complete ? '<span class="ok">yes</span>' : '<span class="warn">not yet</span>'}</dd>
       <dt>${tip('Peers', 'Other devices connected right now for this space: the person and the device.')}</dt>
@@ -207,6 +210,8 @@ function what (x) {
     case 'settings/set': return [x.policy && `storage policy <b>${esc(x.policy)}</b>`, x.rules && `app rules: ${x.rules.map((r) => `<span class="chip">${esc(r)}</span>`).join('') || 'none'}`].filter(Boolean).join('; ')
     case 'writer/add': return `a device of theirs records decisions ${keyHtml(x.key, 'writer key')}`
     case 'device/remove': return `removed their device ${keyHtml(x.removed, 'device')}`
+    case 'subspace/create': return `created the sub-space “${esc(x.name)}”${x.private ? ' (private)' : ''}`
+    case 'key/rotate': return `changed the key (epoch ${esc(String(x.epoch))})`
     default: return esc(x.type)
   }
 }

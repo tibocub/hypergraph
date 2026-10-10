@@ -27,7 +27,7 @@ async function staffRoom (t) {
 }
 
 test('a private sub-forum: its members read it; a plain member doesn\'t have it; whoever holds its blocks without a key reads nothing', async (t) => {
-  const { c, fa, fc, staff, sb } = await staffRoom(t)
+  const { b, c, fa, fc, staff, sb } = await staffRoom(t)
   t.ok(staff.private, 'private')
   t.ok(sb, 'an admin of the forum has it')
   const p = await forum.post(sb, 'secret plan', 'meet at noon')
@@ -42,6 +42,14 @@ test('a private sub-forum: its members read it; a plain member doesn\'t have it;
   t.absent(b4a.includes(raw, b4a.from('secret plan')) || b4a.includes(raw, b4a.from('meet at noon')), 'no plaintext in it')
   t.alike(await titles(rc), [], 'nothing readable')
   t.is((await rc.get(p.id, { timeout: 0 })).record, null)
+
+  // Keys live in memory only: after a restart they come back from the grants.
+  await b.close()
+  const b2 = await account(t, 'b2', { dir: b.dir })
+  const again = await opened(b2, staff.key)
+  t.ok(again && await eventually(() => shows(again, p.id), 10000), 'after a restart the admin reads it again')
+  const q = await forum.post(again, 'still here', '')
+  t.ok(await eventually(() => shows(staff, q.id), 10000), 'and writes')
 })
 
 test('an invite to the private sub-forum gives access once a key holder is online, the inviter offline', async (t) => {

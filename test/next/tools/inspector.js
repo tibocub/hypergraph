@@ -139,4 +139,40 @@ if (typeof Bare !== 'undefined') {
     await close()
     t.pass('close twice')
   })
+
+  test('inspector: sub-spaces and private state, never a key', async (t) => {
+    const testing = require('../../../lib/testing.js')
+    const b4a = require('b4a')
+    const z32 = require('z32')
+    const hg = await open(t, { label: 'inspector-subs', types: forum.types, rules: forum.rules, bootstrap: [] })
+    const f = await forum.createForum(hg, 'Forum')
+    const general = await forum.createSubforum(f, 'General')
+    const staff = await forum.createSubforum(f, 'Staff', { private: true })
+    await forum.post(staff, 'secret', '')
+    const { url, close } = await serveInspector(hg, { port: 0 })
+    t.teardown(close, { order: -1 })
+    const json = async (path) => (await fetch(url + path)).json()
+
+    const spaces = await json('api/spaces')
+    const byKey = new Map(spaces.map((s) => [s.key, s]))
+    t.is(byKey.get(general.key).parent, f.key, 'a sub-space shows its parent')
+    t.is(byKey.get(staff.key).private, true, 'and whether it is private')
+    t.is(byKey.get(f.key).private, false)
+    const forumView = await json('api/space?key=' + f.key)
+    t.alike(forumView.subspaces.map((s) => s.name).sort(), ['General', 'Staff'], 'the forum lists its sub-spaces')
+    t.ok(forumView.recent.some((d) => d.type === 'subspace/create' && d.name === 'Staff'), 'their creation is in its decisions')
+    const staffView = await json('api/space?key=' + staff.key)
+    t.is(staffView.parent, f.key)
+    t.is(staffView.private, true)
+    t.is(staffView.epoch, 0, 'the private sub-space\'s key epoch')
+    t.is(staffView.readable, true, 'readable here')
+    t.ok(staffView.recent.some((d) => d.type === 'key/rotate'), 'its key changes are in its decisions')
+
+    const everything = JSON.stringify([spaces, forumView, staffView, await json(`api/records?key=${staff.key}&type=post`), await json(`api/rows?key=${staff.key}&type=hg/grant`)])
+    for (const k of testing.epochKeys(staff)) {
+      for (const form of [b4a.toString(k, 'hex'), z32.encode(k), b4a.toString(k, 'base64')]) t.absent(everything.includes(form), 'no key in any view')
+    }
+    const page = require('fs').readFileSync(require('path').join(__dirname, '../../../tools/inspector/page.js'), 'utf8')
+    t.ok(page.includes('subspace/create') && page.includes('key/rotate'), 'the page words the new decisions')
+  })
 }
