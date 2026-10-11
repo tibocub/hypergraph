@@ -23,6 +23,19 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-11 (upstream bugs, checked in the lead conversation)** — **Hypercore**: confirmed with plain
+  Hypercore (`specs/research/upstream/hypercore-clear-repro.js`) that after a peer clears block k, the other
+  side records its contiguous length as k and forgets it holds k+1.. (`onrange` lowers
+  `_remoteContiguousLength` without first setting those bits) — **but nothing stalls in plain Hypercore**
+  (`get`, range and live downloads still fetch). So our stall (story 2) most likely comes from our own code
+  (`get(seq, { wait: false })` reads, ranges restarting at the indexed position); follow-up: find it and
+  remove the workaround that calls Hypercore internals (`core.replicator.onhave`). No bug report; at most a
+  question with the script. **Hyperswarm**: reading `_handleServerConnection`, the duplicate-connection rule
+  mixes a symmetric key tie-break with a timing-dependent "existing already sent and received bytes"
+  test, so two sides can keep different connections; consistent with the measurements (joins ~1 s or
+  ~15 s, only across processes). Report only if the pre-merge session's plain-Hyperswarm script reproduces
+  it, with Tibo's OK.
+
 - **2026-10-11** — Private spaces never re-encrypt data; a **key chain** (each new room key carries the
   previous one, locked with it) lets newcomers read history without re-encryption; per-space setting
   `history: 'visible' | 'hidden'` (default visible). Found in review after Tibo's question: newcomers only
