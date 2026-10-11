@@ -837,9 +837,9 @@ on Node and Bare.
   (`test/next/unit/activity.js`)
 - [X] P04 Activity lists are asked of members only (their `hello` proved who they are) and only an asked list
   counts (audit 3)
-- [ ] P05 Test: the recovery-phrase file is created with mode 0600 (Linux, macOS; Windows: documented)
+- [X] P05 Test: the recovery-phrase file is created with mode 0600 (Linux, macOS; Windows: documented)
   (`test/next/unit/phrase.js`); then `lib/phrase.js` writes it so, and the instance folder is created 0700 (audit 2)
-- [ ] P06 Test: a crash between writing the sealed phrase and renaming it leaves the plain phrase; a torn entry in
+- [X] P06 Test: a crash between writing the sealed phrase and renaming it leaves the plain phrase; a torn entry in
   the logs file doesn't shift later ones (`test/next/unit/phrase.js`, `test/next/unit/instance.js`); then the
   fixes: `protect` writes and renames (no `forget` first), `readLogs` truncates a torn tail (audits 6, 7)
 - [ ] P07 Test across separate processes: a connection whose space channel doesn't open within a few seconds is
