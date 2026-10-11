@@ -32,7 +32,7 @@ test('an app rule rejects a record everywhere, before it is kept', async (t) => 
     t.absent((await forum.latest(f)).some((p) => p.id === bad), 'the rejected record is not shown')
     t.is((await f.get(bad)).record, null, 'nor indexed')
   }
-  for (const f of [fa, fc]) t.ok(await eventually(async () => !(await testing.holdsBlock(f, bad)), 3000), 'nor kept by the others (so not passed on)')
+  for (const f of [fa, fc]) t.ok(await eventually(async () => !(await testing.holdsBlock(f, bad)), 10000), 'nor kept by the others (so not passed on)') // 10 s: under a full suite's load the clearing took over 3 s
   t.ok(await testing.holdsBlock(fb, bad), 'its author keeps its own log whole (FR-027)')
 
   // A newcomer fetches it from its author, checks it, drops it, and is complete.
