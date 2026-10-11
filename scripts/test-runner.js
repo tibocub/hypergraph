@@ -106,6 +106,7 @@ async function main () {
         await new Promise(resolve => setTimeout(resolve, 500))
       }
       const file = queue.shift()
+      if (!file) break // another worker took the last one while this one waited for memory
       const r = await run(file, opts.bare)
       results.push(r)
       process.stdout.write(`${r.ok ? 'ok  ' : 'FAIL'} ${(r.ms / 1000).toFixed(1).padStart(6)}s  ${r.file}${r.ok ? '' : `  (exit ${r.code}, ${r.passed}/${r.total})`}\n`)
