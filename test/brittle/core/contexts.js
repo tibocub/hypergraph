@@ -650,7 +650,7 @@ test('contexts: a version 1 context (created before spec 003) still makes added 
   // Built the way createContext() did before spec 003: no context/init.
   const legacy = new ContextBase(a.store, null, {})
   await legacy.ready()
-  t.teardown(() => legacy.close())
+  t.teardown(() => legacy.close(), { order: -1 }) // before the store: Autobase 7.28.2 opens a store session while closing
   const ctxKey = legacy.key.toString('hex')
 
   const bCtx = await b.graph.openContext(ctxKey)

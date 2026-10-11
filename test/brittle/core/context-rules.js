@@ -185,7 +185,7 @@ test('context-rules: a context recorded with an unknown version is refused', asy
   const { store } = await createGraph(t, 'rules-version')
   const context = new ContextBase(store, null, {})
   await context.ready()
-  t.teardown(() => context.close())
+  t.teardown(() => context.close(), { order: -1 }) // before the store: Autobase 7.28.2 opens a store session while closing
   await t.exception(
     context.append({ type: 'context/init', version: 99, rules: '', timestamp: Date.now() }),
     /unsupported context version 99/,
