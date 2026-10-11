@@ -774,12 +774,50 @@ Refined 2026-10-10 by the worker session (branch `011-spaces-core-s9`), from T06
 
 ## Phase 12: Polish & cross-cutting
 
-- [ ] T072 [P] bench/next/writers.js (50 authors, SC-005), bench/next/rebuild.js (SC-008), bench/next/budgets.js (SC-011)
-- [ ] T073 Re-run the design brief's measurements on the real core and record them in specs/research/design-brief.md with differences over 25% explained (SC-012)
-- [ ] T074 [P] docs/next/deleting-and-incomplete.md (what "deleted" and "incomplete" mean, plainly — FR-028, FR-033); README section pointing to `hypergraph/next`
-- [ ] T075 [P] test/next/net/adversarial.js: malformed and oversized records, forged entries, clocks far ahead, writes past cuts — no crash, nothing shown (SC-006)
-- [ ] T075a A forgotten password (the one protecting the recovery phrase on a device): recover the phrase from another device of the account (Tibo, 2026-10-09; out of story 3's scope, research.md A7)
-- [ ] T076 Update ROADMAP.md and ECOSYSTEM.md; full suites on Node and Bare; v1 and hyperDNS suites; merge to master after review
+Refined 2026-10-11 by the final-pass worker session (branch `011-spaces-core-final`), from T072–T076 and the lead's
+decision of 2026-10-11 (ROADMAP: 1,000,000 benchmark approved, alone and with few writers; ponytail as a read-only
+audit only). Benchmarks run one at a time with nothing beside them; results go to research.md A15.
+
+### Measurements
+
+- [ ] F01 bench/next/first-page.js: report setup time, disk used per instance and peak memory; `--dir` (the storage
+  folder: C: has ~8 GB free, E: is used); stop by itself past 30 minutes of setup or 6 GB of memory and say so
+- [ ] F02 SC-004 at 1,000,000 records, 2 writers, alone on the machine (T072, S917): first page time and bytes,
+  compared with 10,000 (at most 1.5 times); setup time, disk, peak memory; research.md A14's table and A15
+- [ ] F03 bench/next/writers.js (SC-005, T072): writers in separate processes (5 processes × 10 authors, below-normal
+  priority, short run): time until every member sees every author's records; what holds, what doesn't
+- [ ] F04 SC-012 (T073): bench/next/brief.js re-runs the design brief's measurements on the real core (encoding sizes,
+  device proof size and check time, activity entry and list sizes, index write speed, disk per record and query
+  times, live query latency, time to agree, opening a log) plus bench/next/rebuild.js (SC-008); results in
+  specs/research/design-brief.md with every difference over 25% explained
+
+### Adversarial input (SC-006, T075)
+
+- [ ] F05 test/next/net/adversarial.js, on Node and Bare: malformed blocks and records, oversized records, unknown
+  types, links to nothing, forged activity entries, records breaking app rules, a non-member's log, writes past a ban
+  and past a device removal, a clock far ahead, someone else's device writing in a personal space: no crash, nothing
+  shown where the rules say it shouldn't be
+- [ ] F06 Fixes found by F05, test first (each with its own failing test before the fix), on Node and Bare
+
+### Audit (read-only)
+
+- [ ] F07 `/ponytail-audit` of lib/ and tools/inspector/ saved as specs/011-spaces-core/audit.md — a report only:
+  nothing applied (the lead conversation decides)
+
+### Docs and closing
+
+- [ ] F08 docs/next/deleting-and-incomplete.md (FR-028, FR-033, T074); README section pointing to `hypergraph/next`
+  and the inspector demo; docs/next consistent with contracts/api.md
+- [ ] F09 research.md: amendment A15 and a success-criteria table (SC-001 to SC-014: met / not met / partly, with the
+  evidence); CHANGELOG.md
+- [ ] F10 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
+  hyperDNS's `npm test`; results recorded here
+
+### Not in this pass
+
+- [ ] T075a A forgotten password (the one protecting the recovery phrase on a device): recover the phrase from another
+  device of the account (Tibo, 2026-10-09; out of story 3's scope, research.md A7) — left open
+- [ ] T076 Update ROADMAP.md and ECOSYSTEM.md; merge to master after review (the lead conversation)
 
 ---
 
