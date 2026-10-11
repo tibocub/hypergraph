@@ -813,8 +813,9 @@ audit only). Benchmarks run one at a time with nothing beside them; results go t
   and the inspector demo; docs/next consistent with contracts/api.md
 - [X] F09 research.md: amendment A15 and a success-criteria table (SC-001 to SC-014: met / not met / partly, with the
   evidence); CHANGELOG.md
-- [ ] F10 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
-  hyperDNS's `npm test`; results recorded here
+- [X] F10 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
+  hyperDNS's `npm test`; results recorded here — *next 257/257 on Node, 256/256 on Bare (rules.js flaky under load:
+  1 failure in 2 of 3 full runs, passes alone); v1 390/390; hyperDNS 46/46 (2026-10-11)*
 
 ### Not in this pass
 

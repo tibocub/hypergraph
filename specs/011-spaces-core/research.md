@@ -1094,3 +1094,9 @@ the contract said "all of spec 011"; now marked there.
 | SC-012 | design brief re-run, differences over 25% explained | met | `specs/research/design-brief.md` |
 | SC-013 | v1 and hyperDNS suites pass at every commit | met at the checkpoints | final run below; not re-run at every commit of this pass (only `src/` changes could break them, and none touched it) |
 | SC-014 | whole suite on Bare and Node | met | final run below |
+
+**Final run** (2026-10-11, after the last change, one suite at a time): `npm run test:next` **257/257**;
+`npm run test:next:bare` **256/256** (the inspector test is Node only), but 2 of 3 full Bare runs had one failure:
+`test/next/forum/rules.js` "nor kept by the others" (a 3 s wait for a rejected block to be cleared, under the
+suite's load; 3/3 alone) — timing-sensitive, like `budgets.js` and `inspect.js` before; v1 `npm test` **390/390**;
+hyperDNS `npm test` **46/46** (linked to the main checkout; this branch doesn't touch `src/`).
