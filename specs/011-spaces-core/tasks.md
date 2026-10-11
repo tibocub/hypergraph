@@ -844,15 +844,15 @@ on Node and Bare.
   fixes: `protect` writes and renames (no `forget` first), `readLogs` truncates a torn tail (audits 6, 7)
 - [X] P07 Test across separate processes: a connection whose space channel doesn't open within a few seconds is
   closed and the peers reconnect (`test/next/net/dead-connection.js`); then `lib/network.js` closes it
-- [ ] P08 Re-run `bench/next/writers.js` (50 authors in separate processes, alone on the machine); SC-005 in
+- [X] P08 Re-run `bench/next/writers.js` (50 authors in separate processes, alone on the machine); SC-005 in
   research.md; `specs/011-spaces-core/upstream-hyperswarm.md` (plain-Hyperswarm reproduction, draft issue, not posted)
 - [X] P09 Test, then `space.addProtocol(name, { messages, onopen, onclose })` (FR-031): opened next to the space
   channel, only once the peer proved it knows the space key
 - [X] P10 Test, then `hg.leaveSpace(key)`: the space's data dropped from this device, not opened again here
 - [X] P11 `test/next/forum/rules.js` waits for its condition instead of a fixed 3 s
-- [ ] P12 contracts/api.md, docs/next, CHANGELOG, research.md A16 and the success-criteria table
-- [ ] P13 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
-  hyperDNS's `npm test`
+- [X] P12 contracts/api.md, docs/next, CHANGELOG, research.md A16 and the success-criteria table
+- [X] P13 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
+  hyperDNS's `npm test` — *next 267/267 on Node, 266/266 on Bare; v1 390/390; hyperDNS 46/46 (2026-10-11)*
 
 ---
 
