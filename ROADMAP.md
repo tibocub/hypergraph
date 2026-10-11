@@ -31,9 +31,9 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
   limit; full holders are right); write limits rely on stamps (future stamps are flagged); a reply or
   vote is stamped after what it points to. Unproven: SC-005 (50 writers) — the benchmark harness stalls
   with many writers in one process (Hypercore catch-up), to be measured with writers in separate
-  processes. Pending with Tibo: running the 1M benchmark; using the ponytail plugin (lead's proposal:
-  for new code in worker sessions, and a read-only `/ponytail-audit` of `lib/` in the final pass, applied
-  only where agreed — no wholesale rewrite).
+  processes. Tibo: **yes to the 1M benchmark** (alone, few writers); **ponytail: only the read-only
+  `/ponytail-audit` of `lib/` in the final pass**, its findings applied only where agreed in the lead
+  conversation — not as a mode for new code, no wholesale rewrite.
 
 - **2026-10-10 (review of spec 011 story 8)** — Accepted and merged into `011-spaces-core` (226/226 Node,
   225/225 Bare, re-run in the lead conversation). Tibo (in the session): a sub-space's decisions live in
