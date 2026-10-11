@@ -23,6 +23,14 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-11** — Private spaces never re-encrypt data; a **key chain** (each new room key carries the
+  previous one, locked with it) lets newcomers read history without re-encryption; per-space setting
+  `history: 'visible' | 'hidden'` (default visible). Found in review after Tibo's question: newcomers only
+  got the current key. Docs say plainly that a *closed* (non-private) space is readable by anyone holding
+  its key, removed members included; only private spaces cut them off. Added to the pre-merge session.
+  **Upstream reports** (Hypercore clear, Hyperswarm double dial): only after a minimal script using only
+  their library reproduces the problem here, and their trackers are checked; otherwise the bug is ours.
+
 - **2026-10-11 (review of spec 011's final pass)** — Merged into `011-spaces-core` (257/257 Node, re-run in
   the lead conversation). Success criteria met except SC-005 (partly: 34 of 50 authors joined; every post
   seen within 2 s). SC-004 met: first page 227 ms / 77 KB at 1M records (203 ms / 73 KB at 10k). Found and
