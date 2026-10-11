@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A connection nothing arrives on within 5 s is closed and the peer dialed again: peers that dialed each other at once
   (Hyperswarm, across processes) stayed apart. 50 authors in 5 processes: 47 joined (was 34).
 - New: `space.addProtocol(name, { messages, onopen, onclose })` (FR-031, for SwarmFS) and `hg.leaveSpace(key)`.
+- Private spaces: a newcomer now reads the history written before it joined (each key unlocks the ones before it:
+  `hg/key-link` records); `space.setHistory('hidden')` makes newcomers read from their join on. Fixed: a member removed
+  while two admins changed the key at once could get the new key. Docs: a closed (non-private) space stays readable
+  by removed members; only a private one stops them.
 - Details: `specs/011-spaces-core/research.md` A16; draft upstream report `specs/011-spaces-core/upstream-hyperswarm.md`.
 
 ### 2026-10-11: `hypergraph/next` — spec 011 final pass

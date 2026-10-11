@@ -126,9 +126,12 @@ the parent always wins. A guest of a sub-space reads that decision log (it must,
 bans) but neither keeps nor sees the parent's content. Split a big space by creating sub-spaces; nothing
 splits on its own.
 
-A **private** space seals its records (their fields and links; who wrote them and when stay visible)
+A space that isn't private is only **closed**: members alone write, but anyone holding its key reads it,
+and a removed member still holds the key. A **private** space seals its records (their fields and links; who wrote them and when stay visible)
 with a key that only its members' devices receive, each sealed to one device in a grant record. When
-someone loses access, the key changes: they keep reading what came before, not what comes after. A
+someone loses access, the key changes: they keep reading what came before, not what comes after. Each key
+unlocks the ones before it, so newcomers read the history, unless the space hides it (newcomers then read
+from their join on). A
 member without a key holds the blocks it relays and reads nothing. Design and limits:
 `specs/011-spaces-core/research.md` A13.
 

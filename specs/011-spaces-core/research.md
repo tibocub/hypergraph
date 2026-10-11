@@ -1161,3 +1161,34 @@ in after two; then **141/141 posts seen by both members within 2 s** (median 646
 Still *partly*: the 3 authors left out are most likely the remaining Hyperswarm case above (a newcomer whose only
 links to the owner — the only one who lets people in — keep being swallowed); the benchmark's joins depend on one
 member, which a real forum with admins online would not.
+
+**Private spaces: the history, a key chain** (added by the lead conversation during the session; a gap found in
+review). Key holders granted only the current epoch key, so after any rotation a newcomer couldn't open older records
+and its answers stayed `complete: false` for good. No re-encryption: `hg/key-link { from, to, epoch, sealed }` records
+(plain, in the writer's log, never refused by the write limit) hold an older epoch key sealed with a newer one
+(XChaCha20-Poly1305, AD = space and the older key's commitment); a reader holding `from` opens `to` if its commitment
+is one the decision log recorded for that epoch, and so on back to epoch 0. Whoever holds the current key links every
+key of an *earlier* epoch it holds that the current one doesn't reach yet: after a rotation, the previous key. Links go
+**from a later epoch only, never between keys of one epoch**: in a race (two rotations at once, A13), a member removed
+on one side may hold the other side's key, and a link between the two would hand it the post written after its
+removal (found by the partition test). Instead the side holding the losing key changes the key once more (both sides
+at once raced again, measured), and the next epoch links both. `setHistory('visible' | 'hidden')` is a
+`settings/set` field (a trailing optional string: older entries decode without it): hidden means no links written nor
+followed, a decider changes the key when a device lacks it (a newcomer or a member's new device) before granting, and
+records sealed before the first key a device got count for nothing there (not missing: its reads are complete), so
+members see different histories by design. A plain member writing while a newcomer waits still uses the current key
+(the newcomer won't read that post). **Found and fixed on the way, both pre-existing**: (1) key work listed who may
+read, then wrote grants with awaits between: when the decisions changed meanwhile (a partition healing that removed
+someone), the removed member got the new key — each grant is now judged again when written; (2) a write checked
+"does a device that lost access hold the current key?" against indexed grants only, so a grant still being written
+was missed and the post sealed with a key the removed member was getting — grants this device wrote count at once.
+Also seen, not changed: an admin reopening its app rotates the key once while its directory is still loading (its
+logs not accepted yet look like devices that lost access); harmless but wasteful.
+Tests: `test/next/forum/history.js` (a newcomer after three key changes reads everything, removed members read
+nothing new; hidden: a newcomer reads from its join, complete; who may set it; two key changes at once across a
+partition: members and a newcomer read both sides, each removed member nothing after its removal — 10/10 runs),
+`test/next/unit/decisions-basic.js`, `encodings.js`.
+
+**Docs, said plainly**: docs/next/api.md ("Closed or private?", where the two are chosen) and concepts.md: a closed
+space is readable by anyone holding its key, removed members included; only a private space stops them reading what
+is written afterwards.

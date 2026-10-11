@@ -178,6 +178,8 @@ staff.private            // true
 await staff.setRole(someone, 'member')   // let a forum member into the private room
 await staff.removeRole(someone)          // and out: the key changes, they can't read what comes next
 const club = await hg.createSpace({ name: 'Club', private: true })   // a private top space
+await club.setHistory('hidden')   // newcomers read from their join on ('visible', the default: everything)
+club.history                      // 'visible' | 'hidden'
 await forum.put('shortcut', { title: 'See News', to: news })          // a 'space' field: a link to a space
 hg.space(record.to)      // follow it: the Space if you're in it, NOT_FOUND otherwise (an invite lets you in)
 ```
@@ -190,13 +192,24 @@ always may). A ban or a removal in the parent always applies in every sub-space 
 arrives first. Only who may decide creates one (`NOT_ALLOWED` otherwise); nothing splits by itself.
 Sub-spaces nest. Its decisions are kept in the parent's decision log, so it needs no settling of its own.
 
+**Closed or private?** A space that isn't private is *closed* for writing (only members' records count) but
+not for reading: anyone holding its key reads everything in it, and every member's device holds the key — so
+a member you remove (or ban) can go on reading what is written afterwards, from any member who still serves
+the space to them. Only a **private** space stops removed members from reading what comes after their
+removal. Choose private for anything a removed member must not keep seeing (a staff room, a club's
+discussions); closed is enough for a public forum where only writing is restricted.
+
 A **private** space or sub-space is read only by its members: for a private sub-space, the people given
 a role in it plus the parent's owner and admins (plain members of the parent see that it exists, not
 what is in it). Whoever relays or stores its data without being let in can't read it. Content is
 sealed with a key every member's device receives from another member who holds it, so a newcomer reads
 once such a member is online. When someone loses access (removed, banned there or in the parent, a
 device removed), a member who may decide or moderate changes the key before writing again, and those
-who left can't read what is written after; what came before stays readable to them. A member that
+who left can't read what is written after; what came before stays readable to them. Each new key unlocks
+the ones before it, so a newcomer reads the whole history; with `setHistory('hidden')` (who may decide;
+private spaces only, `NOT_ALLOWED` otherwise) a newcomer's arrival changes the key and it reads from its
+join on, Signal-style, and what came before doesn't count as missing for it (its reads are complete).
+A member's new device is a newcomer too. A member that
 can't read (no key) answers `complete: false`. One that may not read it any more (removed, or only
 relaying it) is told at once: `status().access` is `'none'` and reads answer immediately with
 `{ items, complete: false, access: 'none' }` instead of waiting for keys that will never come; a member

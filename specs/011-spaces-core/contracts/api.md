@@ -319,6 +319,13 @@ hg.space(record.to)                              // ✓ follow it: the Space if 
 //   ever shown (inspect(): private, epoch, readable — never the key).
 // ✓ story 9: a member holding a private space it may not read (removed, a relay) is told at once:
 //   status().access 'none', reads answer immediately with { items, complete: false, access: 'none' }.
+await staff.setHistory('hidden')                 // ✓ pre-merge (A16): 'visible' (default) | 'hidden'; who may decide;
+staff.history                                    //   private spaces only (NOT_ALLOWED). Visible: each key unlocks the
+                                                 //   ones before it (key links), a newcomer reads everything. Hidden:
+                                                 //   a newcomer (or new device) changes the key and reads from its
+                                                 //   join on; what came before doesn't count as missing for it.
+// A closed (non-private) space is readable by anyone holding its key, removed members included; only a private
+//   one stops them reading what is written after their removal.
 // Not built: a sub-space's own custom roles (defineRole is the top space's).
 ```
 

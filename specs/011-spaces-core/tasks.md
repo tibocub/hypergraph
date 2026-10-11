@@ -860,7 +860,7 @@ Added by the lead conversation during the session (2026-10-11):
   epoch key sealed with a newer one, from a later epoch only), so a newcomer reads the whole history; concurrent
   rotations stay readable (a race's keys are linked from the next epoch, the losing side changes the key again);
   `setHistory('visible' | 'hidden')`, a settings decision (`test/next/forum/history.js`, `test/next/unit/decisions-basic.js`)
-- [ ] P15 Docs: a closed space is readable by anyone holding its key, removed members included; only a private space
+- [X] P15 Docs: a closed space is readable by anyone holding its key, removed members included; only a private space
   stops them reading what comes after (docs/next, where closed and private are chosen)
 
 ---
