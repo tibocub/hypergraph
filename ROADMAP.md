@@ -23,6 +23,20 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-11 (review of the pre-merge fixes)** — Accepted and merged into `011-spaces-core` (272/272 Node,
+  re-run in the lead conversation). Closed spaces give log keys only to peers proving the space key;
+  phrase file 0600; crash-safe writes; `addProtocol()`, `leaveSpace()`; the key chain and `history`
+  setting; dead connections closed and re-dialed (SC-005 now 47 of 50 authors, all posts within 1.5 s).
+  `bench/next/double-dial.js` reproduces the Hyperswarm problem with plain Hyperswarm + Protomux across 8
+  processes (no hypergraph). Tibo: **before reporting anything, update every dependency to its latest
+  version**, then (if problems remain) a full analysis proving each is in the library and not our code,
+  pinning the exact cause, with fix suggestions. Dependencies were already recent (Hypercore 11.37.2 and
+  Corestore latest); behind: patch releases (Hyperswarm 4.17.0 → 4.17.2, whose changes don't touch
+  duplicate connections; Autobase, Protomux, bare-*), and test tools brittle 3 → 4, random-access-memory 3 → 6.
+  Pre-merge open questions settled by the lead: in hidden-history mode each newcomer needs an online
+  decider for a new key (acceptable, documented); a needless key change when an admin reopens the app is
+  harmless, fix later.
+
 - **2026-10-11 (upstream bugs, checked in the lead conversation)** — **Hypercore**: confirmed with plain
   Hypercore (`specs/research/upstream/hypercore-clear-repro.js`) that after a peer clears block k, the other
   side records its contiguous length as k and forgets it holds k+1.. (`onrange` lowers
