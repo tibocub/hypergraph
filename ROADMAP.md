@@ -23,6 +23,20 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-11 (review of spec 011's final pass)** — Merged into `011-spaces-core` (257/257 Node, re-run in
+  the lead conversation). Success criteria met except SC-005 (partly: 34 of 50 authors joined; every post
+  seen within 2 s). SC-004 met: first page 227 ms / 77 KB at 1M records (203 ms / 73 KB at 10k). Found and
+  **fixed before merging to master** (one session): a closed (non-private) forum is readable by anyone who
+  sees its topic — members give the log list only to peers proving they know the space key; the
+  recovery-phrase file readable by other local users; a stranger can make a page "complete"; crash-unsafe
+  writes of the phrase and the log list; peers dialing each other at once keep a dead connection (plain
+  Hyperswarm — hypergraph drops a connection whose space channel doesn't open and reconnects; re-run the
+  50-author benchmark); `addProtocol()` (SwarmFS needs it) and `leaveSpace()` were never built. The other
+  audit findings (`specs/011-spaces-core/audit.md`: request floods, fake-key floods delaying newcomers,
+  decisions re-read in full) go to a follow-up list after the merge. Tibo: **ponytail also for new code**
+  from now on (worker sessions use `/ponytail`). Pending with Tibo: upstream reports for the two
+  Holepunch bugs (Hypercore clear, Hyperswarm double dial) — drafted by the lead, posted only with his OK.
+
 - **2026-10-11 (review of spec 011 story 9)** — Accepted and merged into `011-spaces-core` (250/250 Node,
   249/249 Bare, re-run in the lead conversation). **All nine stories are built.** Newcomer's first page:
   223 ms / 92 KB at 10k records, 238 ms / 95 KB at 100k (flat); 1M not yet run. Switch-over to activity
@@ -205,6 +219,6 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 9. Core follow-ups done, reviewed, merged.
 10. Story 8 done, reviewed, merged.
 11. Story 9 done, reviewed, merged: all stories built.
-12. **Final pass** (tasks.md phase 12): benchmarks (1M, many writers), brief's numbers re-run, adversarial
-    tests, ponytail audit report, docs; then merge spec 011 to master. SwarmFS spec session in parallel
-    (folder decision pending with Tibo).
+12. Final pass done, reviewed, merged into `011-spaces-core`.
+13. **Pre-merge fixes** session, then merge spec 011 to master. SwarmFS spec session in parallel (folder
+    decision pending with Tibo).
