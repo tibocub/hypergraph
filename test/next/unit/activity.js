@@ -7,7 +7,7 @@
 const test = require('brittle')
 const b4a = require('b4a')
 const c = require('compact-encoding')
-const { PERIOD_MS, WIPED, periodOf, derive, checkEntry, entry } = require('../../../lib/activity.js')
+const { PERIOD_MS, WIPED, periodOf, derive, checkEntry, entry, Activity } = require('../../../lib/activity.js')
 
 const H = PERIOD_MS
 const at = (period, ms = 0) => period * H + ms
@@ -63,4 +63,35 @@ test('an entry is about 40 bytes', (t) => {
   const bytes = c.encode(entry, { log: b4a.alloc(32, 7), period: periodOf(Date.now()), start: 123456 })
   t.ok(bytes.byteLength <= 42, `${bytes.byteLength} B`)
   t.alike(c.decode(entry, bytes).start, 123456)
+})
+
+// Audit 3: a newcomer believes the activity lists from a period are whole
+// once a peer's list says `done`. Only a list it asked for, of a member,
+// counts; a stranger's `done` list must not make a page "complete".
+test('only a list asked of a member makes the lists whole', async (t) => {
+  const member = b4a.alloc(32, 1)
+  const peer = (identity) => {
+    const sent = []
+    return { identity, sent, messages: { 9: { send: (m) => sent.push(m) } } }
+  }
+  const m = peer(member)
+  const stranger = peer(b4a.alloc(32, 2))
+  const unproven = peer(null) // its hello hasn't come yet
+  const space = {
+    progress () {},
+    state: { isMember: (id) => b4a.equals(id, member) },
+    directory: { channels: new Set([stranger, unproven, m]) }
+  }
+  const a = new Activity(space)
+  t.teardown(() => a.close())
+
+  await a.onList(stranger, { from: 0, entries: [], done: true })
+  t.is(a.reachedFrom, Infinity, 'a list nobody asked for counts for nothing')
+
+  a.ask(5)
+  t.alike([stranger.sent, unproven.sent, m.sent], [[], [], [{ from: 5 }]], 'only the member is asked')
+  await a.onList(stranger, { from: 0, entries: [], done: true })
+  t.is(a.reachedFrom, Infinity, 'nor does a stranger\'s answer to a question it wasn\'t asked')
+  await a.onList(m, { from: 5, entries: [], done: true })
+  t.is(a.reachedFrom, 5, 'the member\'s answer does')
 })
