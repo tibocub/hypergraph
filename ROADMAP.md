@@ -23,6 +23,18 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-11 (review of spec 011 story 9)** — Accepted and merged into `011-spaces-core` (250/250 Node,
+  249/249 Bare, re-run in the lead conversation). **All nine stories are built.** Newcomer's first page:
+  223 ms / 92 KB at 10k records, 238 ms / 95 KB at 100k (flat); 1M not yet run. Switch-over to activity
+  lists at 300 logs (measured). Three "complete while missing the newest posts" bugs fixed. Settled by the
+  lead: modified apps writing out of time order can fool members holding part of a space (documented
+  limit; full holders are right); write limits rely on stamps (future stamps are flagged); a reply or
+  vote is stamped after what it points to. Unproven: SC-005 (50 writers) — the benchmark harness stalls
+  with many writers in one process (Hypercore catch-up), to be measured with writers in separate
+  processes. Pending with Tibo: running the 1M benchmark; using the ponytail plugin (lead's proposal:
+  for new code in worker sessions, and a read-only `/ponytail-audit` of `lib/` in the final pass, applied
+  only where agreed — no wholesale rewrite).
+
 - **2026-10-10 (review of spec 011 story 8)** — Accepted and merged into `011-spaces-core` (226/226 Node,
   225/225 Bare, re-run in the lead conversation). Tibo (in the session): a sub-space's decisions live in
   its parent's decision log; a private sub-space is read by those invited to it plus the parent's owner
@@ -192,5 +204,7 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 8. Story 7 and the inspector done, reviewed, merged into `011-spaces-core`.
 9. Core follow-ups done, reviewed, merged.
 10. Story 8 done, reviewed, merged.
-11. **Worker session**: story 9 (big spaces) — the last story. SwarmFS spec session in parallel (folder
-    decision pending with Tibo).
+11. Story 9 done, reviewed, merged: all stories built.
+12. **Final pass** (tasks.md phase 12): benchmarks (1M, many writers), brief's numbers re-run, adversarial
+    tests, ponytail audit report, docs; then merge spec 011 to master. SwarmFS spec session in parallel
+    (folder decision pending with Tibo).
