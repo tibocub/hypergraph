@@ -7,7 +7,7 @@
 // Groups: core, networking, replication, forum, integration, v2 (default: all
 // of these), and next (the new core, spec 011: test/next/unit, net, forum).
 // --bare runs the files on Bare (the repo's own `bare`, through brittle's
-// bare.js) instead of Node.
+// brittle-bare.js) instead of Node.
 // Files starting with _ (shared helpers) are not run.
 // --jobs defaults to the number of CPU cores minus two (HG_TEST_JOBS overrides);
 // test processes run at below-normal priority, and a file waits to start
@@ -25,8 +25,8 @@ const ROOT = path.join(__dirname, '..')
 // Each file's last duration, to start the longest first (otherwise a long
 // file picked up last runs alone at the end while the other cores idle).
 const TIMES = path.join(ROOT, '.test-times.json')
-const BRITTLE = path.join(ROOT, 'node_modules', 'brittle', 'bin', 'node.js')
-const BRITTLE_BARE = path.join(ROOT, 'node_modules', 'brittle', 'bin', 'bare.js')
+const BRITTLE = path.join(ROOT, 'node_modules', 'brittle', 'brittle-node.js')
+const BRITTLE_BARE = path.join(ROOT, 'node_modules', 'brittle', 'brittle-bare.js')
 const BARE = path.join(ROOT, 'node_modules', 'bare', 'bin', 'bare') // a Node script starting the runtime
 const GROUPS = {
   core: 'test/brittle/core',

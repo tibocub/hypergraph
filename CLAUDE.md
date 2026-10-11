@@ -173,7 +173,7 @@ npm run test:serial                        # the old way: groups one after anoth
 test processes at below-normal priority, waits while free memory is under 1.5 GB, starts the
 longest files first (by their last run, in the gitignored `.test-times.json`), fails a file that
 doesn't print its own `# tests = n/n` line, and prints the slowest files. While iterating, run only the affected files or group; run the full
-suite once before committing. Tests use `brittle`, run via `npx brittle <file>`.
+suite once before committing. Tests use `brittle`, run via `npx brittle-node <file>` (brittle 4: plain `brittle` runs Bare).
 
 Measured 2026-10-06 (8 cores): `npm test` 63 s wall with 6 jobs (57 s with 8) for 320 tests (the
 old serial `npm test`: 514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s.

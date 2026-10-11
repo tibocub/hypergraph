@@ -3,7 +3,7 @@
  *
  * Tests for putContentRef() / getContent() against a real Hypergraph instance.
  *
- * Run: npx brittle test/brittle/core/content-ref-api.js
+ * Run: npx brittle-node test/brittle/core/content-ref-api.js
  */
 
 const test = require('brittle')

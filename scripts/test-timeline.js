@@ -15,7 +15,7 @@ if (!file) {
   process.exit(1)
 }
 const filter = pattern ? new RegExp(pattern) : null
-const brittle = path.join(__dirname, '..', 'node_modules', 'brittle', 'bin', 'node.js')
+const brittle = path.join(__dirname, '..', 'node_modules', 'brittle', 'brittle-node.js')
 const start = Date.now()
 const p = spawn(process.execPath, [brittle, file], { cwd: path.join(__dirname, '..') })
 let buf = ''
