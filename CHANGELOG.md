@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-11: `hypergraph/next` — spec 011 pre-merge fixes (ALPHA, breaking within `next`)
+
+- **Wire change**: the space channel's handshake carries a capability (a keyed hash of the space key and the
+  connection's handshake); peers without it are closed out before anything is answered. A closed forum was readable
+  by anyone who saw its topic on the DHT. `next` peers from before this change can't talk to newer ones.
+- A stranger's activity list no longer makes a newcomer's reads say `complete` (only lists asked of members count).
+- The recovery-phrase file is created readable by its owner only (0600) and a new instance folder 0700 (Linux, macOS);
+  protecting the phrase can no longer lose it in a crash; a torn entry in the `logs` file no longer shifts later ones.
+- A connection nothing arrives on within 5 s is closed and the peer dialed again: peers that dialed each other at once
+  (Hyperswarm, across processes) stayed apart. 50 authors in 5 processes: 47 joined (was 34).
+- New: `space.addProtocol(name, { messages, onopen, onclose })` (FR-031, for SwarmFS) and `hg.leaveSpace(key)`.
+- Details: `specs/011-spaces-core/research.md` A16; draft upstream report `specs/011-spaces-core/upstream-hyperswarm.md`.
+
 ### 2026-10-11: `hypergraph/next` — spec 011 final pass
 
 - Log keys any peer names (notices, lists of logs) are now fetched 16 at a time with at most 1,024 waiting (more are
