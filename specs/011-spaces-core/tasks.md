@@ -842,7 +842,7 @@ on Node and Bare.
 - [X] P06 Test: a crash between writing the sealed phrase and renaming it leaves the plain phrase; a torn entry in
   the logs file doesn't shift later ones (`test/next/unit/phrase.js`, `test/next/unit/instance.js`); then the
   fixes: `protect` writes and renames (no `forget` first), `readLogs` truncates a torn tail (audits 6, 7)
-- [ ] P07 Test across separate processes: a connection whose space channel doesn't open within a few seconds is
+- [X] P07 Test across separate processes: a connection whose space channel doesn't open within a few seconds is
   closed and the peers reconnect (`test/next/net/dead-connection.js`); then `lib/network.js` closes it
 - [ ] P08 Re-run `bench/next/writers.js` (50 authors in separate processes, alone on the machine); SC-005 in
   research.md; `specs/011-spaces-core/upstream-hyperswarm.md` (plain-Hyperswarm reproduction, draft issue, not posted)
