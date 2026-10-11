@@ -13,7 +13,9 @@ person's identity and any number of spaces, in one folder, over one set of conne
 
 You create a space with `hg.createSpace({ name })` and let people in with an invite link
 (`space.createInvite()` → `hg.redeemInvite(link)`). You never write networking code:
-`hg.connectToSwarm()` finds the other members of every space, now and later.
+`hg.connectToSwarm()` finds the other members of every space, now and later. Only peers that know a
+space's key can connect to it: the topic members meet on, which anyone watching the DHT sees, isn't enough
+to read it.
 
 ## Records
 

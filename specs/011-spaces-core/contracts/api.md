@@ -15,8 +15,8 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 to 9 and the core follow-ups (marked ✓ below). **Not built** (found by the final pass,
-2026-10-11): `hg.leaveSpace()` and `forum.addProtocol()` (FR-031), both unmarked below.
+**Built**: stories 1 to 9, the core follow-ups and the pre-merge fixes (marked ✓ below; `hg.leaveSpace()` and
+`forum.addProtocol()`, found missing by the final pass, built 2026-10-11).
 
 ## Opening, identity, network
 
@@ -112,7 +112,10 @@ hg.types()                                      // ✓ core follow-ups: sync { n
                                                 //   onePerMember, editable ('author' | 'members' | { permission }),
                                                 //   index, builtin } }
 hg.space(key)                                   // ✓ sync: the Space; NOT_FOUND if not held here
-await hg.leaveSpace(key)                        // drops its data from this device (not built)
+await hg.leaveSpace(key)                        // ✓ pre-merge: drops it, and its sub-spaces held here, from this
+                                                //   device (logs, index rows); membership unchanged; not opened
+                                                //   again here from the personal space until joined again;
+                                                //   NOT_FOUND if not held
 
 forum.key; forum.name; forum.parent             // ✓ sync
 forum.status()                                  // ✓ sync: { policy, access, held, heldFrom, stored, share, budget,
@@ -325,7 +328,9 @@ hg.space(record.to)                              // ✓ follow it: the Space if 
 forum.addProtocol('swarmfs/transfer', {
   messages: [{ encoding, onmessage (msg, peer) {} }],
   onopen (peer) {}, onclose (peer) {}
-})   // sync; opened on every connection of this space, next to hypergraph's own (not built: FR-031)
+})   // ✓ pre-merge (FR-031): sync; a Protomux channel opened with every peer of this space next to hypergraph's
+     //   own, once the peer proved it knows the space key; also when the other side adds it later.
+     //   peer: { identity (z32, null until its hello), device (z32), send (i, msg) }. NOT_ALLOWED: name taken
 ```
 
 ## Diagnostics (✓ story 6)

@@ -32,7 +32,9 @@ await hg.close()
 Right after showing the recovery phrase, ask the person what to do with it: keep it on this device
 behind a password (`protectRecoveryPhrase`), or forget it here because it is written down
 (`forgetRecoveryPhrase`). Until they choose, it stays in the instance folder as is, readable by anything
-that can read that folder. Better: ask for the password before creating the account and open with
+that can read that folder. On Linux and macOS the file is readable by its owner only (mode 0600) and a new
+instance folder is its owner's only (0700); on Windows the folder's own permissions apply (a user's profile
+folder is private to that user by default). Better: ask for the password before creating the account and open with
 `{ password }` (also with `mnemonic` or `joinCode`): the phrase is then never in the folder in plain
 text. This device keeps its identity either way; the phrase is needed to restore the identity on
 another computer, and to add or remove a device.
@@ -126,8 +128,19 @@ await forum.revokeInvite(open)                             // no one else gets i
 await forum.redemptions(link)                              // [{ identity, at }]: who came in with it
 hg.spaces()            // [{ key, name, parent }]
 hg.space(forum.key)    // the Space
+await hg.leaveSpace(forum.key)   // drops it, and its sub-spaces, from this device
 forum.on('change', ({ types }) => {})   // records of these types changed
 ```
+
+**Leaving** (`leaveSpace`) closes the space on this device and deletes what this device holds of it (its
+logs, its records in the index), its sub-spaces held here included. It changes nobody's membership: the
+other members keep everything, your posts included, and your other devices keep the space. This device
+doesn't open it again (though your personal space still lists it) until you join it again with an invite.
+`NOT_FOUND` if it isn't held here.
+
+**Who can read a space**: only peers that know its key (its members, and whoever holds an invite link, which
+carries it). Members meet on a topic derived from the key, which DHT nodes see; a peer knowing only the topic
+can't open the space's channel, so it gets no log key and reads nothing.
 
 A link is signed by its maker and holds no key; send it any way you like. One use by default. It works
 while its maker is offline, as long as some member able to record decisions (the owner, an admin) is
@@ -381,6 +394,21 @@ forum.on('logs', () => {})         // a member's log arrived or grew (at most ev
 same, in the order every member applies them. A decision whose author wasn't allowed to make it at that
 point is listed with `counted: false` and changed nothing. `peers()` is proven: a peer sends its device
 proof, checked against the key of the connection.
+
+## App protocols
+
+```js
+forum.addProtocol('swarmfs/transfer', {
+  messages: [{ encoding, onmessage (msg, peer) {} }],   // compact-encoding codecs
+  onopen (peer) { peer.send(0, msg) },                  // peer: { identity, device (z32), send (i, msg) }
+  onclose (peer) {}
+})
+```
+
+Your app's own protocol on the space's connections, next to hypergraph's: a Protomux channel opened with
+every peer of the space (once it proved it knows the space's key), also on later connections and when the
+other side adds it later. `peer.identity` is null until the peer said who it is (an instant after opening).
+One protocol per name per space (`NOT_ALLOWED`). SwarmFS's file transfers use it.
 
 ## Diagnostics
 

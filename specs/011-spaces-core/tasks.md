@@ -846,10 +846,10 @@ on Node and Bare.
   closed and the peers reconnect (`test/next/net/dead-connection.js`); then `lib/network.js` closes it
 - [ ] P08 Re-run `bench/next/writers.js` (50 authors in separate processes, alone on the machine); SC-005 in
   research.md; `specs/011-spaces-core/upstream-hyperswarm.md` (plain-Hyperswarm reproduction, draft issue, not posted)
-- [ ] P09 Test, then `space.addProtocol(name, { messages, onopen, onclose })` (FR-031): opened next to the space
+- [X] P09 Test, then `space.addProtocol(name, { messages, onopen, onclose })` (FR-031): opened next to the space
   channel, only once the peer proved it knows the space key
-- [ ] P10 Test, then `hg.leaveSpace(key)`: the space's data dropped from this device, not opened again here
-- [ ] P11 `test/next/forum/rules.js` waits for its condition instead of a fixed 3 s
+- [X] P10 Test, then `hg.leaveSpace(key)`: the space's data dropped from this device, not opened again here
+- [X] P11 `test/next/forum/rules.js` waits for its condition instead of a fixed 3 s
 - [ ] P12 contracts/api.md, docs/next, CHANGELOG, research.md A16 and the success-criteria table
 - [ ] P13 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
   hyperDNS's `npm test`
