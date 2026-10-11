@@ -829,9 +829,9 @@ The lead's decision of 2026-10-11 (ROADMAP.md, "review of spec 011's final pass"
 `011-spaces-core-premerge`. Ponytail (full) for new code. Each test is written first and seen failing; every test runs
 on Node and Bare.
 
-- [ ] P01 Test: a peer knowing only a space's topic (discovery key) opens the space channel: it gets no log key (no
+- [X] P01 Test: a peer knowing only a space's topic (discovery key) opens the space channel: it gets no log key (no
   list, notice, activity entry), so it can't read a non-private space; a member still syncs (`test/next/net/closed.js`)
-- [ ] P02 The space channel's handshake carries a capability (a keyed hash of the space key and the connection's
+- [X] P02 The space channel's handshake carries a capability (a keyed hash of the space key and the connection's
   handshake hash, per side, as Hypercore's); a wrong one closes the channel before anything is answered (audit 1)
 - [ ] P03 Test: an activity list nobody asked for, or from a peer that isn't a member, doesn't make lists "whole"
   (`test/next/unit/activity.js`)
