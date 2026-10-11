@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-11: `hypergraph/next` — spec 011 final pass
+
+- Log keys any peer names (notices, lists of logs) are now fetched 16 at a time with at most 1,024 waiting (more are
+  dropped and come back with the next summary): a stranger flooding made-up keys made every member open a log per key
+  at once. Found by the new adversarial tests (`test/next/net/adversarial.js`: junk blocks, oversized and malformed
+  records, odd and malformed channel messages, writes past bans and device removals, clocks far ahead — on Node and
+  Bare). New forum test: a partition healed after both sides wrote (`test/next/forum/partition.js`).
+- Measured: a newcomer's first page at 1,000,000 records 227 ms / 77 KB (10,000: ~203 ms / 73 KB); 34 authors writing
+  at once seen by every member within 2 s; the design brief's measurements re-run (`specs/research/design-brief.md`).
+- Docs: `docs/next/deleting-and-incomplete.md`; a README section for `hypergraph/next`. Not built yet, now marked in the
+  contract: `hg.leaveSpace()`, `space.addProtocol()` (FR-031). Audit (not applied): `specs/011-spaces-core/audit.md`.
+  Details: `specs/011-spaces-core/research.md` A15.
+
 ### 2026-10-10: `hypergraph/next` — story 9, big spaces (ALPHA, breaking within `next`)
 
 - A newcomer to a big space reads it newest first: its first page is complete after the newest hour(s) only (10,000

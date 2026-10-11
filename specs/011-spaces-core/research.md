@@ -972,7 +972,7 @@ alone online, local DHT; 2026-10-10):
 |---|---|---|---|
 | 10,000 | 223 ms | 92 KB | 2,387 ms, 1,449 KB (SC-004 not met) |
 | 100,000 | 238 ms | 95 KB | not run |
-| 1,000,000 | not run yet (asked first: machine load) | | |
+| 1,000,000 | 227 ms | 77 KB | not run (2026-10-11, A15: writers in their own processes; 10,000 in that harness: ~203 ms, 73 KB) |
 
 100,000 vs 10,000: 1.07 times the time, 1.03 times the bytes (SC-004 asks at most 1.5 times at 1,000,000). Activity
 per member per period: one ~41-byte entry per log active in that hour, received at most once per connection.
@@ -1023,3 +1023,74 @@ outgrows its share still reports `OVER_BUDGET`; raising its horizon (dropping th
 when a read widens) fits this design but isn't built. (2) The horizon and `from` live in the index's meta: an index
 rebuild reads the space whole again. (3) The 1,000,000-record run of SC-004 (asked first). (4) A random key per
 connection (ROADMAP 2026-10-10: later).
+
+### A15. The final pass (2026-10-11)
+
+Phase 12, by the final-pass worker session (branch `011-spaces-core-final`); the lead's decision of 2026-10-11 (the
+1,000,000 benchmark approved; ponytail as a read-only audit).
+
+**SC-004 at 1,000,000 records** (`bench/next/first-page.js 1000000`, 2 writers, alone on the machine, instances on
+E:): first page **227 ms, 77 KB** (newest first, complete, the same 20 posts as the owner's); at 10,000 in the same
+harness ~203 ms / 73 KB (two runs), at 100,000 205 ms / 71 KB: **1.12 times the time, 1.05 times the bytes (met)**.
+Setup 7.7 min (writing 86 s, the owner downloading and indexing 1,000,000 records 378 s); disk ~1.03 GB per instance
+(owner and each writer, which also held the other's log); peak memory 0.90 GB in the owner's process, 1.37 GB in the
+two writer processes together; the newcomer stored 1.2 MB. The benchmark now stops by itself past 30 minutes of setup
+or 6 GB of memory (`--max-minutes`, `--max-gb`). **The harness changed**: with every instance in one process, at
+1,000,000 records the writers indexing and serving their own 500,000-record logs shared one thread with the owner,
+which held ~250 records/s (over an hour of setup; one instance indexing alone: ~5,600–8,000/s). Writers now run in
+their own processes (`bench/next/_writer.js`, below-normal priority); 10,000 and 100,000 were re-run in it.
+
+**SC-005, partly** (`bench/next/writers.js`, 5 processes × 10 authors, 3 posts each, 1 s apart, all at once; the
+owner and one member watch with a live query): **34 authors writing at once: every member saw every post within 2 s**
+(102/102; median 140 ms, 95% 1,072 ms, slowest 1,234 ms). **16 of the 50 authors could not join** (two tries of 30 s
+each), and joining took 21 minutes. Cause, found with plain Hyperswarm (no hypergraph): across processes, when two
+peers dial each other at the same moment, one side can keep a connection the other already dropped; it times out
+after ~15 s, or stays longer; meanwhile no channel opens on it, and a newcomer whose only link to the members able to
+let it in is such a connection waits. This is also why joins on the local DHT take either ~1 s or ~15 s. In one
+process (the tests) it doesn't happen. Not changed in `lib/` (an upstream behaviour; options in the report): ROADMAP
+open question.
+
+**SC-006** (`test/next/net/adversarial.js`, Node and Bare): a member's modified app writing junk into its log
+(garbage, empty and 70 KB blocks, a record over 64 KB, an unknown kind, a put with a target, a link that isn't an id,
+fields that don't decode, a 10 KB type name, a record breaking the forum's rule, edits and deletes of someone else's
+post, an empty tag, an empty relation, a comment on nothing, a stamp past 2^53 written raw, posts stamped a year and
+"the end of time" ahead), a stranger sending odd and malformed messages of every kind on the space channel, a banned
+member and a removed device writing on: **no crash; every member and a newcomer show exactly the valid posts**,
+records stamped far ahead flagged `futureStamp`, a reply to one stamped near the writer's clock. **Found and fixed
+(test first)**: log keys named by any peer (notices, lists of logs) were fetched all at once (2,500 at once in the
+test; ~120 KB per open log, so ~100,000 made-up keys would take ~12 GB): now 16 at a time, at most 1,024 waiting,
+more dropped (a list with dropped keys is asked again at the next summary). Each made-up key tried leaves ~250 B in
+the Corestore (measured), now at most 16 every ~10 s. Remaining, in the audit: a flood still delays real logs
+(audit 5), a stranger can make `complete` lie for a newcomer (audit 3), and anyone who sees a space's topic can read
+it (audit 1).
+
+**SC-003**: a new forum test plays a partition healed after both sides wrote (posts, comments, votes on the same
+post, an edit, a shared note edited on both sides): every member shows the same (`test/next/forum/partition.js`).
+
+**SC-012**: `bench/next/brief.js` and `rebuild.js`; results and every difference over 25% explained in
+`specs/research/design-brief.md` ("Re-run on the real core"). Rebuild of 100,000 records: 17.8 s (SC-008).
+
+**Docs (FR-033)**: `docs/next/deleting-and-incomplete.md`, the README section, docs/next checked against
+contracts/api.md: **`hg.leaveSpace()` and `space.addProtocol()` (FR-031, SwarmFS's transfers) are not built**, though
+the contract said "all of spec 011"; now marked there.
+
+**Audit**: `specs/011-spaces-core/audit.md` (read-only, nothing applied).
+
+#### Success criteria
+
+| | criterion | | evidence |
+|---|---|---|---|
+| SC-001 | every forum flow tested, three members, agree within 1 s | met | a test per flow in `test/next/forum/` (25 files); 1 s asserted for posts, comments, votes (`post-comment-vote.js`); three members agree in 16 ms median (design brief re-run) |
+| SC-002 | forum data code: public API only, under 400 lines | met | `test/next/forum/forum.js`: 398 lines, `require('hypergraph/next')` only |
+| SC-003 | convergence, partition healed after both sides wrote | met | `partition.js` (new), concurrent edits from two offline devices, two admins deciding at once, offline members catching up |
+| SC-004 | first page within 2 s and 1 MB at 10k and 1M; 1M ≤ 1.5 × 10k | met | 203 ms / 73 KB and 227 ms / 77 KB (1.12×, 1.05×) |
+| SC-005 | 50 authors at once, every member sees every record within 2 s | partly | 34 authors: 102/102 within 2 s (slowest 1.2 s); 16 of 50 couldn't join across processes (above) |
+| SC-006 | nothing a peer sends crashes a member or shows where it shouldn't; 10,000 spam entries add nothing | met | `adversarial.js` (and the fix above), `activity.js` (10,000 throwaway-key entries); caveats: audit 1, 3, 5 |
+| SC-007 | no read waits past its bound; incomplete when holders are offline | met | `test/next/net/bounded.js`, `private.js` (`access: 'none'` at once) |
+| SC-008 | 100,000-record index rebuilt within 30 s; after a crash only the unsaved part | met | 17.8 s (`bench/next/rebuild.js`); `forum/rebuild.js` (crash test) |
+| SC-009 | a change after seeing an earlier one wins, other clock an hour ahead | met | `forum/devices.js` |
+| SC-010 | second device by code shows spaces and settings within 10 s | met | `forum/devices.js` asserts < 10 s |
+| SC-011 | disk within each budget (+10%) while spaces grow | met | `forum/budgets.js` (A10: 2.84–2.89 MB measured against 3 MB) |
+| SC-012 | design brief re-run, differences over 25% explained | met | `specs/research/design-brief.md` |
+| SC-013 | v1 and hyperDNS suites pass at every commit | met at the checkpoints | final run below; not re-run at every commit of this pass (only `src/` changes could break them, and none touched it) |
+| SC-014 | whole suite on Bare and Node | met | final run below |
