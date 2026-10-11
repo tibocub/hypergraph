@@ -1,8 +1,9 @@
 # Hypergraph's new core: concepts
 
 `require('hypergraph/next')`: the redesigned core (spec 011, `specs/011-spaces-core/`). ALPHA: it grows
-story by story; this page covers what exists (stories 1 to 8). The API is in [api.md](api.md); the worked
-example is the forum in `test/next/forum/forum.js`.
+story by story; this page covers what exists (stories 1 to 9). The API is in [api.md](api.md); what
+"deleted" and "incomplete" mean for your users is in [deleting-and-incomplete.md](deleting-and-incomplete.md);
+the worked example is the forum in `test/next/forum/forum.js`.
 
 ## Spaces
 

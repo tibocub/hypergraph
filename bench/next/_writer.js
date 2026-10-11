@@ -41,23 +41,33 @@ const commands = {
     }
   },
 
-  // A join that no member answered within 30 s is tried again (twice): on the
-  // local DHT, about one cross-process join in four stayed unanswered for
-  // more than 40 s (research.md A15). Returns how many were tried again.
-  async join ({ links }) {
+  // Joins one instance at a time, and a join that no member answered within
+  // 30 s is tried again: across processes on the local DHT, a newcomer
+  // sometimes keeps a connection the other side already dropped (two peers
+  // dialling each other at once; plain Hyperswarm does it too, research.md
+  // A15). `tries`: attempts per instance; `skip`: an instance that still
+  // can't join is left out (its index is listed in `failed`) instead of
+  // failing the whole command. Returns { again, failed }.
+  async join ({ links, tries = 3, skip = false }) {
     let again = 0
-    await Promise.all(hgs.map(async (hg, i) => {
-      for (let attempt = 0; ; attempt++) {
+    const failed = []
+    for (const [i, hg] of hgs.entries()) {
+      for (let attempt = 1; ; attempt++) {
         try {
           spaces[i] = await hg.redeemInvite(links[i])
-          return
+          break
         } catch (err) {
-          if (err.code !== 'INVITE_INVALID' || attempt === 2) throw err
+          if (err.code !== 'INVITE_INVALID') throw err
+          if (attempt === tries) {
+            if (!skip) throw err
+            failed.push(i)
+            break
+          }
           again++
         }
       }
-    }))
-    return { again }
+    }
+    return { again, failed }
   },
 
   // first-page.js's records (10% posts, 60% comments, 30% votes), the ones of
@@ -98,6 +108,7 @@ const commands = {
   async post ({ rounds, every }) {
     const ids = []
     await Promise.all(spaces.map(async (s, a) => {
+      if (!s) return // never let in
       for (let r = 0; r < rounds; r++) {
         const p = await s.put('post', { title: `author ${a} round ${r}`, text: JSON.stringify({ sent: Date.now() }) })
         ids.push(p.id)
@@ -107,8 +118,14 @@ const commands = {
     return { ids }
   },
 
-  async debug () {
+  async debug ({ peer = null } = {}) {
     return {
+      owner: peer ? hgs.map((hg) => {
+        const sw = hg._network.swarm
+        const info = sw && sw.peers.get(peer)
+        const connected = sw && [...sw.connections].some((c) => c.remotePublicKey.toString('hex') === peer)
+        return info ? { connected, banned: info.banned, attempts: info.attempts, queued: info.queued, tried: info.tried, reconnecting: info.reconnecting, proven: info.proven, explicit: info.explicit, topics: info.topics.length } : { connected, known: false }
+      }) : null,
       spaces: hgs.map((hg) => [...hg._spaces.values()].map((s) => ({
         member: s.state ? s.state.isMember(hg._identity.publicKey) : null,
         decisions: s.decisionLog ? s.decisionLog.base.length : null,

@@ -13,6 +13,41 @@ Hypergraph provides a local graph API for building decentralized applications wi
 - **Built for scale**: bulk writes, batched indexing, and data on relations, so a member can
   browse a million-entry space a second after joining (see [Scale](#scale))
 
+## The new core: `hypergraph/next`
+
+A redesigned core (spec 011, [`specs/011-spaces-core/`](specs/011-spaces-core/)) lives beside the API
+below, which stays as it is until hyperDNS moves. It is the easiest way to build a forum, a chat, a wiki or
+a shared folder with no server: describe your data, write and read it; members, roles, moderation,
+invites, several devices per person, private sub-spaces, storage budgets and big spaces come with it.
+It runs on Node and on Bare (Pear).
+
+```js
+const { Hypergraph } = require('hypergraph/next')
+
+const hg = await Hypergraph.open('./data', {
+  types: {
+    post: { fields: { title: 'string', text: 'text' } },
+    comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } },
+    vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true }
+  }
+})
+await hg.connectToSwarm()
+const forum = await hg.createSpace({ name: 'My forum' })      // or: await hg.redeemInvite(link)
+const post = await forum.put('post', { title: 'Hello', text: 'First!' })
+await forum.put('comment', { on: post, text: 'Welcome' })
+const { items, complete } = await forum.query('post').latest(20)
+const link = await forum.createInvite({ role: 'member' })
+```
+
+- [Concepts](docs/next/concepts.md): spaces, records, edits, decisions, devices, budgets, big spaces
+- [API](docs/next/api.md): every call
+- ["Deleted" and "incomplete", plainly](docs/next/deleting-and-incomplete.md): what to tell your users
+- The worked example: a whole forum in under 400 lines, played by tests:
+  [`test/next/forum/forum.js`](test/next/forum/forum.js)
+- **The inspector**, a read-only web page showing what a running instance holds:
+  `node tools/inspector/demo.js` plays a three-member forum at http://127.0.0.1:4401 to 4403
+  ([tools/inspector/README.md](tools/inspector/README.md))
+
 ## Under the Hood
 
 Hypergraph is a thin composition over lower-level Holepunch libraries:

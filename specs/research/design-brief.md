@@ -321,6 +321,31 @@ after the ban never indexed), a non-member's log never opened.
   space's member list is its author list; the lists matter only when members far outnumber the authors
   active in a period), schemas, bounded waits, partial holding.
 
+## Re-run on the real core (2026-10-11, SC-012)
+
+Spec 011's final pass re-ran these measurements on `hypergraph/next` (`bench/next/brief.js`, `rebuild.js`,
+`first-page.js`, `writers.js`; one machine, 8 cores, local DHT, each run alone). Differences over 25% are
+explained.
+
+| measurement | brief (2026-10-07) | real core | why it differs |
+|---|---|---|---|
+| post / comment / vote encoded | 113 / 116 / 40 B (tagged fields) | fields 96 / 45 / 6 B; whole record 113 / 101 / 59 B | the brief's figure was a whole tagged record with its own sample values; the real record adds kind, type name and stamp (~17 B) and stores a link as 36 B in a list, not in the fields: a vote's fields are its value only |
+| device proof, checking it | 139 B, 0.07 ms | 139 B (log header 269 B), 0.054 ms | same proof (keet-identity-key); devices are added from the phrase (research.md A7), so the 235 B "added by another device" proof no longer occurs |
+| activity entry | ~40 B (reasoned) | 42 B; a period's list of 1,000 / 10,000 / 50,000 logs: 39 KB / 397 KB / 1.99 MB | as reasoned; no signature to check: two block reads |
+| new entries reach every member | 10–13 ms (50 members) | within a second in the tests (`test/next/net/activity.js`); not re-measured at 50 members | the entry itself is the notice (research.md A14) |
+| index: writing | 13,500–14,500 records/s (bare HyperDB, batches of 10,000) | 5,644 records/s at 100,000 (log + checks + index, batches of 256) | every record is decoded and checked (gate, app rules, one per member, edits waiting, activity entries) in transactions of 256 |
+| disk per record | ~300 B (index only) | ~1,010 B (log + index, after compaction) | the brief counted the index alone; the real core also stores the log (~230 B a record: content + Hypercore's own) and its rows keep the current version's fields, edits' stamps and the app's index keys, with one more index (one per member) and activity entries; storage.js estimates ~150 + 550 B plus content twice |
+| latest 50 posts | 0.98 ms (100k) | 1.07 ms (100k) | — |
+| what points at a post | 0.36 ms | 0.46 ms | within noise (each link is judged when read, research.md A12) |
+| an author's latest 50 | 0.60 ms (1,000 authors) | 5.06 ms (one author holding all 100k) | the by-author index isn't per type: one author's 100k records of three types are scanned for their posts; with many authors it is cheaper |
+| one record by id | 0.06 ms | 0.09 ms | within noise at this scale (a few hundredths of a ms) |
+| live query update | 0.6 ms median, 3.9 ms worst | 1.1 ms median, 3.5 ms worst (the put included) | the real figure includes writing the record |
+| rebuild 100,000 | ~14 s | 17.8 s (SC-008: within 30 s) | records are checked again as they are indexed |
+| members agree on a write | 15–42 ms (spike, three members) | 16 ms median (three members) | — |
+| a newcomer's first page | 0.25 s, 70–140 KB at 10M messages (v2) | 203 ms / 73 KB at 10,000; 205 ms / 71 KB at 100,000; 227 ms / 77 KB at 1,000,000 (SC-004 met) | — |
+| opening one log | ~0.7 ms, ~660 B (spec 007) | ~1 ms, ~1.5 KB for a newcomer (research.md A14) | header, proof check and replication handshake |
+| many authors at once | — | 34 authors in 5 processes writing at once: every member sees every post within 2 s (median 140 ms, slowest 1.2 s) | 50 were planned: 16 couldn't join (research.md A15) |
+
 ## Prior art read on the way (2026-10-07)
 
 - **Nostr has both models.** NIP-72 (communities where moderators approve each post and readers show

@@ -1,6 +1,6 @@
 # Hypergraph's new core: API
 
-`require('hypergraph/next')`, the surface of stories 1 to 8 (spec 011). Concepts: [concepts.md](concepts.md). The
+`require('hypergraph/next')`, the surface of stories 1 to 9 (spec 011). Concepts: [concepts.md](concepts.md); "deleted" and "incomplete" for your users: [deleting-and-incomplete.md](deleting-and-incomplete.md). The
 full planned surface, with what is built marked ✓: `specs/011-spaces-core/contracts/api.md`. The forum
 in `test/next/forum/forum.js` uses all of it.
 

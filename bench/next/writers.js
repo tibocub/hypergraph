@@ -56,6 +56,7 @@ async function main () {
 
     const t0 = Date.now()
     let again = 0
+    let failed = 0
     for (let p = 0; p < PROCS; p++) {
       const proc = writerProcess()
       procs.push(proc)
@@ -65,10 +66,12 @@ async function main () {
     for (const proc of procs) {
       const links = []
       for (let a = 0; a < AUTHORS; a++) links.push(await space.createInvite({ role: 'member' }))
-      again += (await proc.call('join', { links })).again
+      const res = await proc.call('join', { links, tries: 2, skip: true })
+      again += res.again
+      failed += res.failed.length
     }
-    const authors = PROCS * AUTHORS
-    console.log(`${authors} authors in ${PROCS} processes joined in ${((Date.now() - t0) / 1000).toFixed(1)} s${again ? ` (${again} joins tried again: no member answered within 30 s)` : ''}`)
+    const authors = PROCS * AUTHORS - failed
+    console.log(`${authors} of ${PROCS * AUTHORS} authors in ${PROCS} processes joined in ${((Date.now() - t0) / 1000).toFixed(1)} s${again ? ` (${again} joins tried again: no member answered within 30 s)` : ''}${failed ? `; ${failed} never let in after two tries (left out)` : ''}`)
     for (const [name, s] of members) {
       const ok = await waitFor(() => s.directory.logs.size >= authors + 2, 60000)
       console.log(`  ${name}: ${s.directory.logs.size} logs known${ok ? '' : ' (NOT every author\'s within 60 s)'}`)

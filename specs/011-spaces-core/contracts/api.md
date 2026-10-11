@@ -15,7 +15,8 @@ this file disagree, fix one of them in the same change.
 a z32 string, so apps can keep them in JSON and URLs; methods also accept the record or space object
 itself where a key is expected (`forum.put('comment', { on: post })`).
 
-**Built so far**: stories 1 to 9 and the core follow-ups (marked ✓ below): all of spec 011.
+**Built so far**: stories 1 to 9 and the core follow-ups (marked ✓ below). **Not built** (found by the final pass,
+2026-10-11): `hg.leaveSpace()` and `forum.addProtocol()` (FR-031), both unmarked below.
 
 ## Opening, identity, network
 
@@ -111,7 +112,7 @@ hg.types()                                      // ✓ core follow-ups: sync { n
                                                 //   onePerMember, editable ('author' | 'members' | { permission }),
                                                 //   index, builtin } }
 hg.space(key)                                   // ✓ sync: the Space; NOT_FOUND if not held here
-await hg.leaveSpace(key)                        // drops its data from this device
+await hg.leaveSpace(key)                        // drops its data from this device (not built)
 
 forum.key; forum.name; forum.parent             // ✓ sync
 forum.status()                                  // ✓ sync: { policy, access, held, heldFrom, stored, share, budget,
@@ -324,7 +325,7 @@ hg.space(record.to)                              // ✓ follow it: the Space if 
 forum.addProtocol('swarmfs/transfer', {
   messages: [{ encoding, onmessage (msg, peer) {} }],
   onopen (peer) {}, onclose (peer) {}
-})   // sync; opened on every connection of this space, next to hypergraph's own
+})   // sync; opened on every connection of this space, next to hypergraph's own (not built: FR-031)
 ```
 
 ## Diagnostics (✓ story 6)
