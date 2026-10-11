@@ -823,6 +823,37 @@ audit only). Benchmarks run one at a time with nothing beside them; results go t
   device of the account (Tibo, 2026-10-09; out of story 3's scope, research.md A7) — left open
 - [ ] T076 Update ROADMAP.md and ECOSYSTEM.md; merge to master after review (the lead conversation)
 
+## Phase 13: Pre-merge fixes
+
+The lead's decision of 2026-10-11 (ROADMAP.md, "review of spec 011's final pass"); branch
+`011-spaces-core-premerge`. Ponytail (full) for new code. Each test is written first and seen failing; every test runs
+on Node and Bare.
+
+- [ ] P01 Test: a peer knowing only a space's topic (discovery key) opens the space channel: it gets no log key (no
+  list, notice, activity entry), so it can't read a non-private space; a member still syncs (`test/next/net/closed.js`)
+- [ ] P02 The space channel's handshake carries a capability (a keyed hash of the space key and the connection's
+  handshake hash, per side, as Hypercore's); a wrong one closes the channel before anything is answered (audit 1)
+- [ ] P03 Test: an activity list nobody asked for, or from a peer that isn't a member, doesn't make lists "whole"
+  (`test/next/unit/activity.js`)
+- [ ] P04 Activity lists are asked of members only (their `hello` proved who they are) and only an asked list
+  counts (audit 3)
+- [ ] P05 Test: the recovery-phrase file is created with mode 0600 (Linux, macOS; Windows: documented)
+  (`test/next/unit/phrase.js`); then `lib/phrase.js` writes it so, and the instance folder is created 0700 (audit 2)
+- [ ] P06 Test: a crash between writing the sealed phrase and renaming it leaves the plain phrase; a torn entry in
+  the logs file doesn't shift later ones (`test/next/unit/phrase.js`, `test/next/unit/instance.js`); then the
+  fixes: `protect` writes and renames (no `forget` first), `readLogs` truncates a torn tail (audits 6, 7)
+- [ ] P07 Test across separate processes: a connection whose space channel doesn't open within a few seconds is
+  closed and the peers reconnect (`test/next/net/dead-connection.js`); then `lib/network.js` closes it
+- [ ] P08 Re-run `bench/next/writers.js` (50 authors in separate processes, alone on the machine); SC-005 in
+  research.md; `specs/011-spaces-core/upstream-hyperswarm.md` (plain-Hyperswarm reproduction, draft issue, not posted)
+- [ ] P09 Test, then `space.addProtocol(name, { messages, onopen, onclose })` (FR-031): opened next to the space
+  channel, only once the peer proved it knows the space key
+- [ ] P10 Test, then `hg.leaveSpace(key)`: the space's data dropped from this device, not opened again here
+- [ ] P11 `test/next/forum/rules.js` waits for its condition instead of a fixed 3 s
+- [ ] P12 contracts/api.md, docs/next, CHANGELOG, research.md A16 and the success-criteria table
+- [ ] P13 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
+  hyperDNS's `npm test`
+
 ---
 
 ## Dependencies & execution order
