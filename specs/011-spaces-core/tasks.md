@@ -852,7 +852,7 @@ on Node and Bare.
 - [X] P11 `test/next/forum/rules.js` waits for its condition instead of a fixed 3 s
 - [X] P12 contracts/api.md, docs/next, CHANGELOG, research.md A16 and the success-criteria table
 - [X] P13 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
-  hyperDNS's `npm test` — *next 267/267 on Node, 266/266 on Bare; v1 390/390; hyperDNS 46/46 (2026-10-11)*
+  hyperDNS's `npm test` — *next 267/267 on Node, 266/266 on Bare; v1 390/390; hyperDNS 46/46 (2026-10-11); after P14-P15: next 272/272 Node, 271/271 Bare, v1 390/390, hyperDNS 46/46*
 
 Added by the lead conversation during the session (2026-10-11):
 
