@@ -4,15 +4,24 @@
 // posts, 60% comments, 30% votes) spread over the last `hours`, written by
 // `writers` members, then held by the owner alone (the writers go offline).
 //
-//   node bench/next/first-page.js                 # 10,000 records, 10 writers (quick)
+//   node bench/next/first-page.js                 # 10,000 records, 2 writers (quick)
 //   node bench/next/first-page.js 100000
 //   node bench/next/first-page.js 1000000         # SC-004's big size: ask first, run it alone
 //   options: --writers n (default 2)  --hours h  --slices (each writer writes one stretch of
 //            time only)  --by-activity (the newcomer reads by activity lists whatever the
 //            number of logs)  --full (the newcomer reads everything, as before story 9)
+//            --dir path (where the instances' folders go; default the OS temp folder)
 //
-// All instances run in this one process: with many writers, catching up is
-// slowed by Hypercore's replication work (findFirst, batches), not by indexing.
+// Also reports the setup time, the disk used by each instance and the process's
+// peak memory. It stops by itself (and says so) when the setup passes
+// --max-minutes (default 30) or memory passes --max-gb (default 6): the dev
+// machine rebooted once under a long all-core run.
+//
+// The owner and the newcomer run in this process, each writer in its own
+// (bench/next/_writer.js, below-normal priority). With every instance in one
+// process, the writers indexing and serving their big logs shared one thread
+// with the owner: at 1,000,000 records the owner held ~250 records/s (an
+// hour of setup), against ~8,000/s for one instance indexing alone.
 //
 // SC-004: within 2 s and 1 MB at 10,000 and 1,000,000 records, the 1,000,000
 // figure at most 1.5 times the 10,000 one.
@@ -23,7 +32,7 @@ const path = require('path')
 const createTestnet = require('hyperdht/testnet')
 const { Hypergraph } = require('../../lib/index.js')
 const testing = require('../../lib/testing.js')
-const enc = require('../../lib/encodings.js')
+const { writerProcess } = require('./_procs.js')
 const { PERIOD_MS, periodOf } = require('../../lib/activity.js')
 
 const args = process.argv.slice(2)
@@ -37,20 +46,46 @@ const HOURS = opt('hours', Math.max(24, Math.ceil(N / 400))) // ~40 posts an hou
 const BY_ACTIVITY = args.includes('--by-activity')
 const FULL = args.includes('--full')
 const SLICES = args.includes('--slices') // each writer writes one stretch of time only (most logs inactive lately)
+const DIR = args.includes('--dir') ? args[args.indexOf('--dir') + 1] : os.tmpdir()
+const MAX_MS = opt('max-minutes', 30) * 60000
+const MAX_RSS = opt('max-gb', 6) * 1024 ** 3
+
+// Peak memory, sampled every second; `guard()` throws past the limits.
+let peak = 0
+let began = Date.now()
+const sampler = setInterval(() => { peak = Math.max(peak, process.memoryUsage().rss) }, 1000)
+let peakChildren = 0
+function guard (children = 0) {
+  const rss = process.memoryUsage().rss
+  peak = Math.max(peak, rss)
+  if (rss + children > MAX_RSS) throw new Error(`stopped: memory ${gb(rss + children)} GB (writer processes included) is past ${gb(MAX_RSS)} GB`)
+  if (Date.now() - began > MAX_MS) throw new Error(`stopped: the setup took more than ${MAX_MS / 60000} minutes`)
+}
+const gb = (n) => (n / 1024 ** 3).toFixed(2)
+const du = (d) => {
+  if (!fs.existsSync(d)) return 0
+  return fs.readdirSync(d).reduce((n, f) => { const p = path.join(d, f); const st = fs.statSync(p); return n + (st.isDirectory() ? du(p) : st.size) }, 0)
+}
 
 const types = {
   post: { fields: { title: 'string', text: 'text' } },
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } },
   vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true }
-}
+} // as bench/next/_writer.js's
 
 async function main () {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hg-bench-first-page-'))
+  const root = fs.mkdtempSync(path.join(DIR, 'hg-bench-first-page-'))
   const teardown = []
   const testnet = await createTestnet(3, (fn) => teardown.push(fn))
-  const open = (name, opts = {}) => Hypergraph.open(path.join(root, name), { types, bootstrap: testnet.bootstrap, readTimeout: 10000, ...opts })
+  const opened = []
+  const writers = []
+  const open = async (name, opts = {}) => {
+    const hg = await Hypergraph.open(path.join(root, name), { types, bootstrap: testnet.bootstrap, readTimeout: 10000, ...opts })
+    opened.push(hg)
+    return hg
+  }
   try {
-    const t0 = Date.now()
+    const t0 = began = Date.now()
     const start = Date.now() - HOURS * PERIOD_MS
     const owner = await open('owner')
     testing.setClock(owner, start - Date.now() - 1000, { decisions: true })
@@ -58,50 +93,29 @@ async function main () {
     testing.setClock(owner, 0, { decisions: true })
     await owner.connectToSwarm()
 
-    // writers join, write their share, and go
+    // writers (in their own processes: bench/next/_writer.js) join, write
+    // their share, and go
     const step = HOURS * PERIOD_MS / N
-    const writers = []
     for (let w = 0; w < WRITERS; w++) {
       if (w && w % 10 === 0) console.log(`  (${w} writers joined)`)
-      const hg = await open('w' + w)
-      const s = await hg.redeemInvite(await space.createInvite({ role: 'member' }))
-      writers.push({ hg, s })
+      const proc = writerProcess()
+      writers.push(proc)
+      await proc.call('open', { dir: path.join(root, 'w' + w), bootstrap: testnet.bootstrap, count: 1 })
+      const { again } = await proc.call('join', { links: [await space.createInvite({ role: 'member' })] })
+      if (again) console.log(`  (writer ${w}: joining tried again ${again} time(s): no member answered within 30 s)`)
     }
-    // Written straight into each writer's log, a thousand blocks per append
-    // (one append per record takes ~10 ms here: hours at 1,000,000).
-    const posts = []
-    const pending = writers.map(() => [])
-    const flush = async (w) => {
-      if (pending[w].length) await writers[w].s.own.core.append(pending[w].splice(0))
-    }
-    for (let i = 0; i < N; i++) {
-      const w = SLICES ? Math.floor(i * WRITERS / N) : i % WRITERS
-      const { s } = writers[w]
-      const stamp = Math.floor(start + i * step)
-      const r = i % 10
-      const seq = s.own.core.length + pending[w].length
-      let type = 'vote'
-      let fields = { value: 1, on: posts[posts.length - 1 - (i % Math.min(5, posts.length || 1))] }
-      if (r === 0 || posts.length < 5) {
-        type = 'post'
-        fields = { title: `post ${i}`, text: 'a post of about eighty bytes, like the ones experiment 2 measured' }
-        posts.push(enc.idToString({ log: s.own.key, seq }))
-      } else if (r <= 6) {
-        type = 'comment'
-        fields = { text: `comment ${i} on a recent post`, on: fields.on }
-      }
-      const e = s.types.encode(type, fields)
-      pending[w].push(enc.encodeRecord({ kind: enc.PUT, type, stamp, target: null, links: e.links, fields: e.fields }))
-      if (pending[w].length === 1000) await flush(w)
-    }
-    for (let w = 0; w < WRITERS; w++) await flush(w)
+    await Promise.all(writers.map((proc, w) => proc.call('fill', { n: N, writers: WRITERS, w, start, step, slices: SLICES })))
     const written = Date.now()
     let shown = 0
+    let childMem = 0
     while (testing.indexedBlocks(space) < N) {
       await sleep(100)
+      guard(childMem)
       if (Date.now() - shown > 10000) {
         shown = Date.now()
-        console.log(`  (the owner indexed ${testing.indexedBlocks(space)} of ${N}; logs ${testing.logs(space).length})`)
+        childMem = (await Promise.all(writers.map((proc) => proc.call('mem')))).reduce((n, m) => n + m.rss, 0)
+        peakChildren = Math.max(peakChildren, childMem)
+        console.log(`  (the owner indexed ${testing.indexedBlocks(space)} of ${N}, holds ${[...space.directory.logs.values()].reduce((n, l) => n + l.core.contiguousLength, 0)} blocks; logs ${testing.logs(space).length}; memory ${gb(process.memoryUsage().rss)} GB writer processes ${gb(childMem)} GB)`)
       }
     }
     console.log(`(written in ${((written - t0) / 1000).toFixed(1)} s, held by the owner ${((Date.now() - written) / 1000).toFixed(1)} s later)`)
@@ -112,7 +126,9 @@ async function main () {
     const counts = [...perPeriod.values()]
     console.log(`space: ${N} records by ${WRITERS} writers over ${HOURS} h, written and held by its owner in ${((Date.now() - t0) / 1000).toFixed(1)} s`)
     console.log(`activity: ${entries.length} entries; per period ${Math.min(...counts)}–${Math.max(...counts)} (an entry ~40 B: the newest period's list is ~${(perPeriod.get(Math.max(...perPeriod.keys())) * 41)} B)`)
-    for (const { hg } of writers) await hg.close()
+    const setupMs = Date.now() - t0
+    console.log(`setup: ${(setupMs / 60000).toFixed(1)} min; disk: owner ${(du(path.join(root, 'owner')) / 1024 ** 2).toFixed(0)} MB, writers ${writers.map((w, i) => (du(path.join(root, 'w' + i)) / 1024 ** 2).toFixed(0) + ' MB').join(', ')}; peak memory so far ${gb(peak)} GB (writer processes ${gb(peakChildren)} GB)`)
+    for (const proc of writers) await proc.close()
 
     // the newcomer
     const restore = testing.bigSpaces(FULL ? { logs: Infinity, records: Infinity } : BY_ACTIVITY ? { logs: 1 } : {})
@@ -135,12 +151,23 @@ async function main () {
     console.log(`newcomer (${FULL ? 'reads everything' : reading.horizon === null ? 'reads everything (small space)' : reading.byActivity ? 'reads by activity lists' : 'reads newest first'}): joined in ${joined} ms; first page ${page.complete ? 'complete' : 'NOT complete'} after ${ms} ms (${tries} read${tries > 1 ? 's' : ''}), ${(bytes / 1024).toFixed(0)} KB received; ${page.items.length} posts, ${same ? 'the same as the owner\'s' : 'NOT the same as the owner\'s'}`)
     console.log(`  logs opened: ${testing.logs(fd).length} of ${WRITERS + 2}; ${(await fd.inspect()).logs.reduce((n, l) => n + l.held, 0)} blocks held`)
     console.log(`SC-004 (2 s, 1 MB): ${ms <= 2000 && bytes <= 1024 * 1024 ? 'met' : 'NOT met'} at ${N}`)
+    console.log(`newcomer disk: ${(du(path.join(root, 'newcomer')) / 1024 ** 2).toFixed(1)} MB; peak memory ${gb(peak)} GB`)
     restore()
     await d.close()
     await owner.close()
   } finally {
+    clearInterval(sampler)
+    for (const proc of writers) await proc.close()
+    for (const hg of opened) await Promise.race([hg.close().catch(() => {}), sleep(10000)]) // closed twice is fine
     for (const fn of teardown.reverse()) await fn()
-    fs.rmSync(root, { recursive: true, force: true })
+    for (let i = 0; i < 10; i++) {
+      try {
+        fs.rmSync(root, { recursive: true, force: true })
+        break
+      } catch {
+        await sleep(500)
+      }
+    }
   }
 }
 
@@ -155,5 +182,5 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 main().catch((err) => {
   console.error(err)
-  process.exitCode = 1
+  process.exit(1) // a benchmark stopped on the way: don't wait for what's still open
 })
