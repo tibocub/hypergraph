@@ -159,6 +159,23 @@ test('settings/set records the app rules a space runs (core follow-ups); only wh
   t.alike(State.from(view.map).rules, ['b', 'title-length'], 'a moderator may not change them')
 })
 
+// A16: who reads a private space's history, by who may decide; entries from
+// before the setting existed decode without it.
+test('settings/set records the history setting; only visible or hidden; old entries decode', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  await applyNodes([node(space, { ...init, proof: initProof(owner, space, space) })], view, null, { space })
+  t.is(State.from(view.map).history, 'visible', 'visible by default')
+  await applyNodes([node(space, { type: 'settings/set', policy: null, writeLimit: null, rules: null, history: 'hidden' })], view, null, { space })
+  t.is(State.from(view.map).history, 'hidden')
+  t.is(State.from(view.map).policy, 'auto', 'the policy unchanged')
+  await applyNodes([node(space, { type: 'settings/set', policy: null, writeLimit: null, rules: null, history: 'sometimes' })], view, null, { space })
+  t.is(State.from(view.map).history, 'hidden', 'anything else is ignored')
+  const before = c.encode(enc.decision, { type: 'settings/set', stamp: 1, policy: 'everything', writeLimit: null, rules: ['a'] }).subarray(0, -1) // without the trailing field
+  t.is(c.decode(enc.decision, before).history, null, 'an older entry has none')
+})
+
 test('the decision list (core follow-ups): every decision in order, who, what, when, why, and whether it counted', async (t) => {
   const owner = await Identity.create({ device: crypto.keyPair() })
   const space = crypto.randomBytes(32)

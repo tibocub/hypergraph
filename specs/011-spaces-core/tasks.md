@@ -854,6 +854,15 @@ on Node and Bare.
 - [X] P13 Full suites after the last change: `npm run test:next`, `npm run test:next:bare`, v1's `npm test`,
   hyperDNS's `npm test` — *next 267/267 on Node, 266/266 on Bare; v1 390/390; hyperDNS 46/46 (2026-10-11)*
 
+Added by the lead conversation during the session (2026-10-11):
+
+- [X] P14 Test, then a key chain for private spaces: each key unlocks the ones before it (`hg/key-link`: an older
+  epoch key sealed with a newer one, from a later epoch only), so a newcomer reads the whole history; concurrent
+  rotations stay readable (a race's keys are linked from the next epoch, the losing side changes the key again);
+  `setHistory('visible' | 'hidden')`, a settings decision (`test/next/forum/history.js`, `test/next/unit/decisions-basic.js`)
+- [ ] P15 Docs: a closed space is readable by anyone holding its key, removed members included; only a private space
+  stops them reading what comes after (docs/next, where closed and private are chosen)
+
 ---
 
 ## Dependencies & execution order
