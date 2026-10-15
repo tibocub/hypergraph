@@ -23,6 +23,20 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-15 (review of the dependency update and upstream analysis)** — Branch `deps-and-upstream`:
+  every dependency at its latest (Hypercore 11.37.2, Corestore 7.13.0, HyperDHT 6.34.1 were already;
+  brittle 4 needs `brittle-node` for Node runs; Autobase 7.28.2 throws if a base is closed after its
+  storage — 4 v1 tests reordered, v1 code unchanged; Tibo kept 7.28.2). v1 390/390, core 273/273 Node and
+  272/272 Bare. **Blocker before merging**: 3 hyperDNS test files close in the old order and crash on
+  this branch — a session in the hyperDNS repo fixes them first. Upstream: **Hypercore** — confirmed theirs
+  (after a peer clears a block, a read of a later block hangs if a `want` was already sent; 7-line patch,
+  their suite 421/421 with it; nothing similar reported); our workaround stays. **The "Hyperswarm" race is
+  really HyperDHT's** (local-address shortcut vs abandoned hole-punch; already issue #304, open PR #283
+  fixes our case); the lead's earlier Hyperswarm reading was wrong. Standalone demos for Tibo and
+  Holepunch: `specs/research/upstream/demos/` (`npm install`, `npm run hypercore`, `npm run hyperdht`),
+  checked in a clean folder by the lead. Posting (a new Hypercore issue; a comment on hyperdht #304)
+  waits for Tibo's OK.
+
 - **2026-10-11 (review of the pre-merge fixes)** — Accepted and merged into `011-spaces-core` (272/272 Node,
   re-run in the lead conversation). Closed spaces give log keys only to peers proving the space key;
   phrase file 0600; crash-safe writes; `addProtocol()`, `leaveSpace()`; the key chain and `history`
