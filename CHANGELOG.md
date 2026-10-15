@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-15: dependencies at their latest versions (both cores)
+
+- Autobase 7.28.2 throws `Corestore is closed` when a base (a v1 graph or context) is closed after its Corestore:
+  close the graph first, then the store (hypergraph's own close order already does). hyperDNS's tests close both at once.
+- brittle 4: `npx brittle` runs tests on Bare; use `npx brittle-node` for Node.
+- Upstream findings (Hypercore clear; the dead connections between peers on one machine are HyperDHT's, not
+  Hyperswarm's): `specs/research/upstream/`, spec 011 research.md A17.
+
 ### 2026-10-11: `hypergraph/next` — spec 011 pre-merge fixes (ALPHA, breaking within `next`)
 
 - **Wire change**: the space channel's handshake carries a capability (a keyed hash of the space key and the
