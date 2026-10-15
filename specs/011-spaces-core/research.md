@@ -1192,3 +1192,24 @@ partition: members and a newcomer read both sides, each removed member nothing a
 **Docs, said plainly**: docs/next/api.md ("Closed or private?", where the two are chosen) and concepts.md: a closed
 space is readable by anyone holding its key, removed members included; only a private space stops them reading what
 is written afterwards.
+
+### A17. Dependencies updated; the two Holepunch bugs pinned (2026-10-15)
+
+Worker session `deps-and-upstream` (lead's decision of 2026-10-11, "review of the pre-merge fixes"). Every dependency at
+its latest (`specs/research/upstream/dependency-update.md`): brittle 4 runs Bare under plain `brittle` (scripts use
+`brittle-node`); Autobase 7.28.2 opens a store session while closing, so four v1 tests close a standalone base before
+its store. No `lib/` or `src/` logic changed.
+
+**Hypercore clear (A5)**: theirs, still in 11.37.2. A peer that clears block k makes the others lower its contiguous
+length to k without keeping bits for the blocks after it, and a peer that already sent it a "want" (one per 2M blocks)
+never asks again: it stalls. Plain reproduction, exact cause, a 7-line patch passing Hypercore's suite, draft issue:
+`specs/research/upstream/hypercore.md`. With our re-announce off, no forum test stalls (the trigger is timing), but our
+reads send wants all the time: `clearBlocks()` stays. `test/next/unit/clear-blocks.js` now also tests the stall.
+
+**"Hyperswarm double dial" (A16)**: A16's cause was wrong. It is HyperDHT 6.33+: between peers on one host or LAN
+dialing each other at once, the client's LAN shortcut connects while the server aborts its holepunch (NAT analysis not
+stable) and destroys the stream; the client finds out ~13 s later and retries can race again. Already reported
+upstream (holepunchto/hyperdht#304); the open PR #283 fixes our reproductions, as does a one-line patch
+(`specs/research/upstream/hyperswarm.md`). Hyperswarm's duplicate rule is not involved. The workaround in
+`lib/network.js` stays until a HyperDHT release has the fix; comments corrected. `bench/next/double-dial.js` miscounted
+pairs apart (old connections closing after their replacement, processes exiting first); fixed.

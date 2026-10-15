@@ -1,13 +1,12 @@
-// Peers that dial each other at the same moment (research.md A15, A16): across
-// processes, Hyperswarm can leave each side holding a connection the other
-// already dropped; nothing opens on it, it closes after ~13 s, and Hyperswarm
-// doesn't dial again a connection it didn't dial itself — the two stay apart.
-// (In one process it never showed, hence separate processes here.) Several
-// processes open one space at once: no connection stays open past a few
-// seconds without the space channel (hypergraph closes it and dials the peer
-// again). How many peers that met end up apart is reported, not asserted:
-// most pairs link again, but Hyperswarm can keep swallowing a pair's new
-// connections for longer (specs/011-spaces-core/upstream-hyperswarm.md).
+// Peers that dial each other at the same moment (research.md A15, A16, A17):
+// on one host or LAN, HyperDHT 6.33+ can hand the dialer a connection the other
+// side already destroyed (holepunchto/hyperdht#304); nothing opens on it, it
+// closes after ~13 s, and a retry can hit the same race. (In one process it
+// never showed, hence separate processes here.) Several processes open one
+// space at once: no connection stays open past a few seconds without the space
+// channel (hypergraph closes it and dials the peer again). How many peers that
+// met end up apart is reported, not asserted
+// (specs/research/upstream/hyperswarm.md).
 
 const process = require('process')
 const { spawn } = require('child_process')

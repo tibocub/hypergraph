@@ -1,5 +1,10 @@
 # Hyperswarm: peers dialing each other at once stay apart (draft upstream report)
 
+> **Superseded (2026-10-15, A17)**: the cause below is wrong. Measured with instrumented copies, the dead connections
+> come from HyperDHT (its LAN shortcut races the holepunch; already reported upstream as holepunchto/hyperdht#304),
+> not from Hyperswarm's duplicate rule; with HyperDHT fixed, no connection dies and no pair stays apart. See
+> `specs/research/upstream/hyperswarm.md`. Kept for the record; do not post.
+
 2026-10-11, spec 011's pre-merge fixes. **Nothing posted** — Tibo decides whether and where (holepunchto/hyperswarm
 issues). Hypergraph works around it in `lib/network.js` (research.md A16).
 
