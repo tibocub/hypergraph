@@ -56,5 +56,5 @@ protocol-buffers-encodings), record-cache 1 (hyperdht), bare-module 6 (brittle's
 
 The hyperDNS crash: its tests close the graph and the store together (`Promise.allSettled([graph.close(),
 store.close()])`) or close a graph in a teardown that runs after its store's. Its shipped code (`shell/lib/session.js`)
-closes the graph first, so only its tests break. **Pending Tibo's decision** (keep Autobase 7.28.2 and fix those
-teardowns in hyperDNS, or pin 7.28.1 here until then).
+closes the graph first, so only its tests break. **Tibo (2026-10-15): keep Autobase 7.28.2**; a hyperDNS session fixes those teardowns (graph first, then store) before
+this branch merges.
