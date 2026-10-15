@@ -17,6 +17,7 @@ const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 
 const OPEN_MS = 5000
+const END_MS = 3000
 
 const FIX = process.argv.includes('--fix')
 const args = process.argv.filter((a) => a !== '--fix')
@@ -37,10 +38,10 @@ async function main (n, seconds) {
   let dead = 0
   for (const r of results) {
     dead += r.dead
-    console.log(`peer ${r.id}: ${r.connections} connections, ${r.peers} distinct peers, ${r.dead} without a channel after ${OPEN_MS / 1000} s (closed later: ${r.deadClosedAfter.join(', ') || '-'} s); a channel open with ${r.linked} at the end`)
+    console.log(`peer ${r.id}: ${r.connections} connections, ${r.peers} distinct peers, ${r.dead} without a channel after ${OPEN_MS / 1000} s (closed later: ${r.deadClosedAfter.join(', ') || '-'} s); a channel open with ${r.linked} ${END_MS / 1000} s before the end`)
   }
   const lost = results.reduce((x, r) => x + r.peers - r.linked, 0)
-  console.log(`${FIX ? '--fix: ' : ''}${dead} dead connections over ${n} peers; ${lost} peers met but without an open channel at the end`)
+  console.log(`${FIX ? '--fix: ' : ''}${dead} dead connections over ${n} peers; ${lost} peers met but without an open channel ${END_MS / 1000} s before the end`)
   await testnet.destroy()
 }
 
@@ -48,7 +49,7 @@ async function peer (bootstrap, topic, seconds) {
   const swarm = new Hyperswarm({ bootstrap })
   const id = b4a.toString(swarm.keyPair.publicKey, 'hex').slice(0, 6)
   const stats = { id, connections: 0, peers: new Set(), dead: 0, deadClosedAfter: [] }
-  const linked = new Set()
+  const linked = new Set() // connections with the channel open (one closing after its replacement opened must not unlink the peer)
   swarm.on('connection', (conn) => {
     const at = Date.now()
     stats.connections++
@@ -61,9 +62,9 @@ async function peer (bootstrap, topic, seconds) {
       protocol: 'probe',
       onopen () {
         open = true
-        linked.add(remote)
+        linked.add(conn)
       },
-      onclose () { linked.delete(remote) }
+      onclose () { linked.delete(conn) }
     })
     ch.open()
     if (FIX) {
@@ -82,8 +83,11 @@ async function peer (bootstrap, topic, seconds) {
     })
   })
   swarm.join(topic)
-  await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
-  process.stdout.write(JSON.stringify({ ...stats, peers: stats.peers.size, linked: linked.size }))
+  // counted END_MS before the end: the first process to exit closes its connections to the others
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000 - END_MS))
+  const peers = new Set([...linked].map((c) => b4a.toString(c.remotePublicKey, 'hex'))).size
+  await new Promise((resolve) => setTimeout(resolve, END_MS))
+  process.stdout.write(JSON.stringify({ ...stats, peers: stats.peers.size, linked: peers }))
   await swarm.destroy({ force: true })
   process.exit(0)
 }
