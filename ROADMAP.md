@@ -23,6 +23,16 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-17 (last check of the upstream demos, against each library's README, examples, tests and the
+  docs.pears.com pages)** — Both demos use only documented calls the documented way (Hypercore:
+  `replicate`, `get(index, { timeout })`, `clear(start, end)`, whose README says peers are told; HyperDHT:
+  `createServer`, `listen()`, `connect()`, `open`, one node both listening and dialing as Hyperswarm does).
+  **Hypercore**: still reproduces on 11.39.0 (published 2026-10-14; the replicator unchanged since
+  September); its own `test/clear.js` never clears while connected after a `want`. **HyperDHT**: dead
+  connections confirmed with a 15 s wait; **0 on 6.32.0, many on 6.34.1 → a 6.33 regression**, matching issue
+  #304 (opened by someone else, same symptom). Tibo will message the Holepunch devs privately first.
+  Option for later: pin hyperdht 6.32.0 via npm `overrides` until a fix ships, and drop our workaround.
+
 - **2026-10-15 (review of the dependency update and upstream analysis)** — Branch `deps-and-upstream`:
   every dependency at its latest (Hypercore 11.37.2, Corestore 7.13.0, HyperDHT 6.34.1 were already;
   brittle 4 needs `brittle-node` for Node runs; Autobase 7.28.2 throws if a base is closed after its
