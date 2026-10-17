@@ -1,8 +1,8 @@
 // Plain Hypercore only (specs/research/upstream/hypercore.md). A holds blocks
 // 0..9, B is connected to A alone. A clears block 5. Can B still get block 7?
 // hypercore-clear-repro.js (the lead's) says yes; this one says: not if B
-// had already sent A a "want" for blocks 0..2M before the clear, which any
-// get() of a block A didn't have, or any download range, does.
+// had already sent A a "want" before the clear, which a get() of a block A
+// didn't have yet does ('range' mode, a finished download range, still works).
 //
 //   node specs/research/upstream/hypercore-clear-stall.js [plain|wanted|range]
 
