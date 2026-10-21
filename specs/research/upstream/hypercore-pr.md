@@ -1,7 +1,7 @@
 # Hypercore PR (draft, not posted)
 
 Branch `fix-clear-remote-contiguous` in Tibo's local clone `E:\Code\P2P\hypercore`, commit `e33e633`, on top of
-11.39.0 (`9c9cc3d`). Hypercore's suite: 434/434 on Node with both fixes.
+11.39.0 (`9c9cc3d`). Hypercore's suite with both fixes: 434/434 on Node and on Bare 1.35.0.
 
 ## Title
 
@@ -32,5 +32,5 @@ This one doesn't need `clear()`: in 11.39.0, a timed-out `get()` of a block that
 - `test/replicate.js`, "a timed out get does not swallow the next block request" (no clear): fails about half the time
   without fix 2.
 
-Full suite passes (434/434). Found while building on Hypercore + Hyperswarm; standalone repro (plain Hypercore) with
+Full suite passes on Node (434/434) and on Bare 1.35 (434/434). Found while building on Hypercore + Hyperswarm; standalone repro (plain Hypercore) with
 expected output available if useful.
