@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-21 (Hypercore PR prepared with Tibo)** — The clear bug was already reported (hypercore #891, Oct 15,
+  same cause and fix; no PR). Writing its regression test the Hypercore way found a **second, independent
+  bug**: a stale block-queue entry (a `get()` that timed out) can use up a peer's only `_updatePeer` turn and
+  leave a live request unsent — in stock 11.39.0, without any clear, the next `get()` fails ~half the time.
+  Both fixes and two tests on branch `fix-clear-remote-contiguous` in `E:\Code\P2P\hypercore` (commit
+  e33e633, local only); each fix proven necessary on its own; Hypercore's suite 434/434 on Node. PR text:
+  `specs/research/upstream/hypercore-pr.md`. Tibo pushes to his fork and opens the PR. HyperDHT: pin 6.32.0
+  (issue #304 already covers it).
+
 - **2026-10-17 (last check of the upstream demos, against each library's README, examples, tests and the
   docs.pears.com pages)** — Both demos use only documented calls the documented way (Hypercore:
   `replicate`, `get(index, { timeout })`, `clear(start, end)`, whose README says peers are told; HyperDHT:
