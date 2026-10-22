@@ -16,6 +16,7 @@
     "test": "node scripts/test-runner.js",
     "bench:quick": "node bench/chat.js 10000 --writers 10 --live 30 && node --expose-gc bench/channels.js 50 && node --expose-gc bench/members.js 1000",
     "bench:chat": "node bench/chat.js 100000 --writers 10 --live 30",
+    "test:all": "npm run test:serial && npm run test:entities && npm run test:events && npm run test:identity-manager && npm run test:contexts && npm run test:view && npm run test:user-core && npm run test:error-cases && npm run test:relations && npm run test:tags && npm run test:queries && npm run test:roles && npm run test:moderation && npm run test:core && npm run test:hypergraph-network && npm run test:connect-to-swarm && npm run test:peer-connection && npm run test:bootstrap-export && npm run test:writer-authorization && npm run test:networking && npm run test:late-joiner && npm run test:concurrent-writes && npm run test:peer-reconnection && npm run test:multi-peer && npm run test:out-of-order && npm run test:partial-replication && npm run test:hypergraph-network-integration && npm run test:replication && npm run test:forum && npm run test:integration",
     "test:serial": "npm run test:core && npm run test:networking && npm run test:replication && npm run test:forum && npm run test:integration",
     "test:entities": "npx brittle test/brittle/core/entities.js",
     "test:events": "npx brittle test/brittle/core/events.js",
@@ -67,9 +68,12 @@
     "sodium-universal": "^5.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "blind-peer": "^3.15.1",
     "blind-peering": "^2.10.0",
     "brittle": "^3.0.0",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
     "hyperdht": "^6.34.1",
     "hyperswarm": "^4.17.0",
     "random-access-memory": "^3.0.0"
