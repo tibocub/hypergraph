@@ -89,7 +89,7 @@
     "blind-peer": "^3.16.0",
     "blind-peering": "^2.10.1",
     "brittle": "^4.5.0",
-    "hyperdht": "^6.34.1",
+    "hyperdht": "6.32.0",
     "random-access-memory": "^6.2.1"
   },
   "license": "MIT",
@@ -118,5 +118,8 @@
       "bare": "bare-subprocess",
       "default": "child_process"
     }
+  },
+  "overrides": {
+    "hyperdht": "$hyperdht"
   }
 }
