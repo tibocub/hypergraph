@@ -13,7 +13,7 @@ HyperMarkdown sites) without knowing replication, cryptography or networking. Re
 
 | # | Project | What it proves | Status |
 |---|---|---|---|
-| 1 | **hypergraph's new core** ("spaces", spec 011) | the kit itself | spec written; plan next |
+| 1 | **hypergraph's new core** ("spaces", spec 011) | the kit itself | **merged into master 2026-10-22** (`require('hypergraph/next')`) |
 | 2 | **Forum scenario tests** (in this repo, no UI) | the API is easy; every flow tested | built alongside 1, from its first story |
 | 3 | **SwarmFS** rewrite on the new core + swarmwire (`E:\Code\P2P\SwarmFS`) | files and folders, two devices, big archives | starts after spec 011's story 3; its needs are in spec 011 |
 | 4 | **HyperBrowser** (codename; HyperBBS's vision in a web UI, own repo) | a real app people use; a forum site is the real proof | starts after spec 011's first stories; its needs are in spec 011 |
@@ -22,6 +22,12 @@ v1 (`src/`) stays frozen until hyperDNS moves to the new core. HyperBBS (the ter
 Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
+
+- **2026-10-22** — **Spec 011 merged into master** (`2a64be8`). Before: hyperDNS tests fixed for Autobase 7.28.2's close
+  order (hyperDNS `8cc62f1`; Tibo's uncommitted private-authority work reviewed: v1-only, compatible, untouched);
+  hyperdht pinned 6.32.0 (`overrides` + devDependency; demo 0 dead connections); Tibo's ESLint setup kept, `test:all`
+  now v1 + next on Node and Bare. Results on master: v1 390/390, next 273/273 Node, hyperDNS 46/46, HyperBBS 126/126.
+  Hypercore PR opened by Tibo (#891 fix + stale-queue fix). **Next: SwarmFS.**
 
 - **2026-10-21 (Hypercore PR prepared with Tibo)** — The clear bug was already reported (hypercore #891, Oct 15,
   same cause and fix; no PR). Writing its regression test the Hypercore way found a **second, independent
