@@ -12,7 +12,7 @@
  *                                   hostile peer, where throwing would hand
  *                                   that peer a denial of service.
  *
- * Run: npx brittle test/brittle/core/content-ref-format.js
+ * Run: npx brittle-node test/brittle/core/content-ref-format.js
  */
 
 const test = require('brittle')

@@ -7,6 +7,188 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-15: dependencies at their latest versions (both cores)
+
+- Autobase 7.28.2 throws `Corestore is closed` when a base (a v1 graph or context) is closed after its Corestore:
+  close the graph first, then the store (hypergraph's own close order already does). hyperDNS's tests close both at once.
+- brittle 4: `npx brittle` runs tests on Bare; use `npx brittle-node` for Node.
+- Upstream findings (Hypercore clear; the dead connections between peers on one machine are HyperDHT's, not
+  Hyperswarm's): `specs/research/upstream/`, spec 011 research.md A17.
+
+### 2026-10-11: `hypergraph/next` — spec 011 pre-merge fixes (ALPHA, breaking within `next`)
+
+- **Wire change**: the space channel's handshake carries a capability (a keyed hash of the space key and the
+  connection's handshake); peers without it are closed out before anything is answered. A closed forum was readable
+  by anyone who saw its topic on the DHT. `next` peers from before this change can't talk to newer ones.
+- A stranger's activity list no longer makes a newcomer's reads say `complete` (only lists asked of members count).
+- The recovery-phrase file is created readable by its owner only (0600) and a new instance folder 0700 (Linux, macOS);
+  protecting the phrase can no longer lose it in a crash; a torn entry in the `logs` file no longer shifts later ones.
+- A connection nothing arrives on within 5 s is closed and the peer dialed again: peers that dialed each other at once
+  (Hyperswarm, across processes) stayed apart. 50 authors in 5 processes: 47 joined (was 34).
+- New: `space.addProtocol(name, { messages, onopen, onclose })` (FR-031, for SwarmFS) and `hg.leaveSpace(key)`.
+- Private spaces: a newcomer now reads the history written before it joined (each key unlocks the ones before it:
+  `hg/key-link` records); `space.setHistory('hidden')` makes newcomers read from their join on. Fixed: a member removed
+  while two admins changed the key at once could get the new key. Docs: a closed (non-private) space stays readable
+  by removed members; only a private one stops them.
+- Details: `specs/011-spaces-core/research.md` A16; draft upstream report `specs/011-spaces-core/upstream-hyperswarm.md`.
+
+### 2026-10-11: `hypergraph/next` — spec 011 final pass
+
+- Log keys any peer names (notices, lists of logs) are now fetched 16 at a time with at most 1,024 waiting (more are
+  dropped and come back with the next summary): a stranger flooding made-up keys made every member open a log per key
+  at once. Found by the new adversarial tests (`test/next/net/adversarial.js`: junk blocks, oversized and malformed
+  records, odd and malformed channel messages, writes past bans and device removals, clocks far ahead — on Node and
+  Bare). New forum test: a partition healed after both sides wrote (`test/next/forum/partition.js`).
+- Measured: a newcomer's first page at 1,000,000 records 227 ms / 77 KB (10,000: ~203 ms / 73 KB); 34 authors writing
+  at once seen by every member within 2 s; the design brief's measurements re-run (`specs/research/design-brief.md`).
+- Docs: `docs/next/deleting-and-incomplete.md`; a README section for `hypergraph/next`. Not built yet, now marked in the
+  contract: `hg.leaveSpace()`, `space.addProtocol()` (FR-031). Audit (not applied): `specs/011-spaces-core/audit.md`.
+  Details: `specs/011-spaces-core/research.md` A15.
+
+### 2026-10-10: `hypergraph/next` — story 9, big spaces (ALPHA, breaking within `next`)
+
+- A newcomer to a big space reads it newest first: its first page is complete after the newest hour(s) only (10,000
+  and 100,000 records: ~0.23 s and ~95 KB on a local network, against 2.4 s and 1.4 MB when reading everything); older
+  pages widen what it reads; in the background it reads the rest while the space fits its share, never beyond.
+  Beyond 300 device logs it opens only the logs active in the hours it reads (activity lists: ~40-byte entries every
+  member derives, checks and passes on; false and spam entries are dropped). `status()` gains `heldFrom`.
+- Reads are complete for what they need (a page from its oldest item on, a count from its target), and never while
+  what they looked at is still being indexed or before a member's list of logs was looked at (fixes, also true
+  before). Records are now stamped above the records they link to.
+- `space.setWriteLimit({ records, periodMs })` for open spaces (judged alike by every member; deleting never frees
+  room); `createInvite({ subspaces })`; `status().access` ('full' | 'waiting' | 'none': a private space not for this
+  member answers reads at once). A log prepared during a ban no longer counts once its author is let back in.
+- Wire changes: the summary gains `records`, three channel messages (activity entry, want, list), log headers may carry
+  `admitted`; a new index collection `@hg/activity`. Details: `specs/011-spaces-core/research.md` A14.
+
+### 2026-10-10: `hypergraph/next` — story 8, sub-spaces and private spaces (ALPHA, breaking within `next`)
+
+- Sub-spaces: `space.createSubspace({ name, private, writeRoles })`, `space.subspaces()`, `space.parent`, `space.private`.
+  Members of a space have its sub-spaces without joining (`hg.spaces()` lists them with their parent); a sub-space has its
+  parent's members and roles, then its own (guests invited only there, roles given there); `writeRoles` restricts who
+  writes; a ban or removal in the parent always applies below. A sub-space's decisions live in its parent's decision log.
+- Private spaces and sub-spaces (`createSpace({ private: true })`): records sealed per key epoch, keys granted to members'
+  devices, changed when someone loses access; relays and removed members read nothing new. Records written in the
+  clear show as `unreadable: true`. `inspect()` gains `parent`, `subspaces`, `private`, `epoch`, `readable` (never keys).
+- Fix: a log whose one announcement was missed arrives without a reconnect (the directory summary is sent again on
+  change and every ~10 s). Wire changes: a `scoped` decision type, a sealed record flag, invite links to a sub-space carry
+  the top space's key, log headers of a sub-space name its top space's decision log; built-in type `hg/grant`. Details:
+  `specs/011-spaces-core/research.md` A13.
+
+### 2026-10-09: `hypergraph/next` — core follow-ups of story 7 (ALPHA, breaking within `next`)
+
+- Fix (consistency): a link to a type its field doesn't allow is judged when read, on every member: the record is
+  kept, the link counts for nothing (the field reads `null`; not in `linked`/`count`/`sum`/`on()`). Before, members
+  could disagree depending on what arrived first. Records of hypergraph types a newer version adds are kept.
+- New reads: `space.members()`, `space.decisions({ limit, after })` (a moderation log: who, what, when, why,
+  counted), `space.tags(record)`, `space.peers()`, `hg.types()`, events `peers` and `logs`, `inspect({ records })`
+  and `inspect({ record })`. The swarm now uses the device key pair (a connection's key is the peer's device).
+- App rules: a space records the rule ids it runs (`createSpace`, `space.setRules()`); `status()` warns
+  `RULES_DIFFER`. `put`/`edit`: a field passed as `undefined` is absent. The storage estimate counts app index
+  entries and tags. The inspector uses the new reads and no longer polls. Details: `specs/011-spaces-core/research.md` A12.
+
+### 2026-10-09: `hypergraph/next` — story 7, app versions (ALPHA, breaking within `next`)
+
+- Members on two versions of an app share a space and read each other's records; an older app's edit keeps
+  the fields it doesn't know. Records of types the app doesn't know are kept; once it declares them, its index
+  is rebuilt at open (also when a type gains an index or a link field with allowed targets) and shows them.
+- Type changes between versions: appending a link field with `links` and adding indexes are now allowed;
+  changing a link field's targets, or appending the first link field of a `onePerMember` type, throws
+  `INCOMPATIBLE_TYPES` naming the field. Opening a folder with an older declaration throws too.
+- App indexes leave out records with no value in the indexed fields; `where()` with no value throws `INVALID_RECORD`.
+  Details: `specs/011-spaces-core/research.md` A11.
+
+### 2026-10-09: `hypergraph/next` — story 6, holding part of a space, rebuild, diagnostics (ALPHA, breaking within `next`)
+
+- Storage budgets: `hg.setBudget()`, `hg.storage()`, `space.setBudget(bytes | null)` (default 5 GB, less on a nearly
+  full disk). Past its share a space drops content oldest first; dropped records stay listed, reads fetch
+  their content within the bound or say `complete: false`. Own records, decision logs and the personal space
+  are never dropped. Disk measured within the budget (+10%) on Node and Bare.
+- Policies `auto` / `everything` (`createSpace({ policy })`, `space.setPolicy()`); `status()` gains `policy, held,
+  stored, share, budget, belowPolicy`, warnings `BELOW_POLICY` and `OVER_BUDGET`, and a `status` event.
+- A lost or unreadable index is rebuilt from the held logs (new files `instance.json` and `logs` in the
+  instance folder); after a crash only the unsaved part is redone.
+- `space.inspect()` (read-only diagnostics, for the inspector), `space.roles()`; a device just able to record
+  decisions waits instead of failing.
+- Fixes: a second `addDevice()` code crashed the process (a new code now replaces the previous one); superseded
+  settings and device heads no longer pile up. Details: `specs/011-spaces-core/research.md` A10.
+
+### 2026-10-09: `hypergraph/next` — story 5, the graph vocabulary and shared editing (ALPHA, breaking within `next`)
+
+- v1's graph vocabulary: `relate(a, b, type, { value, data })`, `unrelate`, `edges(record, { direction,
+  type, order, limit })` → `{ items, count, complete }`, `tag`, `untag`, `getByTag(tag, { type, limit,
+  after })`; `query(type).tag()`, `.on(record)`, `.since()`, `.until()`, combining with `.by()` and `.where()`.
+  Relations and tags are said by who may edit the record they start from.
+- Shared editing: types `editable: 'members'` or `{ permission }`; the latest allowed edit wins; only the
+  author deletes (a moderator's `del()` takes the record down); an editor who loses the permission is cut,
+  the same for every member.
+- Decision methods and writes catch up with connected decision writers before refusing, and `NOT_ALLOWED`
+  says why; `space.status()` warns while a space has a single settler; `redeemInvite` waits 30 s by default.
+- Breaking within `next`: a delete by a non-author editor of a `'members'` / `{ permission }` type no longer
+  counts; a custom role can't lose an app permission; the owner holds every permission; `linked()` without a
+  type leaves relations and tags out. Details: `specs/011-spaces-core/research.md` A9.
+
+### 2026-10-09: `hypergraph/next` — story 4, invites and decision rights that follow devices (ALPHA, breaking within `next`)
+
+- Security: a device proof must come straight from the identity key (a stolen device could mint new
+  devices no removal named). Decision rights follow devices: every device of an owner, admin or moderator
+  records decisions with no extra step; a removed device loses that right in every space.
+- Admins settle the decision order with the owner (one device each), so a space keeps settling with its
+  owner gone for good.
+- Invites: `revokeInvite(link)`, `redemptions(link)`, `createInvite({ uses: Infinity })` for a public link,
+  invites to custom roles; `redeemInvite` says why it was refused (`INVITE_EXPIRED`, `INVITE_USED_UP`,
+  `INVITE_REVOKED`, `NOT_ALLOWED`) and waits `readTimeout` by default (was 60 s).
+- `moderateAction('unban', who)`; `Hypergraph.open(dir, { password })` keeps the recovery phrase sealed from
+  the first moment; `query(type).fromDevice(key)`.
+- Breaking within `next`: a demoted moderator's device is no longer a decision-log writer; `invite/revoke`
+  carries the whole invite. The write limit for open spaces moves to story 9. Details:
+  `specs/011-spaces-core/research.md` A8.
+
+### 2026-10-09: `hypergraph/next` — story 3, devices and the personal space (ALPHA, breaking within `next`)
+
+- Devices: `hg.addDevice({ password })` → `{ code, added }`; `Hypergraph.open(dir, { joinCode, deviceName })`
+  on the new device, which receives the recovery phrase; `hg.devices()`; `hg.removeDevice(key, { password }
+  | { recoveryPhrase })` — removing a device needs the recovery phrase. A removed device's app gets
+  `DEVICE_REMOVED`; what it wrote before stays, nothing after counts.
+- The personal space: `hg.personal` (encrypted, shared by the identity's devices only, found again from the
+  recovery phrase), `hg.setSetting(name, value)` / `hg.settings()`; every device joins the spaces any of them
+  created or joined.
+- Latest wins across devices, after restarts too. Moderation: `moderateAction('ban', who, { from: record })`
+  also drops that record and everything after it.
+- Fixed: a space opened while already connected to one of its members never synced over that connection
+  (e.g. joining a second forum from the same inviter).
+- Breaking within `next`: space channels use the discovery key as id; folders made before story 3 have no
+  personal space (recreate them). Details: `specs/011-spaces-core/research.md` A6–A7.
+
+### 2026-10-08: `hypergraph/next` — story 2, community rules (ALPHA, breaking within `next`)
+
+- Roles: `setRole`, `getRole`, `removeRole` (v1's meanings: `removeRole` takes the member out),
+  `defineRole(name, permissions)` for custom roles. Moderation: `moderateAction('flag' | 'hide' |
+  'reveal' | 'remove', record)` and `moderateAction('ban', identity)`. A removal or ban keeps what the
+  person wrote up to what the decider held, for everyone, newcomers included; nothing after counts.
+- App rules: `Hypergraph.open(dir, { rules: [{ id, validate (record, ctx) }] })`, checked by the writer
+  (`RULE_REJECTED`) and by every member before keeping a record.
+- Records may carry `hidden: true` (`get()` only; lists leave them out) and `flagged: true`.
+- Recovery phrase: `protectRecoveryPhrase(password)`, `forgetRecoveryPhrase()`;
+  `recoveryPhrase(password)` once protected. Apps should ask right after showing it.
+- `complete` no longer waits for members nobody has heard from; deleted records no longer stall a
+  newcomer's indexing; test-only helpers moved to `lib/testing.js`.
+- Breaking within `next` (no released users): decision and invite encodings changed (member/remove and
+  role/set carry a cut, redemptions carry the redeemer's decision-log key); folders made by story 1
+  should be recreated. Details: `specs/011-spaces-core/research.md` A4–A5.
+
+### 2026-10-08: `hypergraph/next`, the new core — story 1 (additive, ALPHA)
+
+- New entry point `require('hypergraph/next')` (`lib/`), beside v1 (`src/`, unchanged): one instance,
+  one identity (24-word recovery phrase), many spaces; app-declared record types; `put`, `get`, `edit`,
+  `del`; `query(type).latest/where/by` with paging and `live`; `linked`, `count`, `sum` (one vote per
+  member); invites recorded by the owner; every read bounded, returning `{ items, complete }`.
+- Runs and is tested on Node and Bare: `npm run test:next`, `npm run test:next:bare`.
+- New direct dependencies: hyperswarm (was dev), hyperdb, hyperschema, hypercore, z32, ready-resource,
+  safety-catch, blind-pairing, bare-fs/path/os/events/process (an `imports` map sends Node built-ins to
+  them under Bare); dev: bare. `.gitignore` no longer ignores `lib/`.
+- Docs: `docs/next/`. Details: `specs/011-spaces-core/`.
+
 ### 2026-10-07: dependencies
 
 - Dev dependencies `blind-peer` and `blind-peering` (research experiments `bench/v2-blind*.js`). They

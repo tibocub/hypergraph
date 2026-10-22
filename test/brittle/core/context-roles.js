@@ -106,7 +106,7 @@ test('context-roles: the creator converts a version 1 context — only it indexe
 
   const legacy = new ContextBase(a.store, null, {})
   await legacy.ready()
-  t.teardown(() => legacy.close())
+  t.teardown(() => legacy.close(), { order: -1 }) // before the store: Autobase 7.28.2 opens a store session while closing
   const ctx = legacy.key.toString('hex')
   const bCtx = await b.graph.openContext(ctx)
   await legacy.addWriter(bCtx.localKey)

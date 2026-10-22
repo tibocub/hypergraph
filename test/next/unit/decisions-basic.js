@@ -1,0 +1,200 @@
+// The decision log (research R8): space/init and member/add|remove applied
+// deterministically; a decision whose author may not make it is ignored; the
+// same decisions in the same order give the same state.
+
+const test = require('brittle')
+const b4a = require('b4a')
+const c = require('compact-encoding')
+const Corestore = require('corestore')
+const crypto = require('hypercore-crypto')
+const { Decisions } = require('../../../lib/decisions/log.js')
+const { applyNodes, initProof } = require('../../../lib/decisions/apply.js')
+const { State } = require('../../../lib/decisions/state.js')
+const { Identity } = require('../../../lib/identity.js')
+const enc = require('../../../lib/encodings.js')
+const { tmpDir, eventually } = require('../helpers.js')
+
+const hex = (b) => b4a.toString(b, 'hex')
+
+// A Hyperbee-like view in memory.
+function memoryView () {
+  const map = new Map()
+  return {
+    map,
+    async get (key) { return map.has(key) ? { key, value: map.get(key) } : null },
+    async put (key, value) { map.set(key, value) },
+    async del (key) { map.delete(key) },
+    dump () { return JSON.stringify([...map].sort()) }
+  }
+}
+const node = (writer, d) => ({ from: { key: writer }, value: c.encode(enc.decision, { stamp: 1, ...d }) })
+const init = { type: 'space/init', name: 'F', parent: null, private: false, policy: 'auto', version: 1 }
+
+test('the owner creates a space; members are added and removed; a reader agrees', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const storeA = new Corestore(tmpDir(t, 'dec-a'))
+  const storeB = new Corestore(tmpDir(t, 'dec-b'))
+  t.teardown(async () => { await storeA.close(); await storeB.close() }, { order: 0 })
+
+  const a = new Decisions(storeA, null, { identity: owner })
+  t.teardown(() => a.close(), { order: -1 })
+  await a.ready()
+  await a.init({ name: 'Forum' })
+  t.is(a.state.name, 'Forum')
+  t.ok(a.state.isMember(owner.publicKey))
+  t.is(a.state.roleOf(owner.publicKey), 'owner')
+
+  const x = crypto.randomBytes(32)
+  const y = crypto.randomBytes(32)
+  await a.append({ type: 'member/add', identity: x })
+  await a.append({ type: 'member/add', identity: y })
+  await a.append({ type: 'member/remove', identity: y, cut: [] })
+  t.ok(a.state.isMember(x))
+  t.is(a.state.roleOf(x), 'member')
+  t.absent(a.state.isMember(y))
+
+  const s1 = storeA.replicate(true)
+  const s2 = storeB.replicate(false)
+  s1.pipe(s2).pipe(s1)
+  const b = new Decisions(storeB, a.key, { identity: await Identity.create({ device: crypto.keyPair() }) })
+  t.teardown(() => b.close(), { order: -1 })
+  await b.ready()
+  t.ok(await eventually(async () => { await b.update(); return b.state.isMember(x) }, 5000), 'the reader applied the same decisions')
+  t.alike(b.state.toJSON(), a.state.toJSON(), 'identical state')
+  t.absent(b.writable, 'members without decide are not writers')
+})
+
+test('decisions whose author may not make them are ignored', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const ownerWriter = space // the bootstrap writer
+  const other = crypto.randomBytes(32)
+  const x = crypto.randomBytes(32)
+
+  const view = memoryView()
+  await applyNodes([node(other, { ...init, proof: initProof(owner, other, space) })], view, null, { space })
+  t.absent(State.from(view.map).owner, 'an init not from the first writer is ignored')
+  await applyNodes([node(ownerWriter, { ...init, proof: crypto.randomBytes(100) })], view, null, { space })
+  t.absent(State.from(view.map).owner, 'an init with a bad proof is ignored')
+  await applyNodes([node(ownerWriter, { ...init, proof: initProof(owner, ownerWriter, space) })], view, null, { space })
+  t.ok(State.from(view.map).owner, 'a valid init')
+  await applyNodes([node(ownerWriter, { ...init, name: 'Second', proof: initProof(owner, ownerWriter, space) })], view, null, { space })
+  t.is(State.from(view.map).name, 'F', 'a second init is ignored')
+
+  await applyNodes([node(other, { type: 'member/add', identity: x })], view, null, { space })
+  t.absent(State.from(view.map).isMember(x), 'an unknown writer adds no one')
+
+  // A writer whose identity is only a member may not add members.
+  const m = crypto.randomBytes(32)
+  await view.put(`writer:${hex(other)}`, { identity: hex(m) })
+  await view.put(`member:${hex(m)}`, { role: 'member', by: '', stamp: 0 })
+  await applyNodes([node(other, { type: 'member/add', identity: x })], view, null, { space })
+  t.absent(State.from(view.map).isMember(x), 'a member without the permission adds no one')
+  await applyNodes([node(ownerWriter, { type: 'member/remove', identity: owner.publicKey, cut: [] })], view, null, { space })
+  t.ok(State.from(view.map).isMember(owner.publicKey), 'the owner cannot be removed')
+  await applyNodes([node(ownerWriter, { type: 'member/add', identity: x })], view, null, { space })
+  t.ok(State.from(view.map).isMember(x), 'the owner adds members')
+})
+
+test('the same decisions give the same state; adds commute', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const first = node(space, { ...init, proof: initProof(owner, space, space) })
+  const addX = node(space, { type: 'member/add', identity: crypto.randomBytes(32) })
+  const addY = node(space, { type: 'member/add', identity: crypto.randomBytes(32) })
+
+  // The state; the decision list (~log:) follows the order applied.
+  const run = async (nodes) => { const v = memoryView(); await applyNodes(nodes, v, null, { space }); return JSON.stringify([...v.map].filter(([k]) => !k.startsWith('~')).sort()) }
+  t.is(await run([first, addX, addY]), await run([first, addX, addY]), 'replaying gives the same state')
+  t.is(await run([first, addX, addY]), await run([first, addY, addX]), 'two orders of concurrent adds converge')
+  const garbage = { from: { key: space }, value: b4a.from([99, 1, 2]) }
+  t.is(await run([first, garbage, addX]), await run([first, addX]), 'a malformed decision is skipped, not thrown')
+})
+
+// Story 6 (FR-027): the space's storage policy, changed by who may decide.
+test('settings/set changes the policy; only who may decide; only auto or everything', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  await applyNodes([node(space, { ...init, proof: initProof(owner, space, space) })], view, null, { space })
+  t.is(State.from(view.map).policy, 'auto')
+  await applyNodes([node(space, { type: 'settings/set', policy: 'everything', writeLimit: null })], view, null, { space })
+  t.is(State.from(view.map).policy, 'everything', 'the owner keeps everything')
+  await applyNodes([node(space, { type: 'settings/set', policy: 'sometimes', writeLimit: null })], view, null, { space })
+  t.is(State.from(view.map).policy, 'everything', 'an unknown policy is ignored')
+
+  const other = crypto.randomBytes(32)
+  const m = crypto.randomBytes(32)
+  await view.put(`writer:${hex(other)}`, { identity: hex(m) })
+  await view.put(`member:${hex(m)}`, { role: 'moderator', by: '', stamp: 0 })
+  await applyNodes([node(other, { type: 'settings/set', policy: 'auto', writeLimit: null })], view, null, { space })
+  t.is(State.from(view.map).policy, 'everything', 'a moderator may not change it')
+})
+
+test('settings/set records the app rules a space runs (core follow-ups); only who may decide; old entries decode', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  await applyNodes([node(space, { ...init, proof: initProof(owner, space, space) })], view, null, { space })
+  t.is(State.from(view.map).rules, null, 'none recorded')
+  await applyNodes([node(space, { type: 'settings/set', policy: null, writeLimit: null, rules: ['title-length', 'b'] })], view, null, { space })
+  const state = State.from(view.map)
+  t.alike(state.rules, ['b', 'title-length'], 'recorded, sorted')
+  t.is(state.policy, 'auto', 'the policy unchanged')
+
+  // An entry written before rules existed (no trailing field) still decodes.
+  const old = { type: 'settings/set', stamp: 1, policy: 'everything', writeLimit: null }
+  const body = c.encode(enc.decision, { ...old, rules: null })
+  t.alike(c.decode(enc.decision, body).rules, null)
+  const legacy = b4a.concat([c.encode(c.uint, enc.DECISION_TYPES.indexOf('settings/set')), c.encode(c.uint, 1), c.encode(c.bool, true), c.encode(c.string, 'everything'), c.encode(c.bool, false)])
+  const d = c.decode(enc.decision, legacy)
+  t.is(d.policy, 'everything')
+  t.is(d.rules, null, 'no rules in an older entry')
+
+  const other = crypto.randomBytes(32)
+  const m = crypto.randomBytes(32)
+  await view.put(`writer:${hex(other)}`, { identity: hex(m) })
+  await view.put(`member:${hex(m)}`, { role: 'moderator', by: '', stamp: 0 })
+  await applyNodes([node(other, { type: 'settings/set', policy: null, writeLimit: null, rules: [] })], view, null, { space })
+  t.alike(State.from(view.map).rules, ['b', 'title-length'], 'a moderator may not change them')
+})
+
+// A16: who reads a private space's history, by who may decide; entries from
+// before the setting existed decode without it.
+test('settings/set records the history setting; only visible or hidden; old entries decode', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  await applyNodes([node(space, { ...init, proof: initProof(owner, space, space) })], view, null, { space })
+  t.is(State.from(view.map).history, 'visible', 'visible by default')
+  await applyNodes([node(space, { type: 'settings/set', policy: null, writeLimit: null, rules: null, history: 'hidden' })], view, null, { space })
+  t.is(State.from(view.map).history, 'hidden')
+  t.is(State.from(view.map).policy, 'auto', 'the policy unchanged')
+  await applyNodes([node(space, { type: 'settings/set', policy: null, writeLimit: null, rules: null, history: 'sometimes' })], view, null, { space })
+  t.is(State.from(view.map).history, 'hidden', 'anything else is ignored')
+  const before = c.encode(enc.decision, { type: 'settings/set', stamp: 1, policy: 'everything', writeLimit: null, rules: ['a'] }).subarray(0, -1) // without the trailing field
+  t.is(c.decode(enc.decision, before).history, null, 'an older entry has none')
+})
+
+test('the decision list (core follow-ups): every decision in order, who, what, when, why, and whether it counted', async (t) => {
+  const owner = await Identity.create({ device: crypto.keyPair() })
+  const space = crypto.randomBytes(32)
+  const view = memoryView()
+  const x = crypto.randomBytes(32)
+  const stranger = crypto.randomBytes(32)
+  await applyNodes([
+    node(space, { ...init, proof: initProof(owner, space, space) }),
+    node(space, { type: 'role/set', identity: x, role: 'moderator', cut: [] }),
+    node(space, { type: 'moderate', action: 'hide', target: enc.idBytes({ log: crypto.randomBytes(32), seq: 1 }), reason: 'spam', cut: [] }),
+    node(stranger, { type: 'member/add', identity: x }),
+    { from: { key: space }, value: b4a.from([99, 1, 2]) }
+  ], view, null, { space })
+  const list = [...view.map].filter(([k]) => k.startsWith('~log:')).sort().map(([, v]) => v)
+  t.is(list.length, 4, 'every decodable decision, malformed ones left out')
+  t.alike(list.map((d) => [d.type, d.counted]), [['space/init', true], ['role/set', true], ['moderate', true], ['member/add', false]])
+  t.is(list[0].by, hex(owner.publicKey), 'by the owner')
+  t.is(list[0].device, hex(owner.device.publicKey), 'from this device')
+  t.alike({ identity: list[1].identity, role: list[1].role }, { identity: hex(x), role: 'moderator' })
+  t.is(list[2].reason, 'spam')
+  t.is(list[3].by, null, 'a stranger\'s writer key speaks for nobody')
+})

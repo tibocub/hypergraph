@@ -1,0 +1,253 @@
+{
+  "version": 3,
+  "offset": 0,
+  "schema": [
+    {
+      "name": "records",
+      "namespace": "hg",
+      "id": 0,
+      "type": 1,
+      "version": 1,
+      "versionField": null,
+      "indexes": [
+        "@hg/by-type",
+        "@hg/by-author",
+        "@hg/by-link",
+        "@hg/by-ix",
+        "@hg/one-per-member"
+      ],
+      "schema": "@hg/record",
+      "derived": false,
+      "key": [
+        "space",
+        "id"
+      ],
+      "trigger": null
+    },
+    {
+      "name": "logs",
+      "namespace": "hg",
+      "id": 1,
+      "type": 1,
+      "version": 1,
+      "versionField": null,
+      "indexes": [],
+      "schema": "@hg/log",
+      "derived": false,
+      "key": [
+        "space",
+        "log"
+      ],
+      "trigger": null
+    },
+    {
+      "name": "changes",
+      "namespace": "hg",
+      "id": 2,
+      "type": 1,
+      "version": 2,
+      "versionField": null,
+      "indexes": [
+        "@hg/changes-by-id"
+      ],
+      "schema": "@hg/change",
+      "derived": false,
+      "key": [
+        "space",
+        "target",
+        "id"
+      ],
+      "trigger": null
+    },
+    {
+      "name": "spaces",
+      "namespace": "hg",
+      "id": 3,
+      "type": 1,
+      "version": 1,
+      "versionField": null,
+      "indexes": [],
+      "schema": "@hg/space",
+      "derived": false,
+      "key": [
+        "key"
+      ],
+      "trigger": null
+    },
+    {
+      "name": "meta",
+      "namespace": "hg",
+      "id": 4,
+      "type": 1,
+      "version": 1,
+      "versionField": null,
+      "indexes": [],
+      "schema": "@hg/meta",
+      "derived": false,
+      "key": [
+        "name"
+      ],
+      "trigger": null
+    },
+    {
+      "name": "by-type",
+      "namespace": "hg",
+      "id": 5,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": [
+        "space",
+        "type",
+        "stamp"
+      ]
+    },
+    {
+      "name": "by-author",
+      "namespace": "hg",
+      "id": 6,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": [
+        "space",
+        "author",
+        "stamp"
+      ]
+    },
+    {
+      "name": "by-link",
+      "namespace": "hg",
+      "id": 7,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": {
+        "type": {
+          "fields": [
+            {
+              "name": "space",
+              "type": "fixed32"
+            },
+            {
+              "name": "target",
+              "type": "buffer"
+            },
+            {
+              "name": "type",
+              "type": "string"
+            },
+            {
+              "name": "stamp",
+              "type": "uint"
+            }
+          ]
+        },
+        "map": "linkKeys"
+      }
+    },
+    {
+      "name": "by-ix",
+      "namespace": "hg",
+      "id": 8,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": {
+        "type": {
+          "fields": [
+            {
+              "name": "space",
+              "type": "fixed32"
+            },
+            {
+              "name": "type",
+              "type": "string"
+            },
+            {
+              "name": "ix",
+              "type": "string"
+            },
+            {
+              "name": "stamp",
+              "type": "uint"
+            }
+          ]
+        },
+        "map": "ixKeys"
+      }
+    },
+    {
+      "name": "one-per-member",
+      "namespace": "hg",
+      "id": 9,
+      "type": 2,
+      "version": 1,
+      "collection": "@hg/records",
+      "unique": false,
+      "deprecated": false,
+      "key": {
+        "type": {
+          "fields": [
+            {
+              "name": "space",
+              "type": "fixed32"
+            },
+            {
+              "name": "type",
+              "type": "string"
+            },
+            {
+              "name": "target",
+              "type": "buffer"
+            },
+            {
+              "name": "author",
+              "type": "fixed32"
+            }
+          ]
+        },
+        "map": "onePerMember"
+      }
+    },
+    {
+      "name": "changes-by-id",
+      "namespace": "hg",
+      "id": 10,
+      "type": 2,
+      "version": 2,
+      "collection": "@hg/changes",
+      "unique": false,
+      "deprecated": false,
+      "key": [
+        "space",
+        "id"
+      ]
+    },
+    {
+      "name": "activity",
+      "namespace": "hg",
+      "id": 11,
+      "type": 1,
+      "version": 3,
+      "versionField": null,
+      "indexes": [],
+      "schema": "@hg/activity",
+      "derived": false,
+      "key": [
+        "space",
+        "period",
+        "log"
+      ],
+      "trigger": null
+    }
+  ]
+}

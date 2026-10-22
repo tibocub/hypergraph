@@ -147,7 +147,7 @@ test('index-layout: new contexts use layout 2; a context without a layout record
   // A context created before layouts existed: no context/init at all.
   const legacy = new ContextBase(a.store, null, {})
   await legacy.ready()
-  t.teardown(() => legacy.close())
+  t.teardown(() => legacy.close(), { order: -1 }) // before the store: Autobase 7.28.2 opens a store session while closing
   const legacyKey = legacy.key.toString('hex')
   const bLegacy = await b.graph.openContext(legacyKey)
   await legacy.addWriter(bLegacy.localKey)
