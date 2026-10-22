@@ -21,7 +21,10 @@ function filesIn (dir) {
   const out = []
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name)
-    if (fs.statSync(full).isDirectory()) out.push(...filesIn(full))
+    if (fs.statSync(full).isDirectory()) {
+      // a nested project (e.g. a git-ignored clone inside lib/) isn't ours
+      if (!fs.existsSync(path.join(full, 'package.json'))) out.push(...filesIn(full))
+    }
     else if (name.endsWith('.js')) out.push(full)
   }
   return out
