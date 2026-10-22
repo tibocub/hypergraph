@@ -40,7 +40,7 @@ know about hypergraph. Nothing consumes HyperBBS.
 | **HyperMD** | Document format (`.hmd`) — Markdown + directives (`:::query`, `:::script`) for layout, data views, sandboxed scripting | (standalone) |
 | **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. **Paused (2026-10-07): its successor is HyperBrowser (codename), the same vision in a web UI — a local Node program plus a browser tab first, a Pear app (desktop, mobile) later; its own repo, built on hypergraph's new core (spec 011). OpenTUI was too unstable under Node.js.** Not to be moved onto `hypergraph/v2`; its suite still runs after v1 changes while it is here. | hypergraph, HyperMD |
 | **hyperDNS** | Federated naming — `name@authority` resolves to addresses without a central registry. An authority is a trust/moderation boundary, not a global namespace. | hypergraph |
-| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`E:\Code\P2P\swarmwire`: content-addressed, verified transfer of files served in place). First version: two devices, one identity. **Waits for spec 011's first three stories.** | hypergraph (new core), swarmwire |
+| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`E:\Code\P2P\swarmwire`: content-addressed, verified transfer of files served in place). First version: two devices, one identity. **The rewrite lives in `E:\Code\P2P\SwarmFS` (fresh repo github.com/tibocub/SwarmFS, started 2026-10-22); the old code is `E:\Code\P2P\SwarmFS-old` (github.com/tibocub/SwarmFS-old), reference only.** | hypergraph (new core), swarmwire |
 
 ## Where they live (and what NOT to open)
 
@@ -57,7 +57,7 @@ E:\Code\P2P\SwarmFS\
 ⚠ **`E:\Code\P2P\` contains many near-duplicate and abandoned directories.** Before working in
 one, confirm you're in the right one:
 
-- `SwarmFS\` is the live one. **`SwarmFS-main\`, `SwarmFS-copy\`, `SwarmFS.old\`, `SwarmFS-0.1\`
+- `SwarmFS\` is the live one (the rewrite). `SwarmFS-old\` is the previous code, reference only. **`SwarmFS-main\`, `SwarmFS-copy\`, `SwarmFS.old\`, `SwarmFS-0.1\`
   are not** — do not edit them, do not read them for "current" behavior.
 - `HyperBBS\` is the live one. **`hyper-bbs\` (lowercase, hyphenated) is a different, older
   directory** — not the same project state.
