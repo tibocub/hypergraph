@@ -1,14 +1,12 @@
 {
-  "name": "holepunch-bug-demos",
+  "name": "hyperdht-lan-race-demo",
   "private": true,
-  "description": "Two standalone reproductions: a Hypercore read that hangs after a peer clears a block, and HyperDHT connections that look open but are dead when two peers dial each other at once.",
+  "description": "HyperDHT: when two peers on one host or LAN dial each other at once, one side keeps connections that look open but never carry data (hyperdht #304).",
   "scripts": {
-    "hypercore": "node hypercore-clear-stall.js plain && node hypercore-clear-stall.js wanted",
-    "hyperdht": "node hyperdht-lan-race.js 10 --one-way && node hyperdht-lan-race.js 10"
+    "demo": "node hyperdht-lan-race.js 10 --one-way && node hyperdht-lan-race.js 10"
   },
   "dependencies": {
     "b4a": "1.9.0",
-    "hypercore": "11.39.0",
-    "hyperdht": "6.34.1"
+    "hyperdht": "6.35.0"
   }
 }

@@ -1,11 +1,11 @@
-// Plain HyperDHT only (specs/research/upstream/hyperswarm.md): two processes
+// Plain HyperDHT only (hyperdht #304): two processes
 // on the same machine, local testnet, N fresh DHT nodes each, every node
 // listening. Node i of each process connects to node i of the other at the
 // same moment (as two Hyperswarm peers finding each other on a topic do),
 // writes one byte and waits for the echo. A connection the client sees open
 // but whose byte is never echoed is one the server never got.
 //
-//   node specs/research/upstream/hyperdht-lan-race.js [pairs=10] [--one-way]
+//   node hyperdht-lan-race.js [pairs=10] [--one-way]
 //
 // --one-way: only the first process dials (no simultaneous dials).
 
