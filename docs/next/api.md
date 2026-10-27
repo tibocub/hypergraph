@@ -423,6 +423,28 @@ every peer of the space (once it proved it knows the space's key), also on later
 other side adds it later. `peer.identity` is null until the peer said who it is (an instant after opening).
 One protocol per name per space (`NOT_ALLOWED`). SwarmFS's file transfers use it.
 
+### Members' connections, for your own transfer library
+
+```js
+forum.on('member-connection', (stream, peer) => {})   // peer: { identity, device } (z32)
+forum.memberConnections()                             // [{ stream, identity, device }]: connected now
+```
+
+If your app brings a library with its own wire protocol (swarmwire, for files), it needs the connections, not a few
+messages. These are the connection streams of the space's **members** only: a peer that proved who it is and may read
+here. Strangers and readers of an open space who aren't members never appear. `Protomux.from(stream)` gives the muxer
+hypergraph already uses: open your library's channel on it. Each stream comes once per space, when the peer connects
+or when it is let in later; the same stream comes from every space two devices share. A member removed later leaves
+`memberConnections()` but its stream stays open (other spaces may use it): check the list before serving.
+
+```js
+// swarmwire takes any object with join() and a 'connection' event
+const net = new EventEmitter()
+net.join = () => ({ destroy () {} })
+for (const m of forum.memberConnections()) queueMicrotask(() => net.emit('connection', m.stream))
+forum.on('member-connection', (stream) => net.emit('connection', stream))
+```
+
 ## Diagnostics
 
 ```js

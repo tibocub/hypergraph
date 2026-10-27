@@ -338,6 +338,12 @@ forum.addProtocol('swarmfs/transfer', {
 })   // ✓ pre-merge (FR-031): sync; a Protomux channel opened with every peer of this space next to hypergraph's
      //   own, once the peer proved it knows the space key; also when the other side adds it later.
      //   peer: { identity (z32, null until its hello), device (z32), send (i, msg) }. NOT_ALLOWED: name taken
+forum.on('member-connection', (stream, peer) => {})  // ✓ SwarmFS requests (A18): a proven member's connection
+forum.memberConnections()                     // ✓ sync: [{ stream, identity, device }] the members connected now
+     //   For an app's own transfer library: Protomux.from(stream) is hypergraph's muxer, open your own channel on it.
+     //   Members only (device proof + member, device not removed); each stream once per space, at its hello or when
+     //   let in. One stream serves every space two devices share. A member removed later leaves the list; its
+     //   stream isn't closed. Complements addProtocol (which opens with any peer that proved the key)
 ```
 
 ## Diagnostics (✓ story 6)
