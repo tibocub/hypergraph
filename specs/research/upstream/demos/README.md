@@ -25,6 +25,7 @@ node hyperdht-lan-race.js 10             # both sides dial at once
 | **6.35.0** (latest) | **3–7** (4 runs) |
 | 6.35.0 + PR #283 | **0** (5 runs, 100 dials); hyperdht's suite 107/107 |
 | any, `--one-way` | 0 |
+| 6.35.0 + #278, #279, #281, #286 or #308 (each alone) | still 0–10 (3 runs each): none fixes it |
 
 Example on 6.35.0:
 
