@@ -27,7 +27,7 @@ whole thing before touching anything.
                       depends on
 
       ┌──────────────┐
-      │   SwarmFS    │  bulk file transfer — PAUSED, will depend on hypergraph
+      │   SwarmFS    │  P2P filesystem — rewrite in progress, on hypergraph + swarmwire
       └──────────────┘
 ```
 
@@ -40,7 +40,7 @@ know about hypergraph. Nothing consumes HyperBBS.
 | **HyperMD** | Document format (`.hmd`) — Markdown + directives (`:::query`, `:::script`) for layout, data views, sandboxed scripting | (standalone) |
 | **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. **Paused (2026-10-07): its successor is HyperBrowser (codename), the same vision in a web UI — a local Node program plus a browser tab first, a Pear app (desktop, mobile) later; its own repo, built on hypergraph's new core (spec 011). OpenTUI was too unstable under Node.js.** Not to be moved onto `hypergraph/v2`; its suite still runs after v1 changes while it is here. | hypergraph, HyperMD |
 | **hyperDNS** | Federated naming — `name@authority` resolves to addresses without a central registry. An authority is a trust/moderation boundary, not a global namespace. | hypergraph |
-| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`E:\Code\P2P\swarmwire`: content-addressed, verified transfer of files served in place). First version: two devices, one identity. **The rewrite lives in `E:\Code\P2P\SwarmFS` (fresh repo github.com/tibocub/SwarmFS, started 2026-10-22); the old code is `E:\Code\P2P\SwarmFS-old` (github.com/tibocub/SwarmFS-old), reference only.** | hypergraph (new core), swarmwire |
+| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`E:\Code\P2P\swarmwire`, package `swarmwire-lib`, live branch `main`; app contract `docs/contract.md`: content-addressed, verified transfer of files served in place; SwarmFS uses it with no DHT announce, over hypergraph's member streams, serving on demand via `resolve(root)`). First version: two devices, one identity. **The rewrite lives in `E:\Code\P2P\SwarmFS` (fresh repo github.com/tibocub/SwarmFS, started 2026-10-22); the old code is `E:\Code\P2P\SwarmFS-old` (github.com/tibocub/SwarmFS-old), reference only.** | hypergraph (new core), swarmwire |
 
 ## Where they live (and what NOT to open)
 
