@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-27 (SwarmFS's requests, reviewed by the lead)** — hypergraph `swarmfs-requests` merged into master (next 279/279
+  on the lead's run): `space.on('member-connection')` / `memberConnections()` (members' streams for a library with its own
+  wire, complements `addProtocol`), `hg.on('spaces')`, H2–H4 confirmed. swarmwire `004-on-demand-serving` merged into its
+  `main` locally (0.6.0; unit 88/88, fs 20/20, Bare 190/190; contract test fixed for CRLF): `resolve(root)` on demand,
+  no-announce mode by adapter (no code needed), `.part` downloads, `stalled` when every peer says unavailable. Rule
+  (Tibo): a device hosts all it holds; nothing per file announced or hashed for serving. SwarmFS spec 001 updated
+  against swarmwire `main`. Open, small: swarmwire verify-before-send (a changed file can send wrong bytes and get the
+  sender banned), bounded hash cache, stable `hashFile()`; hypergraph event when a connected member is removed.
+
 - **2026-10-22** — **Spec 011 merged into master** (`2a64be8`). Before: hyperDNS tests fixed for Autobase 7.28.2's close
   order (hyperDNS `8cc62f1`; Tibo's uncommitted private-authority work reviewed: v1-only, compatible, untouched);
   hyperdht pinned 6.32.0 (`overrides` + devDependency; demo 0 dead connections); Tibo's ESLint setup kept, `test:all`
