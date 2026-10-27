@@ -64,3 +64,20 @@ test('member streams: an app\'s own Protomux channel works next to hypergraph\'s
   await f.post(fb, 'still syncing', '')
   t.ok(await eventually(async () => (await f.latest(fa)).some((p) => p.title === 'still syncing'), 10000), 'hypergraph still replicates on the same stream')
 })
+
+test('member streams: a removed member\'s stream is withdrawn once; a still-member keeps it in another space', async (t) => {
+  const { a, c, fa, fc } = await forum.threeMembers(t)
+  const other = await f.createForum(a, 'Other')
+  await f.join(c, await f.invite(other)) // c shares a's connection in both spaces
+  const gone = []
+  fa.on('member-disconnection', (stream, peer) => gone.push({ stream, peer }))
+  t.ok(await eventually(() => other.memberConnections().some((m) => m.device === c.device.publicKey), 10000), 'c is a member in the other space')
+  t.ok(await eventually(() => fa.memberConnections().some((m) => m.device === c.device.publicKey), 10000), 'and in this one')
+  await f.removeMember(fa, c.identity.publicKey)
+  t.ok(await eventually(() => gone.some((g) => g.peer.device === c.device.publicKey), 10000), 'removal fires member-disconnection')
+  await sleep(500)
+  t.is(gone.length, 1, 'once')
+  t.absent(fa.memberConnections().some((m) => m.device === c.device.publicKey), 'no longer listed here')
+  t.ok(other.memberConnections().some((m) => m.device === c.device.publicKey), 'still listed in the other space')
+  t.ok(fc)
+})
