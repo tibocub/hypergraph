@@ -108,6 +108,8 @@ const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connectin
                                                 // 30 s by default (reads keep readTimeout); refused: INVITE_EXPIRED, INVITE_USED_UP,
                                                 // INVITE_REVOKED, NOT_ALLOWED; nobody answered: INVITE_INVALID
 hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
+hg.on('spaces', (spaces) => {})                 // ✓ SwarmFS requests (A18): the list changed: a space created, joined,
+                                                //   opened from another device's list or a sub-space, or left here
 hg.types()                                      // ✓ core follow-ups: sync { name: { fields: { field: kind }, links,
                                                 //   onePerMember, editable ('author' | 'members' | { permission }),
                                                 //   index, builtin } }

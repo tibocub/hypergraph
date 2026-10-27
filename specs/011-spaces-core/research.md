@@ -1234,3 +1234,8 @@ and needs only the stream plus who is at the other end. Known limits: one stream
 share, so several spaces hand out the same stream (the app keeps one adapter, or dedupes by stream); a member removed
 later keeps its stream (hypergraph doesn't close connections other spaces may use) and simply leaves
 `memberConnections()`: an app that must stop serving it checks the list (swarmwire's admission, planned).
+
+**H1: `hg.on('spaces', (spaces))`.** Emitted with `hg.spaces()` whenever a space is kept here (created, joined by
+invite, opened from the personal space's list — a space joined on another device of the identity —, a sub-space a
+member gets) and when one is left. Kept, not opened: a space opened for an invite being redeemed isn't announced
+until let in. `test/next/forum/devices.js` (forum scenario: `forum.onForums`).

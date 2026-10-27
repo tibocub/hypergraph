@@ -100,6 +100,12 @@ function forums (hg) {
   return hg.spaces()
 }
 
+// The forum list changed: one joined or created here or on another device of
+// the account, or left (the list as argument).
+function onForums (hg, fn) {
+  hg.on('spaces', fn)
+}
+
 // `keepEverything`: every member is asked to keep the whole forum (an
 // archive); by default each keeps what fits, then the newest part.
 // `private`: only its members read it (relays and storers can't).
@@ -386,7 +392,7 @@ function liveLatest (forum, onUpdate, n = 20) {
 
 module.exports = {
   types, rules, signUp, restore, recoveryPhrase, protectPhrase, forgetPhrase,
-  addDevice, joinWithCode, devices, removeDevice, setSetting, setting,
+  addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
   forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, openLink, revokeLink, whoJoined, join,

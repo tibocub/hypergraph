@@ -127,6 +127,7 @@ const joined = await hg.redeemInvite(link)                 // on the newcomer's 
 await forum.revokeInvite(open)                             // no one else gets in with it; members stay
 await forum.redemptions(link)                              // [{ identity, at }]: who came in with it
 hg.spaces()            // [{ key, name, parent }]
+hg.on('spaces', (spaces) => {})   // the list changed (also a space joined on your other device)
 hg.space(forum.key)    // the Space
 await hg.leaveSpace(forum.key)   // drops it, and its sub-spaces, from this device
 forum.on('change', ({ types }) => {})   // records of these types changed

@@ -253,3 +253,16 @@ test('a new device code replaces the previous one: two devices added one after t
   t.is(tablet.identity.publicKey, laptop.identity.publicKey, 'the second device joins too')
   t.is(await codeOf(device(t, 'late', unused.code, { joinTimeout: 3000 })), 'INVITE_INVALID', 'the replaced code no longer works')
 })
+
+test('a forum joined or created on one device appears on the other without a restart', async (t) => {
+  const { laptop, phone, fl } = await twoDevices(t)
+  const lists = { laptop: [], phone: [] }
+  forum.onForums(laptop, (l) => lists.laptop.push(l.map((f) => f.key)))
+  forum.onForums(phone, (l) => lists.phone.push(l.map((f) => f.key)))
+  const second = await forum.createForum(laptop, 'Second')
+  t.ok(lists.laptop.some((l) => l.includes(second.key)), 'the laptop is told of the forum it created')
+  t.ok(await eventually(() => lists.phone.some((l) => l.includes(second.key) && l.includes(fl.key)), 15000), 'the phone is told, with the whole list')
+  t.ok(phone.space(second.key), 'and holds it')
+  await phone.leaveSpace(second.key)
+  t.absent(lists.phone[lists.phone.length - 1].includes(second.key), 'leaving tells too')
+})
