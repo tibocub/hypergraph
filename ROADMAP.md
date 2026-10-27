@@ -23,6 +23,13 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-28 (SwarmFS story 3)** — hypergraph `member-removed` merged (next 263/263): `member-disconnection`, rejoin
+  fires `member-connection` again, H10 (`fromDevice(me)` complete at once). swarmwire S7 fixed on `main` (c1e06d0): a
+  stream handed to one side late connected on neither (Protomux rejected the early open); unit/fs/swarm/net and Bare
+  pass, swarmwire-cli 15/15. H11: `docs/next/api.md` swarmwire example passes `{ publicKey }`. SwarmFS story 3 (fetch)
+  and `MOVE_INTO_SELF` merged into `001-personal-sync`: 19/19 Node and Bare, 100 MB in ~10 s. HyperDHT #283 comment
+  posted by Tibo. Open: S6 (`hashFile` → `{ root, size }`), `stalled` when the only peer leaves, move onto a file id.
+
 - **2026-10-27 (upstream)** — Hypercore PR merged upstream (#891 fix + stale-queue fix). HyperDHT: 6.35.0 (released
   today) still leaves dead connections (4–7 per run of our demo); open PR #283 (Holepunch staff, branch in their repo)
   applied on 6.35.0: 0 dead out of 100 dials, their suite 107/107 — comment drafted for Tibo. Pin 6.32.0 stays until it
