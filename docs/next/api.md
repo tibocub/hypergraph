@@ -443,11 +443,13 @@ member here (removed, banned, its device removed) or disconnects, `member-discon
 use it): stop serving it yourself, unless it is still a member of another space you serve.
 
 ```js
-// swarmwire takes any object with join() and a 'connection' event
+// swarmwire takes any object with join() and a 'connection' event (with { publicKey }: one id per peer;
+// swarmwire after 0.7.0, which accepts a channel the other side opened before it was handed the stream)
 const net = new EventEmitter()
 net.join = () => ({ destroy () {} })
-for (const m of forum.memberConnections()) queueMicrotask(() => net.emit('connection', m.stream))
-forum.on('member-connection', (stream) => net.emit('connection', stream))
+const hand = (stream) => net.emit('connection', stream, { publicKey: stream.remotePublicKey })
+for (const m of forum.memberConnections()) queueMicrotask(() => hand(m.stream))
+forum.on('member-connection', hand)
 // stop serving a peer that left: close swarmwire's channel on its stream
 forum.on('member-disconnection', (stream) => {
   for (const ch of Protomux.from(stream)) if (ch.protocol === 'swarmwire/0') ch.close()
