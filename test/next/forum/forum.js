@@ -14,8 +14,8 @@ const types = {
   vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true },
   // The forum's wiki: editors (the 'edit-pages' permission) edit any page.
   page: { fields: { title: 'string', body: 'text' }, editable: { permission: 'edit-pages' } },
-  // A notice board any member edits.
-  note: { fields: { text: 'text' }, editable: 'members' },
+  // A notice board any member edits, in columns ('todo', 'done'...).
+  note: { fields: { text: 'text', column: 'string' }, editable: 'members', index: [['column', 'stamp']] },
   poll: { fields: { question: 'string', on: 'link' }, links: { on: ['post'] } },
   // A post pointing at another forum or sub-forum, like a shortcut.
   shortcut: { fields: { title: 'string', to: 'space' } }
@@ -372,8 +372,18 @@ async function readPage (forum, id) {
 }
 
 // A note on the board, edited by any member.
-function pin (forum, text) {
-  return forum.put('note', { text })
+function pin (forum, text, column = 'todo') {
+  return forum.put('note', { text, column })
+}
+
+// Any member moves a note to another column.
+function moveNote (forum, note, column) {
+  return forum.edit(note, { column })
+}
+
+// The notes in a column, newest first.
+async function column (forum, name) {
+  return (await forum.query('note').where({ column: name }).latest(50)).items
 }
 
 // A poll under a post.
@@ -400,5 +410,5 @@ module.exports = {
   hide, reveal, takeDown, flag, ban, unban,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
-  makeEditor, writePage, readPage, pin, ask, polls, liveLatest
+  makeEditor, writePage, readPage, pin, moveNote, column, ask, polls, liveLatest
 }

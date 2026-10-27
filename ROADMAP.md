@@ -296,3 +296,14 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 12. Final pass done, reviewed, merged into `011-spaces-core`.
 13. **Pre-merge fixes** session, then merge spec 011 to master. SwarmFS spec session in parallel (folder
     decision pending with Tibo).
+
+## Follow-ups (not built yet)
+
+- From the audit (`specs/011-spaces-core/audit.md`): request floods, fake-key floods delaying newcomers, decisions
+  re-read in full.
+- SwarmFS's later requests (`SwarmFS/specs/requests-to-hypergraph.md`), for its later stories:
+  - **H5** read-only members: does a member whose role lacks `post` keep receiving a private space's key? If not, a
+    `read` role.
+  - **H6** concurrent versions of a record (conflict copies): SwarmFS can do it alone with a `base` field; decide
+    whether hypergraph exposes "versions that lost to a concurrent edit".
+  - **H7** a public test helper for apps (local DHT + tmp dirs, `hypergraph/testing`-style).

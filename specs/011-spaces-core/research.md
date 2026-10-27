@@ -1239,3 +1239,9 @@ later keeps its stream (hypergraph doesn't close connections other spaces may us
 invite, opened from the personal space's list — a space joined on another device of the identity —, a sub-space a
 member gets) and when one is left. Kept, not opened: a space opened for an invite being redeemed isn't announced
 until let in. `test/next/forum/devices.js` (forum scenario: `forum.onForums`).
+
+**H2–H4 confirmed, nothing to fix.** H2: a members-editable note moved between indexed columns leaves the old
+column's `where()` and appears in the new one on every member (`test/next/forum/wiki.js`; the forum's `note` gained a
+`column` field and index). H3: `where({ root }).fromDevice(dev)` returns only that device's records with that value
+(`test/next/forum/personal.js`). H4: `addProtocol()` on a private space opens with the person's newly paired device,
+which adds it when the space appears (`'spaces'`) (`test/next/net/protocol.js`). H5–H7: ROADMAP's follow-ups.
