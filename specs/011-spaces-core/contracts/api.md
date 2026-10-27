@@ -215,7 +215,8 @@ await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-de
                                                                    //   records with no value there aren't in it: where() with none
                                                                    //   throws INVALID_RECORD, story 7)
 await forum.query('comment').by(someone).latest(20)                // ✓ by author (identity key)
-await hg.personal.query('held').fromDevice(device).latest(20)      // ✓ story 4: what one device put (device key)
+await hg.personal.query('held').fromDevice(device).latest(20)      // ✓ story 4: what one device put (device key);
+     //   this device's own: complete once its own logs are indexed, never waits for others (SwarmFS H10)
 await forum.query('post').tag('rust').latest(20)                    // ✓ story 5
 await forum.query('comment').on(post).by(someone).latest(20)       // ✓ story 5: by link; filters combine (AND)
 await forum.query('post').since(t0).until(t1).latest(20)           // ✓ story 5: put at or after t0, before t1
@@ -341,11 +342,13 @@ forum.addProtocol('swarmfs/transfer', {
      //   own, once the peer proved it knows the space key; also when the other side adds it later.
      //   peer: { identity (z32, null until its hello), device (z32), send (i, msg) }. NOT_ALLOWED: name taken
 forum.on('member-connection', (stream, peer) => {})  // ✓ SwarmFS requests (A18): a proven member's connection
+forum.on('member-disconnection', (stream, peer) => {}) // ✓ A18 amendment: a handed-out stream's peer stopped being
+     //   a member here (removed, banned, device removed) or its channel closed; once; let back in → member-connection again
 forum.memberConnections()                     // ✓ sync: [{ stream, identity, device }] the members connected now
      //   For an app's own transfer library: Protomux.from(stream) is hypergraph's muxer, open your own channel on it.
      //   Members only (device proof + member, device not removed); each stream once per space, at its hello or when
-     //   let in. One stream serves every space two devices share. A member removed later leaves the list; its
-     //   stream isn't closed. Complements addProtocol (which opens with any peer that proved the key)
+     //   let in. One stream serves every space two devices share. A member removed later leaves the list
+     //   (member-disconnection); its stream isn't closed. Complements addProtocol (which opens with any peer that proved the key)
 ```
 
 ## Diagnostics (✓ story 6)
