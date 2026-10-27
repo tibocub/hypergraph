@@ -128,6 +128,20 @@ test('a type any member edits', async (t) => {
   t.is(await codeOf(forum.remove(fd, note)), 'NOT_ALLOWED', 'but only the author deletes it')
 })
 
+// SwarmFS's H2: moving an entry is an edit of an indexed field by any member;
+// listing a folder is where() on it.
+test('a note any member moves between columns leaves the old one everywhere', async (t) => {
+  const { fb, fd, all } = await wiki(t)
+  const note = await forum.pin(fb, 'ship it')
+  const texts = (name) => async (f) => (await forum.column(f, name)).map((n) => n.text).join()
+  t.ok(await agree(all, texts('todo'), 'ship it'))
+  await forum.moveNote(fd, note, 'done')
+  t.ok(await agree(all, texts('done'), 'ship it'), 'it appears in the new column everywhere')
+  t.ok(await agree(all, texts('todo'), ''), 'and leaves the old one')
+  await forum.moveNote(fb, note, 'todo')
+  t.ok(await agree(all, texts('todo'), 'ship it') && await agree(all, texts('done'), ''), 'moved back by its author')
+})
+
 test('editors relate from a shared page and tag it; a change made after seeing one wins, clocks ahead or not', async (t) => {
   const { b, fb, fc, fd, all } = await wiki(t)
   const page = await forum.writePage(fc, 'Index', '')

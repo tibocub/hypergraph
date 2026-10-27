@@ -12,7 +12,7 @@ const { eventually, sleep, open, codeOf } = require('../helpers.js')
 // The forum's types plus what a file-sharing app would keep per device.
 const types = {
   ...forum.types,
-  held: { fields: { path: 'string', holder: 'string' }, index: [['holder', 'stamp']] }
+  held: { fields: { path: 'string', holder: 'string', root: 'string' }, index: [['holder', 'stamp'], ['root', 'stamp']] }
 }
 
 test('an app record in the personal space: the other device reads it, nobody else', async (t) => {
@@ -77,6 +77,26 @@ test('query(type).fromDevice(key): what one device wrote, page by page', async (
   t.is(paths(first), '/c,/b')
   const next = await from(phone, laptop, 2, { after: first.items.at(-1) })
   t.is(paths(next), '/a', 'paging, no gaps or repeats')
+})
+
+// SwarmFS's H3: "does this device hold X" is an index filter and fromDevice
+// together (AND).
+test('where() and fromDevice() combine', async (t) => {
+  const laptop = await open(t, { label: 'laptop', types })
+  await laptop.connectToSwarm()
+  const { code } = await laptop.addDevice()
+  const phone = await open(t, { label: 'phone', types, joinCode: code })
+  await laptop.personal.put('held', { path: '/l1', holder: '', root: 'r1' })
+  await laptop.personal.put('held', { path: '/l2', holder: '', root: 'r2' })
+  t.ok(await eventually(async () => {
+    try { return !!(await phone.personal.put('held', { path: '/p1', holder: '', root: 'r1' })) } catch { return false }
+  }, 10000))
+  const paths = (r) => r.items.map((x) => x.path).join()
+  const holds = (hg, dev, root) => hg.personal.query('held').where({ root }).fromDevice(dev.device.publicKey).latest(10)
+  t.ok(await eventually(async () => paths(await holds(phone, laptop, 'r1')) === '/l1', 10000), 'the laptop\'s r1 only')
+  t.ok(await eventually(async () => paths(await holds(laptop, phone, 'r1')) === '/p1', 10000), 'the phone\'s r1 only')
+  t.is(paths(await holds(laptop, phone, 'r2')), '', 'the phone holds no r2')
+  t.is(paths(await holds(laptop, laptop, 'r2')), '/l2')
 })
 
 // Story 6 (ROADMAP 2026-10-09): superseded settings and heads don't pile up.

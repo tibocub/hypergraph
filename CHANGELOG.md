@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-27: `hypergraph/next` — SwarmFS's requests (additions, nothing breaks)
+
+- `space.on('member-connection', (stream, peer))` and `space.memberConnections()`: the connection streams of a space's
+  proven members only (never strangers or non-member readers), for an app's own transfer library (swarmwire) to open
+  its own Protomux channel on. Complements `addProtocol()`. Spec 011 research.md A18.
+- `hg.on('spaces', (spaces))`: the space list changed (created, joined, joined on another device, left).
+- Confirmed by tests: `where()` follows a members' edit of an indexed field (moving an entry); `where()` and
+  `fromDevice()` combine; `addProtocol()` on a private space reaches a newly paired device.
+
 ### 2026-10-15: dependencies at their latest versions (both cores)
 
 - Autobase 7.28.2 throws `Corestore is closed` when a base (a v1 graph or context) is closed after its Corestore:

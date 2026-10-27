@@ -1213,3 +1213,35 @@ upstream (holepunchto/hyperdht#304); the open PR #283 fixes our reproductions, a
 (`specs/research/upstream/hyperswarm.md`). Hyperswarm's duplicate rule is not involved. The workaround in
 `lib/network.js` stays until a HyperDHT release has the fix; comments corrected. `bench/next/double-dial.js` miscounted
 pairs apart (old connections closing after their replacement, processes exiting first); fixed.
+
+### A18. SwarmFS's requests (2026-10-27)
+
+Worker session `swarmfs-requests`, from `SwarmFS/specs/requests-to-hypergraph.md` (branch `001-personal-sync`).
+
+**Member streams (replaces SwarmFS's request S1 to swarmwire).** `space.on('member-connection', (stream, peer))` and
+`space.memberConnections()` → `[{ stream, identity, device }]` hand out the connection streams of the space's proven
+members: a peer whose device proof arrived on the space channel (so it also proved the space key) and who may read
+here (member, device not removed). Handed out once per stream, when both hold: at its hello, or when a decision lets
+it in later. A stranger (no space channel) or a non-member who knows the key (an open space's reader) is never handed
+out. The stream is the Hyperswarm connection: `Protomux.from(stream)` returns hypergraph's muxer, so an app's own
+library (swarmwire) opens its own channel on it. SwarmFS wraps them as swarmwire's network object
+(`{ join () { return { destroy () {} } }, on('connection', …) }`). `test/next/net/member-streams.js`.
+
+It **complements `addProtocol()`**, doesn't replace it: `addProtocol` is a few typed messages for an app that has no
+wire protocol of its own, opened with every peer that proved the key (in an open space that includes readers who
+aren't members) and closed with the space channel; member streams are for a library that brings its own protocol
+and needs only the stream plus who is at the other end. Known limits: one stream serves every space the two devices
+share, so several spaces hand out the same stream (the app keeps one adapter, or dedupes by stream); a member removed
+later keeps its stream (hypergraph doesn't close connections other spaces may use) and simply leaves
+`memberConnections()`: an app that must stop serving it checks the list (swarmwire's admission, planned).
+
+**H1: `hg.on('spaces', (spaces))`.** Emitted with `hg.spaces()` whenever a space is kept here (created, joined by
+invite, opened from the personal space's list — a space joined on another device of the identity —, a sub-space a
+member gets) and when one is left. Kept, not opened: a space opened for an invite being redeemed isn't announced
+until let in. `test/next/forum/devices.js` (forum scenario: `forum.onForums`).
+
+**H2–H4 confirmed, nothing to fix.** H2: a members-editable note moved between indexed columns leaves the old
+column's `where()` and appears in the new one on every member (`test/next/forum/wiki.js`; the forum's `note` gained a
+`column` field and index). H3: `where({ root }).fromDevice(dev)` returns only that device's records with that value
+(`test/next/forum/personal.js`). H4: `addProtocol()` on a private space opens with the person's newly paired device,
+which adds it when the space appears (`'spaces'`) (`test/next/net/protocol.js`). H5–H7: ROADMAP's follow-ups.
