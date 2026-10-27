@@ -81,3 +81,34 @@ test('member streams: a removed member\'s stream is withdrawn once; a still-memb
   t.ok(other.memberConnections().some((m) => m.device === c.device.publicKey), 'still listed in the other space')
   t.ok(fc)
 })
+
+test('member streams: a ban withdraws the stream; let back in, it is handed out again', async (t) => {
+  const { c, fa } = await forum.threeMembers(t)
+  const seen = collect(fa)
+  const gone = []
+  fa.on('member-disconnection', (stream, peer) => gone.push(peer))
+  const isC = (p) => p.device === c.device.publicKey
+  t.ok(await eventually(() => fa.memberConnections().some(isC), 10000), 'c is listed')
+  const before = seen.length
+  await f.ban(fa, c.identity.publicKey)
+  t.ok(await eventually(() => gone.some(isC), 10000), 'a ban fires member-disconnection')
+  await f.unban(fa, c.identity.publicKey)
+  await f.giveRole(fa, c.identity.publicKey, 'member')
+  t.ok(await eventually(() => seen.slice(before).some((s) => isC(s.peer)), 10000), 'let back in: member-connection again')
+  t.is(gone.filter(isC).length, 1, 'one disconnection')
+})
+
+test('member streams: a removed device\'s stream is withdrawn', async (t) => {
+  const { a, fa } = await forum.threeMembers(t)
+  await f.protectPhrase(a, 'pw')
+  const { code } = await f.addDevice(a, 'pw')
+  const phone = await forum.device(t, 'a-phone', code)
+  const shown = await eventually(() => f.forums(phone).some((x) => x.key === fa.key), 15000)
+  t.ok(shown, 'the phone holds the forum')
+  const gone = []
+  const isPhone = (p) => p.device === phone.device.publicKey
+  t.ok(await eventually(() => fa.memberConnections().some(isPhone), 15000), 'the phone\'s stream is a member\'s')
+  fa.on('member-disconnection', (stream, peer) => gone.push(peer))
+  await f.removeDevice(a, phone.device.publicKey, 'pw')
+  t.ok(await eventually(() => gone.some(isPhone), 10000), 'device removal fires member-disconnection')
+})
