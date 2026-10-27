@@ -79,6 +79,29 @@ test('query(type).fromDevice(key): what one device wrote, page by page', async (
   t.is(paths(next), '/a', 'paging, no gaps or repeats')
 })
 
+// SwarmFS's H10: what this device wrote is all here, so reading it doesn't
+// wait for the other device, even offline after a restart.
+test('fromDevice(this device) answers at once, complete, with the other device offline', async (t) => {
+  const laptop = await open(t, { label: 'laptop', types })
+  await laptop.connectToSwarm()
+  const { code } = await laptop.addDevice()
+  const phone = await open(t, { label: 'phone', types, joinCode: code })
+  t.ok(await eventually(async () => {
+    try { return !!(await phone.personal.put('held', { path: '/phone', holder: '' })) } catch { return false }
+  }, 10000))
+  await laptop.personal.put('held', { path: '/a', holder: '' })
+  const dir = laptop.dir
+  await phone.close()
+  await laptop.close()
+  const again = await open(t, { dir, types, readTimeout: 5000 })
+  const started = Date.now()
+  const res = await again.personal.query('held').fromDevice(again.device.publicKey).latest(10)
+  t.is(res.items.map((x) => x.path).join(), '/a')
+  t.ok(res.complete, 'complete')
+  t.ok(Date.now() - started < 1000, 'without waiting the read timeout: ' + (Date.now() - started) + ' ms')
+  t.absent((await again.personal.query('held').latest(10, { timeout: 300 })).complete, 'everything: not complete, the phone is offline')
+})
+
 // SwarmFS's H3: "does this device hold X" is an index filter and fromDevice
 // together (AND).
 test('where() and fromDevice() combine', async (t) => {
