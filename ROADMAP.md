@@ -23,6 +23,13 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-27 (upstream)** — Hypercore PR merged upstream (#891 fix + stale-queue fix). HyperDHT: 6.35.0 (released
+  today) still leaves dead connections (4–7 per run of our demo); open PR #283 (Holepunch staff, branch in their repo)
+  applied on 6.35.0: 0 dead out of 100 dials, their suite 107/107 — comment drafted for Tibo. Pin 6.32.0 stays until it
+  ships. swarmwire 0.7.0 on `main` (verify before send, bounded cache, `hashFile`). SwarmFS spec 001 stories 1, 2, 4
+  built (14/14 Node and Bare); new request H10 (own records must not wait the read bound) sent to the
+  `member-removed` session.
+
 - **2026-10-27 (SwarmFS's requests, reviewed by the lead)** — hypergraph `swarmfs-requests` merged into master (next 279/279
   on the lead's run): `space.on('member-connection')` / `memberConnections()` (members' streams for a library with its own
   wire, complements `addProtocol`), `hg.on('spaces')`, H2–H4 confirmed. swarmwire `004-on-demand-serving` merged into its
