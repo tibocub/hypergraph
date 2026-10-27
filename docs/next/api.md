@@ -321,7 +321,8 @@ tags on a shared record follow the same rule: anyone who may edit it may relate 
 const { items, complete } = await forum.query('post').latest(20)
 const next = await forum.query('post').latest(20, { after: items.at(-1) })   // the next page
 await forum.query('comment').by(someone).latest(20)     // by author
-await hg.personal.query('held').fromDevice(phone).latest(20)   // what one device put (its device key)
+await hg.personal.query('held').fromDevice(phone).latest(20)   // what one device put (its device key); this
+                                                                // device's own: complete at once, no waiting
 await forum.query('post').where({ forum: 'news' }).latest(20)   // a declared index
 const stop = forum.query('post').live(({ items }) => render(items), { limit: 20 })
 
@@ -428,6 +429,7 @@ One protocol per name per space (`NOT_ALLOWED`). SwarmFS's file transfers use it
 
 ```js
 forum.on('member-connection', (stream, peer) => {})   // peer: { identity, device } (z32)
+forum.on('member-disconnection', (stream, peer) => {}) // no longer a member here, or gone
 forum.memberConnections()                             // [{ stream, identity, device }]: connected now
 ```
 
@@ -435,8 +437,10 @@ If your app brings a library with its own wire protocol (swarmwire, for files), 
 messages. These are the connection streams of the space's **members** only: a peer that proved who it is and may read
 here. Strangers and readers of an open space who aren't members never appear. `Protomux.from(stream)` gives the muxer
 hypergraph already uses: open your library's channel on it. Each stream comes once per space, when the peer connects
-or when it is let in later; the same stream comes from every space two devices share. A member removed later leaves
-`memberConnections()` but its stream stays open (other spaces may use it): check the list before serving.
+or when it is let in later; the same stream comes from every space two devices share. When that peer stops being a
+member here (removed, banned, its device removed) or disconnects, `member-disconnection` comes once and it leaves
+`memberConnections()`; let back in, `member-connection` comes again. The stream itself stays open (other spaces may
+use it): stop serving it yourself, unless it is still a member of another space you serve.
 
 ```js
 // swarmwire takes any object with join() and a 'connection' event
@@ -444,6 +448,10 @@ const net = new EventEmitter()
 net.join = () => ({ destroy () {} })
 for (const m of forum.memberConnections()) queueMicrotask(() => net.emit('connection', m.stream))
 forum.on('member-connection', (stream) => net.emit('connection', stream))
+// stop serving a peer that left: close swarmwire's channel on its stream
+forum.on('member-disconnection', (stream) => {
+  for (const ch of Protomux.from(stream)) if (ch.protocol === 'swarmwire/0') ch.close()
+})
 ```
 
 ## Diagnostics

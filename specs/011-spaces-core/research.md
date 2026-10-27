@@ -1235,6 +1235,17 @@ share, so several spaces hand out the same stream (the app keeps one adapter, or
 later keeps its stream (hypergraph doesn't close connections other spaces may use) and simply leaves
 `memberConnections()`: an app that must stop serving it checks the list (swarmwire's admission, planned).
 
+*Amendment (2026-10-27, branch `member-removed`):* `space.on('member-disconnection', (stream, peer))` fires once
+when a handed-out stream's peer stops being a member here (removed, banned, device removed) or its space channel
+closes, checked wherever `member-connection` is (peer list changed, decisions applied). The stream stays open; the
+app closes its own channel on it (the swarmwire adapter in `docs/next/api.md` does). A member let back in is handed
+out again. Per space: a peer still a member of another space keeps its stream there. Tests: three peers, removal,
+ban then rejoin, device removal (`test/next/net/member-streams.js`).
+
+*SwarmFS H10 (same branch):* `query(type).fromDevice(thisDevice)` is complete as soon as this device's own logs
+are indexed (they are always whole here), without waiting for another member: after a restart with the other
+device offline it answered after the full `readTimeout`. Other reads are unchanged. `test/next/forum/personal.js`.
+
 **H1: `hg.on('spaces', (spaces))`.** Emitted with `hg.spaces()` whenever a space is kept here (created, joined by
 invite, opened from the personal space's list — a space joined on another device of the identity —, a sub-space a
 member gets) and when one is left. Kept, not opened: a space opened for an invite being redeemed isn't announced

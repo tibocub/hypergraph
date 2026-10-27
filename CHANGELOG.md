@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `space.on('member-connection', (stream, peer))` and `space.memberConnections()`: the connection streams of a space's
   proven members only (never strangers or non-member readers), for an app's own transfer library (swarmwire) to open
   its own Protomux channel on. Complements `addProtocol()`. Spec 011 research.md A18.
+- `space.on('member-disconnection', (stream, peer))`: a handed-out stream's peer is no longer a member here (removed,
+  banned, device removed) or disconnected; stop serving it (the stream stays open). Let back in: `member-connection`
+  again.
+- `query(type).fromDevice(thisDevice)` answers at once, `complete`, even with your other devices offline (SwarmFS H10).
 - `hg.on('spaces', (spaces))`: the space list changed (created, joined, joined on another device, left).
 - Confirmed by tests: `where()` follows a members' edit of an indexed field (moving an entry); `where()` and
   `fromDevice()` combine; `addProtocol()` on a private space reaches a newly paired device.
