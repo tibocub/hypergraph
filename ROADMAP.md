@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-28 (SwarmFS review, lead)** — Branch `claude/vibrant-chaplygin-a50df1` 22/22 Node and Bare, not merged.
+  Measured: a paired PC reopened with the phone offline takes ~0.4 s per held file (300 files: 124 s; rescan's two
+  `space.get` per file, run before connecting); a second open of the instance folder fails on its lock, so `serve`
+  blocks every other command. Decided (Tibo): the CLI is a trial tool → one long-running shell (online, serving,
+  commands on stdin), no IPC; one-shot commands stay and refuse clearly while a shell runs. A password at init/join
+  (as decided 2026-10-09). The background process comes sooner than "later". Local DHT stays the test network until
+  a VPS. Served files stay editable, renamable and deletable by the person (checked: Node's read handles allow it on
+  Windows). Before shared workspaces: `resolve` must be scoped by peer and space.
+
 - **2026-10-28 (SwarmFS story 3)** — hypergraph `member-removed` merged (next 263/263): `member-disconnection`, rejoin
   fires `member-connection` again, H10 (`fromDevice(me)` complete at once). swarmwire S7 fixed on `main` (c1e06d0): a
   stream handed to one side late connected on neither (Protomux rejected the early open); unit/fs/swarm/net and Bare
