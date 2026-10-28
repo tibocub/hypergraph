@@ -23,6 +23,18 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-28 (SwarmFS spec 002 "always on", grilled with Tibo)** — Next after v1 (shared workspaces after it).
+  Host: the running `swarmfs` shell acts on its own (watch, fetch, serve); no service, no IPC; login start and tray
+  come with the desktop app. Desktops only; the library stays on Bare (the phone app, its own project, embeds it).
+  Every added folder is a **linked folder** (two-way): new local files added, missing ones fetched; `link` links an
+  existing space folder to a local path on another device, `unlink` leaves files. Inside linked folders SwarmFS
+  renames, moves and updates files, and what it replaces or removes goes to `.swarmfs-trash` (constitution I amended
+  for linked folders only, MINOR). A local delete removes the entry for everyone; a vanished or unreadable linked
+  folder is paused, never read as deleted. Concurrent edits → conflict copies `name (device's copy).ext` (a `base`
+  field on file records). Watching: a fixed ignore list + a synced `.swarmfsignore` (gitignore subset); hash once
+  still 2 s. Auto-fetch stops below max(5 GB, 5 %) free. Trash never emptied on its own (`trash`, `trash empty`).
+  Later, as user settings: the floor, trash auto-empty, a bandwidth cap.
+
 - **2026-10-28 (SwarmFS review, lead)** — Branch `claude/vibrant-chaplygin-a50df1` 22/22 Node and Bare, not merged.
   Measured: a paired PC reopened with the phone offline takes ~0.4 s per held file (300 files: 124 s; rescan's two
   `space.get` per file, run before connecting); a second open of the instance folder fails on its lock, so `serve`
