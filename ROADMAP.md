@@ -23,6 +23,15 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-29 (SwarmFS 002 merged; hypergraph review read)** — SwarmFS spec 002 merged into its `001-personal-sync`
+  (e450c4a, 63/63 Node and Bare; SC-001 3.8 s for 10,000 files, SC-004 36 s for 1,000). It filed H16 (no `change`
+  for another device's edit), H17 (a device paired after a private space got ~1,000 records never gets access:
+  blocks real use) and swarmwire S9 (served files stay open: Windows folders can't be renamed). The "Hypergraph
+  code review" session (2026-10-28) found the root of H10/H12/H14/H16: reads wait by default and changing state has
+  no signal. Decided (Tibo): hypergraph and SwarmFS kept in step: hypergraph is the foundation and must be
+  reliable; SwarmFS is its real-usage test. Started in parallel: H17 fix (`lib/`), a spec "reads that don't
+  wait, change events for everything that changes" (docs only until H17 merges), swarmwire S9.
+
 - **2026-10-28 (SwarmFS spec 002 "always on", grilled with Tibo)** — Next after v1 (shared workspaces after it).
   Host: the running `swarmfs` shell acts on its own (watch, fetch, serve); no service, no IPC; login start and tray
   come with the desktop app. Desktops only; the library stays on Bare (the phone app, its own project, embeds it).
@@ -325,24 +334,21 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
   research, docs or another repo can run alongside.
 - Every change to the core's API updates the reddit clone and its tests in the same change
   (CLAUDE.md rule 3).
+- **hypergraph and SwarmFS stay in step**: a SwarmFS request (`SwarmFS/specs/requests-to-*.md`) that shows a flaw
+  in the core is fixed in hypergraph as a rule, not patched case by case; after any change to the new core, the
+  lead runs SwarmFS's `npm run test:all` too, and marks the request done there.
 
 ## Now
 
-1. Spec 011 is planned (branch `011-spaces-core`: spec, plan, research R1–R20, data model, API contract,
-   76 tasks).
-2. Story 1 done and reviewed (branch `011-spaces-core`).
-3. Story 2 done and reviewed.
-4. Story 3 done and reviewed → **SwarmFS can start** (its own repo and spec, prompt written with Tibo).
-5. Story 4 done and reviewed.
-6. Story 5 done and reviewed.
-7. Story 6 done and reviewed.
-8. Story 7 and the inspector done, reviewed, merged into `011-spaces-core`.
-9. Core follow-ups done, reviewed, merged.
-10. Story 8 done, reviewed, merged.
-11. Story 9 done, reviewed, merged: all stories built.
-12. Final pass done, reviewed, merged into `011-spaces-core`.
-13. **Pre-merge fixes** session, then merge spec 011 to master. SwarmFS spec session in parallel (folder
-    decision pending with Tibo).
+(2026-10-29; spec 011 merged into master 2026-10-22, history in Decisions.)
+
+1. **H17 fix** (hypergraph worker): late-paired device never reads a big private space. Then SwarmFS's suite.
+2. **Spec "reads that don't wait, change events"** (hypergraph worker, docs only) → lead review → build after 1.
+   Covers H10/H12/H14/H15/H16; SwarmFS drops its `timeout: 200` and `'logs'` shortcuts.
+3. **swarmwire S9** (worker): close served files once idle.
+4. After 1–3: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
+   plus availability through `blind-peering` (the code review's steps 2–3).
+5. Later: hyperDNS onto the new core or frozen, then v1 removed.
 
 ## Follow-ups (not built yet)
 
