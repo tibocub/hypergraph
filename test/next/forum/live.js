@@ -26,8 +26,12 @@ test('a live latest-posts list follows posts, not comments or votes', async (t) 
   t.ok(await eventually(async () => (await fa.count('comment', { on: p })).value === 1 && (await forum.score(fa, p)) === 2, 3000), 'a indexed the comment and votes')
   t.is(runs, before, 'the posts list was not recomputed')
 
+  await forum.edit(fb, p, { title: 'Live, edited' })
+  t.ok(await eventually(() => posts.some((x) => x.title === 'Live, edited'), 3000), 'b\'s edit shows up (spec 012: edits fire change)')
+
   stop()
+  const stopped = runs
   await forum.post(fb, 'After stop', '')
   await eventually(async () => (await forum.latest(fa)).length === 2, 3000)
-  t.is(runs, before, 'stopped lists stay stopped')
+  t.is(runs, stopped, 'stopped lists stay stopped')
 })
