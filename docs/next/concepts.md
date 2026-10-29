@@ -115,6 +115,16 @@ Settling needs most of the settlers online at once; a space whose only settler i
 applies new decisions, but never settles them again (the unsettled part keeps growing), so **give a
 space an admin** or two. `space.status()` warns while only one member settles (`SINGLE_SETTLER`).
 
+## Helpers
+
+A post reaches others only while its author and another member are online together, unless the space has
+**helpers**: always-on blind peers (Holepunch's `blind-peer`) its owner lists in the space's settings
+(`setHelpers`). Members hand them the decision log and the logs they hold, in the background; a member
+coming online later gets them back from a helper by ordinary replication. A helper can't tell which logs
+exist (it only stores cores), so members who record decisions also list the space's logs in the decision
+log (`logs/list`, not shown in `decisions()`); each listed log is checked like one a peer names. Helpers
+are never required and never waited for. See [api.md](api.md#helpers-keeping-a-space-available-while-everyone-is-offline).
+
 ## Sub-spaces and private spaces
 
 A **sub-space** is a space shown inside another: a sub-forum, a folder with its own rules, a private

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-29: `hypergraph/next` — helpers: blind peers keep a space available (spec 013)
+
+- `space.setHelpers(keys)` (owner only) lists blind-peer servers (`blind-peer-cli`, unchanged); `space.helpers`
+  on every member (`'decisions'` fires). Members connect and hand over the space in the background; a member
+  online later reads through a helper alone. Never required, never waited for. Private spaces stay unreadable
+  to helpers.
+- Wire format (additive): `settings/set` gets a trailing `helpers` field; a new `logs/list` decision lists log
+  keys (members who record decisions, only in spaces with helpers), so members find authors they never met.
+  Peers from before this ignore both. `blind-peering` is now a dependency. See `specs/013-helpers/`.
+
 ### 2026-10-29: `hypergraph/next` — R13 was a test artifact; `complete` after a reconnect guarded (no API change)
 
 - Spec 012's R13 ("`complete` turns true on reconnect before the peer's new records") was the test's clock:
