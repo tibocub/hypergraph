@@ -193,6 +193,20 @@ function join (hg, link, opts) {
   return hg.redeemInvite(link, opts)
 }
 
+// --- helpers (spec 013) ---
+
+// The forum's helpers: always-on servers (a VPS running blind-peer-cli) that
+// keep its posts available while everyone is offline. Owner only; never
+// required: with none, or all down, the forum works as without.
+function setHelpers (forum, keys) {
+  return forum.setHelpers(keys)
+}
+
+// "Kept by: …" (their keys); read again on 'decisions'.
+function helpers (forum) {
+  return forum.helpers
+}
+
 // --- roles and moderation ---
 
 // 'moderator', 'admin', 'member', or a role the forum defined (addRole).
@@ -430,7 +444,7 @@ module.exports = {
   addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
   forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
-  invite, openLink, revokeLink, whoJoined, join,
+  invite, openLink, revokeLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
   hide, reveal, takeDown, flag, ban, unban,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,

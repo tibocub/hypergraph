@@ -396,6 +396,28 @@ from a point in time on (newest first, [concepts.md](concepts.md#big-spaces)); `
 everything and this device can't: give it more room), `OVER_BUDGET` (what this device may not drop —
 its own records, the decisions, the list of records — is already more than its share).
 
+## Helpers: keeping a space available while everyone is offline
+
+```js
+await forum.setHelpers(['9cxr385dhs…'])   // the owner: keys of blind-peer servers (z32 or hex; [] clears)
+forum.helpers                            // ['9cxr385dhs…'] on every member: show "kept by: …"
+forum.on('decisions', () => {})          // the list may have changed
+```
+
+A **helper** is an always-on server running Holepunch's `blind-peer-cli`, unchanged (e.g. a small VPS):
+it keeps the cores it is handed, follows them live, and serves them back by plain replication; it can't
+read a private space's content. Once online (`connectToSwarm`), every member's app connects to the
+space's helpers in the background and hands them the space's decisions and every log it holds, so a
+member coming online later reads what was posted while nobody else was online. A member who records
+decisions (owner, admins, moderators) also lists the logs it holds in the decisions, so a member finds
+the posts of people it never met on the helper.
+
+Never required: with no helper, or with all of them down or a key that is wrong, opening, writing and
+reading work exactly as without, and nothing waits for a helper. Owner only for now (`NOT_ALLOWED`
+otherwise); a sub-space uses its top space's helpers. At most 8; each core goes to 2 of them. A helper is
+a cache, not an archive: a full one drops whole old cores and never fetches them again
+(`specs/research/availability.md`). Joining still needs a member online (invites are answered by members).
+
 ## Roles, listed
 
 ```js
@@ -438,7 +460,7 @@ async reads, read again.
 | `get`, `query`, `linked`, `count`, `sum`, `tags`, `edges`, `getByTag` | `space.on('change', ({ types, records }) => {})` |
 | `hg.spaces()`, `space.subspaces()`, `space.name`, `space.parent` | `hg.on('spaces', (spaces) => {})` |
 | `space.members()`, `getRole()`, `roles()` | `space.on('members', () => {})` |
-| `space.decisions()`, `redemptions()`, `space.history` | `space.on('decisions', () => {})` |
+| `space.decisions()`, `redemptions()`, `space.history`, `space.helpers` | `space.on('decisions', () => {})` |
 | `space.status()` | `space.on('status', (status) => {})` |
 | `space.peers()` | `space.on('peers', (peers) => {})` |
 | `space.memberConnections()` | `'member-connection'`, `'member-disconnection'` |

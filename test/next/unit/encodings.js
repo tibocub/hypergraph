@@ -61,13 +61,22 @@ test('every decision of data-model.md round trips', (t) => {
     { type: 'invite/redeem', stamp: 11, redemption: crypto.randomBytes(300) },
     { type: 'key/rotate', stamp: 12, epoch: 1, commit: key() },
     { type: 'subspace/create', stamp: 13, key: key(), name: 'News', private: false, writeRoles: ['moderator'] },
-    { type: 'settings/set', stamp: 14, policy: 'everything', writeLimit: null, rules: null, history: null },
-    { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 }, rules: ['title-length'], history: 'hidden' },
+    { type: 'settings/set', stamp: 14, policy: 'everything', writeLimit: null, rules: null, history: null, helpers: null },
+    { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 }, rules: ['title-length'], history: 'hidden', helpers: null },
+    { type: 'settings/set', stamp: 18, policy: null, writeLimit: null, rules: null, history: null, helpers: [b4a.toString(key(), 'hex')] }, // spec 013
+    { type: 'settings/set', stamp: 19, policy: null, writeLimit: null, rules: null, history: null, helpers: [] }, // cleared
+    { type: 'logs/list', stamp: 20, logs: [{ space: key(), log: key() }] },
     { type: 'writer/add', stamp: 16, key: crypto.randomBytes(32), proof: crypto.randomBytes(140) },
     { type: 'device/remove', stamp: 17, device: crypto.randomBytes(32), cut: crypto.randomBytes(40), proof: crypto.randomBytes(140) }
   ]
   for (const d of all) roundTrip(t, enc.decision, d, d.type)
   t.exception(() => c.encode(enc.decision, { type: 'nope', stamp: 1 }))
+})
+
+test('a settings decision written before helpers existed decodes with none (spec 013)', (t) => {
+  const old = { type: 'settings/set', stamp: 1, policy: 'auto', writeLimit: null, rules: ['r'], history: 'visible' }
+  const bytes = c.encode(enc.decision, { ...old, helpers: null })
+  t.is(c.decode(enc.decision, bytes.subarray(0, bytes.byteLength - 1)).helpers, null, 'no trailing field: null')
 })
 
 test('invites and redemptions round trip', (t) => {
