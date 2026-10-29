@@ -28,14 +28,14 @@ const hg = await Hypergraph.open('./data', {
   rules: [{ id: 'title-length', validate (record, ctx) { return record.type !== 'post' || record.title.length <= 300 } }],
   budget: 5e9,          // ✓ story 6: bytes for the whole app, until setBudget() (default 5 GB, or what it holds
                         //   plus half the free disk if smaller)
-  readTimeout: 5000,    // default bound for reads, ms
+  // readTimeout: removed in spec 012 (reads answer at once; a read's own { timeout } waits)
   mnemonic: undefined,  // restore an identity from its recovery phrase
   password: undefined,  // ✓ story 4: the recovery phrase is sealed by it from the first moment (new account,
                         //   mnemonic or joinCode); on a folder whose phrase is still in plain text, protects it
   bootstrap: undefined  // DHT nodes (tests use a local DHT)
 })
 
-// ✓ story 1: types, readTimeout, mnemonic, bootstrap. Opening a folder that already holds another
+// ✓ story 1: types, mnemonic, bootstrap. Opening a folder that already holds another
 //   identity with a different mnemonic throws NOT_ALLOWED; changed types throw INCOMPATIBLE_TYPES.
 // ✓ story 2: rules. validate(record, ctx) gets the record's fields plus id, type, author, device, stamp,
 //   and ctx = { space }; returning false or throwing rejects it. It must be deterministic and look only
@@ -105,11 +105,12 @@ await hg.settings()                // ✓ { theme: 'dark' }
 const forum = await hg.createSpace({ name: 'My forum', policy: 'auto' /* or 'everything' */, private: false })  // ✓ name, policy (story 6); ✓ private (story 8)
 const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connecting if needed); resolves to the Space once a
                                                 // member who records decisions let us in. ✓ story 5: waits up to
-                                                // 30 s by default (reads keep readTimeout); refused: INVITE_EXPIRED, INVITE_USED_UP,
+                                                // 30 s by default (reads don't wait); refused: INVITE_EXPIRED, INVITE_USED_UP,
                                                 // INVITE_REVOKED, NOT_ALLOWED; nobody answered: INVITE_INVALID
 hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
 hg.on('spaces', (spaces) => {})                 // ✓ SwarmFS requests (A18): the list changed: a space created, joined,
-                                                //   opened from another device's list or a sub-space, or left here
+                                                //   opened from another device's list or a sub-space, or left here;
+                                                //   ✓ spec 012: also a listed space's name or parent changing (H12)
 hg.types()                                      // ✓ core follow-ups: sync { name: { fields: { field: kind }, links,
                                                 //   onePerMember, editable ('author' | 'members' | { permission }),
                                                 //   index, builtin } }
@@ -138,8 +139,14 @@ await forum.setPolicy('everything')             // ✓ story 6: 'auto' | 'everyt
 await forum.setRules()                          // ✓ core follow-ups: records this app's rule ids as the ones the space
                                                 //   runs (who may decide; createSpace records the creator's). Rules are
                                                 //   code: mismatches can't be prevented, only detected (RULES_DIFFER)
-forum.on('change', ({ types }) => {})           // ✓ records of these types changed
-forum.on('status', (status) => {})              // ✓ story 6: when policy, held, belowPolicy, budget or warnings change
+forum.on('change', ({ types, records }) => {})  // ✓ records changed; ✓ spec 012: records [{ id, type, deleted }],
+                                                //   edits included; deleted null | { by: 'author', stamp, device } |
+                                                //   { by: 'space' }
+forum.on('status', (status) => {})              // ✓ story 6: when policy, held, belowPolicy, budget or warnings change;
+                                                //   ✓ spec 012: access, settlers, complete too
+forum.on('members', () => {})                   // ✓ spec 012: members(), getRole(), roles() may have changed
+forum.on('decisions', () => {})                 // ✓ spec 012: decisions(), redemptions(), history may have changed
+hg.on('devices', () => {}); hg.on('settings', () => {})   // ✓ spec 012: devices(), settings() may have changed
 forum.on('peers', (peers) => {})                // ✓ core follow-ups: a peer connected or left (peers() as argument)
 forum.on('logs', () => {})                      // ✓ core follow-ups: a log was accepted or what is indexed of one moved
                                                 //   (at most every 100 ms)
@@ -195,7 +202,8 @@ const post = await forum.put('post', { title: 'Hello', text: 'First!' })   // �
 //   identity, device the one that wrote the current version; futureStamp: true if stamped > 10 min ahead;
 //   ✓ hidden: true (hidden by a moderator: only get() returns it), flagged: true (flagged by a moderator)
 //   ✓ story 8: unreadable: true (written in the clear in a private space: listed, no content)
-const { record, complete } = await forum.get(post.id)   // ✓ record null if not held (or deleted)
+const { record, complete, deleted } = await forum.get(post.id)   // ✓ record null if not held (or deleted);
+                                                         //   ✓ spec 012: deleted (as in 'change') tells which (H15)
 await forum.edit(post.id, { text: 'First! (edited)' })   // ✓ changes these fields, keeps the others; resolves to the
                                                          //   new version; NOT_ALLOWED unless the type lets this member edit
 await forum.del(post.id)                                 // ✓ every member stops showing it and clears its blocks;
@@ -210,20 +218,21 @@ await forum.del(post.id)                                 // ✓ every member sto
 ## Queries and the graph
 
 ```js
-const { items, complete } = await forum.query('post').latest(20)   // ✓ newest first (by when it was put)
+const { items, complete } = await forum.query('post').latest(20)   // ✓ newest first (by when it was put);
+     //   ✓ spec 012: every read answers at once; { timeout } waits while incomplete, answering once complete
 await forum.query('post').where({ forum: 'news' }).latest(20)      // ✓ app-declared index (INVALID_TYPE if not declared;
                                                                    //   records with no value there aren't in it: where() with none
                                                                    //   throws INVALID_RECORD, story 7)
 await forum.query('comment').by(someone).latest(20)                // ✓ by author (identity key)
 await hg.personal.query('held').fromDevice(device).latest(20)      // ✓ story 4: what one device put (device key);
-     //   this device's own: complete once its own logs are indexed, never waits for others (SwarmFS H10)
+     //   this device's own: complete once its own logs are indexed (spec 012: every read answers at once)
 await forum.query('post').tag('rust').latest(20)                    // ✓ story 5
 await forum.query('comment').on(post).by(someone).latest(20)       // ✓ story 5: by link; filters combine (AND)
 await forum.query('post').since(t0).until(t1).latest(20)           // ✓ story 5: put at or after t0, before t1
 await forum.query('post').latest(20, { after: items.at(-1), timeout: 2000 })   // ✓ paging: after the last record of
                                                                    //   the previous page; own bound
 const stop = forum.query('post').live(({ items, complete }) => render(items), { limit: 20 })   // ✓ sync; returns stop();
-                                                                   //   re-run only when records of its type change
+                                                                   //   re-run only when records of its type change, and while incomplete (spec 012)
 
 await forum.linked(post, 'comment', { timeout })   // ✓ { items, complete } — what points at it, oldest first
 await forum.count('comment', { on: post })         // ✓ { value, complete }
@@ -270,10 +279,10 @@ await forum.moderateAction('ban', someone, { from: spam })        // ✓ the sam
 // ✓ moderators, admins, owner (NOT_ALLOWED otherwise); a demoted moderator's later decisions are ignored
 //   by every member, earlier ones stay. Each call resolves once this member applied the decision.
 // ✓ story 5: before refusing, every role, moderation and invite method catches up with the connected members
-//   who record decisions (within readTimeout); NOT_ALLOWED says why (banned, not a member, role too low, their
+//   who record decisions (within 5 s); NOT_ALLOWED says why (banned, not a member, role too low, their
 //   role at or above yours). setRole to a role without an app permission cuts the member's edits relying on it.
 // ✓ story 6: a device whose member was just given a role that records decisions (or a new device of such a
-//   member) waits, within readTimeout (at least 5 s), to become a decision writer instead of failing.
+//   member) waits, within 5 s, to become a decision writer instead of failing.
 ```
 
 ## Invites
@@ -317,7 +326,7 @@ hg.space(record.to)                              // ✓ follow it: the Space if 
 // ✓ private (spaces and sub-spaces): records sealed per key epoch (fields and links; type, author, stamp
 //   visible); keys reach members' devices as grants from members who hold them (a newcomer reads once one is
 //   online); when someone loses access, a member who may decide or moderate changes the key before writing
-//   again (put() waits within readTimeout for that, or NOT_ALLOWED). A member without the key: complete:
+//   again (put() waits within 5 s for that, or NOT_ALLOWED). A member without the key: complete:
 //   false, nothing shown. A record written in the clear: listed with unreadable: true, no content. No key is
 //   ever shown (inspect(): private, epoch, readable — never the key).
 // ✓ story 9: a member holding a private space it may not read (removed, a relay) is told at once:
@@ -360,7 +369,7 @@ const snap = await forum.inspect()   // read-only: writes nothing, fetches nothi
 //   key, name, personal,            // the space
 //   parent, subspaces, private,     // ✓ story 8: the space it is in (or null), [{ key, name, private }]
 //   epoch, readable,                //   a private space's key epoch (null: none), this device holds it (never the key)
-//   access,                         // ✓ story 9: as status() gives it
+//   access,                         // ✓ story 9: as status() gives it (status() also has complete: spec 012)
 //   reading: { heldFrom, byActivity, entries },   // ✓ story 9: read from then on (null: all), by activity lists,
 //                                   //   activity entries kept here
 //   complete,                       // as reads say it (isComplete: every known block held, a member reached)
@@ -399,7 +408,7 @@ tagging or editing a record you may not edit; deleting someone else's record wit
 an app permission; with the reason), `NOT_FOUND` (unrelating or untagging what isn't there).
 
 Story 4 uses: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `NOT_ALLOWED` (refused redemptions, with
-their reason, within the read bound), `INVITE_INVALID` (nobody able to let us in answered in time),
+their reason, within its 30 s bound), `INVITE_INVALID` (nobody able to let us in answered in time),
 `NOT_ALLOWED` / `NOT_FOUND` for `createInvite`, `revokeInvite` and `unban`.
 
 Story 3 adds: `DEVICE_REMOVED` (writing from a device removed from the account), `NOT_ALLOWED` for

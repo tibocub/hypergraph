@@ -95,7 +95,7 @@ async function open (t, opts = {}) {
   const { Hypergraph } = require('../../lib/index.js')
   const dir = opts.dir || tmpDir(t, opts.label)
   const bootstrap = opts.bootstrap === undefined ? await testBootstrap(t) : opts.bootstrap
-  const hg = await Hypergraph.open(dir, { readTimeout: 2000, ...opts, bootstrap })
+  const hg = await Hypergraph.open(dir, { ...opts, bootstrap })
   t.teardown(() => bounded(hg.close(), 10000, 'hg.close()'), { order: 0 })
   hg.dir = dir
   return hg

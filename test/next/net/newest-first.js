@@ -3,7 +3,8 @@
 // newest periods; a page further back widens what it reads; in the background
 // the rest arrives while the space fits its share, and never beyond it.
 // Principle I: what it shows once complete is what a member holding
-// everything shows.
+// everything shows. The newcomer's reads ask to wait (reads answer at once
+// otherwise, spec 012; test/next/net/honest-reads.js plays the live page).
 
 const test = require('brittle')
 const forum = require('../forum/forum.js')
@@ -45,7 +46,7 @@ test('a newcomer\'s first page is complete after the newest periods only; it equ
   const { fa, ids } = await archive(t)
   const d = await account(t, 'd')
   const fd = await forum.join(d, await forum.invite(fa))
-  const first = await fd.query('post').latest(20)
+  const first = await fd.query('post').latest(20, { timeout: 10000 })
   t.ok(first.complete, 'the first page is complete')
   t.alike(view(first.items), view((await fa.query('post').latest(20)).items), 'the same page as a\'s')
   t.ok(testing.reading(fd).horizon !== null, 'd reads from a horizon')
@@ -53,8 +54,8 @@ test('a newcomer\'s first page is complete after the newest periods only; it equ
   const from = testing.readFrom(fd)[aLog]
   t.ok(from > N / 2, `d read a's log from block ${from} of ${N}, not from the start`)
   const target = (await fa.get(ids[N - 4])).record
-  t.is(await forum.score(fd, target), await forum.score(fa, target), 'the same score for a post of the first page')
-  const comments = await fd.linked(target, 'comment')
+  t.is((await fd.sum('vote', 'value', { on: target, timeout: 10000 })).value, await forum.score(fa, target), 'the same score for a post of the first page')
+  const comments = await fd.linked(target, 'comment', { timeout: 10000 })
   t.ok(comments.complete && comments.items.length === 1, 'its comment, complete')
 
   // further back: a page 60 hours old
@@ -62,7 +63,7 @@ test('a newcomer\'s first page is complete after the newest periods only; it equ
   let page = null
   let theirs = null
   for (let i = 0; i < 12; i++) {
-    page = await fd.query('post').latest(20, { after })
+    page = await fd.query('post').latest(20, { after, timeout: 10000 })
     theirs = await fa.query('post').latest(20, { after })
     after = page.items.at(-1)
   }
@@ -88,7 +89,7 @@ test('a newcomer whose share is smaller than the space holds the newest part onl
   const d = await account(t, 'd')
   await forum.setAppBudget(d, 700e3) // the archive needs about 0.8 MB here
   const fd = await forum.join(d, await forum.invite(fa))
-  t.ok((await fd.query('post').latest(20)).complete, 'its first page is complete')
+  t.ok((await fd.query('post').latest(20, { timeout: 10000 })).complete, 'its first page is complete')
   const aLog = testing.ownLog(fa)
   await eventually(() => fd.status().share !== null, 5000)
   const settled = await eventually(async () => {

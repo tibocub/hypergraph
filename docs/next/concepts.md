@@ -161,16 +161,18 @@ and for good; anything past it is ignored by everyone, even by members who had a
 
 ## Complete answers
 
-Each member answers queries from its own local index of what it holds. Every read is **bounded**: it
-answers from what is held, waits (up to `readTimeout`, 5 s by default, or the read's own `timeout`) for
-what is known to exist but not held yet, and returns `{ items, complete }`.
+Each member answers queries from its own local index of what it holds. Every read **answers at once**
+from what is held and returns `{ items, complete }`; given its own `timeout`, it waits up to that while
+something known to exist isn't held yet (spec 012). What it needs still starts (an older part of a big
+space, content dropped here), and `change` names the records when they arrive.
 
 `complete: false` means: some record this member knows exists isn't held yet (its log is longer than
 what has arrived, or a peer says it is), or this member hasn't yet looked at another member's list of the
 space's logs since the app started. A read is complete only for records it could hold: a page of the
 latest posts is complete once everything from its oldest post on is here, so a newcomer to a big space
 gets a complete first page long before it holds the whole space (see [Big spaces](#big-spaces)). The answer is still
-useful — show it, and read again later (or use a live query). A space where you are the only member,
+useful — show it, and read again when told (a live query, or the read's event:
+[api.md](api.md#knowing-when-to-read-again)). A space where you are the only member,
 on your only device, is always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
 of can't be waited for. Records deleted by their authors leave nothing to wait for either.
 

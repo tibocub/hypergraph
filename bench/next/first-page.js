@@ -80,7 +80,7 @@ async function main () {
   const opened = []
   const writers = []
   const open = async (name, opts = {}) => {
-    const hg = await Hypergraph.open(path.join(root, name), { types, bootstrap: testnet.bootstrap, readTimeout: 10000, ...opts })
+    const hg = await Hypergraph.open(path.join(root, name), { types, bootstrap: testnet.bootstrap, ...opts })
     opened.push(hg)
     return hg
   }
@@ -140,7 +140,7 @@ async function main () {
     let page = null
     let tries = 0
     do {
-      page = await fd.query('post').latest(20)
+      page = await fd.query('post').latest(20, { timeout: 10000 }) // waits while incomplete (reads answer at once otherwise)
       tries++
     } while (!page.complete && Date.now() - t1 < 60000)
     const ms = Date.now() - t1

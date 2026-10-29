@@ -104,16 +104,16 @@ test('nobody able to let you in is online: INVITE_INVALID after the bound, or th
   t.is(c.spaces().length, 0, 'the space is not kept')
 })
 
-test('joining waits past the read bound by default (30 s): the inviter comes online 2 s later', async (t) => {
+test('joining waits (30 s by default), though reads do not: the inviter comes online 2 s later', async (t) => {
   const a = await account(t, 'a')
   const fa = await forum.createForum(a, 'Patient')
   const link = await forum.invite(fa)
   await a.close()
-  const n = await open(t, { types: forum.types, rules: forum.rules, readTimeout: 500 })
+  const n = await open(t, { types: forum.types, rules: forum.rules })
   const joining = forum.join(n, link)
   await new Promise((resolve) => setTimeout(resolve, 2000))
   const a2 = await open(t, { dir: a.dir, types: forum.types, rules: forum.rules })
   await a2.connectToSwarm()
   const fn = await joining
-  t.is(await forum.roleOf(fn, n.identity.publicKey), 'member', 'let in, well after its 500 ms read bound')
+  t.is(await forum.roleOf(fn, n.identity.publicKey), 'member', 'let in, 2 s later')
 })

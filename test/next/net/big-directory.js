@@ -35,7 +35,7 @@ test('a newcomer to a space with many logs opens only those active in the period
 
   const d = await account(t, 'd')
   const fd = await forum.join(d, await forum.invite(fa))
-  const first = await fd.query('post').latest(6)
+  const first = await fd.query('post').latest(6, { timeout: 10000 }) // the newcomer's read asks to wait (spec 012)
   t.ok(first.complete, 'the first page is complete')
   t.alike(view(first.items), view((await fa.query('post').latest(6)).items), 'and the same as a\'s')
   t.ok(testing.reading(fd).byActivity, 'd reads by activity lists')
@@ -43,7 +43,7 @@ test('a newcomer to a space with many logs opens only those active in the period
   t.absent(opened.includes(testing.ownLog(old1)) || opened.includes(testing.ownLog(old2)), 'the logs of members who wrote long ago are not opened')
   t.ok(opened.includes(testing.ownLog(new1)) && opened.includes(testing.ownLog(new2)), 'those of members who wrote now are')
 
-  const all = await fd.query('post').latest(50)
+  const all = await fd.query('post').latest(50, { timeout: 10000 })
   t.ok(all.complete, 'reading back to the beginning: complete')
   t.alike(view(all.items), view((await fa.query('post').latest(50)).items), 'every post, as a has them')
   t.ok(testing.logs(fd).includes(testing.ownLog(old1)), 'the old logs were opened when a read went back there')

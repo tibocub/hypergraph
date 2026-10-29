@@ -63,7 +63,7 @@ test('the index folder deleted: rebuilt at the next start, the same forum shown,
   await b.close()
   fs.rmSync(path.join(b.dir, 'index'), { recursive: true, force: true })
 
-  const again = await open(t, { dir: b.dir, ...opts, readTimeout: 200 }) // not connected (reads wait little): rebuilt from what it holds
+  const again = await open(t, { dir: b.dir, ...opts }) // not connected: rebuilt from what it holds
   t.is(again.identity.publicKey, b.identity.publicKey, 'the same person')
   t.alike(again.spaces().map((s) => s.key), [fb.key], 'the same forums')
   const f = again.space(fb.key)
@@ -78,7 +78,7 @@ test('an unreadable index: set aside and rebuilt', async (t) => {
   const dir = path.join(b.dir, 'index')
   for (const name of fs.readdirSync(dir)) if (name === 'CURRENT' || name.startsWith('MANIFEST')) fs.writeFileSync(path.join(dir, name), 'garbage')
 
-  const again = await open(t, { dir: b.dir, ...opts, readTimeout: 200 })
+  const again = await open(t, { dir: b.dir, ...opts })
   const f = again.space(fb.key)
   t.ok(await eventually(async () => (await view(again, f)) === before, 10000), 'the same forum shown')
   t.ok(fs.readdirSync(b.dir).some((n) => n.startsWith('index.broken-')), 'the damaged index is kept aside, not deleted')

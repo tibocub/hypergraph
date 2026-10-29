@@ -77,6 +77,6 @@ test('auto: dropped content isn\'t fetched back when room comes back, only when 
   await forum.setAppBudget(b, null)
   await sleep(3000)
   t.absent(await testing.holdsBlock(fb, posts[0].id), 'not fetched back')
-  t.is((await fb.get(posts[0].id)).record.text, posts[0].text, 'until read')
+  t.is((await fb.get(posts[0].id, { timeout: 5000 })).record.text, posts[0].text, 'until read (opening the post: waits for it)')
   t.ok(await testing.holdsBlock(fb, posts[0].id))
 })

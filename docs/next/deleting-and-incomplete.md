@@ -23,6 +23,11 @@ asking every copy to go:
   a moderator can reveal it again.
 - **Edited.** The old version is replaced everywhere; what members show is always the latest one.
 
+`get(id)` says which: `{ record: null, deleted: { by: 'author', stamp, device } }` (deleted by its author),
+`{ deleted: { by: 'space' } }` (taken down), or `deleted: null` with `record: null`: not here (yet), or
+never heard of. So an app never takes "not received yet" for "deleted". `change` lists a deleted record with
+the same `deleted`.
+
 What deleting **can't** promise, and your app should say where people delete things:
 
 - Someone who already read the post may remember it, or have copied it (a screenshot).
@@ -41,9 +46,9 @@ editor who doesn't like the page edits it; the next edit can restore it.
 const { items, complete } = await forum.query('post').latest(20)
 ```
 
-Every read answers from what this device holds, waits a little (5 s by default, `{ timeout }` to change
-it) for what it knows exists but hasn't received yet, and then answers anyway, with `complete` saying
-whether anything is missing.
+Every read answers at once from what this device holds, with `complete` saying whether anything it
+knows of is still on its way. A read given `{ timeout }` waits up to that for it (a one-shot script);
+an app's screens don't wait: they show the answer and update when told.
 
 `complete: false` means **"there is more I know of but haven't received yet"**: a member's records still
 downloading, a member whose list of logs this device hasn't looked at yet, a post too old for what this
@@ -53,10 +58,11 @@ device keeps (its content is fetched from whoever holds it, and that member is o
 What to do in the UI:
 
 - **Show the answer.** Add a quiet hint ("still syncing…") rather than a spinner that blocks.
-- **Read again later**, or use a live query, which re-runs when records arrive:
-  `forum.query('post').live(({ items, complete }) => render(items, complete))`.
-- **Don't wait forever.** Nothing in hypergraph waits longer than its bound; if the only members holding
-  something are offline, the answer stays incomplete until one comes back.
+- **Update it when told**: a live query re-runs when records arrive and when the answer may have become
+  complete: `forum.query('post').live(({ items, complete }) => render(items, complete))`. Every other read
+  has its event ([api.md](api.md#knowing-when-to-read-again)).
+- **Don't wait forever.** If the only members holding something are offline, the answer stays incomplete
+  until one comes back; `space.status().complete` and its `status` event say when everything is here.
 
 `complete: true` means everything this device knows of, from the oldest item of the answer on, is here —
 for a newcomer to a big space, the same page a member holding everything shows. It can't promise more
@@ -69,5 +75,6 @@ always here.
 ### Private spaces: "not for me"
 
 In a private space this device may not read (it was removed, or it only passes data on), reads answer at
-once with `{ items: [], complete: false, access: 'none' }` instead of waiting. `space.status().access` says
-`'full'`, `'waiting'` (a new member whose key hasn't arrived yet: reads wait as usual) or `'none'`.
+with `{ items: [], complete: false, access: 'none' }`. `space.status().access` says `'full'`, `'waiting'` (a
+new member whose key hasn't arrived yet: reads are incomplete until it does, and `status` says when) or
+`'none'`.

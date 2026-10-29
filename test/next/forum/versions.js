@@ -115,7 +115,7 @@ test('records of a type the app doesn\'t know are kept, and shown once it learns
 
   // b's app is updated: the same folder, opened with the new types.
   await b.close()
-  const updated = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules, readTimeout: 200 })
+  const updated = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules })
   const fu = updated.space(fa.key)
   t.ok(await eventually(async () => ids(await forum.polls(fu, p)) === good.id && (await polls(fu)) === 2, 10000), 'the poll is shown; the bad one kept, its link ignored')
   t.is(ids(await forum.polls(fu, cm)), '', 'not under the comment there either')
@@ -123,7 +123,7 @@ test('records of a type the app doesn\'t know are kept, and shown once it learns
   t.is(await view(fu), before, 'the same forum as the others')
   await updated.close()
 
-  const again = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules, readTimeout: 200 })
+  const again = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules })
   const fg = again.space(fa.key)
   t.is(ids(await forum.polls(fg, p)), good.id, 'restarted: the same')
   t.is(testing.indexedBlocks(fg), 0, 'and nothing indexed again')

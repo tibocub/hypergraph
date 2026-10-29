@@ -1,6 +1,6 @@
 // The forum: the reference app for hypergraph's new core (spec 011, SC-002).
 // Everything a forum does with its data, through the public API only: no
-// networking, replication or cryptography code. Keep it under 400 lines; if
+// networking, replication or cryptography code. Keep it under 450 lines; if
 // something here is awkward to write, fix the API, not this file.
 
 const { Hypergraph } = require('hypergraph/next')
@@ -395,9 +395,34 @@ async function polls (forum, on) {
   return (await forum.linked(on, 'poll')).items
 }
 
-// Calls onUpdate(posts) now and whenever posts change; returns stop().
+// --- live screens ---
+// Reads answer at once with what this device holds; `complete` false means
+// more is on its way: show the list with a quiet "still syncing" hint, and
+// the screen updates itself. Each returns stop().
+
+// The latest posts: onUpdate(posts, complete) now and whenever posts change.
 function liveLatest (forum, onUpdate, n = 20) {
-  return forum.query('post').live(({ items }) => onUpdate(items), { limit: n })
+  return forum.query('post').live(({ items, complete }) => onUpdate(items, complete), { limit: n })
+}
+
+// The replies to a post or a comment, newest first, edits and deletes included.
+function liveThread (forum, on, onUpdate, n = 100) {
+  return forum.query('comment').on(on).live(({ items, complete }) => onUpdate(items, complete), { limit: n })
+}
+
+// Who is here, as people() lists them.
+function liveMembers (forum, onUpdate) {
+  const show = async () => onUpdate(await forum.members())
+  forum.on('members', show)
+  show()
+  return () => forum.off('members', show)
+}
+
+// The forums, with their names (also those of forums joined on another device).
+function liveForums (hg, onUpdate) {
+  hg.on('spaces', onUpdate)
+  onUpdate(hg.spaces())
+  return () => hg.off('spaces', onUpdate)
 }
 
 module.exports = {
@@ -410,5 +435,6 @@ module.exports = {
   hide, reveal, takeDown, flag, ban, unban,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
-  makeEditor, writePage, readPage, pin, moveNote, column, ask, polls, liveLatest
+  makeEditor, writePage, readPage, pin, moveNote, column, ask, polls,
+  liveLatest, liveThread, liveMembers, liveForums
 }

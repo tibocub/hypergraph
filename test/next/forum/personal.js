@@ -93,12 +93,12 @@ test('fromDevice(this device) answers at once, complete, with the other device o
   const dir = laptop.dir
   await phone.close()
   await laptop.close()
-  const again = await open(t, { dir, types, readTimeout: 5000 })
+  const again = await open(t, { dir, types })
   const started = Date.now()
   const res = await again.personal.query('held').fromDevice(again.device.publicKey).latest(10)
   t.is(res.items.map((x) => x.path).join(), '/a')
   t.ok(res.complete, 'complete')
-  t.ok(Date.now() - started < 1000, 'without waiting the read timeout: ' + (Date.now() - started) + ' ms')
+  t.ok(Date.now() - started < 1000, 'without waiting: ' + (Date.now() - started) + ' ms')
   t.absent((await again.personal.query('held').latest(10, { timeout: 300 })).complete, 'everything: not complete, the phone is offline')
 })
 

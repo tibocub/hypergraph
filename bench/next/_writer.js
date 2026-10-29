@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const commands = {
   async open ({ dir, bootstrap, count }) {
     for (let i = 0; i < count; i++) {
-      const hg = await Hypergraph.open(path.join(dir, 'a' + i), { types, bootstrap, readTimeout: 10000 })
+      const hg = await Hypergraph.open(path.join(dir, 'a' + i), { types, bootstrap })
       await hg.connectToSwarm()
       hgs.push(hg)
     }

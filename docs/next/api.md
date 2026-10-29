@@ -8,6 +8,11 @@ Every key the API gives out (record ids, space keys, identity and device keys) i
 Reads return `{ items, complete }`, `{ record, complete }` or `{ value, complete }` (see
 [concepts.md](concepts.md#complete-answers)). Errors are `HypergraphError` with a `code`.
 
+Two rules (spec 012): **reads answer at once** from what this device holds, `complete` saying whether
+something it knows of is still on its way (a read waits only when you give it `{ timeout }`); and
+**everything a read returns has an event** that says when to read again
+([Knowing when to read again](#knowing-when-to-read-again)).
+
 ## Open, identity, network
 
 ```js
@@ -16,7 +21,6 @@ const { Hypergraph } = require('hypergraph/next')
 const hg = await Hypergraph.open('./data', {
   types,                 // your record types (below)
   rules,                 // your app's rules (below)
-  readTimeout: 5000,     // how long reads wait for known-but-missing data, ms (joining waits 30 s)
   mnemonic: undefined,   // a recovery phrase, to restore an identity in a new folder
   password: undefined    // keeps the recovery phrase sealed by it from the first moment
 })
@@ -51,10 +55,10 @@ const device = await added                                   // { publicKey, nam
 // On the phone, in an empty folder:
 const phone = await Hypergraph.open('./data', { types, rules, joinCode: code, deviceName: 'phone' })
 
-await hg.devices()                      // [{ publicKey, name, current }]
+await hg.devices()                      // [{ publicKey, name, current }]; hg.on('devices', () => {}) when it changes
 await hg.removeDevice(lost.publicKey, { password })   // or { recoveryPhrase: words }
 await hg.setSetting('theme', 'dark')    // any JSON value, the same on every device
-await hg.settings()                     // { theme: 'dark' }
+await hg.settings()                     // { theme: 'dark' }; hg.on('settings', () => {}) when one changes
 hg.personal                             // the personal space
 await hg.personal.put('held', { path: '/music/a.mp3', holder: hg.device.publicKey })
 ```
@@ -127,10 +131,11 @@ const joined = await hg.redeemInvite(link)                 // on the newcomer's 
 await forum.revokeInvite(open)                             // no one else gets in with it; members stay
 await forum.redemptions(link)                              // [{ identity, at }]: who came in with it
 hg.spaces()            // [{ key, name, parent }]
-hg.on('spaces', (spaces) => {})   // the list changed (also a space joined on your other device)
+hg.on('spaces', (spaces) => {})   // the list changed: a space joined (here or on your other device), left,
+                                  // or a listed space's name or parent arrived or changed
 hg.space(forum.key)    // the Space
 await hg.leaveSpace(forum.key)   // drops it, and its sub-spaces, from this device
-forum.on('change', ({ types }) => {})   // records of these types changed
+forum.on('change', ({ types, records }) => {})   // records changed: records [{ id, type, deleted }]
 ```
 
 **Leaving** (`leaveSpace`) closes the space on this device and deletes what this device holds of it (its
@@ -214,7 +219,8 @@ A member's new device is a newcomer too. A member that
 can't read (no key) answers `complete: false`. One that may not read it any more (removed, or only
 relaying it) is told at once: `status().access` is `'none'` and reads answer immediately with
 `{ items, complete: false, access: 'none' }` instead of waiting for keys that will never come; a member
-whose key hasn't arrived yet is `'waiting'` (reads wait, as usual). A record someone wrote in the clear in a private space is
+whose key hasn't arrived yet is `'waiting'` (reads answer at once, incomplete; `status` fires when it
+turns `'full'`). A record someone wrote in the clear in a private space is
 listed as `unreadable: true`, never with its content. Keys are never shown: not by `inspect()`,
 `status()`, errors or the inspector.
 
@@ -253,8 +259,9 @@ counts. `unban` is for a moderator at least at the rank of whoever banned.
 
 When a role or moderation call is refused (`NOT_ALLOWED`), the message says why: you are banned, not a
 member, your role is too low, their role is at or above yours. Before refusing, your app first catches up
-with the connected members who record decisions (within the read bound), so a decision made a moment
+with the connected members who record decisions (within 5 s), so a decision made a moment
 ago elsewhere (an unban, a new role for you) is not missed. Writing (`put`, `edit`, `del`) does the same.
+These waits are the writes' own: reads never wait unless asked.
 
 **Give a space an admin.** The order of decisions is settled by the owner and the admins (one device
 each). With the owner alone, if that device is lost for good, new decisions still apply but are never
@@ -292,7 +299,9 @@ accept what earlier versions wrote, and record the new set when you ship it.
 const post = await forum.put('post', { title: 'Hello', text: 'First!' })
 // { id, type, author, device, stamp, edited, title, text }
 const reply = await forum.put('comment', { on: post, text: 'Welcome' })   // a record or its id
-const { record } = await forum.get(post.id)        // null if not held, or deleted
+const { record, deleted } = await forum.get(post.id)   // record null if not held, or deleted;
+// deleted: null (held, or nothing here says), { by: 'author', stamp, device } (its author deleted it:
+// the delete's stamp and device), or { by: 'space' } (taken down by a moderator)
 await forum.edit(post.id, { text: 'First! (edited)' })   // other fields kept; NOT_ALLOWED if not yours
 await forum.del(post.id)   // yours; a moderator's del() of someone else's record takes it down
 ```
@@ -322,7 +331,7 @@ const { items, complete } = await forum.query('post').latest(20)
 const next = await forum.query('post').latest(20, { after: items.at(-1) })   // the next page
 await forum.query('comment').by(someone).latest(20)     // by author
 await hg.personal.query('held').fromDevice(phone).latest(20)   // what one device put (its device key); this
-                                                                // device's own: complete at once, no waiting
+                                                                // device's own: complete once its logs are indexed
 await forum.query('post').where({ forum: 'news' }).latest(20)   // a declared index
 const stop = forum.query('post').live(({ items }) => render(items), { limit: 20 })
 
@@ -334,7 +343,11 @@ await forum.sum('vote', 'value', { on: post })   // one per member, the latest
 ```
 
 A live query runs at once, then again only when records of its type change (comments and votes don't
-re-run a list of posts). Every read takes `{ timeout }`. Lists are newest first by when a record was
+re-run a list of posts), and, while its last answer was incomplete, when it may have become complete.
+Every read answers at once; `{ timeout: ms }` makes it wait while incomplete, up to `ms`, answering as soon
+as it is complete (a one-shot script that wants the other members' records). A read answering at once
+still starts what it needs (an older part of a big space, content dropped here), and `change` names the
+records when they arrive. Lists are newest first by when a record was
 put, and paging with `{ after }` never skips or repeats one, even records put at the same moment.
 
 ## Relations and tags
@@ -371,8 +384,9 @@ await forum.setBudget(1e9)              // this forum's own share, out of the ap
 await forum.setPolicy('everything')     // owner/admins: every member is asked to keep it all ('auto' is the default)
 await hg.createSpace({ name, policy: 'everything' })
 forum.status()                          // { policy, access, held: 'all' | 'part', heldFrom, stored, share, budget,
-                                        //   belowPolicy, peers, settlers, warnings }
-forum.on('status', (s) => {})           // policy, held, belowPolicy, budget or warnings changed
+                                        //   belowPolicy, peers, settlers, warnings, complete }
+forum.on('status', (s) => {})           // policy, access, held, belowPolicy, budget, warnings, settlers or complete
+                                        // changed (complete: everything this device knows of here is held)
 ```
 
 The default budget is 5 GB, or what the app holds plus half the free disk if that is smaller. Spaces with
@@ -402,6 +416,8 @@ forum.peers()               // [{ identity, device }]: connected right now (iden
 hg.types()                  // { post: { fields: { title: 'string', ... }, links, onePerMember, editable, index,
                             //   builtin } }: the declared types, hypergraph's own marked builtin
 forum.on('peers', (peers) => {})   // someone connected or left
+forum.on('members', () => {})      // members(), getRole(), roles() may have changed: read again
+forum.on('decisions', () => {})    // decisions(), redemptions(), history may have changed: read again
 forum.on('logs', () => {})         // a member's log arrived or grew (at most every 100 ms)
 ```
 
@@ -409,6 +425,37 @@ forum.on('logs', () => {})         // a member's log arrived or grew (at most ev
 same, in the order every member applies them. A decision whose author wasn't allowed to make it at that
 point is listed with `counted: false` and changed nothing. `peers()` is proven: a peer sends its device
 proof, checked against the key of the connection.
+
+## Knowing when to read again
+
+Every read has an event that fires when its answer may differ. Listen first, then read: what changes
+after you started listening has its event. An event may come when nothing you show changed; a change
+never comes without its event. No events after `close()`. Events of sync reads carry the new value; for
+async reads, read again.
+
+| Read | Event |
+|---|---|
+| `get`, `query`, `linked`, `count`, `sum`, `tags`, `edges`, `getByTag` | `space.on('change', ({ types, records }) => {})` |
+| `hg.spaces()`, `space.subspaces()`, `space.name`, `space.parent` | `hg.on('spaces', (spaces) => {})` |
+| `space.members()`, `getRole()`, `roles()` | `space.on('members', () => {})` |
+| `space.decisions()`, `redemptions()`, `space.history` | `space.on('decisions', () => {})` |
+| `space.status()` | `space.on('status', (status) => {})` |
+| `space.peers()` | `space.on('peers', (peers) => {})` |
+| `space.memberConnections()` | `'member-connection'`, `'member-disconnection'` |
+| `hg.devices()` | `hg.on('devices', () => {})` |
+| `hg.settings()` | `hg.on('settings', () => {})` |
+| `space.inspect()` | `space.on('logs', () => {})` |
+
+Not covered: `hg.storage()` and `status().stored` / `share` (estimates: read them when you need them),
+`hg.types()` (fixed at open).
+
+`change` lists every record whose answer changed, on this device and from others: `records: [{ id, type,
+deleted }]` for a put, an **edit**, a delete, a hide, reveal or flag, a take-down, records dropped by a ban
+`from` them or a write limit, and content fetched back. `deleted` is `null`, `{ by: 'author', stamp, device }`
+(its author's delete: compare `stamp` with an edit's to decide which came later) or `{ by: 'space' }` (a
+moderator's take-down, a ban, a write limit). `types` is the distinct types of `records`. An app keeping
+something in step (a folder, a cache) re-reads only those records; after a restart it reads once, then
+follows `change`.
 
 ## App protocols
 
