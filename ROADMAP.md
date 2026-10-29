@@ -372,7 +372,11 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    authors they never met. Lead's run: next 311 Node / 310 Bare (file by file), SwarmFS 66/66 Node and Bare.
    Not in 013 (forum F4c): whether this device reaches each helper now. One client per space, sub-spaces included
    (fine for a forum; one per account later).
-5. Now: forum spec 001 (`hypergraph-forum-example` 8186053) reviewed, waits on Tibo's 4 questions, then builds.
+5. Now: forum spec 001 (`hypergraph-forum-example` 8186053) reviewed and building. Tibo's answers (2026-10-30): any
+   member invites (admins-only invites and invite-less public spaces later, for SwarmFS/HyperBrowser); online only
+   while the program runs (a background service later, likely in SwarmFS); friends send their delivery log at the
+   end (it mostly catches replication bugs like H17 and measures delays: a post is lost for good only if its
+   author never reconnects); names in a `profile` record in the forum (a name in the core maybe later, F1).
    Next core fix: `test/next/forum/live.js` fails on master run alone (a live post list re-runs 7 extra times on
    comments/votes: `_live` re-runs on `_progress` while incomplete and on any indexing mid-run, and calls back with
    an unchanged result); the full run hid it, and `scripts/test-runner.js` printed 299/299 for 311 tests.
