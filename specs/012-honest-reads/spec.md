@@ -292,8 +292,10 @@ app code (only in the test's assertion).
 - **FR-017**: `docs/next/api.md`, `docs/next/concepts.md` ("Complete answers"),
   `docs/next/deleting-and-incomplete.md` and `specs/011-spaces-core/contracts/api.md` MUST say Rules 1
   and 2 and the table of FR-010, in the same change.
-- **FR-018**: The forum scenario tests MUST show `complete` in their list helpers and follow live updates
-  for posts, a thread, members and forums; a test MUST play a newcomer's honest path (User Story 5).
+- **FR-018**: The forum scenario tests MUST show `complete` in their live screens (the latest posts, a
+  thread, members, forums) and follow live updates; a test MUST play a newcomer's honest path (User Story
+  5). (Built: the screens carry `complete`; the plain list helpers that assertions compare stay as they
+  were, see tasks.md T034.)
 - **FR-019**: `CHANGELOG.md` MUST have one dated entry: what breaks for `hypergraph/next` users and the
   migration, linking here.
 - **FR-020**: SwarmFS's requests file MUST be answered (H12, H14, H15, H16: done, with what to change),

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-29: `hypergraph/next` — BREAKING: reads answer at once; every read has its event (spec 012)
+
+- **Reads answer at once** from what this device holds, with `complete`. They used to wait up to 5 s while
+  incomplete (every read, with one member offline). A read waits only when given `{ timeout: ms }`, answering as
+  soon as it is complete. The open option `readTimeout` is gone (ignored if passed); writes keep their own 5 s
+  catch-up. An at-once read still starts what it needs (a big space's older part, dropped content).
+- **`change` names the records**: `{ types, records: [{ id, type, deleted }] }`, edits included (an edit fired no
+  `change` before, on any device: SwarmFS H16, H14). `deleted`: `null`, `{ by: 'author', stamp, device }` or
+  `{ by: 'space' }`.
+- **`get()` says deleted** (`deleted`, same shape) instead of `record: null` alone (H15).
+- **New events**: `'members'`, `'decisions'` (space), `'devices'`, `'settings'` (hg); `'spaces'` also when a listed
+  space's name or parent arrives (H12); `status()` has `complete`, and `'status'` fires when it, `access` or the
+  settlers change. The read → event table: `docs/next/api.md` "Knowing when to read again".
+- Migration: drop `readTimeout`; a one-shot read that should wait for other members passes `{ timeout }`; screens
+  use live queries or the events. Details: `specs/012-honest-reads/`.
+
 ### 2026-10-29: `hypergraph/next` — fix: newcomers to a private space with many records get access (SwarmFS H17)
 
 - A device paired, or a member let in, after a private space held more than ~256 records in one log stayed

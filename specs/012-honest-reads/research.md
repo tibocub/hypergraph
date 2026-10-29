@@ -139,3 +139,22 @@ Code facts checked on master `ca356fc` (2026-10-29), and the decisions taken fro
 - `bin/swarmfs.js:68-76` one-shot `ls`: reads `d.list()` after `online()`; with at-once reads it should
   pass `{ timeout: WAIT }` through `list()` to keep waiting for the other device's entries.
 - `lib/swarmfs.js:32-33`: passes `readTimeout` to `Hypergraph.open`; remove.
+
+## R13 — Found while building: `complete` turns true a moment early on reconnecting
+
+- **Found** (`test/next/net/honest-reads.js`, `{ timeout }` test, about 1 run in 2): a member reopened with
+  its only peer offline reads `complete: false`; when the peer comes back, `complete` turns true as soon as
+  the peer's list of logs has been looked at (`directory.js` `#known()`), a moment before Hypercore has
+  heard that one of those logs grew. A read in that moment answers complete without the newest records.
+  Older than spec 012 (the same check decided waiting reads before); `bounded.js` already looped on
+  `complete && items.length === 2` around it.
+- **Not fixed here**: it touches replication's notion of "known" (Principle I tier); a follow-up should make
+  `known` wait for each listed log's remote length (or count a log as missing until its first update after
+  connecting), with a regression test. The test marks it `shortcut:`.
+
+## R14 — Measured after building (2026-10-29)
+
+- Next suite: 285 tests, 93 s before; see the implementation report for after. Tests that leaned on the
+  old 5 s wait: 9 reads in 4 files (`forum/budgets.js`, `forum/policies.js`, `net/newest-first.js`,
+  `net/big-directory.js`), each fixed by the read asking `{ timeout }` (an old page, an opened post, a
+  newcomer's first pages). No other forum test needed a change: they already used `eventually()`.
