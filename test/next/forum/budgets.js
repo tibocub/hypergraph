@@ -104,9 +104,10 @@ test('dropped content is fetched when read, and kept; never fetched otherwise', 
   await sleep(2000)
   t.absent(await testing.holdsBlock(bShared, oldest.id), 'not fetched again while nobody reads it')
 
-  // Paging back to the oldest posts: fetched within the bound.
+  // Paging back to the oldest posts: an app showing that page asks to wait
+  // for it (reads answer at once otherwise, spec 012): fetched within it.
   const last = posts.shared[20]
-  const page = await bShared.query('post').latest(20, { after: last })
+  const page = await bShared.query('post').latest(20, { after: last, timeout: 5000 })
   t.ok(page.complete, 'the old page is complete: fetched within the bound')
   t.alike(page.items.map((p) => p.title), posts.shared.slice(0, 20).reverse().map((p) => p.title))
   t.ok(page.items.every((p) => p.text.length > 7000), 'with its content')
