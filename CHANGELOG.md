@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-29: `hypergraph/next` — fix: newcomers to a private space with many records get access (SwarmFS H17)
+
+- A device paired, or a member let in, after a private space held more than ~256 records in one log stayed
+  `access: 'waiting'` for good: the indexer stopped at the first full batch of records it couldn't open yet and never
+  reached the grant with their key further on. It now reads on. Test: `test/next/net/big-private.js`.
+
 ### 2026-10-27: `hypergraph/next` — SwarmFS's requests (additions, nothing breaks)
 
 - `space.on('member-connection', (stream, peer))` and `space.memberConnections()`: the connection streams of a space's

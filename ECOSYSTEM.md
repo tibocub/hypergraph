@@ -84,7 +84,8 @@ Consequences that matter:
    `npm install` or `npm ci`, npm creates a real link (a Windows junction) to the sibling checkout
    by itself, and the lockfile records it as `"resolved": "../hypergraph", "link": true`. The
    sibling folder must sit next to the consumer, as it does under `E:\Code\P2P\`.
-3. SwarmFS does not have hypergraph installed at all yet — consistent with its paused status.
+3. SwarmFS links hypergraph and swarmwire the same way (`"hypergraph": "file:../hypergraph"`,
+   `"swarmwire-lib": "file:../swarmwire"`) and uses only the new core (`hypergraph/next`).
 
 **Why local paths rather than `github:` references** (switched 2026-09-13): npm 12 refuses git
 dependencies by default — its built-in `allow-git` setting is `"none"` — so
@@ -173,9 +174,10 @@ Per-project direction, and how firm it is:
   `hyper://` integration so HyperBBS can address sites by name instead of raw pubkey.
   *(Partly documented; `WORKFLOW.md`'s embedded roadmap is stale — the project is well past the
   phase it describes. Prefer `DECISIONS.md`'s recent entries for actual direction.)*
-- **SwarmFS** — paused by choice, waiting on hypergraph to provide multi-writer virtual
-  directories, users/friends, and moderated swarms rather than duplicating that work.
-  *(Documented: `README.md` top note)*
+- **SwarmFS** — the real-usage test of hypergraph's new core. Spec 001 (two devices of one person) and
+  002 (linked folders that sync themselves) built; shared workspaces, community archives and apps later.
+  Its needs reach hypergraph and swarmwire only through `specs/requests-to-*.md`.
+  *(Documented: `specs/001-personal-sync/spec.md` and `specs/002-always-on/spec.md`, later stories)*
 
 ## Where each project documents itself
 
@@ -187,7 +189,7 @@ a `CLAUDE.md`. Beyond that they differ, and the differences are mostly deliberat
 | hypergraph | `CLAUDE.md` → constitution → `docs/` (current-state reference) → `docs/contributors/` (internals) → `CHANGELOG.md` (why things changed) |
 | HyperBBS | `CLAUDE.md` → constitution → `README.md` (architecture + HyperMD spec + honest Status checklist) |
 | hyperDNS | `CLAUDE.md` → constitution → `docs/` (`ADDRESSING`, `NETWORKING`, `PRIVACY` are authoritative) → `DECISIONS.md` (dated decision log). `WORKFLOW.md` is legacy (banner-marked). |
-| SwarmFS | `AGENTS.md` (primary) → `INVARIANTS.md` (authoritative rules) → `AI_CONTEXT.md` → `DATAFLOW.md` → constitution. `CLAUDE.md` is just a pointer. Working branch is `dev`, not `master`. |
+| SwarmFS | `CLAUDE.md` → constitution → `specs/` (`NNN-name/spec.md`, `requests-to-hypergraph.md`, `requests-to-swarmwire.md`). Working branch `001-personal-sync` (holds specs 001 and 002), `main` behind. |
 | HyperMD | `CLAUDE.md`. The format spec itself lives in **HyperBBS's** `README.md`, not here. |
 
 ### Test-suite trustworthiness varies — know what a green run proves
