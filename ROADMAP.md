@@ -348,10 +348,12 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    `change` carries `records: [{ id, type, deleted }]` (edits too: H16's cause was `#settle()` returning true only
    for deletes), events for every read, `get().deleted`. Lead's run: v1 390/390, next 304/304 Node, 303/303 Bare;
    SwarmFS unchanged 63/63 Node, 62/63 Bare (its own `ino` bug, below).
-3. **Next, proposed to Tibo**: SwarmFS adopts 012 (drops `timeout: 200`, `'logs'`, re-reads only changed records,
-   re-adds an edit newer than a delete) and fixes rename detection: NTFS file ids exceed 2^53, so Number `ino`
-   collides (15/200 measured). In parallel, hypergraph R13: `complete` turns true a moment early after a reconnect.
-4. After these: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
+3. ~~SwarmFS adopts 012~~ merged into its `001-personal-sync` (a2db790; 66/66 Node and Bare, lead's run): shortcuts
+   gone, re-reads only changed entries, an edit newer than a delete re-added; exact file ids (Node bigint stat; Bare
+   has none, so renames there are confirmed by hashing). Filed H18 (a record doesn't say when it was edited).
+   ~~R13~~ merged (a9e271b): not a bug, a test's clock-ahead stamps; guard test added. Open question it raised: a
+   fast writer's stamps run ahead of the clock, so others' posts sort below theirs (a spam lever in open forums).
+4. Now: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
    plus availability through `blind-peering` (the code review's steps 2–3).
 5. Later: hyperDNS onto the new core or frozen, then v1 removed.
 
