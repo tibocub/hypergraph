@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-29: `hypergraph/next` — R13 was a test artifact; `complete` after a reconnect guarded (no API change)
+
+- Spec 012's R13 ("`complete` turns true on reconnect before the peer's new records") was the test's clock:
+  1,000 fast writes stamped "newest + 1" ran ahead of the clock, so the peer's later post sorted below them.
+  `complete` was right. A peer sends each log's length before the space summary, so the window doesn't open.
+- New guard test `test/next/net/reconnect-complete.js`; `honest-reads.js` and `bounded.js` lose their loops.
+  See `specs/012-honest-reads/research.md` R13.
+
 ### 2026-10-29: `hypergraph/next` — BREAKING: reads answer at once; every read has its event (spec 012)
 
 - **Reads answer at once** from what this device holds, with `complete`. They used to wait up to 5 s while

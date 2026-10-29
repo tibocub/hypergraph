@@ -18,7 +18,11 @@ async function holderOffline (t) {
   const fb = await forum.join(b, await forum.invite(fa))
   const p = await forum.post(fb, 'from b', '')
   await forum.tag(fb, p, 'news')
-  for (let i = 0; i < 1000; i++) await testing.writeRaw(fa, { kind: 'put', type: 'post', fields: { title: `a${i}`, text: '' } })
+  // Stamped in the past: a's stamper gives each fast write "newest + 1", so
+  // 1,000 of them ran up to a second ahead of the clock, and what b wrote
+  // next sorted below them (that, not replication, was research R13).
+  const past = Date.now() - 2000
+  for (let i = 0; i < 1000; i++) await testing.writeRaw(fa, { kind: 'put', type: 'post', fields: { title: `a${i}`, text: '' }, stamp: past + i })
   t.ok(await eventually(async () => (await fa.get(p.id)).record, 10000), 'a holds b\'s post')
   await a.close()
   await b.close()
@@ -59,9 +63,7 @@ test('{ timeout }: waits while incomplete, answers once complete', { timeout: 12
   const ms = Date.now() - t0
   t.ok(r.complete, 'complete')
   t.ok(ms >= 900 && ms < 20000, `answered once complete (${ms} ms), not at the end of its timeout`)
-  // shortcut: `complete` can turn true as a reaches b, a moment before a hears b's log grew
-  // (an older gap, not spec 012's: see its research.md R13); read again until it shows.
-  t.ok(await eventually(async () => (await fa2.query('post').latest(20)).items[0]?.id === later.id, 10000), 'then with what b wrote while a was away')
+  t.is(r.items[0]?.id, later.id, 'with what b wrote while a was away')
 })
 
 test('dropped content read at once: left out, fetched, and change names it once back', { timeout: 120000 }, async (t) => {

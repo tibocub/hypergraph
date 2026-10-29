@@ -41,12 +41,9 @@ test('the only holder offline: incomplete within the bound; back online: complet
   t.alike(offline.items.map((x) => x.id), [p1.id], 'with what a holds')
 
   await account(t, 'b3', { dir: b.dir })
-  const back = await eventually(async () => {
-    const r = await a2.space(fa.key).query('post').latest(20, { timeout: 1000 })
-    return r.complete && r.items.length === 2 ? r : null
-  }, 20000)
-  t.ok(back, 'complete once b is back')
-  t.alike(back && back.items.map((x) => x.id), [p2.id, p1.id])
+  const back = await a2.space(fa.key).query('post').latest(20, { timeout: 20000 })
+  t.ok(back.complete, 'complete once b is back')
+  t.alike(back.items.map((x) => x.id), [p2.id, p1.id], 'with what b wrote while a was away')
 })
 
 // "Complete" = everything this member knows of is held, and it reached at

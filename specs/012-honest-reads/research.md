@@ -151,6 +151,13 @@ Code facts checked on master `ca356fc` (2026-10-29), and the decisions taken fro
 - **Not fixed here**: it touches replication's notion of "known" (Principle I tier); a follow-up should make
   `known` wait for each listed log's remote length (or count a log as missing until its first update after
   connecting), with a regression test. The test marks it `shortcut:`.
+- **Resolved (2026-10-29): not a replication gap.** At the "early" moment a held b's log whole (length 4,
+  all indexed); `later` was stamped ~50 ms below a's newest post: a's 1,000 `writeRaw` stamps ("newest + 1"
+  each) ran ahead of the clock, so `later` fell outside the top 20. The test now stamps them in the past.
+  The feared window doesn't open either: a peer opens its logs before joining the space, so Hypercore's sync
+  (remote length) for each comes before the space summary on the same connection; `unheard()` then counts
+  any growth. Guarded by `test/next/net/reconnect-complete.js` (5 rounds, reads polled during reconnect).
+  Follow-up worth noting: a fast writer's stamps run ahead of the clock, so others' next posts sort below.
 
 ## R14 — Measured after building (2026-10-29)
 
