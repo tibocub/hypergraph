@@ -344,11 +344,14 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 1. ~~H17~~ merged (053324d: the indexer stopped at a full batch of locked records; any private space with 256+
    records ahead of a newcomer's key). ~~swarmwire S9~~ merged (c1f6484). SwarmFS 63/63 Node and Bare on both.
-2. **Spec 012 "honest reads"** (branch `012-honest-reads`, 42 tasks): reads at once (`timeout` 0 by default,
-   `readTimeout` removed), `change` carries `records: [{ id, type, deleted }]`, events for members, decisions,
-   devices, settings. Reviewed by the lead; waiting on Tibo's go, then built (one core builder at a time).
-   Covers H10/H12/H14/H15/H16; SwarmFS drops its `timeout: 200` and `'logs'` shortcuts after.
-4. After 1–3: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
+2. ~~Spec 012 "honest reads"~~ merged (2bf51dc): reads at once (`timeout` 0 by default, `readTimeout` removed),
+   `change` carries `records: [{ id, type, deleted }]` (edits too: H16's cause was `#settle()` returning true only
+   for deletes), events for every read, `get().deleted`. Lead's run: v1 390/390, next 304/304 Node, 303/303 Bare;
+   SwarmFS unchanged 63/63 Node, 62/63 Bare (its own `ino` bug, below).
+3. **Next, proposed to Tibo**: SwarmFS adopts 012 (drops `timeout: 200`, `'logs'`, re-reads only changed records,
+   re-adds an edit newer than a delete) and fixes rename detection: NTFS file ids exceed 2^53, so Number `ino`
+   collides (15/200 measured). In parallel, hypergraph R13: `complete` turns true a moment early after a reconnect.
+4. After these: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
    plus availability through `blind-peering` (the code review's steps 2–3).
 5. Later: hyperDNS onto the new core or frozen, then v1 removed.
 
