@@ -23,6 +23,20 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-10-29 (forum web app, grilled with Tibo)** — Forum before HyperBrowser: a plain web app on `hypergraph/next`,
+  its own repo `E:\Code\P2P\hypergraph-forum-example` (a consumer with `specs/requests-to-hypergraph.md`, like
+  SwarmFS), built so its pieces seed HyperBrowser. Reddit-style, exactly what `test/next/forum/` covers (boards,
+  threads, comments, votes, edit/delete, moderation, invites, devices); one forum, no community creation, no new core
+  features. Invite-only (one-time codes sent by any chat), 5–20 friends. Every member keeps everything. Node + browser
+  tab on `127.0.0.1` (README + copy-paste install script); plain HTML/JS, no build; a local JSON API mirroring the
+  core's calls plus a live channel, random token. Text with basic Markdown, no images, no HyperMD yet. Device pairing
+  in v1. Desktop only. Done = Tibo + 4 friends, 2 weeks, nothing lost, every post reaches everyone (a "posted at" vs
+  "first seen elsewhere" log). **Helpers** (blind peers) built in parallel as hypergraph spec 013, never required: the
+  forum works with no helper or with its VPS down (`addAutobaseBackground`, not `addAutobase`, which hangs while one
+  is down — `specs/research/availability.md`). The owner lists helpers in the space's settings (end goal: anyone may
+  add helpers unless it's a security risk); members connect to all of them in the background. The VPS runs
+  `blind-peer-cli` unchanged, open to any forum, capped by `maxBytes` (blind-peer also has `trustedPubKeys`; untrusted
+  clients can't make it announce, so members dial it directly).
 - **2026-10-29 (SwarmFS 002 merged; hypergraph review read)** — SwarmFS spec 002 merged into its `001-personal-sync`
   (e450c4a, 63/63 Node and Bare; SC-001 3.8 s for 10,000 files, SC-004 36 s for 1,000). It filed H16 (no `change`
   for another device's edit), H17 (a device paired after a private space got ~1,000 records never gets access:
@@ -353,8 +367,9 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    has none, so renames there are confirmed by hashing). Filed H18 (a record doesn't say when it was edited).
    ~~R13~~ merged (a9e271b): not a bug, a test's clock-ahead stamps; guard test added. Open question it raised: a
    fast writer's stamps run ahead of the clock, so others' posts sort below theirs (a spam lever in open forums).
-4. Now: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
-   plus availability through `blind-peering` (the code review's steps 2–3).
+4. Now: SwarmFS pauses (usable on Tibo's two machines). Two workers in parallel: the forum web app's spec
+   (`hypergraph-forum-example`, Decisions 2026-10-29) and hypergraph spec 013 "helpers" (blind peers listed in a
+   space's settings, optional). The forum turns helpers on once 013 is merged.
 5. Later: hyperDNS onto the new core or frozen, then v1 removed.
 
 ## Follow-ups (not built yet)
