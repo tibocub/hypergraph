@@ -367,10 +367,17 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    has none, so renames there are confirmed by hashing). Filed H18 (a record doesn't say when it was edited).
    ~~R13~~ merged (a9e271b): not a bug, a test's clock-ahead stamps; guard test added. Open question it raised: a
    fast writer's stamps run ahead of the clock, so others' posts sort below theirs (a spam lever in open forums).
-4. Now: SwarmFS pauses (usable on Tibo's two machines). Two workers in parallel: the forum web app's spec
-   (`hypergraph-forum-example`, Decisions 2026-10-29) and hypergraph spec 013 "helpers" (blind peers listed in a
-   space's settings, optional). The forum turns helpers on once 013 is merged.
-5. Later: hyperDNS onto the new core or frozen, then v1 removed.
+4. ~~Spec 013 "helpers"~~ merged (bab86c3): `space.setHelpers(keys)` (owner, top space), `space.helpers`, members hand
+   the space to blind peers in the background, never awaited; deciders list logs (`logs/list`) so members find
+   authors they never met. Lead's run: next 311 Node / 310 Bare (file by file), SwarmFS 66/66 Node and Bare.
+   Not in 013 (forum F4c): whether this device reaches each helper now. One client per space, sub-spaces included
+   (fine for a forum; one per account later).
+5. Now: forum spec 001 (`hypergraph-forum-example` 8186053) reviewed, waits on Tibo's 4 questions, then builds.
+   Next core fix: `test/next/forum/live.js` fails on master run alone (a live post list re-runs 7 extra times on
+   comments/votes: `_live` re-runs on `_progress` while incomplete and on any indexing mid-run, and calls back with
+   an unchanged result); the full run hid it, and `scripts/test-runner.js` printed 299/299 for 311 tests.
+   Small core fix after: sub-spaces inherit their parent's storage policy (forum F5; rules already do).
+6. Later: hyperDNS onto the new core or frozen, then v1 removed.
 
 ## Follow-ups (not built yet)
 
