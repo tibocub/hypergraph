@@ -342,10 +342,12 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 (2026-10-29; spec 011 merged into master 2026-10-22, history in Decisions.)
 
-1. **H17 fix** (hypergraph worker): late-paired device never reads a big private space. Then SwarmFS's suite.
-2. **Spec "reads that don't wait, change events"** (hypergraph worker, docs only) → lead review → build after 1.
-   Covers H10/H12/H14/H15/H16; SwarmFS drops its `timeout: 200` and `'logs'` shortcuts.
-3. **swarmwire S9** (worker): close served files once idle.
+1. ~~H17~~ merged (053324d: the indexer stopped at a full batch of locked records; any private space with 256+
+   records ahead of a newcomer's key). ~~swarmwire S9~~ merged (c1f6484). SwarmFS 63/63 Node and Bare on both.
+2. **Spec 012 "honest reads"** (branch `012-honest-reads`, 42 tasks): reads at once (`timeout` 0 by default,
+   `readTimeout` removed), `change` carries `records: [{ id, type, deleted }]`, events for members, decisions,
+   devices, settings. Reviewed by the lead; waiting on Tibo's go, then built (one core builder at a time).
+   Covers H10/H12/H14/H15/H16; SwarmFS drops its `timeout: 200` and `'logs'` shortcuts after.
 4. After 1–3: SwarmFS pauses (usable on Tibo's two machines); next proof is the forum site with real people
    plus availability through `blind-peering` (the code review's steps 2–3).
 5. Later: hyperDNS onto the new core or frozen, then v1 removed.
