@@ -121,6 +121,23 @@ test('F11: a ban drops everything they wrote: two devices, a sub-forum, newcomer
   t.ok(await eventually(async () => (await counts(fe, be)) === '1:0:0:0', 10000), 'a newcomer never sees it')
 })
 
+test('F14: once a ban with dropAll returns, the banning member lists none of it, forum and board', async (t) => {
+  const { c, fa, fc } = await threeMembers(t)
+  const board = await forum.createSubforum(fa, 'Board')
+  const bc = await opened(c, board.key)
+  const p = await forum.post(fa, 'Welcome', '')
+  await forum.post(fc, 'spam 1', '')
+  await forum.post(fc, 'spam 2', '')
+  t.ok(await eventually(async () => !!(await fc.get(p.id)).record, 5000))
+  await forum.comment(fc, p, 'spam comment')
+  await forum.vote(fc, p, 1)
+  await forum.post(bc, 'spam in the board', '')
+  const counts = async () => `${(await forum.latest(fa)).length}:${(await forum.comments(fa, p)).length}:${await forum.score(fa, p)}:${(await forum.latest(board)).length}`
+  t.ok(await eventually(async () => (await counts()) === '3:1:1:1', 10000), 'the moderator shows all of c\'s writing')
+  await forum.ban(fa, c.identity.publicKey, { reason: 'spammer', dropAll: true })
+  t.is(await counts(), '1:0:0:0', 'gone the moment the ban returns')
+})
+
 test('F11: someone banned before: banning again with dropAll drops what was kept; unbanned, they write again', async (t) => {
   const { c, fa, fb, fc } = await threeMembers(t)
   const p = await forum.post(fc, 'kept at first', '')

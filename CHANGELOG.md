@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-30: `hypergraph/next` — a decision resolves once its cuts show (forum F14)
+
+- A ban, removal or role change resolved before what it cut left the lists on the deciding device
+  (posts, comments, votes; in sub-spaces too). It now resolves once every space open on that decision
+  log applied it and the cut logs are re-indexed. Local only, no wire or apply-time change.
+
 ### 2026-10-30: `hypergraph/next` — moderation tools (spec 014, forum F10–F13)
 
 **Apply-time change: every member updates together.** An older peer keeps records that newer ones drop

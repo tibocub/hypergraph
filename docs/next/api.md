@@ -266,7 +266,8 @@ moderation), `moderator` (moderation), `member` and `guest` (writing). Owners an
 their own; a role you define can gain permissions later but never lose `post` or one of your app's
 permissions such as `edit-pages` (give its members another role instead); it may lose hypergraph's
 own `decide`, `moderate`, `invite` and `roles`.
-Moderators, admins and the owner moderate. Every call resolves once your app applied the decision; the
+Moderators, admins and the owner moderate. Every call resolves once your app applied the decision, in the space
+and every sub-space open here: what it takes away is out of every list by then. The
 others apply it as soon as it reaches them, in the same order, offline members included. A moderator
 demoted later: what they decided before stays, what they decide after counts for nobody.
 
