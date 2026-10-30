@@ -151,7 +151,10 @@ can't open the space's channel, so it gets no log key and reads nothing.
 A link is signed by its maker and holds no key; send it any way you like. One use by default. It works
 while its maker is offline, as long as some member able to record decisions (the owner, an admin) is
 online. Who may invite to what: a role with `invite` (owner, admins), to a role below theirs, or to
-`member` and `guest`; never to owner. `redeemInvite` waits up to 30 s (connecting alone can take a few
+`member` and `guest`; never to owner. A role your app defines with `invite` may also invite to **itself**
+when it has no power over others (no `moderate`, `roles` or `decide`): friends invite friends, who invite
+theirs, and nobody can mint a moderator or an admin. Leave `invite` out of every role but admin's for
+admins-only invites. `redeemInvite` waits up to 30 s (connecting alone can take a few
 seconds on a real network; `{ timeout }` overrides it) and says why when it is refused: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`,
 `NOT_ALLOWED` (its maker may not give that role, or you are banned); `INVITE_INVALID` if nobody able to
 let you in answered in time (try again later). The maker or an admin revokes a link. Joining never
@@ -178,7 +181,8 @@ const news = await forum.createSubspace({ name: 'News', writeRoles: ['moderator'
 const staff = await forum.createSubspace({ name: 'Staff', private: true })            // read by who is let in
 const guests = await forum.createSubspace({ name: 'Guests' })
 const link = await guests.createInvite({ role: 'guest' })   // a guest of the sub-space only
-forum.subspaces()        // [{ key, name, private }], sync: the sub-spaces right inside it
+forum.subspaces()        // [{ key, name, private }], sync: the sub-spaces right inside it; one you are in
+                         // is listed once hg.space(key) opens it ('spaces' fires then)
 news.parent              // the forum's key; null for a top space
 staff.private            // true
 await staff.setRole(someone, 'member')   // let a forum member into the private room
@@ -194,7 +198,7 @@ A **sub-space** is a space inside another (a sub-forum, a folder with its own ru
 parent have it at once, without joining (`hg.spaces()` lists it with its `parent`); it has the parent's
 members and roles, then its own: roles given in it (`setRole`, `createInvite` on the sub-space), guests
 who exist only there. It can be stricter: `writeRoles` (only those roles post; the owner and admins
-always may). A ban or a removal in the parent always applies in every sub-space below it, whatever
+always may). Its storage policy is the parent's until it sets its own (`setPolicy` on the sub-space). A ban or a removal in the parent always applies in every sub-space below it, whatever
 arrives first. Only who may decide creates one (`NOT_ALLOWED` otherwise); nothing splits by itself.
 Sub-spaces nest. Its decisions are kept in the parent's decision log, so it needs no settling of its own.
 
@@ -333,7 +337,8 @@ await forum.query('comment').by(someone).latest(20)     // by author
 await hg.personal.query('held').fromDevice(phone).latest(20)   // what one device put (its device key); this
                                                                 // device's own: complete once its logs are indexed
 await forum.query('post').where({ forum: 'news' }).latest(20)   // a declared index
-const stop = forum.query('post').live(({ items }) => render(items), { limit: 20 })
+const stop = forum.query('post').live(({ items }) => render(items), { limit: 20 })   // called again only
+                                                // when items or complete changed, not for other types
 
 await forum.query('comment').on(post).by(someone).latest(20)   // filters combine
 await forum.query('post').tag('rust').since(Date.now() - 864e5).latest(20)   // since: inclusive; until: before

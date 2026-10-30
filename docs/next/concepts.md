@@ -129,7 +129,8 @@ are never required and never waited for. See [api.md](api.md#helpers-keeping-a-s
 
 A **sub-space** is a space shown inside another: a sub-forum, a folder with its own rules, a private
 room. It has its own records, logs and storage, but the members and roles of its parent, then its own
-(guests invited only there, roles given there, stricter rules on who writes). Its decisions are kept in
+(guests invited only there, roles given there, stricter rules on who writes), and its parent's storage
+policy unless it sets its own. Its decisions are kept in
 its parent's decision log, marked with the sub-space: one order for everything, so a ban in the parent
 and a decision in the sub-space are never seen in different orders by different members, and a ban in
 the parent always wins. A guest of a sub-space reads that decision log (it must, to obey the parent's

@@ -99,7 +99,7 @@ test('uses count distinct people; expiry is judged by the recorder\'s stamp', as
 })
 
 test('who may invite to what', async (t) => {
-  const roles = new Map([['inviter', ['post', 'invite']], ['helper', ['post', 'edit-pages']], ['deputy', ['post', 'moderate']]])
+  const roles = new Map([['inviter', ['post', 'invite']], ['helper', ['post', 'edit-pages']], ['deputy', ['post', 'moderate']], ['warden', ['post', 'invite', 'moderate']]])
   t.ok(mayInvite('owner', 'admin', roles), 'the owner invites admins')
   t.absent(mayInvite('owner', 'owner', roles), 'never to owner')
   t.ok(mayInvite('admin', 'moderator', roles), 'an admin invites moderators')
@@ -111,6 +111,9 @@ test('who may invite to what', async (t) => {
   t.ok(mayInvite('inviter', 'guest', roles))
   t.absent(mayInvite('inviter', 'moderator', roles), 'nothing above it')
   t.absent(mayInvite('inviter', 'deputy', roles), 'nor a permission it lacks')
+  t.ok(mayInvite('inviter', 'inviter', roles), 'its own role, which has no power over others (F6: friends invite friends)')
+  t.absent(mayInvite('warden', 'warden', roles), 'not its own role if it moderates: nobody mints moderators')
+  t.absent(mayInvite('admin', 'admin', roles), 'nor admins')
   t.absent(mayInvite('admin', 'nope', roles), 'nor a role that does not exist')
 
   const s = await space()
