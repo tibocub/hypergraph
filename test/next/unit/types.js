@@ -163,3 +163,16 @@ test('a field passed as undefined counts as absent; a typo with a value still th
   code(t, () => types.validate('post', { title: 't', titel: 'x' }), 'INVALID_RECORD', 'post', 'titel')
   code(t, () => types.validate('post', { title: 't', titel: null }), 'INVALID_RECORD', 'post', 'titel')
 })
+
+test('put (spec 014): who may put a type; changing it is INCOMPATIBLE_TYPES', (t) => {
+  const types = new Types({ ...forum, theme: { fields: { css: 'text' }, put: { permission: 'decide' } } })
+  t.alike(types.get('theme').put, { by: 'permission', permission: 'decide' })
+  t.alike(types.get('post').put, { by: 'members' }, 'the default: anyone who may write')
+  t.exception(() => new Types({ x: { fields: { a: 'string' }, put: 'admins' } }), /put/)
+  const before = new Types(forum).describe()
+  const legacy = JSON.parse(JSON.stringify(before))
+  for (const name of Object.keys(legacy)) delete legacy[name].put
+  t.execution(() => new Types(forum).checkCompatible(legacy), 'a snapshot from before put existed: members')
+  const restricted = new Types({ ...forum, post: { ...forum.post, put: { permission: 'decide' } } })
+  code(t, () => restricted.checkCompatible(before), 'INCOMPATIBLE_TYPES', 'post', 'put')
+})

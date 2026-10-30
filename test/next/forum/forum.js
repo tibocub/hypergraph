@@ -1,6 +1,6 @@
 // The forum: the reference app for hypergraph's new core (spec 011, SC-002).
 // Everything a forum does with its data, through the public API only: no
-// networking, replication or cryptography code. Keep it under 450 lines; if
+// networking, replication or cryptography code. Keep it under 500 lines; if
 // something here is awkward to write, fix the API, not this file.
 
 const { Hypergraph } = require('hypergraph/next')
@@ -18,7 +18,9 @@ const types = {
   note: { fields: { text: 'text', column: 'string' }, editable: 'members', index: [['column', 'stamp']] },
   poll: { fields: { question: 'string', on: 'link' }, links: { on: ['post'] } },
   // A post pointing at another forum or sub-forum, like a shortcut.
-  shortcut: { fields: { title: 'string', to: 'space' } }
+  shortcut: { fields: { title: 'string', to: 'space' } },
+  // The forum's look: set by the owner and admins only ('decide').
+  theme: { fields: { css: 'text' }, put: { permission: 'decide' } }
 }
 
 // The forum's own rules: every member checks them before keeping a record.
@@ -267,8 +269,33 @@ function unban (forum, who) {
 // Out until unbanned: what they wrote up to what this moderator holds stays,
 // anything after is ignored. `from` (one of their records, e.g. the first
 // spam): that record and everything after it in the same log go too.
-function ban (forum, who, { reason = '', from } = {}) {
-  return forum.moderateAction('ban', who, { reason, from })
+// `dropAll`: everything they wrote goes, every device, every sub-forum.
+function ban (forum, who, { reason = '', from, dropAll = false } = {}) {
+  return forum.moderateAction('ban', who, { reason, from, drop: dropAll ? 'all' : null })
+}
+
+// Any member reports a post or comment; only moderators read who and why.
+function report (forum, record, reason) {
+  return forum.report(record, { reason })
+}
+
+// Moderators: [{ on, count, reports: [{ id, by, reason, stamp }] }]. Dismiss
+// one with takeDown(forum, report).
+async function reports (forum) {
+  return (await forum.reports()).items
+}
+
+// What moderators hid ('hidden') or flagged ('flagged'), however old.
+async function moderated (forum, state, type = 'post', n = 50) {
+  return (await forum.query(type).moderated(state).latest(n)).items
+}
+
+function setTheme (forum, css) {
+  return forum.put('theme', { css })
+}
+
+async function theme (forum) {
+  return (await forum.query('theme').latest(1)).items[0] || null
 }
 
 // --- posting ---
@@ -454,7 +481,7 @@ module.exports = {
   createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, inviteFriend, openLink, revokeLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
-  hide, reveal, takeDown, flag, ban, unban,
+  hide, reveal, takeDown, flag, ban, unban, report, reports, moderated, setTheme, theme,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
   makeEditor, writePage, readPage, pin, moveNote, column, ask, polls,
