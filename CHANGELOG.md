@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-30: `hypergraph/next` — live lists, sub-space policy, friends invite friends, `subspaces()` (forum F5–F7)
+
+- `query().live(fn)` calls `fn` only when its answer (items or `complete`) changed. An incomplete list no
+  longer re-runs and calls back on every record of another type; it still updates when it becomes complete.
+- A sub-space follows its parent's storage policy until it sets its own (was `'auto'`). (F5)
+- A role with `invite` may invite to its own role when that role has no `moderate`, `roles` or `decide`:
+  friends invite friends, nobody mints moderators. Apply-time rule: peers from before this refuse such
+  invites. (F6)
+- `space.subspaces()` lists a sub-space this member is in only once `hg.space(key)` opens it (`'spaces'`
+  fires then); it used to list it a moment before. (F7)
+- `scripts/test-runner.js`: a file that crashes or times out (no summary) counts all its tests, as failed,
+  and the total says how many files failed (it said "299/299 passed" for 311 tests).
+
 ### 2026-10-29: `hypergraph/next` — helpers: blind peers keep a space available (spec 013)
 
 - `space.setHelpers(keys)` (owner only) lists blind-peer servers (`blind-peer-cli`, unchanged); `space.helpers`

@@ -80,3 +80,16 @@ test('auto: dropped content isn\'t fetched back when room comes back, only when 
   t.is((await fb.get(posts[0].id, { timeout: 5000 })).record.text, posts[0].text, 'until read (opening the post: waits for it)')
   t.ok(await testing.holdsBlock(fb, posts[0].id))
 })
+
+test('a sub-forum follows its forum\'s policy unless it sets its own (F5)', async (t) => {
+  const { b, fa } = await threeMembers(t)
+  const board = await forum.createSubforum(fa, 'General')
+  t.is(board.status().policy, 'auto', 'like its forum')
+  await forum.keepEverything(fa)
+  t.is(board.status().policy, 'everything', 'the forum changes: it follows')
+  const bb = await eventually(() => { try { return b.space(board.key) } catch { return null } }, 10000)
+  t.ok(bb && await eventually(() => bb.status().policy === 'everything', 10000), 'on a member\'s device too')
+  await board.setPolicy('auto')
+  t.ok(await eventually(() => bb.status().policy === 'auto', 10000), 'its own choice wins')
+  t.is(fa.status().policy, 'everything', 'the forum keeps its own')
+})

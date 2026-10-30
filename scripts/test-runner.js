@@ -77,8 +77,12 @@ function run (file, bare) {
     p.stderr.on('data', (d) => { out += d })
     p.on('exit', (code) => {
       const m = /# tests = (\d+)\/(\d+) pass/.exec(out)
-      const passed = m ? Number(m[1]) : 0
-      const total = m ? Number(m[2]) : 0
+      // A file that crashed or timed out prints no summary: its tests still
+      // count (else the total shrinks and failures hide), passed = top-level oks.
+      // shortcut: counts test( calls at line starts, misses tests made in a loop.
+      const declared = (fs.readFileSync(path.join(ROOT, file), 'utf-8').match(/^test(\.\w+)?\(/gm) || []).length
+      const passed = m ? Number(m[1]) : (out.match(/^ok \d+/gm) || []).length
+      const total = m ? Number(m[2]) : Math.max(declared, passed + 1)
       resolve({ file, ms: Date.now() - start, code, passed, total, ok: code === 0 && !!m && passed === total, out })
     })
   })
@@ -130,7 +134,7 @@ async function main () {
   for (const r of [...results].sort((a, b) => b.ms - a.ms).slice(0, opts.slowest)) {
     process.stdout.write(`  ${(r.ms / 1000).toFixed(1).padStart(6)}s  ${r.file}\n`)
   }
-  process.stdout.write(`\n${passed}/${tests} tests passed in ${files.length} files; wall ${(wall / 1000).toFixed(1)}s, ` +
+  process.stdout.write(`\n${passed}/${tests} tests passed in ${files.length} files${failed.length ? ` (${failed.length} FAILED)` : ''}; wall ${(wall / 1000).toFixed(1)}s, ` +
     `sum of file times ${(cpu / 1000).toFixed(1)}s, ${opts.jobs} jobs\n`)
   process.exit(failed.length ? 1 : 0)
 }

@@ -117,3 +117,21 @@ test('joining waits (30 s by default), though reads do not: the inviter comes on
   const fn = await joining
   t.is(await forum.roleOf(fn, n.identity.publicKey), 'member', 'let in, 2 s later')
 })
+
+test('friends invite friends, who invite theirs; none of them can invite a moderator (F6)', async (t) => {
+  const a = await account(t, 'a')
+  const fa = await forum.createForum(a, 'Friends')
+  let inviter = fa
+  const friends = []
+  for (const name of ['b', 'c', 'd']) {
+    const hg = await account(t, name)
+    const f = await forum.join(hg, await forum.inviteFriend(inviter))
+    t.is(await forum.roleOf(f, hg.identity.publicKey), 'friend', `${name} is a friend, invited by the previous one`)
+    friends.push(f)
+    inviter = f
+  }
+  const p = await forum.post(friends[2], 'Hi', 'from the friend of a friend of a friend')
+  t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === p.id), 10000), 'and posts')
+  t.is(await codeOf(friends[2].createInvite({ role: 'moderator' })), 'NOT_ALLOWED', 'a friend can\'t invite a moderator')
+  t.is(await codeOf(friends[2].createInvite({ role: 'admin' })), 'NOT_ALLOWED', 'nor an admin')
+})

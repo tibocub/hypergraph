@@ -143,3 +143,21 @@ test('a shortcut to a sub-forum: members follow it; to a forum they aren\'t in: 
   await forum.join(b, await forum.invite(other))
   t.is(forum.follow(b, toOther).key, other.key, 'once invited, it does')
 })
+
+test('a member clicks a board the moment it is listed: it opens (F7)', async (t) => {
+  const { b, fa, fb } = await threeMembers(t)
+  const unopenable = []
+  const listed = new Set()
+  // checked the moment b's forum hears of a decision, and when b's spaces change
+  const check = () => {
+    for (const s of forum.subforums(fb)) {
+      try { b.space(s.key); listed.add(s.key) } catch { unopenable.push(s.name) }
+    }
+  }
+  fb.on('decisions', check)
+  b.on('spaces', check)
+  const boards = []
+  for (const name of ['One', 'Two', 'Three']) boards.push(await forum.createSubforum(fa, name))
+  t.ok(await eventually(() => boards.every((x) => listed.has(x.key)), 10000), 'b lists every board, told by \'spaces\'')
+  t.alike(unopenable, [], 'never listed before hg.space() opens it')
+})

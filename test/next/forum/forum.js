@@ -170,6 +170,14 @@ function invite (forum, { subforums = [] } = {}) {
   return forum.createInvite({ role: 'member', subspaces: subforums })
 }
 
+// Friends invite friends: a link that makes its taker a friend, who may
+// invite friends in turn (moderating stays with the forum's admins). The
+// role is defined the first time.
+async function inviteFriend (forum) {
+  if (!(await forum.roles()).some((r) => r.name === 'friend')) await forum.defineRole('friend', ['post', 'invite'])
+  return forum.createInvite({ role: 'friend' })
+}
+
 // An open forum: a public link for anyone, until revoked. `perHour`: how
 // much each device may post in an hour (against spam).
 async function openLink (forum, { perHour } = {}) {
@@ -444,7 +452,7 @@ module.exports = {
   addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
   forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
-  invite, openLink, revokeLink, whoJoined, join, setHelpers, helpers,
+  invite, inviteFriend, openLink, revokeLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
   hide, reveal, takeDown, flag, ban, unban,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
