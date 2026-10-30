@@ -54,8 +54,9 @@ test('every decision of data-model.md round trips', (t) => {
     { type: 'member/remove', stamp: 3, identity: key(), cut: [{ log: key(), length: 4 }] },
     { type: 'role/define', stamp: 4, name: 'editor', permissions: ['post', 'edit-pages'] },
     { type: 'role/set', stamp: 5, identity: key(), role: 'moderator', cut: [] },
-    { type: 'moderate', stamp: 7, action: 'hide', target: id, reason: 'spam', cut: [] },
-    { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: 'spam', cut: [{ log: key(), length: 12 }] },
+    { type: 'moderate', stamp: 7, action: 'hide', target: id, reason: 'spam', cut: [], drop: null },
+    { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: 'spam', cut: [{ log: key(), length: 12 }], drop: null },
+    { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: '', cut: [], drop: 'all' }, // spec 014
     { type: 'invite/create', stamp: 9, invite: crypto.randomBytes(100) },
     { type: 'invite/revoke', stamp: 10, invite: crypto.randomBytes(100) },
     { type: 'invite/redeem', stamp: 11, redemption: crypto.randomBytes(300) },

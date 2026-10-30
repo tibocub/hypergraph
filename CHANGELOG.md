@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-10-30: `hypergraph/next` — moderation tools (spec 014, forum F10–F13)
+
+**Apply-time change: every member updates together.** An older peer keeps records that newer ones drop
+(`drop: 'all'` bans) and drops edits newer ones keep (removed or banned editors).
+
+- Types: `put: { permission }` says who may write a type (`'decide'`: owner and admins). Others get
+  `NOT_ALLOWED`; a forced one counts for nobody (no list, count, sum; `get` gives `null`). Changing `put`
+  is `INCOMPATIBLE_TYPES`. (F13)
+- `space.report(record, { reason })`: any member tells the moderators privately (a built-in `hg/report`
+  record sealed to the moderators' devices of the moment); `space.reports()` (moderators) lists them grouped
+  by record, one per member; `moderateAction('remove', report)` dismisses one. (F12)
+- `query(type).moderated('hidden' | 'flagged')`: what moderators hid or flagged, however old, paged. (F10)
+- `moderateAction('ban', who, { drop: 'all' })`: drops everything they wrote, every device, the space and its
+  sub-spaces, one decision; also on someone already banned. Wire: `moderate` gets a trailing `drop`. (F11)
+- Fix: a removed or banned editor's edits up to the cut now stay (they vanished); losing `decide`,
+  `moderate`, `invite` or `roles` by a role change records a cut too. See `specs/014-moderation-tools/`.
+
 ### 2026-10-30: `hypergraph/next` — live lists, sub-space policy, friends invite friends, `subspaces()` (forum F5–F7)
 
 - `query().live(fn)` calls `fn` only when its answer (items or `complete`) changed. An incomplete list no

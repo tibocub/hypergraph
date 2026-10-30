@@ -60,7 +60,9 @@ Logs are append-only: nothing is changed in place.
   take records down by decision. Every member stops showing it and wipes its copy. A modified app, or a device that was offline and never got the delete, may still keep
   a copy: deleting on a network of peers cannot be stronger than that.
 
-Types declared `onePerMember` (votes) count each member's latest record only.
+Types declared `onePerMember` (votes) count each member's latest record only. A type may also say who
+may **put** one (`put: { permission }`, e.g. a forum's theme for owners and admins): anyone else's is
+refused by your app and ignored by every member, with the same cuts as edits when the permission goes.
 
 Losing the right to edit works like a ban, for edits only: the decision taking the permission away
 records how far the decider held the editor's logs (a **cut**). Edits below it stay valid for everyone;
@@ -153,7 +155,13 @@ with its own permissions. Roles say who may write, invite, give roles and modera
 **flag**, **hide** and **reveal** records, **remove** them for good, **ban** people and lift a ban
 (**unban**: what they wrote while banned never counts). These are
 decisions: every member applies them in the same order, and one made by someone who wasn't allowed at
-that point is ignored by everyone (a demoted moderator's earlier decisions stay).
+that point is ignored by everyone (a demoted moderator's earlier decisions stay). A ban can also
+**drop everything** the person wrote (`drop: 'all'`): every device, the space and its sub-spaces, one
+decision. Hidden and flagged records stay listable by moderators however old (`moderated()`).
+
+**Reports** let any member tell the moderators about a record without the others knowing: the report is
+a record like any other (others see its author wrote one), but what it points at and why are sealed to
+the devices of the moderators of that moment. A moderator appointed later doesn't read earlier reports.
 
 ## Readers enforce
 

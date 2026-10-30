@@ -94,7 +94,8 @@ const types = {
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } },
   vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true },
   page: { fields: { title: 'string', body: 'text' }, editable: { permission: 'edit-pages' } },   // a wiki
-  note: { fields: { text: 'text' }, editable: 'members' }                                       // any member edits
+  note: { fields: { text: 'text' }, editable: 'members' },                                      // any member edits
+  theme: { fields: { css: 'text' }, put: { permission: 'decide' } }                              // owner and admins put
 }
 ```
 
@@ -105,12 +106,18 @@ modified app pointing elsewhere is kept with that link ignored (the field reads 
 `linked()`, `count()`, `sum()` or `query().on()` of its target). `onePerMember`: only each member's latest counts (per its first link field).
 `index: [['forum', 'stamp']]` adds a query by field (`where`; records with no value in those fields aren't in it). `editable` says who may edit a record
 besides its author: `'author'` (the default), `'members'` (any member), or `{ permission }` (members whose
-role has that permission, e.g. one you define with `defineRole`; see [Shared editing](#shared-editing)). Field
+role has that permission, e.g. one you define with `defineRole`; see [Shared editing](#shared-editing)).
+`put` says who may write one: `'members'` (the default: anyone who may write) or `{ permission }`, your
+app's or hypergraph's own (`'decide'`: the owner and admins; `'moderate'`: moderators up). Anyone else's
+`put` throws `NOT_ALLOWED`; one from a modified app is in no list, count or sum, and `get` gives
+`record: null`. Losing the permission works like losing an edit permission: what they put up to the cut
+stays. Taking `decide`, `moderate`, `invite` or `roles` from a role you defined has no cut: its members'
+records of such types stop counting (give them another role instead). Field
 names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are taken by the record.
 
 **App versions.** Members never all update at once, so between versions you may only add fields at the
 end of a type (a link field with its `links`), add types and add indexes; anything else (reordering,
-removing or retyping a field, removing a type, changing `editable`, `onePerMember` or a link field's
+removing or retyping a field, removing a type, changing `editable`, `put`, `onePerMember` or a link field's
 targets, or opening a folder with an older version than last time) throws `INCOMPATIBLE_TYPES` at open,
 naming the type and the field. Members on two versions share a space: the old app doesn't see the new
 fields (and its edits keep them), the new one sees them `null` on old records. Records of a type the app
@@ -242,7 +249,16 @@ await forum.moderateAction('flag', post, { reason: 'check' })     // record.flag
 await forum.moderateAction('remove', comment)                     // gone for good
 await forum.moderateAction('ban', someone, { reason: 'spam' })    // out, and not let back in
 await forum.moderateAction('ban', someone, { from: firstSpam })   // and drop that record and all after it
+await forum.moderateAction('ban', someone, { drop: 'all' })       // and drop everything they wrote
 await forum.moderateAction('unban', someone)                      // may be let back in (invite, setRole)
+
+await forum.query('post').moderated('hidden').latest(20)          // what moderators hid, however old
+await forum.query('post').moderated('flagged').latest(20)         // what they flagged
+
+await forum.report(post, { reason: 'spam' })                      // any member who may write
+const { items } = await forum.reports()                           // moderators: [{ on, count, reports:
+                                                                  //   [{ id, by, reason, stamp }] }]
+await forum.moderateAction('remove', items[0].reports[0])         // dismiss a report
 ```
 
 Built-in roles: `owner` (everything, your app's permissions included), `admin` (members, roles, invites,
@@ -253,6 +269,23 @@ own `decide`, `moderate`, `invite` and `roles`.
 Moderators, admins and the owner moderate. Every call resolves once your app applied the decision; the
 others apply it as soon as it reaches them, in the same order, offline members included. A moderator
 demoted later: what they decided before stays, what they decide after counts for nobody.
+
+`drop: 'all'` drops everything the person wrote instead: on every device, in the space and every
+sub-space below, for everyone, newcomers included, in one decision. It also works on someone banned
+already (ban first, decide later). Lifted (`unban`) and let back in, they write again; what was dropped
+stays dropped. Every member must run a hypergraph with spec 014 (2026-10-30): an older one keeps what
+newer ones drop.
+
+**Moderated lists.** `query(type).moderated('hidden' | 'flagged')` lists the records moderators hid or
+flagged, however old, newest first, paged with `{ after }`, with the other filters (`by`, `on`...). A
+revealed record leaves the hidden list; a removed one is in none.
+
+**Reports.** `report(record, { reason })` (anyone who may write; a reason up to 1,000 characters) tells
+the moderators privately: what was reported and why are sealed to the devices of the owner, admins and
+moderators of that moment; the other members only see that its author wrote a report. `reports()`
+(moderators; others `NOT_ALLOWED`) lists those this device opens, grouped by reported record, one per
+member (their latest), the most recently reported first; `moderateAction('remove', report)` dismisses
+one. A moderator appointed later, or a device of theirs that joined after, doesn't read earlier reports.
 
 Removing or banning someone keeps what they wrote up to what you held at that moment, for everyone,
 including people who join later; anything they write after is ignored everywhere. A ban keeps their
@@ -322,7 +355,7 @@ allow is refused by their app and ignored by everyone. **Only the author deletes
 moderators, whose `del()` takes it down for good): an editor who blanks a page has only made an edit, and
 the next edit restores it.
 
-Taking the permission away from an editor (`setRole` to a role without it) works like a ban, for their
+Taking the permission away from an editor (`setRole` to a role without it, a removal or a ban) works like a ban, for their
 edits only: what they edited up to what you held at that moment stays, for everyone, newcomers
 included; edits they make after count for nobody, even for members who showed them before the decision
 reached them. Given the permission back, they edit again (their app writes in a new log). Relations and
