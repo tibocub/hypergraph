@@ -15,8 +15,9 @@ HyperMarkdown sites) without knowing replication, cryptography or networking. Re
 |---|---|---|---|
 | 1 | **hypergraph's new core** ("spaces", spec 011) | the kit itself | **merged into master 2026-10-22** (`require('hypergraph/next')`) |
 | 2 | **Forum scenario tests** (in this repo, no UI) | the API is easy; every flow tested | built alongside 1, from its first story |
-| 3 | **SwarmFS** rewrite on the new core + swarmwire (`E:\Code\P2P\SwarmFS`) | files and folders, two devices, big archives | starts after spec 011's story 3; its needs are in spec 011 |
-| 4 | **HyperBrowser** (codename; HyperBBS's vision in a web UI, own repo) | a real app people use; a forum site is the real proof | starts after spec 011's first stories; its needs are in spec 011 |
+| 3 | [hypergraph-forum-example](https://github.com/tibocub/hypergraph-forum-example) | A forum client with a nodeJS backend + a WebUI |
+| 4 | [SwarmFS](https://github.com/tibocub/SwarmFS) rewrite on the new core + swarmwire | files and folders, two devices, big archives | starts after spec 011's story 3; its needs are in spec 011 |
+| 5 | **HyperBrowser** (codename; HyperBBS's vision in a web UI, own repo) | a real app people use; a forum site is the real proof | starts after spec 011's first stories; its needs are in spec 011 |
 
 v1 (`src/`) stays frozen until hyperDNS moves to the new core. HyperBBS (the terminal app) is paused.
 Spec 009 (helpers, availability) is retargeted onto the new core after 1.
@@ -376,13 +377,17 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    policy; a role with `invite` and no power over others invites to itself (friends invite friends); `subspaces()`
    lists a board once it opens; the runner counts crashed files. Lead's run: next 315/315 Node, 314/314 Bare;
    SwarmFS 66/66 Bare, 65/66 Node (`pause.test.js` timed out under load, 4/4 run alone twice).
-6. Now: forum spec 001 (`hypergraph-forum-example`, published by Tibo) built and tried by Tibo. Next: adopt F6/F7,
-   re-pin `HYPERGRAPH_REF` (after hypergraph is pushed), then Tibo's README to-do list. Tibo's answers (2026-10-30): any
+6. ~~Spec 014 "moderation tools"~~ merged (290a86a, forum F10–F13): `put: { permission }` on a type, sealed
+   `report()`/`reports()`, `query().moderated()`, `ban { drop: 'all' }`. Apply-time: everyone updates together.
+   Lead's run: next 323/323 Node, 322/322 Bare; SwarmFS 66/66 (worker's run). Gap: `count`/`sum` ignore `put`.
+   Open forum requests: F8 (sort by sums/counts), F9 (text search): later, when a forum gets big.
+7. Now: forum (`hypergraph-forum-example`) has F5–F7 and all of Tibo's to-dos (main 151806e). Next: adopt 014
+   (drop the F10–F13 workarounds, re-pin), then the friends' trial. Tibo's answers (2026-10-30): any
    member invites (admins-only invites and invite-less public spaces later, for SwarmFS/HyperBrowser); online only
    while the program runs (a background service later, likely in SwarmFS); friends send their delivery log at the
    end (it mostly catches replication bugs like H17 and measures delays: a post is lost for good only if its
    author never reconnects); names in a `profile` record in the forum (a name in the core maybe later, F1).
-7. Later: hyperDNS onto the new core or frozen, then v1 removed.
+8. Later: hyperDNS onto the new core or frozen, then v1 removed.
 
 ## Follow-ups (not built yet)
 
