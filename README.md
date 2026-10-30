@@ -214,7 +214,7 @@ browser) for detailed method documentation.
 
 ## Examples
 
-- [forum-web](examples/forum-web) - Complete forum application with networking
+- [hypergraph-forum-example](https://github.com/tibocub/hypergraph-forum-example) - Complete forum application with networking
 - [cli-chat-pattern](examples/cli-chat-pattern) - Simple chat example
 
 ## Contributing
