@@ -347,7 +347,9 @@ online first; memory stays under the budget.
 1. **Tracking across sites**: one identity per engine means every site sees the same author key, so sites
    can link a person across sites. Accept for now (as the roadmap says), or plan per-site identities?
 2. **Who records a site's types**: proposed automatic when a decider's app has a newer compatible version
-   (FR-005). Or explicit (`space.setTypes()`, like `setRules`)?
+   (FR-005). Or explicit (`space.setTypes()`, like `setRules`)? And should a plain member's app also record purely
+   additive types with default rules? Without it, a forum member who updates first can't post a new type
+   until an admin's updated app opens the forum (`research.md` R2).
 3. **Caps**: proposed defaults desktop `maxOpen` 64 / `maxAnnounced` 32, phone 16 / 8, memory budget set by
    the app. Re-measure on a real network in milestone 1.
 4. **Personal space shared by apps**: proposed one type namespace, collisions refused (FR-062), apps
