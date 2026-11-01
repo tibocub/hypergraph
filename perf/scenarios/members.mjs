@@ -1,8 +1,10 @@
 // Members and reactions as a space grows (specs/research/scale-audit.md, perf scenarios 1, 2
 // and 6), real decisions on a local DHT:
 //   members.decision  one more decision (a member added) applied on the owner, with N members
-//                     already in (each written as a real decision: lib/testing.js decide).
-//                     flat: must not grow with members (the audit's top risk, #1)
+//                     already in (each written as a real decision: lib/testing.js decide), until
+//                     the space's 'members' event (its decision hooks done; not members(), a
+//                     list of all N the app may or may not read). flat: must not grow with
+//                     members (the audit's top risk, #1)
 //   members.join      a newcomer redeems an invite with N members in: until let in (ms)
 //   members.join-kb   what it downloaded to get there (KB). flat
 //   reactions.count   count() of the likes on one post with N likes (ms per read). flat: the
@@ -10,7 +12,7 @@
 //   reactions.sum     sum() of the same
 
 import hc from 'hypercore-crypto'
-import { context, time, record, now, eventually, sizes } from '../harness.mjs'
+import { context, time, record, now, eventually, within, sizes } from '../harness.mjs'
 import helpers from '../../test/next/helpers.js'
 import testing from '../../lib/testing.js'
 
@@ -34,10 +36,14 @@ try {
   for (const n of sizes([100, 400])) {
     await add(n - count)
     const decisions = await time(async () => {
-      const before = (await space.members()).length
-      await testing.decide(space, { type: 'member/add', identity: hc.randomBytes(32) })
+      const id = hc.randomBytes(32)
+      const applied = new Promise((resolve) => {
+        const done = () => { if (space.state.isMember(id)) { space.off('members', done); resolve() } }
+        space.on('members', done)
+      })
+      await testing.decide(space, { type: 'member/add', identity: id })
       count++
-      if (!await eventually(async () => (await space.members()).length > before, 30000, 1)) throw new Error('the decision never applied')
+      if (!await within(applied.then(() => true), 30000)) throw new Error('the decision never applied')
     }, 5)
     record('members.decision', n, 'ms', decisions, { flat: true })
     const joins = []
