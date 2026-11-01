@@ -43,7 +43,7 @@ working tree**. That means:
   not a safe fallback but a silently-incompatible peer that rejects events signed by a current one —
   hyperDNS ran one for weeks before the switch; see `ECOSYSTEM.md`.
 
-## Three rules that exist specifically to stop drift
+## Four rules that exist specifically to stop drift
 
 These were added after an audit found that `docs/`, `API_PROBLEMS.md`, and `TODO.md` had partly
 drifted from the actual code, because nothing enforced keeping them in sync. Don't let it happen
@@ -53,6 +53,12 @@ again:
    top-level `docs/*.md`) → update that file in the *same* change. Not a follow-up.
 2. **Regression-test-on-change**: fix a bug or change behavior anywhere in `src/` → add or update
    a test that fails before the change and passes after, in the *same* change.
+   **Perf-on-change**, its twin: a change touching a hot path (storage, replication, indexing,
+   transfers, wire formats) adds or updates a scenario in `perf/scenarios/` in the *same* change,
+   runs `npm run perf` before and after (both runs land in the committed `perf/history.jsonl`;
+   `npm run perf:compare` shows the difference), and the lead compares before merge. Scenarios are
+   real app flows (the forum app, a chat, opening spaces), never benchmark-only shapes: an
+   optimization that makes an app flow harder to write is refused. Same rule in SwarmFS and swarmwire.
 3. **The forum scenario is part of the product**: for the redesigned core (spec 011), the **forum
    scenario tests** — a forum's flows (sign up, create a forum, post, comment, vote, edit, delete,
    moderate, invite, devices, sub-forums) played through the public API, with no UI — are how we prove
@@ -167,6 +173,8 @@ node scripts/test-runner.js core           # one group (core, networking, replic
 node scripts/test-runner.js test/brittle/replication/invites.js   # given files
 node scripts/test-timeline.js <file> [re]  # one file, each line with seconds elapsed: where it waits
 npm run test:serial                        # the old way: groups one after another, one process per group
+npm run perf                               # perf scenarios on Node then Bare (~3 min), appended to perf/history.jsonl
+npm run perf:compare                       # the last run vs the previous one (-- --sha <sha> for another)
 ```
 
 `npm test` (`scripts/test-runner.js`) uses all cores but two (`HG_TEST_JOBS=n` to change), runs
