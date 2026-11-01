@@ -9,6 +9,9 @@ a lead conversation or a worker — starts by reading this file.
 The easiest kit to build server-less, decentralized social apps (forums, chats, wikis, file sharing,
 HyperMarkdown sites) without knowing replication, cryptography or networking. Revive the indie web.
 
+The final app is **HyperBrowser**: a P2P browser in which sites live with their owner and their visitors, and
+dynamic sites run on a hypergraph of their own. The libraries stay usable on their own.
+
 ## The projects, in order
 
 | # | Project | What it proves | Status |
@@ -16,13 +19,67 @@ HyperMarkdown sites) without knowing replication, cryptography or networking. Re
 | 1 | **hypergraph's new core** ("spaces", spec 011) | the kit itself | **merged into master 2026-10-22** (`require('hypergraph/next')`) |
 | 2 | **Forum scenario tests** (in this repo, no UI) | the API is easy; every flow tested | built alongside 1, from its first story |
 | 3 | [hypergraph-forum-example](https://github.com/tibocub/hypergraph-forum-example) | A forum client with a nodeJS backend + a WebUI |
-| 4 | [SwarmFS](https://github.com/tibocub/SwarmFS) rewrite on the new core + swarmwire | files and folders, two devices, big archives | starts after spec 011's story 3; its needs are in spec 011 |
-| 5 | **HyperBrowser** (codename; HyperBBS's vision in a web UI, own repo) | a real app people use; a forum site is the real proof | starts after spec 011's first stories; its needs are in spec 011 |
+| 4 | [SwarmFS](https://github.com/tibocub/SwarmFS) rewrite on the new core + swarmwire | files and folders, two devices, big archives | a library (its CLI is for debugging and tests); its UI becomes a HyperBrowser page |
+| 5 | **HyperBrowser** (own repo) | a real app people use; a forum site is the real proof | after milestone 0 below |
 
 v1 (`src/`) stays frozen until hyperDNS moves to the new core. HyperBBS (the terminal app) is paused.
 Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
+## The final app: HyperBrowser
+
+(Grilled with Tibo 2026-11-01; Pear research in Decisions.)
+
+- **Layers**:
+  - libraries: hypergraph, swarmwire, SwarmFS, HyperMD. Each stays usable alone and runs on Node and Bare; none
+    depends on Pear.
+  - **one engine**: one identity, one swarm, every site's spaces and files. It runs without a window too (CLI,
+    helper).
+  - the app shell: Pear (`pear-runtime` + its Electron template; `pear-mobile` later).
+  - built-in apps (file manager, friends, messages) are sites themselves.
+- **A site** = a SwarmFS space (its pages, scripts, media) + a `site.json` manifest at its root (title, entry page,
+  the permissions it asks for). A dynamic site's JS gets the hypergraph API for its own space; a static site's JS
+  runs without it. HyperMD + JS first, plain HTML/CSS/JS sites later.
+- **Storage: SwarmFS only.** No multi-writer Hyperdrive (it would rebuild SwarmFS). SwarmFS gains an app-storage mode
+  (a site's files in the engine's folder, evicted like a cache, not in the user's folders), small files inside the
+  record, and watched-part-first downloads for video. Fallback, only if the study measures static sites too slow on
+  a space: single-writer Hyperdrive for static sites.
+- **Rules for every spec**:
+  - site code runs only in a sandboxed web view, one per site, never in the engine (also Apple's rule for
+    downloaded code, to verify).
+  - the site API is async (messages): dot notation returns promises or live views.
+  - a site reaches only its own spaces; anything more (the user's name, files, friends) asks the user, per site,
+    remembered.
+  - visitors always run a site's latest version; breaking type changes are refused (hypergraph's compatibility
+    check).
+  - addresses are keys; a name is a hyperDNS lookup that returns a key.
+- **Availability**:
+  - desktop: the engine keeps running in the tray (on by default, easy to turn off), seeding your spaces, bookmarked
+    sites, and recent visits up to a size cap (only the media you viewed).
+  - mobile: no long background run; a push wakes the app for seconds (how Keet notifies). Needs a helper that sends
+    pushes with the app's Apple/Google keys: later, with the availability plan. Tibo asks Keet's devs how they do it.
+- **Known limits** (say them to app builders): a removed member keeps what they already read; a first visit to a site
+  is slow (to measure).
+- **Milestones**:
+  0. Storage study (`specs/research/`): first visit of a 20-page site with images (space + inline small files, vs a
+     Hyperdrive), disk and memory for 1 and 50 sites, visitors' media (a forum image) with roles, video seeking
+     through swarmwire. And a hypergraph spec: **one engine for many sites** (today one instance = one folder, one
+     identity, one swarm, one fixed set of types; a site's types must live in its space).
+  1. Desktop shell + a static site + the forum as a site, opened from a key.
+  2. SwarmFS inside the engine (sites can use it), then the file manager page.
+  3. Friends and messages; then Android, then iOS; push wake-ups.
+- **Learned from others**: Beaker (archived 2022; its post-mortem: a static-site maker as first product, no mobile,
+  no sync between one person's devices, slow first load); Freenet (relaunched 2025–26, apps with network-held state,
+  River chat) and Holochain: the same idea elsewhere, so our angle is local reads, offline, the Holepunch stack, plain
+  JS/HyperMD, easy to build with; Pear: the shell, no help for loading or sandboxing strangers' sites.
+
 ## Decisions (newest first)
+
+- **2026-11-01 (HyperBrowser design, grilled with Tibo)** — One app, not a separate SwarmFS app: one engine, built-in
+  apps as sites; details in "The final app" above. Pear: `pear run` removed (June 2026), now `pear-runtime` (desktop,
+  experimental) + `pear-mobile`; a Bare worker owns P2P, the web view talks to it by messages; nothing for loading
+  many third-party sites or sandboxing them (ours to build). Storage: SwarmFS only (Hyperdrives are single-writer: an
+  owner couldn't edit from two devices; multi-writer would rebuild SwarmFS), measured before building. Blocker found
+  in our own core: one Hypergraph instance per folder, identity, swarm and type set.
 
 - **2026-10-29 (forum web app, grilled with Tibo)** — Forum before HyperBrowser: a plain web app on `hypergraph/next`,
   its own repo `E:\Code\P2P\hypergraph-forum-example` (a consumer with `specs/requests-to-hypergraph.md`, like
@@ -388,6 +445,8 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    end (it mostly catches replication bugs like H17 and measures delays: a post is lost for good only if its
    author never reconnects); names in a `profile` record in the forum (a name in the core maybe later, F1).
 8. Later: hyperDNS onto the new core or frozen, then v1 removed.
+9. HyperBrowser milestone 0: the storage study is research, so it can start now; the "one engine for many sites"
+   spec changes the core, so after the forum trial (the trial is pinned to afae42b).
 
 ## Follow-ups (not built yet)
 
