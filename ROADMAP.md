@@ -64,6 +64,28 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
      Hyperdrive), disk and memory for 1 and 50 sites, visitors' media (a forum image) with roles, video seeking
      through swarmwire. And a hypergraph spec: **one engine for many sites** (today one instance = one folder, one
      identity, one swarm, one fixed set of types; a site's types must live in its space).
+     **Storage study done** (`specs/research/site-storage.md`, 2026-11-01): SwarmFS-only stays; no Hyperdrive fallback
+     now. On loopback a space shows a 20-page site's entry page in 0.29 s (0.13 s with small files inline) vs 0.03 s
+     for a Hyperdrive; ~3 MB memory per open space vs 1.8 MB. Speed doesn't block; roles and storage do. Re-decide the
+     fallback in milestone 1, between two real machines: build it for static sites only if a space's entry page
+     takes over ~2× a Hyperdrive's or over 1 s after connecting, and the swarmwire work below doesn't close it.
+     **Before milestone 1**, SwarmFS needs:
+     - visitors who only read (an invite without `post`; reading a public site without being let in). Same need as
+       H5 below; hypergraph may not give readers a private space's key (to confirm).
+     - protected pages: the owner and admins write the pages, members upload, an upload editable by its author only
+       (hypergraph's sub-spaces with `writeRoles` already do it; SwarmFS has no call for them). Today every invitee
+       is an `editor` who can rename or bin the site's pages, and the owner's disk follows.
+     - app-storage mode: a site's files in the engine's folder, evicted like a cache; the owner's app keeps members'
+       uploads.
+     - small files (up to ~60 KB) inside their record: halves a first visit.
+
+     swarmwire requests (speed; none optimized yet, lots of room):
+     - small files: ~30 ms fixed cost per file, mostly setup (asking holders, `.part` file, progress sidecar,
+       rename), not bytes. Ideas: one request for many small files, no `.part`/sidecar under a size.
+     - one peer: ~10 MB/s vs Hypercore's ~28 MB/s. Tibo's idea: below a size or with one peer, switch to one big
+       sequential stream (Hyperbeam-like), still verified piece by piece.
+     - video: fetch a byte range first, changeable while running, readable before the file completes; SwarmFS serves
+       ranges to the web view.
   1. Desktop shell + a static site + the forum as a site, opened from a key.
   2. SwarmFS inside the engine (sites can use it), then the file manager page.
   3. Friends and messages; then Android, then iOS; push wake-ups.
