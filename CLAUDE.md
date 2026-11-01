@@ -58,7 +58,9 @@ again:
    runs `npm run perf` before and after (both runs land in the committed `perf/history.jsonl`;
    `npm run perf:compare` shows the difference), and the lead compares before merge. Scenarios are
    real app flows (the forum app, a chat, opening spaces), never benchmark-only shapes: an
-   optimization that makes an app flow harder to write is refused. Same rule in SwarmFS and swarmwire.
+   optimization that makes an app flow harder to write is refused. A cost that must not grow with
+   the size is recorded `flat` (compare shows its curve); peers that would be on other machines run
+   in their own processes (`perf/harness.mjs` `child`). Same rule in SwarmFS and swarmwire.
 3. **The forum scenario is part of the product**: for the redesigned core (spec 011), the **forum
    scenario tests** — a forum's flows (sign up, create a forum, post, comment, vote, edit, delete,
    moderate, invite, devices, sub-forums) played through the public API, with no UI — are how we prove
@@ -173,8 +175,8 @@ node scripts/test-runner.js core           # one group (core, networking, replic
 node scripts/test-runner.js test/brittle/replication/invites.js   # given files
 node scripts/test-timeline.js <file> [re]  # one file, each line with seconds elapsed: where it waits
 npm run test:serial                        # the old way: groups one after another, one process per group
-npm run perf                               # perf scenarios on Node then Bare (~3 min), appended to perf/history.jsonl
-npm run perf:compare                       # the last run vs the previous one (-- --sha <sha> for another)
+npm run perf                               # perf scenarios on Node then Bare (~4 min), appended to perf/history.jsonl
+npm run perf:compare                       # last run vs previous (-- --sha <sha>): changes beyond noise, flat curves
 ```
 
 `npm test` (`scripts/test-runner.js`) uses all cores but two (`HG_TEST_JOBS=n` to change), runs

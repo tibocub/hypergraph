@@ -71,7 +71,7 @@ const round = (x, d = null) => { const p = d ?? (Math.abs(x) >= 100 ? 1 : Math.a
 function runFile (runtime, file) {
   return new Promise((resolve) => {
     const script = path.join(here, 'scenarios', file)
-    const args = runtime === 'bare' ? [bareBin(), script, ...pass] : [script, ...pass]
+    const args = runtime === 'bare' ? [bareBin(), '--expose-gc', script, ...pass] : ['--expose-gc', script, ...pass]
     const env = { ...process.env, TMP, TEMP: TMP, TMPDIR: TMP }
     const p = spawn(process.execPath, args, { cwd: root, env })
     try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL) } catch { /* not allowed here: normal priority */ }
@@ -85,7 +85,7 @@ function runFile (runtime, file) {
       else if (l.startsWith('PERF ')) {
         const r = JSON.parse(l.slice(5))
         const s = summary(r.samples)
-        results.push({ scenario: r.scenario, size: r.size, unit: r.unit, better: r.better, ...s })
+        results.push({ scenario: r.scenario, size: r.size, unit: r.unit, better: r.better, ...(r.flat ? { flat: true } : {}), ...s })
         const sp = s.n > 1 ? ` ±${Math.round(s.spread * 100)}%` : ''
         console.log(`  ${r.scenario.padEnd(22)} ${String(r.size).padStart(7)}  ${String(s.median).padStart(9)} ${r.unit}${sp}  (n=${s.n})`)
       } else out += l + '\n'
