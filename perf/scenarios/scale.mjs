@@ -98,7 +98,7 @@ for (const n of devices) {
   const keys = []
   for (let i = 0; i < n; i++) keys.push(hc.keyPair().publicKey)
   const times = []
-  for (let r = 0; r < 3; r++) {
+  for (let r = 0; r < 7; r++) {
     const key = pc.newEpochKey()
     const commit = pc.commitOf(key)
     const start = now()

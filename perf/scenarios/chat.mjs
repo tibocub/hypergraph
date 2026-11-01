@@ -65,7 +65,7 @@ for (const n of sizes([3, 9])) {
     // newcomers, each fresh, with a small budget
     const pages = []
     const scrolls = []
-    for (let j = 0; j < 3; j++) {
+    for (let j = 0; j < 5; j++) {
       let c = null
       try {
         c = await helpers.open(t, { types, label: 'newcomer' + j })
