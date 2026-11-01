@@ -10,7 +10,7 @@
 //   chat.scroll-back  the newcomer's next page of 50 (older messages it may not hold)
 
 import path from 'path'
-import { fileURLToPath } from 'url'
+import process from 'process'
 import { context, time, record, now, within, eventually, child, sizes } from '../harness.mjs'
 import helpers from '../../test/next/helpers.js'
 import testing from '../../lib/testing.js'
@@ -19,7 +19,7 @@ const types = { message: { fields: { text: 'text' } } }
 const ROUNDS = 5
 const PER_ROUND = 10 // per author: 50 messages each
 const TEXT = 'x'.repeat(480)
-const AUTHOR = path.join(path.dirname(fileURLToPath(import.meta.url)), '_author.mjs')
+const AUTHOR = path.join(path.dirname(process.argv[1]), '_author.mjs') // (no 'url' on Bare here)
 
 for (const n of sizes([3, 9])) {
   const t = context()

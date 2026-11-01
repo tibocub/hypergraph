@@ -6,11 +6,13 @@
 //   npm run perf:compare -- --sha 1531fb4   # last run vs the last run at that commit
 //   npm run perf:compare -- --node          # one runtime (--bare)
 //
-// A change is flagged only when it is real on this machine's noise (two runs of the same
-// commit must flag nothing):
-//   - the median moved over max(15%, 3 × the larger spread),
-//   - the minimum moved over 15% the same way (a few slow samples move a median, not a min),
+// A change is flagged only when it is beyond this machine's run-to-run noise (two runs of one
+// commit must flag nothing; measured 2026-11-01: half the scenarios move under ~10%, one in ten
+// over 20-45%, more than their samples' spread shows):
+//   - the median moved over max(25%, 3 × the larger half-range (max - min) / 2 / median),
+//   - the minimum moved over 25% the same way (a few slow samples move a median, not a min),
 //   - and, for times, by more than 0.5 ms.
+// So it catches changes of about 25% and more; a smaller one needs repeated runs to show.
 // Scenarios marked flat (their cost must not grow with the size) also show their curve:
 // biggest size against smallest, NOT FLAT past 1.5×.
 
@@ -22,7 +24,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const argv = process.argv.slice(2)
 const shaArg = argv.includes('--sha') ? argv[argv.indexOf('--sha') + 1] : null
 const runtimes = argv.includes('--node') ? ['node'] : argv.includes('--bare') ? ['bare'] : ['node', 'bare']
-const THRESHOLD = 0.15
+const THRESHOLD = 0.25
 const SPREADS = 3
 const FLOOR_MS = 0.5
 const FLAT = 1.5
@@ -35,7 +37,8 @@ const pct = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(0)}%`
 function judge (p, r) {
   const change = (r.median - p.median) / p.median
   const minChange = p.min ? (r.min - p.min) / p.min : change
-  const bar = Math.max(THRESHOLD, SPREADS * Math.max(r.spread, p.spread))
+  const halfRange = (x) => (x.n > 1 && x.median ? (x.max - x.min) / 2 / x.median : 0)
+  const bar = Math.max(THRESHOLD, SPREADS * Math.max(halfRange(r), halfRange(p)))
   if (Math.abs(change) <= bar) return null
   if (Math.sign(minChange) !== Math.sign(change) || Math.abs(minChange) <= THRESHOLD) return null
   if (r.unit === 'ms' && Math.abs(r.median - p.median) <= FLOOR_MS) return null

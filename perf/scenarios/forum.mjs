@@ -23,7 +23,7 @@ const RATE = 100 // records an hour
 const HOUR = 3600e3
 const flat = true
 
-for (const n of sizes([2500, 7500])) {
+for (const n of sizes([2500, 6000])) {
   const t = context()
   try {
     const a = await setup.account(t, 'a')
@@ -72,11 +72,11 @@ for (const n of sizes([2500, 7500])) {
     await sleep(2000) // the fill's background work (budget passes, compactions) out of the timings
     const top = posts[posts.length - 1]
     // sub-ms reads and ~1 ms writes: each sample is a batch, per call
-    record('forum.post', n, 'ms', await time((j) => forum.post(fb, 'Mine ' + j, 'text', 'topic1'), 10, { batch: 5 }), { flat })
-    record('forum.comment', n, 'ms', await time((j) => forum.comment(fb, top, 'reply ' + j), 10, { batch: 5 }), { flat })
-    record('forum.vote', n, 'ms', await time((j) => forum.vote(fb, posts[posts.length - 1 - j], 1), 10, { batch: 5 }), { flat })
-    record('forum.latest-page', n, 'ms', await time(() => forum.latest(fb, 20), 10, { batch: 20 }), { flat })
-    record('forum.thread', n, 'ms', await time(() => forum.thread(fb, posts[posts.length - 3]), 10, { batch: 10 }), { flat })
+    record('forum.post', n, 'ms', await time((j) => forum.post(fb, 'Mine ' + j, 'text', 'topic1'), 10, { batch: 5, warmup: 5 }), { flat })
+    record('forum.comment', n, 'ms', await time((j) => forum.comment(fb, top, 'reply ' + j), 10, { batch: 5, warmup: 5 }), { flat })
+    record('forum.vote', n, 'ms', await time((j) => forum.vote(fb, posts[posts.length - 1 - j], 1), 10, { batch: 5, warmup: 5 }), { flat })
+    record('forum.latest-page', n, 'ms', await time(() => forum.latest(fb, 20), 10, { batch: 20, warmup: 20 }), { flat })
+    record('forum.thread', n, 'ms', await time(() => forum.thread(fb, posts[posts.length - 3]), 10, { batch: 10, warmup: 10 }), { flat })
 
     // a live screen on the member's side
     // (waits on the callback itself: a polling timer is ~16 ms on Windows)

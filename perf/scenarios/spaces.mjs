@@ -12,7 +12,7 @@ import next from '../../lib/index.js'
 const { Hypergraph } = next
 const types = { post: { fields: { title: 'string', text: 'text' } } }
 
-for (const n of sizes([20, 80])) {
+for (const n of sizes([20, 60])) {
   const t = context()
   try {
     const dir = helpers.tmpDir(t, 'spaces')

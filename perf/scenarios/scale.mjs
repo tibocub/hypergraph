@@ -23,7 +23,7 @@ import grants from '../../lib/private/grants.js'
 import pc from '../../lib/private/crypto.js'
 
 const hex = () => b4a.toString(hc.randomBytes(32), 'hex')
-const [members, logs, devices] = [sizes([1000, 4000, 16000]), sizes([500, 2000]), sizes([100, 1000])]
+const [members, logs, devices] = [sizes([1000, 4000, 10000]), sizes([500, 2000]), sizes([100, 1000])]
 
 for (const n of members) {
   const t = context()

@@ -50,9 +50,11 @@ export async function within (promise, ms, fallback = null) {
 
 // `n` samples of `fn(i)`'s duration in ms. `batch`: each sample times that many calls and
 // gives the time per call (sub-ms operations: one call is mostly timer and scheduling noise).
-export async function time (fn, n = 5, { batch = 1 } = {}) {
+// `warmup`: calls made first, untimed (the JIT's first runs).
+export async function time (fn, n = 5, { batch = 1, warmup = 0 } = {}) {
   const out = []
   let i = 0
+  for (; i < warmup; i++) await fn(i)
   for (let k = 0; k < n; k++) {
     const start = now()
     for (let b = 0; b < batch; b++) await fn(i++)
