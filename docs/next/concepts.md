@@ -117,6 +117,13 @@ Settling needs most of the settlers online at once; a space whose only settler i
 applies new decisions, but never settles them again (the unsettled part keeps growing), so **give a
 space an admin** or two. `space.status()` warns while only one member settles (`SINGLE_SETTLER`).
 
+Each device keeps what the decisions say in memory and applies each new decision to it in place, so a
+decision costs what it changed, not the number of members (about a millisecond at 1,000 or 10,000
+members). It reads the whole log again only when it opens the space and when decisions made at the same
+time on different devices are put in order after the fact. In memory, a member costs about 0.2 KB, 0.3 KB
+in a space with helpers (2026-11-02); on disk, each join still adds about 2 KB to the decision log, and a
+newcomer downloads about 0.8 KB per member to join.
+
 ## Helpers
 
 A post reaches others only while its author and another member are online together, unless the space has

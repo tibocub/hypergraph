@@ -1,9 +1,11 @@
 // The scale audit's cores (specs/research/scale-audit.md, "Perf scenarios"), measured on the
 // code that pays them, at small sizes that show the curve. From bench/scale-audit/:
-//   decisions.reload  (#1) what one decision costs every member: the decision view read
-//                     again and the state rebuilt (lib/decisions/state.js State.from), with N
-//                     members (N member:, redeemed: and listed: entries). flat: must not grow
-//                     with members (today it does: the audit's top risk)
+//   decisions.reload  (#1) what one decision costs every member: the changed entries of the
+//                     decision view read and applied to the state in place (lib/decisions/log.js
+//                     readChanges), with N members (N member:, redeemed: and listed: entries).
+//                     flat: must not grow with members (the audit's top risk)
+//   decisions.rebuild the whole view read and the state rebuilt (State.from): on open, and when
+//                     Autobase reorders the view (before 2026-11-02, at every decision)
 //   logs.open         (#2) a full member's start with N held logs: each opened with a live
 //                     download range and listeners (lib/replication.js hold); ms per log
 //                     (memory per log is not measured here: after the first round the
@@ -19,6 +21,7 @@ import hc from 'hypercore-crypto'
 import { context, record, now, sizes } from '../harness.mjs'
 import helpers from '../../test/next/helpers.js'
 import stateMod from '../../lib/decisions/state.js'
+import logMod from '../../lib/decisions/log.js'
 import grants from '../../lib/private/grants.js'
 import pc from '../../lib/private/crypto.js'
 
@@ -44,14 +47,29 @@ for (const n of members) {
       await b.flush()
     }
     const times = []
+    let state = null
     for (let r = 0; r < 5; r++) {
       const start = now()
       const entries = []
       for await (const { key, value } of bee.createReadStream({ lt: '~' })) entries.push([key, value])
-      if (stateMod.State.from(entries).members.size !== n) throw new Error('wrong state')
+      state = stateMod.State.from(entries)
+      if (state.members.size !== n) throw new Error('wrong state')
       times.push(now() - start)
     }
-    record('decisions.reload', n, 'ms', times, { flat: true })
+    record('decisions.rebuild', n, 'ms', times)
+    const each = []
+    for (let r = 0; r < 25; r++) { // the first 5: warm-up
+      const from = bee.version
+      const id = hex()
+      await bee.put('member:' + id, { role: 'member', by: id, stamp: Date.now(), writer: hex(), writerDevice: hex() }) // the decision, applied
+      const start = now()
+      const snap = bee.snapshot()
+      await logMod.readChanges(state, snap, from)
+      await snap.close()
+      if (r >= 5) each.push(now() - start)
+      if (!state.isMember(id)) throw new Error('wrong state')
+    }
+    record('decisions.reload', n, 'ms', each, { flat: true })
     await bee.close()
   } finally {
     await t.close()
