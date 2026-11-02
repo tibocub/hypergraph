@@ -19,10 +19,14 @@ something it knows of is still on its way (a read waits only when you give it `{
 const { Hypergraph } = require('hypergraph/next')
 
 const hg = await Hypergraph.open('./data', {
-  types,                 // your record types (below)
+  types,                 // your record types (below); none for an engine of many apps (a browser)
   rules,                 // your app's rules (below)
   mnemonic: undefined,   // a recovery phrase, to restore an identity in a new folder
-  password: undefined    // keeps the recovery phrase sealed by it from the first moment
+  password: undefined,   // keeps the recovery phrase sealed by it from the first moment
+  maxAnnounced: 32,      // spaces kept open and online (pinned, own, recent); 8 on a phone
+  maxOpen: 64,           // spaces open at once, at most; 16 on a phone
+  idleMs: 120000,        // another space closes this long after its last use
+  memory: undefined      // bytes open spaces may take (estimated), besides maxOpen
 })
 hg.identity.publicKey            // the person
 hg.device.publicKey              // this device
@@ -115,16 +119,78 @@ stays. Taking `decide`, `moderate`, `invite` or `roles` from a role you defined 
 records of such types stop counting (give them another role instead). Field
 names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are taken by the record.
 
+**Each space has its types.** A space records its types (`createSpace` records your app's, or the
+`types` you give it); every member reads, checks and indexes the space's records with the space's
+types, whatever their own app declares, so members on two app versions see the same fields.
+`space.types()` lists them (as `hg.types()` lists your app's) and `space.typesVersion` says which
+version the space has. No call sets them: when the owner's or an admin's app opens a space and declares
+more than the space has (types, fields at the end, indexes), it records the next version, and every
+member uses it from then on. Until then, writing a type or field the space doesn't have throws
+`INCOMPATIBLE_TYPES` ("this space doesn't have ... yet"). One engine can hold spaces of different apps,
+each with its own types.
+
 **App versions.** Members never all update at once, so between versions you may only add fields at the
-end of a type (a link field with its `links`), add types and add indexes; anything else (reordering,
-removing or retyping a field, removing a type, changing `editable`, `put`, `onePerMember` or a link field's
-targets, or opening a folder with an older version than last time) throws `INCOMPATIBLE_TYPES` at open,
-naming the type and the field. Members on two versions share a space: the old app doesn't see the new
-fields (and its edits keep them), the new one sees them `null` on old records. Records of a type the app
-doesn't know yet are kept; once an update declares it, the app rebuilds its local index at the first
-start (seconds for a big space; reads say `complete: false` meanwhile) and shows them like everyone else.
+end of a type (a link field with its `links`), add types and add indexes. An app whose declaration
+changes a space's types in any other way (reordering or retyping a field, changing `editable`, `put`,
+`onePerMember` or a link field's targets) gets `INCOMPATIBLE_TYPES` from that space's calls, naming the
+type and the field; the app opens and its other spaces work. An older app (fewer types or fields) is
+not a change: it reads the space with the space's types, the fields it doesn't declare included, and its
+edits keep them. When a space's types gain an index or a type it holds records of, that space alone is
+indexed again from its logs (seconds for a big space; reads say `complete: false` meanwhile).
 App `rules` are code: a newer version refusing what an older one accepted makes members disagree, so make
 new rules accept what earlier versions wrote (see [App rules](#app-rules): mismatches are detected).
+
+## Many spaces: open while used, pinned, online
+
+An engine may hold hundreds of spaces (every forum, chat or site the person joined). Only some stay open
+and online: the pinned ones, the person's own, then the most recently used, up to `maxAnnounced`. Any
+other opens by itself on its first call, closes `idleMs` after its last use, and at most `maxOpen` are
+open (the least recently used closes first). Nothing to manage: `hg.space(key)` works whether it is open
+or not, and every async call opens it.
+
+```js
+hg.spaces()                    // [{ key, name, parent, opened, pinned, own }]
+const forum = hg.space(key)    // open or not
+await forum.query('post').latest(20)   // opens it if needed
+await forum.ready()            // before sync getters that need its decisions: state, subspaces(), status()
+const release = await forum.hold()     // keep it open (a page showing it); release() lets it go
+await hg.pin(key)              // a bookmark: kept open and online, on every device of the person
+await hg.unpin(key)
+hg.pinned()                    // [key]
+```
+
+Live views, `on(...)` listeners and app protocols keep their space open. A closed space's `peers()` is
+`[]`; `name` and `parent` read without opening it.
+
+## A site's handle (a web view)
+
+A browser running many sites on one engine gives each site a handle on its own space and that space's
+sub-spaces, nothing else: not the other spaces, the personal space, the recovery phrase, devices or
+budgets.
+
+```js
+const site = await hg.scope(siteKey, { identity: 'main' })  // or hg.scope(inviteLink, ...)
+await site.put('post', { title: 'Hello' })    // every Space call of that space
+site.query('post').live(render)
+site.on('change', onChange)                   // its own events only
+const sub = site.subspace(subKey)             // one of its sub-spaces; any other: NOT_ALLOWED
+site.identity                                 // { publicKey }
+await site.close()
+```
+
+By default a site will act under a key of its own, derived from the person's identity and not linkable to
+it; `{ identity: 'main' }` shows the person's identity, only after they said yes to that site. Site keys
+are not built yet: `hg.scope(key)` without `{ identity: 'main' }` throws `NOT_SUPPORTED`.
+
+## Phones
+
+```js
+await hg.suspend()   // to the background: topics paused, connections suspended, spaces not in use closed
+await hg.resume()    // back: the space in use is still open, the pinned and recent ones open again
+hg.suspended
+```
+
+A call on a closed space while suspended throws `SUSPENDED`.
 
 ## Spaces and invites
 

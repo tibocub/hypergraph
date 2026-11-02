@@ -17,12 +17,14 @@ const hg = await Hypergraph.open(dir, {
 })
 ```
 
-A single-app engine holding fewer spaces than `maxOpen` behaves exactly as today.
+A single-app engine holding fewer spaces than `maxAnnounced` behaves exactly as today (built: the seeded
+set is `maxAnnounced` top spaces, pinned first, then own, then recent).
 
 ## Types
 
 - `hg.createSpace({ name, policy, private, types })` — `types` defaults to the engine's `types`;
-  recorded in the space (`types/set`). An engine with neither: `TypeError` ("a space needs types").
+  recorded in the space (`types/set`). An engine with neither: nothing recorded (built: no `TypeError`; the
+  space still holds relations, tags and hypergraph's own records).
 - `space.types()` — the space's types (`hg.types()` form) and `space.typesVersion`. New. No call sets
   them: a decider's app records its newer compatible version automatically at open.
 - `hg.types()` — the app's declaration (unchanged meaning).
@@ -34,11 +36,12 @@ A single-app engine holding fewer spaces than `maxOpen` behaves exactly as today
 
 - `hg.space(key)` — unchanged signature (sync, `NOT_FOUND` if not held); returns the space open or
   closed. Async methods open it. New: `await space.ready()` before sync getters that need the decision
-  state (`state`, `peers()`, `helpers`, roles); `space.opened` (bool).
+  state (`state`, `subspaces()`, `status()`, `types()`, `helpers`); `space.opened` (bool). A closed space's
+  `peers()` and `memberConnections()` are `[]`.
 - `space.hold()` → `release()`: keep it open (e.g. a page showing it). Live views and `on('change')`
   listeners hold it already.
 - `hg.pin(key)`, `hg.unpin(key)`, `hg.pinned()` — the seeded set the app chooses (bookmarks). Shared with
-  this identity's devices.
+  this identity's devices (setting `hg/pinned`, left out of `hg.settings()`).
 - `hg.spaces()` — unchanged, plus `{ opened, pinned, own }` per entry.
 
 ## Scoped handle (the web-view boundary)
@@ -50,6 +53,7 @@ const known = await hg.scope(siteKey, { identity: 'main' })  // only after the p
 await site.put('post', { … })             // every Space method of that space and its sub-spaces
 site.query('post').live(render)
 site.on('change', …)                      // only this scope's events
+site.subspace(subKey)                     // a handle on one of its sub-spaces
 site.identity                             // { publicKey }: the site's key, or the main one if opened so
 await site.close()                        // releases the space (idle close may follow)
 ```
@@ -64,6 +68,7 @@ object; a sub-space key of another top space → `NOT_ALLOWED`.
 - `await hg.suspend()` — topics paused, connections suspended, idle spaces closed; calls on closed spaces
   fail with `SUSPENDED`.
 - `await hg.resume()` — the space in use first, then the seeded set through the topic queue.
+- `hg.suspended` (bool).
 
 ## Errors
 
