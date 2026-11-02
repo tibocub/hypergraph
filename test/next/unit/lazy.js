@@ -145,3 +145,15 @@ test('a sub-space opens with its top space\'s decision log, top closed or not', 
   t.alike((await s.query('post').latest(5)).items.map((p) => p.title), ['in sub'])
   t.ok(hg.space(topKey).opened, 'its top space opened with it')
 })
+
+test('a call while the space is closing opens it again (not CLOSED)', async (t) => {
+  const { dir, keys } = await folder(t, 3)
+  const hg = await open(t, dir, { maxAnnounced: 1 })
+  const s = hg.space(keys[0])
+  await s.ready()
+  const closing = hg._closeIdle(s)
+  const page = await s.query('post').latest(5)
+  await closing
+  t.is(page.items.length, 1, 'answered once it opened again')
+  t.ok(s.opened)
+})
