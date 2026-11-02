@@ -183,10 +183,15 @@ npm run perf:compare                       # last run vs previous (-- --sha <sha
 test processes at below-normal priority, waits while free memory is under 1.5 GB, starts the
 longest files first (by their last run, in the gitignored `.test-times.json`), fails a file that
 doesn't print its own `# tests = n/n` line, and prints the slowest files. While iterating, run only the affected files or group; run the full
-suite once before committing. Tests use `brittle`, run via `npx brittle-node <file>` (brittle 4: plain `brittle` runs Bare).
+suite once before committing. Tests use `brittle`. Run one file as a plain script: `node <file>`
+(`bare <file>` on Bare), not `npx brittle-node <file>`: brittle's CLI first walks the whole folder,
+`node_modules` and `.claude/worktrees` included, to resolve the name. That's ~4–10 s per file, against
+0.2 s for the plain script (measured 2026-11-02); the runner and SwarmFS's runner start files this way.
 
 Measured 2026-10-06 (8 cores): `npm test` 63 s wall with 6 jobs (57 s with 8) for 320 tests (the
-old serial `npm test`: 514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s.
+old serial `npm test`: 514 s); HyperBBS `npm test` 40 s, hyperDNS 15 s. 2026-11-02, with another
+session's tests running: `next` group 247 s → 106 s from the plain-script change; SwarmFS
+`npm test` 358 s → 137 s (one process per file, in parallel, instead of one process for all).
 
 **Don't load the machine at 100% for long.** The dev machine rebooted hard (no crash dump, no
 low-memory event) during a 100k-message `bench/chat.js` run with 11 Node processes pinning every
