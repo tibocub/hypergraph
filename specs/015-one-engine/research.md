@@ -230,6 +230,23 @@ master yet: these scenarios land after it merges.
 - `perf/scenarios/logs.mjs`: a space with 2,000 logs caught up: `logs.open` (open cores, ≤ ~20),
   `logs.reopen` (start time vs today).
 
+### Measured (2026-11-02, 666c512, i7-6700K, `npm run perf`, vs dfcf4d5 = master's lib)
+
+| scenario | size | Node | Bare | note |
+|---|---|---|---|---|
+| `engine.open` | 100 / 500 | — / 1057 ms | | 32 spaces open (the seeded set); SC-001 asked < 1 s at 500: just over |
+| `engine.rss` | 100 / 500 | ±4 MB | | within noise of the base: SC-002 (< +50 MB) holds |
+| `engine.visit` | 100 / 500 | 16 / 18 ms | | a closed space's first `latest(20)`: SC-003 (< 100 ms) holds |
+| `topics.idle` | 40 / 100 | | 46 / 54 ms | a created space's topic flushed, nothing else joining (20-node DHT) |
+| `topics.visit` | 40 / 100 | | 305 / 325 ms | the same right after `connectToSwarm()`: mostly the DHT still bootstrapping, not the queue (to separate in the scenario) |
+| `topics.announced` | 40 / 100 | | 32 | the cap |
+| `topics.requests` | 40 / 100 | | 1844 | the same at 40 and 100: only the seeded set has topics |
+| `spaces.online` | 60 | 1531 → 55 ms | 1532 → 56 ms | flagged BETTER: no 750 ms DHT steps |
+| `spaces.reopen` | 60 | 1195 → 845 ms | 1336 → 863 ms | flagged BETTER (Node) |
+| `spaces.read` | 60 | 15 → 479 ms | 18 → 511 ms | flagged WORSE: the scenario reads all 60 spaces, 28 of them closed, each opening on its first read (~17 ms). The cost moved from start-up to first visit, as designed |
+
+Everything else within noise. `logs.*` (US4) not built.
+
 ## R9. Things checked in passing
 
 - `lib/network.js` attaches every space over every connection: closed spaces must be skipped there and
