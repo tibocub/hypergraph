@@ -6,8 +6,7 @@
 //
 // Groups: core, networking, replication, forum, integration, v2 (default: all
 // of these), and next (the new core, spec 011: test/next/unit, net, forum).
-// --bare runs the files on Bare (the repo's own `bare`, through brittle's
-// brittle-bare.js) instead of Node.
+// --bare runs the files on Bare (the repo's own `bare`) instead of Node.
 // Files starting with _ (shared helpers) are not run.
 // --jobs defaults to the number of CPU cores minus two (HG_TEST_JOBS overrides);
 // test processes run at below-normal priority, and a file waits to start
@@ -25,8 +24,10 @@ const ROOT = path.join(__dirname, '..')
 // Each file's last duration, to start the longest first (otherwise a long
 // file picked up last runs alone at the end while the other cores idle).
 const TIMES = path.join(ROOT, '.test-times.json')
-const BRITTLE = path.join(ROOT, 'node_modules', 'brittle', 'brittle-node.js')
-const BRITTLE_BARE = path.join(ROOT, 'node_modules', 'brittle', 'brittle-bare.js')
+// Files run as plain scripts (`node file`, `bare file`), not through brittle's
+// CLI: with no flags the CLI only imports the file, but first its glob walks
+// the whole cwd (node_modules, .claude/worktrees...) to resolve the name,
+// ~4 s per file (measured 2026-11-02; 0.1 s for the same file as a plain script).
 const BARE = path.join(ROOT, 'node_modules', 'bare', 'bin', 'bare') // a Node script starting the runtime
 const GROUPS = {
   core: 'test/brittle/core',
@@ -69,7 +70,7 @@ function parseArgs (argv) {
 function run (file, bare) {
   return new Promise((resolve) => {
     const start = Date.now()
-    const args = bare ? [BARE, BRITTLE_BARE, file] : [BRITTLE, file]
+    const args = bare ? [BARE, file] : [file]
     const p = spawn(process.execPath, args, { cwd: ROOT })
     try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL) } catch {} // keep the machine responsive
     let out = ''

@@ -15,9 +15,9 @@ if (!file) {
   process.exit(1)
 }
 const filter = pattern ? new RegExp(pattern) : null
-const brittle = path.join(__dirname, '..', 'node_modules', 'brittle', 'brittle-node.js')
 const start = Date.now()
-const p = spawn(process.execPath, [brittle, file], { cwd: path.join(__dirname, '..') })
+// a plain script, not brittle's CLI, whose glob walks the whole repo first (~4 s)
+const p = spawn(process.execPath, [file], { cwd: path.join(__dirname, '..') })
 let buf = ''
 const onData = (d) => {
   buf += d
