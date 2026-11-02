@@ -28,7 +28,7 @@ update together (rules every peer applies, wire, record or key formats); "easy" 
 
 | # | risk | breaks at | cost to change later | smallest design change that removes it | which spec |
 |---|---|---|---|---|---|
-| 1 | **Every account is decision-log state, and every decision re-reads all of it.** Each join writes `member:` + `redeemed:` + a decision-list line; every member rebuilds the whole state on each decision (`lib/decisions/log.js` `reload`/`_read`, `lib/decisions/state.js` `State.from`). | **~10k–30k members** (M: one decision costs every member 28 ms at 1k members, 259 ms at 10k, **25 s at 100k**; ~1 KB of memory per member) | **hard** (apply-time rules and the view's layout: everyone together; spaces already made keep their logs) | Two steps. **Now (easy)**: apply each decision to the state in place, rebuild only when Autobase reorders; read the view on demand instead of holding it all in memory. **Design (hard, do before the forum spreads)**: a plain member is not a decision. A newcomer's log header carries its redemption of an open invite (signed, checked by readers like a device proof); the decision log keeps only exceptions: roles above member, bans and cuts, revocations, and invites with a use count (the only ones that need an order). | a new spec "open spaces at scale" (ROADMAP's "invite-less public spaces later"), before or with the one-engine spec |
+| 1 | **Every account is decision-log state, and every decision re-reads all of it.** *(First step done 2026-11-02: applied in place, ~0.3 KB of memory per member; see "Risk #1, first step".)* Each join writes `member:` + `redeemed:` + a decision-list line; every member rebuilds the whole state on each decision (`lib/decisions/log.js` `reload`/`_read`, `lib/decisions/state.js` `State.from`). | **~10k–30k members** (M: one decision costs every member 28 ms at 1k members, 259 ms at 10k, **25 s at 100k**; ~1 KB of memory per member) | **hard** (apply-time rules and the view's layout: everyone together; spaces already made keep their logs) | Two steps. **Now (easy)**: apply each decision to the state in place, rebuild only when Autobase reorders; read the view on demand instead of holding it all in memory. **Design (hard, do before the forum spreads)**: a plain member is not a decision. A newcomer's log header carries its redemption of an open invite (signed, checked by readers like a device proof); the decision log keeps only exceptions: roles above member, bans and cuts, revocations, and invites with a use count (the only ones that need an order). | a new spec "open spaces at scale" (ROADMAP's "invite-less public spaces later"), before or with the one-engine spec |
 | 2 | **Every full member keeps every log open, forever, and swaps whole log lists.** Each accepted log is an open Hypercore with a live download (`lib/directory.js` `accept`, `lib/replication.js` `hold`); all are reopened at start (`lib/space.js` `_open`); a directory difference is settled by sending every key (`#onSummary` → `#onWant`). Every member gets a log on joining even if it never posts (`#onDecisions`). The owner, moderators, helpers and anyone who joined while the space was small are full members. | **~100k logs on a desktop, ~20k on a phone** (M: 18 KB of memory and 0.55 ms to open per log, linear 1k–20k → 1M logs = ~18 GB and ~9 min to start; E: 32 MB per list swap at 1M logs) | **medium**: closing idle logs is easy; the list swap is wire (add messages, keep old ones) | Open a log only while it downloads or is read; keep the rest as index rows. Replace "send the whole list" with a paged exchange (by key range, or "logs since my n-th") so a new log costs one key, not the list. Make no log for a member until its first record. | one-engine spec (memory budget per engine); directory sync item from the 011 audit |
 | 3 | **A private space's key change grants every device one by one, and everyone stores every grant.** One `hg/grant` record per entitled device, appended serially (`lib/space.js` `#rotate`/`#grant`); every member holds and indexes all of them; `#grantState` re-reads every grant of every epoch on each key check. A key changes at every removal or ban, and at every join with `history: 'hidden'`. | **chat at ~10k–100k members** (M: 129 µs to seal one, ~165 B of fields; E: 100k members × 2 devices = 200k grants per change ≈ 26 s of sealing for the changer, ~60 MB to download and ~35 s of indexing for every member) | **hard** (grant records and key commitments are format and apply-time) | Grant per member, not per device (a member's devices derive one box key from the identity), and only to members active lately; a member back after a change asks any key holder for the key (one message, checked against the decision log's commitment). Rotation then costs active members, not members ever. Later, if needed: a key tree (MLS-style) for very big private spaces. | private-spaces revision (with the chat app's spec) |
 | 4 | **Logs listed in the decision log** (spec 013 `logs/list`, `lib/decisions/apply.js`): one `listed:` entry per log, forever, re-read with everything else (#1) and walked on each decision (`#considerListed`). | spaces with helpers, at the same sizes as #1 | **hard** (apply-time: the view must be the same on every member) | Let helpers serve the log list (they hold every log anyway), or carry it in the activity lists; stop writing `listed:` | one-engine spec or a 013 follow-up |
@@ -54,6 +54,89 @@ A member who joined once and never came back costs every other member, forever:
   a newcomer who opens it (M-old, research.md A14).
 - **in a private space**: one grant per device at every key change, held by every member (#3).
 - **nothing** in activity lists or the time-ordered reads: a newcomer to a big space never opens it.
+
+## Risk #1, first step: decisions applied in place (2026-11-02)
+
+Done (no format, wire or apply-time change; the view's entries are byte-identical):
+
+- **The state is kept, not rebuilt** (`lib/decisions/log.js` `_read`, `readChanges`): each change of
+  the view is read with Hyperbee's diff between the version read last and the new one, and applied to
+  the state in place (`State#apply`). The whole view is read again only on open and when Autobase
+  truncated it below what was read (a reorder: concurrent deciders, a decider back from offline). Test:
+  `test/next/unit/decisions-in-place.js` (three deciders on real Autobases, partitions, one away for
+  several rounds; in place = rebuilt after every step, and a reorder happened).
+- **What hangs off a decision looks only where it changed** (`touched()` in `lib/decisions/state.js`):
+  `directory.recheck` rechecks the logs of the identities whose `member:`, `banned:`, `cut:`, `admit:`,
+  `editcut:` changed (an index by identity, `Directory#byIdentity`); `#considerListed` the new
+  `listed:` logs; `indexer.moderate` the changed `mod:` records; `indexer.reauthorize` the rights of
+  the touched identities. **Still everything**: after a full read, and for `meta` (settings), `role:`
+  (role definitions) and `subspace:` decisions, which can change who may write for everyone.
+- **Sub-space states copy nothing** (`SubState`): one identity's role, ban, cuts are worked out from the
+  parent's and its own when asked; whole maps only when read (`space.members()`).
+- **Not in memory any more**: `redeemed:` and `uses:` (read from the view by `redemptions()` and a
+  newcomer's refusal check); a member's writer keys (only apply reads them); repeated strings (makers,
+  roles, the space of listed logs) are held once.
+
+Still O(N) per decision (not decision state): `space.status()` sums every held log (`_usage`, O(logs),
+risk #2); a private space's key check walks its grants (`#keyWork`, risk #3).
+
+### Perf, before → after (`npm run perf`, medians, ms)
+
+| scenario | size | Node before | Node after | Bare before | Bare after |
+|---|---|---|---|---|---|
+| `decisions.reload` (one decision, every member) | 1,000 | 21.7 | **0.66** | 20.7 | **0.68** |
+| | 4,000 | 63.2 | **0.67** | 55.6 | **0.74** |
+| | 10,000 | 133.8 | **0.72** | 138.1 | **0.74** |
+| `decisions.rebuild` (open, reorder) | 1k / 4k / 10k | (was reload) | 17.5 / 55.6 / 142 | | 19.5 / 71.3 / 161 |
+| `members.decision` (until the `members` event) | 100 | 6.16 | 5.77 | 6.59 | 4.12 |
+| | 400 | 7.57 | 4.04 | 7.39 | 3.77 |
+| `members.join-kb` (KB, format: unchanged) | 100 / 400 | 105 / 345 | 104 / 341 | 105 / 343 | 106 / 344 |
+
+Before: `c923f12` for `decisions.reload` (it then measured the full rebuild), `9191688` for `members.*`
+(the scenario now waits for the `members` event instead of polling `members()`, a list of all N). After:
+`dfcf4d5`. `decisions.reload` and `members.decision` are flat; `members.join-kb` is not and can't be
+without a format change (below).
+
+### Where a member's bytes go
+
+`bench/scale-audit/member-bytes.js` (N = 10,000; one invite per newcomer, as `space.createInvite()` per
+person; real signed redemptions on a real Autobase). *kv*: key + JSON value; *block*: the whole Hyperbee
+block with its tree index (grows slowly with N: +10–20% from 2k to 10k).
+
+| what a join writes | kv | on disk (block) | in memory before | in memory now |
+|---|---|---|---|---|
+| `member:` `{ role, by, stamp, writer, writerDevice }` | 340 B | 557 B | 418 B | 163 B |
+| `redeemed:<invite>:<identity>` `{ at, by }` | 198 B | 409 B | 301 B | 0 (read on demand) |
+| `uses:<invite>` `{ count }` (an invite per person) | 48 B | 260 B | 97 B | 0 (read on demand) |
+| `~log:` the decision list line | 512 B | 747 B | — | — |
+| `~count` (rewritten at every decision) | 10 B | 153 B | — | — |
+| `listed:<log>` (spaces with helpers, per log) | 147 B | 363 B | 206 B | 130 B |
+| the `invite/redeem` decision in the recorder's writer log | | 843 B | — | — |
+| **total** | | **~2.1 KB** view (2.5 KB with helpers) + 0.84 KB log | **1,054 B** | **319 B** (163 B without helpers) |
+
+A newcomer downloads ~0.8 KB per member (`members.join-kb`: 105 KB at 100 members, 343 KB at 400):
+the writer logs' decisions, which it applies itself. Unchanged by this step (it is format).
+
+### Savings that need a format or apply-time change (not done; for the decision with Tibo)
+
+Per member, at 1M members ("view" changes are apply-time: every peer derives the same view and Autobase
+signs it, so all update together, but no record or wire format changes and existing spaces can re-derive
+their view from their logs; "format" changes records or the wire too).
+
+| change | saves per member | at 1M members | cost |
+|---|---|---|---|
+| **A plain member is not a decision**: the redemption travels in the newcomer's log header, checked by readers like a device proof; the decision log keeps roles above member, bans, cuts, revocations, counted invites (the audit's design) | ~2.1 KB disk (`member:`, `redeemed:`, `uses:`, `~log:`, `~count`) + 0.84 KB log; 163 B memory; **the newcomer's 0.8 KB download** | ~2.1 GB + 0.84 GB on every member's disk; **~0.8 GB less for every newcomer**; 163 MB memory | **format + apply-time**, hardest: log headers, readers' checks, invites with use counts still need the log; existing spaces keep their logs |
+| Drop `redeemed:` once counted (the "same person once" check moves into the `member:` entry: + ~40 B) | ~370 B disk | ~370 MB | view (apply-time); `redemptions()` would need another source (the decision list) |
+| No `uses:` for one-use invites (`redeemed:` already says it's used) | ~260 B disk | ~260 MB | view (apply-time) |
+| Binary values instead of JSON with hex (`member:` ~200 → ~80 B, `~log:` ~512 → ~150 B) | ~120 B + ~360 B disk | ~480 MB | view (apply-time); the decision list is read by `decisions()` |
+| 32-byte binary keys instead of `prefix:` + 64 hex | ~140 B disk, ~60 B memory | ~140 MB, ~60 MB | view (apply-time); every `view.get` in apply |
+| No `~count` entry (sequence from the view's own length or a key that sorts) | ~150 B disk per decision | ~150 MB | view (apply-time) |
+| Fewer, bigger entries per join (one entry instead of 4–5): the tree index costs ~150–250 B per entry whatever its size | ~600 B disk | ~600 MB | view (apply-time) |
+| Helpers serve the log list instead of `listed:` (the audit's #4) | 363 B disk, 130 B memory per log | ~360 MB, ~130 MB | apply-time + wire |
+
+Not additive (they overlap). Ranked: the first removes nearly everything a silent member costs, including the newcomer's download (the
+only part that grows with members for a newcomer); the view-only ones together reach ~1.5 KB per member
+but leave the decision in the log and the download.
 
 ## hypergraph
 
