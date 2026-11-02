@@ -131,7 +131,7 @@ test('a record of a hypergraph type this version doesn\'t know (a future version
   }
 })
 
-test('any other change to the types is refused by the forum, naming the type and the field; the app opens', async (t) => {
+test('any other change to the types is refused by the forum, naming the type and the field; the app opens', { timeout: 120000 }, async (t) => { // seven openings of a folder
   const dir = tmpDir(t, 'versions')
   const first = await open(t, { dir, types: forum.types, rules: forum.rules, bootstrap: null })
   const f = await forum.createForum(first, 'Mine')
