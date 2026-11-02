@@ -428,6 +428,9 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
   research, docs or another repo can run alongside.
 - Every change to the core's API updates the reddit clone and its tests in the same change
   (CLAUDE.md rule 3).
+- **Measured like tested** (2026-11-01): each repo has `npm run perf` (real app flows, Node and Bare, a few
+  sizes) and a committed `perf/history.jsonl`; a hot-path change runs it before and after, the lead
+  compares (`npm run perf:compare`) before merge (CLAUDE.md rule 2).
 - **hypergraph and SwarmFS stay in step**: a SwarmFS request (`SwarmFS/specs/requests-to-*.md`) that shows a flaw
   in the core is fixed in hypergraph as a rule, not patched case by case; after any change to the new core, the
   lead runs SwarmFS's `npm run test:all` too, and marks the request done there.

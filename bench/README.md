@@ -1,5 +1,16 @@
 # Benchmarks
 
+The measuring habit lives in `perf/` (`npm run perf`, real app flows on the new core, Node and Bare,
+history committed). The files here are one-off studies, run by hand:
+
+- `bench/next/` and `bench/site-storage/`: the new core (`hypergraph/next`) and SwarmFS; still run.
+  `perf/` reuses their shapes (the newcomer's first page, writers, a site's first visit) at quick sizes.
+- `scale`, `chat`, `channels`, `members`, `multiwriter` (and `npm run bench:quick`): **v1 only**
+  (`index.js`, `src/`). `bench/v2-*.js`: the v2 prototype (`src/v2`) only. Neither is ported to perf:
+  apps don't build on those APIs.
+- `roster`, `sparse-fetch`, `many-cores`, `dht-latency`, `sim-availability`: studies of the Holepunch
+  libraries underneath, or simulations; no hypergraph API.
+
 ## `scale.js` — one context with N file entries
 
 ```bash

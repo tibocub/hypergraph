@@ -141,7 +141,7 @@ test('the reason a newcomer is refused, from its own copy of the decisions', asy
   t.is(s.state().inviteRefusal(s.invite(s.owner, { expires: 1000 }), who.publicKey, at), 'INVITE_EXPIRED')
   const used = s.invite(s.owner)
   await s.redeem(s.key, used, await s.person())
-  t.is(s.state().inviteRefusal(used, who.publicKey, at), 'INVITE_USED_UP')
+  t.is(s.state().inviteRefusal(used, who.publicKey, at, s.view.map.get(`uses:${hex(used.id)}`).count), 'INVITE_USED_UP', 'used up (the count read from the view)')
   const revoked = s.invite(s.owner, { uses: 0 })
   await s.revoke(s.key, revoked)
   t.is(s.state().inviteRefusal(revoked, who.publicKey, at), 'INVITE_REVOKED')

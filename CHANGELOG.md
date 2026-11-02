@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-02: `hypergraph/next` — decisions applied in place (scale audit #1, first step)
+
+Local only: no wire, record or apply-time change; the decision view's entries are byte-identical.
+
+- A new decision no longer makes every member re-read the whole decision log: the changed entries are
+  applied to the state in place (rebuilt only on open and when Autobase reorders). 0.7 ms at 1k and 10k
+  members (was 21 / 134 ms). What runs after a decision (log rechecks, listed logs, moderation, edit
+  rights) looks only at what it changed.
+- Memory per member: ~0.3 KB (0.16 KB without helpers), was ~1 KB. `redeemed:` and `uses:` are read
+  from the view when needed. `State.redeemed` and `State.uses` are gone; `state.inviteRefusal(inv,
+  identity, now, used)` takes the invite's use count. The decision log's `'change'` event now passes the
+  changed view keys (null: everything).
+- Details, per-member bytes and what a format change would save: `specs/research/scale-audit.md`
+  ("Risk #1, first step").
+
 ### 2026-10-30: `hypergraph/next` — a decision resolves once its cuts show (forum F14)
 
 - A ban, removal or role change resolved before what it cut left the lists on the deciding device
