@@ -17,6 +17,12 @@ You create a space with `hg.createSpace({ name })` and let people in with an inv
 space's key can connect to it: the topic members meet on, which anyone watching the DHT sees, isn't enough
 to read it.
 
+An instance is an **engine**: one identity, one storage folder and one set of connections, for one app
+or many (a browser running many sites holds every space of every site). Spaces it holds are open only
+while used, besides the ones it keeps online for others (pinned, the person's own, the recently used):
+an engine in hundreds of spaces holds them all and keeps a few dozen open. A site in a browser gets a
+handle on its own space only (`hg.scope()`).
+
 ## Records
 
 Everything people write is a **record** of a type your app declares (`post`, `comment`, `vote`…). Each
@@ -45,7 +51,14 @@ doesn't know yet is kept (it may be another version's) and shown once an update 
 that first start the app indexes what it holds again, like a member that always had the new version.
 The same holds for hypergraph's own record types: one added by a newer hypergraph is kept and counted by
 type by older ones.
-Other changes would make two versions read the same bytes differently, so they are refused at open.
+Other changes would make two versions read the same bytes differently, so a space refuses an app that
+makes them.
+
+The types live in the space, not in the app: the space records its declaration (in its decision log,
+like its roles), and every member reads, checks and indexes with it. An old app reads new fields, members
+on any version agree on what a record says, and spaces of different apps share one engine. The owner's or
+an admin's app, updated, records the next version when it opens the space; members' apps never do (so a
+member can't change a space's types by installing something).
 
 ## Edits and deletes
 

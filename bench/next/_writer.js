@@ -97,7 +97,7 @@ const commands = {
         type = 'comment'
         fields = { text: `comment ${i} on a recent post`, on: fields.on }
       }
-      const e = s.types.encode(type, fields)
+      const e = s._types.encode(type, fields)
       pending.push(enc.encodeRecord({ kind: enc.PUT, type, stamp, target: null, links: e.links, fields: e.fields }))
       if (pending.length === 1000) await flush()
     }

@@ -50,7 +50,7 @@ async function main () {
     const post = { title: 'Hello world, a first post', text: 'a post of about eighty bytes, like the ones experiment 2 measured' }
     const someId = enc.idToString({ log: s.own.key, seq: 1234 })
     const record = (type, fields) => {
-      const e = s.types.encode(type, fields)
+      const e = s._types.encode(type, fields)
       return { fields: e.fields.byteLength, record: enc.encodeRecord({ kind: enc.PUT, type, stamp: Date.now(), target: null, links: e.links, fields: e.fields }).byteLength }
     }
     const sizes = { post: record('post', post), comment: record('comment', { text: 'Welcome! A comment of about forty bytes', on: someId }), vote: record('vote', { value: 1, on: someId }) }
@@ -87,7 +87,7 @@ async function main () {
         type = 'comment'
         fields = { text: `comment ${i} on a recent post`, on: fields.on }
       }
-      const e = s.types.encode(type, fields)
+      const e = s._types.encode(type, fields)
       pending.push(enc.encodeRecord({ kind: enc.PUT, type, stamp: t0 + i * 1000, target: null, links: e.links, fields: e.fields }))
       if (pending.length === 1000) {
         await s.own.core.append(pending)

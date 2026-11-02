@@ -363,6 +363,12 @@ function online (forum) {
   return forum.peers()
 }
 
+// Bookmarks (spec 015): a bookmarked forum stays open and online, on every
+// device of the account; the others open when visited, close a while after.
+function bookmark (hg, forum) { return hg.pin(forum.key) }
+function unbookmark (hg, forum) { return hg.unpin(forum.key) }
+function bookmarks (hg) { return hg.pinned() }
+
 // A page of posts, newest first: { after } the last post of the previous page.
 async function postsPage (forum, n, after) {
   return (await forum.query('post').latest(n, { after })).items
@@ -481,6 +487,7 @@ module.exports = {
   createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, inviteFriend, openLink, revokeLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
+  bookmark, unbookmark, bookmarks,
   hide, reveal, takeDown, flag, ban, unban, report, reports, moderated, setTheme, theme,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,

@@ -19,3 +19,16 @@ test('test-only helpers are not on the public classes', (t) => {
 test('tests reach them through lib/testing.js', (t) => {
   for (const name of ['writeRaw', 'holdsBlock', 'logs', 'ownLog', 'openSpace', 'personalKeys', 'announce', 'rawBlock', 'setClock', 'writeHeads', 'headsOf', 'removeDeviceAnyway']) t.is(typeof testing[name], 'function', name)
 })
+
+// Spec 015: an engine's limits are options of Hypergraph.open.
+test('maxOpen, maxAnnounced, memory and idleMs are positive numbers', async (t) => {
+  const { tmpDir } = require('../helpers.js')
+  for (const name of ['maxOpen', 'maxAnnounced', 'memory', 'idleMs']) {
+    for (const bad of [0, -1, 'x', NaN]) {
+      await t.exception.all(Hypergraph.open(tmpDir(t), { [name]: bad }), TypeError, `${name}: ${bad}`)
+    }
+  }
+  const hg = await Hypergraph.open(tmpDir(t), { maxOpen: 8, maxAnnounced: 4, memory: 1e8, idleMs: 1000 })
+  t.is(hg._network.maxAnnounced, 4)
+  await hg.close()
+})

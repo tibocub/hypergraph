@@ -30,7 +30,7 @@ const agree = (spaces, fn, expected, ms = 10000) => eventually(async () => {
 // A record as a modified app would encode it, bypassing every check but the
 // encoding's own (or not even that: `bytes`).
 function record (space, { kind = enc.PUT, type = 'post', fields = {}, stamp = Date.now(), target = null, links = null, raw = null }) {
-  const encoded = raw ? { fields: raw, links: [] } : space.types.encode(type, fields)
+  const encoded = raw ? { fields: raw, links: [] } : space._types.encode(type, fields)
   return c.encode(enc.record, { kind, type, stamp, target: target ? enc.idBytes(target) : null, links: links || encoded.links, fields: encoded.fields })
 }
 

@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-02: `hypergraph/next` — one engine for many sites (spec 015)
+
+**Apply-time: everyone updates together.** A space records its record types in its decision log
+(`types/set { version, types }`, applied only from who may decide, version n + 1, compatible with the
+current one, at most 32 KB; every version kept). Peers on an older hypergraph skip the decision and keep
+reading with their app's types; members on this version read, check and index with the space's. No
+downgrade: an older hypergraph opening a folder this one wrote doesn't apply its spaces' types.
+
+- **Types live in the space.** `createSpace({ types })` records the app's types (or the ones given);
+  the owner's or an admin's app records the next version when it opens a space and declares more (types,
+  fields at the end, indexes). New: `space.types()`, `space.typesVersion`. An older app reads the fields
+  it doesn't declare (they were "kept, not decoded").
+- **`INCOMPATIBLE_TYPES` moved from `Hypergraph.open` to the space**: an app whose types break a space's
+  gets it from that space's calls; the engine and its other spaces work. Writing a type or field the
+  space doesn't have yet throws it too ("this space doesn't have ... yet"); an admin's app lacking types
+  another admin's app recorded is told so, and `status()` warns `TYPES_BEHIND`. A field or type fewer than the
+  space (an older app) is no longer refused.
+- A space whose types gained an index or type it holds records of is indexed again alone (was: the whole
+  folder).
+- **Spaces open while used** (local): only the seeded set (pinned, own, recent, up to `maxAnnounced`,
+  default 32) opens with the engine; any other opens on its first call and closes `idleMs` (120 s) after
+  its last use, at most `maxOpen` (64) open. New: `space.ready()` (before sync getters needing its
+  decisions, which throw on a closed space), `space.hold()`, `space.opened`, `hg.pin/unpin/pinned`,
+  `spaces()` entries `{ opened, pinned, own }`. A closed space's `peers()` is `[]`. An app holding fewer
+  than 32 spaces sees no change.
+- **Topics** (local): one queue, one background join at a time, a space in use at once, at most
+  `maxAnnounced` announced (the others only look), re-looks while in use; `connectToSwarm()` joins them
+  one after another.
+- `hg.scope(keyOrInvite, { identity: 'main' })`: a site's handle on one space and its sub-spaces.
+  Without `{ identity: 'main' }`: `NOT_SUPPORTED` until per-site keys are built.
+- `hg.suspend()` / `hg.resume()` for phones; error codes `SUSPENDED`, `NOT_SUPPORTED`.
+- `hg.settings()` no longer lists hypergraph's own settings (`hg/pinned`).
+- Migration: a folder from before opens with no rebuild; its spaces record their types at the owner's
+  next open. Details: `specs/015-one-engine/`. Not built yet: logs open only while used (US4).
+
 ### 2026-11-02: `hypergraph/next` — decisions applied in place (scale audit #1, first step)
 
 Local only: no wire, record or apply-time change; the decision view's entries are byte-identical.

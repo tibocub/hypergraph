@@ -179,6 +179,9 @@ Per-project direction, and how firm it is:
   002 (linked folders that sync themselves) built; shared workspaces, community archives and apps later.
   Its needs reach hypergraph and swarmwire only through `specs/requests-to-*.md`.
   *(Documented: `specs/001-personal-sync/spec.md` and `specs/002-always-on/spec.md`, later stories)*
+  Since hypergraph spec 015 (2026-11): its spaces record their types (apply-time: SwarmFS peers on an
+  older hypergraph don't apply them); on a shared engine (HyperBrowser), types it puts in the personal
+  space must be prefixed (`held` → `swarmfs/held`), since every app shares that one space's names.
 
 ## Where each project documents itself
 
