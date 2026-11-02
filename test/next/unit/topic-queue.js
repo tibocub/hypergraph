@@ -94,7 +94,7 @@ test('a space in use joins at once, past the queue', async (t) => {
   await net.close()
 })
 
-test('queued joins run by priority: own, pinned, then recent, then age', async (t) => {
+test('queued joins run by priority: pinned, own, then recent, then age', async (t) => {
   const { net, swarm } = network({ maxAnnounced: 10 })
   await net.connect()
   const first = fakeSpace()
@@ -109,7 +109,7 @@ test('queued joins run by priority: own, pinned, then recent, then age', async (
     await tick()
     await tick()
   }
-  t.alike(swarm.joins.map((j) => j.hex), [first, own, pinned, recent, older].map((s) => s.hex))
+  t.alike(swarm.joins.map((j) => j.hex), [first, pinned, own, recent, older].map((s) => s.hex))
   await net.close()
 })
 
