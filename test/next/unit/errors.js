@@ -11,7 +11,8 @@ test('HypergraphError carries a stable code and is an Error', (t) => {
 
 test('every code of the contract exists', (t) => {
   for (const code of ['NOT_ALLOWED', 'NOT_FOUND', 'INVALID_RECORD', 'INVALID_TYPE', 'INCOMPATIBLE_TYPES', 'RULE_REJECTED',
-    'INVITE_INVALID', 'INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED', 'DEVICE_REMOVED', 'CLOSED']) {
+    'INVITE_INVALID', 'INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED', 'DEVICE_REMOVED', 'CLOSED',
+    'SUSPENDED', 'NOT_SUPPORTED']) { // spec 015
     t.is(codes[code], code)
   }
 })
