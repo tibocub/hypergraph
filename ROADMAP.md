@@ -464,18 +464,21 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    Lead's run: next 323/323 Node, 322/322 Bare; SwarmFS 66/66 (worker's run). Gap: `count`/`sum` ignore `put`.
    Open forum requests: F8 (sort by sums/counts), F9 (text search): later, when a forum gets big.
 7. Now: forum (`hypergraph-forum-example`) has F5–F7 and all of Tibo's to-dos (main 151806e). Next: adopt 014
-   (drop the F10–F13 workarounds, re-pin), then the friends' trial. Tibo's answers (2026-10-30): any
+   (drop the F10–F13 workarounds, re-pin), then Tibo tries it himself. No friends' week-long trial (2026-11-02:
+   nobody is around to use a test app that long); its job (catch replication bugs like H17, measure delays) goes
+   to a **soak run**: a few scripted forum members on the public DHT for some hours, posting, going offline and
+   back, each keeping a delivery log, at low load. Nothing waits for it. Tibo's answers (2026-10-30): any
    member invites (admins-only invites and invite-less public spaces later, for SwarmFS/HyperBrowser); online only
    while the program runs (a background service later, likely in SwarmFS); friends send their delivery log at the
    end (it mostly catches replication bugs like H17 and measures delays: a post is lost for good only if its
    author never reconnects); names in a `profile` record in the forum (a name in the core maybe later, F1).
 8. Later: hyperDNS onto the new core or frozen, then v1 removed.
 9. HyperBrowser milestone 0: the storage study is research, so it can start now; the "one engine for many sites"
-   spec changes the core, so after the forum trial (the trial is pinned to afae42b).
+   spec (015) is built on `015-one-engine`, merging after the lead's review fixes (it no longer waits for a trial).
 10. Scale audit merged (`specs/research/scale-audit.md`, 2026-11-01; targets: forum 1M accounts ever / 10M posts,
     chat 100k members, SwarmFS 10M files / 1,000 people, 500 sites on a phone, one 100 GB file). Silent members cost
     everyone forever: each join re-reads the whole decision state (25 s per member at 100k members, breaks at ~10k-30k),
-    every full member keeps every log open (18 KB each). Order after the forum trial, before any forum grows past it:
+    every full member keeps every log open (18 KB each). Order, before any forum grows past it:
     (a) spec **"open spaces at scale"**: a plain member is not a decision (redemption in the log's header), logs open
     only while used, paged log lists, no log before a first record; apply-time, so everyone updates together.
     (b) the "one engine for many sites" spec (lazy spaces, types per space). (c) SwarmFS: `held`/`has` as summaries,
