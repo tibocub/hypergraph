@@ -126,7 +126,9 @@ types, whatever their own app declares, so members on two app versions see the s
 version the space has. No call sets them: when the owner's or an admin's app opens a space and declares
 more than the space has (types, fields at the end, indexes), it records the next version, and every
 member uses it from then on. Until then, writing a type or field the space doesn't have throws
-`INCOMPATIBLE_TYPES` ("this space doesn't have ... yet"). One engine can hold spaces of different apps,
+`INCOMPATIBLE_TYPES` ("this space doesn't have ... yet"). Two admins' apps adding different types: the
+second can't record its own until it declares the first's too; its writes of them say so, and
+`status()` warns `TYPES_BEHIND` (naming what the app lacks). One engine can hold spaces of different apps,
 each with its own types.
 
 **App versions.** Members never all update at once, so between versions you may only add fields at the

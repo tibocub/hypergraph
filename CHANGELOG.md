@@ -21,7 +21,8 @@ downgrade: an older hypergraph opening a folder this one wrote doesn't apply its
   it doesn't declare (they were "kept, not decoded").
 - **`INCOMPATIBLE_TYPES` moved from `Hypergraph.open` to the space**: an app whose types break a space's
   gets it from that space's calls; the engine and its other spaces work. Writing a type or field the
-  space doesn't have yet throws it too ("this space doesn't have ... yet"). A field or type fewer than the
+  space doesn't have yet throws it too ("this space doesn't have ... yet"); an admin's app lacking types
+  another admin's app recorded is told so, and `status()` warns `TYPES_BEHIND`. A field or type fewer than the
   space (an older app) is no longer refused.
 - A space whose types gained an index or type it holds records of is indexed again alone (was: the whole
   folder).

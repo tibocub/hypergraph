@@ -157,3 +157,15 @@ test('a call while the space is closing opens it again (not CLOSED)', async (t) 
   t.is(page.items.length, 1, 'answered once it opened again')
   t.ok(s.opened)
 })
+
+test('a space whose closing failed half-way opens again on its next use (not CLOSED for good)', async (t) => {
+  const { dir, keys } = await folder(t, 3)
+  const hg = await open(t, dir, { maxAnnounced: 1 })
+  const s = hg.space(keys[0])
+  await s.ready()
+  s.replicator.close = () => { throw new Error('teardown failed') } // once: the next opening makes a new one
+  await hg._closeIdle(s)
+  t.absent(s.opened, 'closed')
+  t.is((await s.query('post').latest(5)).items.length, 1, 'a call opens it again')
+  t.ok(s.opened)
+})

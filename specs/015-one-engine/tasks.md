@@ -34,8 +34,9 @@ decisions-in-place's apply path as planned: no task assumed the old decisions co
 - T008: the topic-queue network test; `perf/scenarios/topics.mjs` measures the same on a 20-node DHT.
 - T033: one personal-space type namespace across apps: there is no way to attach a second app's types
   to an engine yet (HyperBrowser milestone 2); one app per engine today.
-- US4 (T037–T040): logs open only while used. ~45 places in replication, the indexer and Space assume
-  every accepted log's core is open; left for its own change (see the lead's decision).
+- US4 (T037–T040): logs open only while used. **Moved to the "open spaces at scale" spec** (ROADMAP
+  "Now" 10a, which has it too; the lead's decision, 2026-11-02). ~45 places in replication, the indexer
+  and Space assume every accepted log's core is open.
 - T046: Bare perf numbers.
 
 **Tests**: required by default (constitution Principle II; `types/set` is apply-time, so its tests are
@@ -161,6 +162,8 @@ A's owner app adds `comment` → only A re-indexed; a forged incompatible `types
 ---
 
 ## Phase 7: User Story 4 — Logs open only while used (P2)
+
+**Moved out of spec 015** to "open spaces at scale" (2026-11-02): not built here.
 
 **Independent test**: 2,000 logs caught up → ≤ ~20 open; a new record in a closed log arrives; a newcomer
 fetches a closed log.
