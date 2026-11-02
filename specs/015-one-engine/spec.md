@@ -4,7 +4,8 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft (design only; review by the lead and Tibo before `/speckit-tasks`)
+**Status**: Draft, open questions answered by Tibo 2026-11-02 (see "Decisions"); code waits for
+`decisions-in-place` to merge and for the forum trial to end
 
 **Input**: HyperBrowser milestone 0 (`ROADMAP.md`, "The final app: HyperBrowser"; "Now" items 9–10), scale
 audit risks #2 and #7 (`specs/research/scale-audit.md`), the storage study (`specs/research/site-storage.md`).
@@ -154,6 +155,12 @@ reads, writes, live views and events, all async; nothing about the identity's ph
 personal space or the other spaces held. HyperBrowser turns web-view messages into calls on that handle;
 the sandbox is HyperBrowser's.
 
+By default a site gets **its own key**: derived from the person's identity, not linkable to it or to the
+keys other sites get. `site.identity` returns that key, and the site's records are authored by it. The
+main identity (its key, name, friends) goes only to a site the person said yes to. The API takes this
+shape now; the derivation itself may be built later (until then, only sites given the main identity
+work, explicitly).
+
 **Why this priority**: the boundary must exist in the engine before any third-party site code runs.
 
 **Independent Test**: a scoped handle for space A: every space call on A works; asking for B, the
@@ -167,6 +174,14 @@ personal space, the phrase or the device list throws `NOT_ALLOWED`; events from 
    phrase, **Then** it throws `NOT_ALLOWED` and learns nothing of what else is held.
 3. **Given** a handle scoped to a space the engine doesn't hold yet, **When** the site is visited,
    **Then** the handle opens it (join by key or invite) through the same queue.
+4. **Given** two sites opened with default handles, **When** each reads `site.identity` and the author of
+   its own records, **Then** each sees a different key, neither equal to the main identity's.
+5. **Given** a site the person allowed the main identity, **When** its handle is opened with that
+   choice, **Then** `site.identity` is the main identity.
+6. **Given** another device of the same person, **When** it opens the same site, **Then** it acts under
+   the same per-site key (derived from the same identity).
+7. **Given** per-site keys not built yet, **When** a default handle is asked for, **Then** it throws
+   `NOT_SUPPORTED` saying so, never falls back to the main identity silently.
 
 ---
 
@@ -234,7 +249,10 @@ online first; memory stays under the budget.
 - **FR-004**: `createSpace({ types })` MUST record the given types (default: the engine's declared
   types); an engine MAY be opened with no types.
 - **FR-005**: When an app's declared types are a compatible superset of a space's and the app may decide,
-  opening the space MUST record the new version (visitors always run a site's latest version).
+  opening the space MUST record the new version (visitors always run a site's latest version). This is the
+  only way types change after creation: no explicit call, and members' apps never record types.
+- **FR-008**: Each recorded types version MUST carry its version number and be kept as its own entry (not
+  overwritten), so a later spec can let older app versions keep working against newer types.
 - **FR-006**: A types change in one space MUST re-index only that space's records.
 - **FR-007**: A space with no recorded types (made by today's version) MUST use the app's declared types
   as today.
@@ -275,6 +293,12 @@ online first; memory stays under the budget.
 - **FR-040**: The engine MUST give a handle scoped to one top space (and its sub-spaces) exposing every
   space call, live views and events of that scope, all async, and nothing else.
 - **FR-041**: Any call outside the scope MUST throw `NOT_ALLOWED` without revealing what else is held.
+- **FR-042**: A scoped handle MUST act under a per-site key by default (derived from the identity,
+  deterministic across the person's devices, not linkable to the identity or other sites' keys), and
+  under the main identity only when the app opens it so (the person said yes). `site.identity` MUST
+  return the key the handle acts under.
+- **FR-043**: A held space MUST be held under one identity (main or its site key) on this engine; until
+  per-site keys are built, asking for one MUST throw `NOT_SUPPORTED`.
 
 **Phone**
 
@@ -287,8 +311,9 @@ online first; memory stays under the budget.
 - **FR-060**: A folder from today's version MUST open without re-indexing: the folder's stored types
   become each space's local declaration.
 - **FR-061**: `Hypergraph.open(dir, { types, rules })` MUST keep working for single-app use.
-- **FR-062**: Two apps on one engine declaring the same type name differently for the personal space MUST
-  get `INCOMPATIBLE_TYPES` naming the type.
+- **FR-062**: The personal space has one set of type names for every app on the engine: two apps
+  declaring the same name differently MUST get `INCOMPATIBLE_TYPES` naming the type. Apps prefix their
+  personal-space types (`swarmfs/held`).
 
 **Perf**
 
@@ -322,13 +347,17 @@ online first; memory stays under the budget.
 - **SC-007**: A types change in one of 50 spaces re-indexes that space only (others' rows untouched).
 - **SC-008**: The forum scenario tests and SwarmFS's suite pass with no change other than those listed in
   the plan; a folder from master opens with no re-index.
-- **SC-009**: A scoped handle can't reach any space outside its scope (every call tested).
+- **SC-009**: A scoped handle can't reach any space outside its scope (every call tested), and two
+  default handles expose two different keys, neither the main identity's.
 
 ## Out of scope (later)
 
 - The paged log list exchange and "no log before a first record" (scale audit #2, the wire half): the
   "open spaces at scale" spec.
-- Per-site identities (a site seeing a key other than the person's identity).
+- Building the per-site key derivation (the API and its `NOT_SUPPORTED` refusal are in scope; how a key
+  is derived and proven, with its own device proofs, is a follow-up spec before HyperBrowser lets
+  third-party sites write).
+- Older app versions working against newer space types (future direction below).
 - The sandbox, `site.json` permissions and prompts (HyperBrowser's repo).
 - Push wake-ups and their helper (availability plan).
 - SwarmFS's own per-space memory (~3 MB: its tree in memory): SwarmFS's scale spec.
@@ -342,15 +371,22 @@ online first; memory stays under the budget.
   `_attachMaybe`).
 - Rules (`rules`) stay app-declared per space as today (`setRules`): only types move into spaces.
 
-## Open questions for Tibo
+## Decisions (Tibo, 2026-11-02)
 
-1. **Tracking across sites**: one identity per engine means every site sees the same author key, so sites
-   can link a person across sites. Accept for now (as the roadmap says), or plan per-site identities?
-2. **Who records a site's types**: proposed automatic when a decider's app has a newer compatible version
-   (FR-005). Or explicit (`space.setTypes()`, like `setRules`)? And should a plain member's app also record purely
-   additive types with default rules? Without it, a forum member who updates first can't post a new type
-   until an admin's updated app opens the forum (`research.md` R2).
-3. **Caps**: proposed defaults desktop `maxOpen` 64 / `maxAnnounced` 32, phone 16 / 8, memory budget set by
-   the app. Re-measure on a real network in milestone 1.
-4. **Personal space shared by apps**: proposed one type namespace, collisions refused (FR-062), apps
-   advised to prefix (`swarmfs/held`). SwarmFS isn't released, so it can rename now.
+1. **Tracking across sites**: each site gets its own key by default, derived from the identity and not
+   linkable to it; the main identity (name, friends) goes only to a site the person says yes to.
+   `site.identity` returns the site's key. The API is right now; the derivation may come later (FR-042,
+   FR-043).
+2. **Who records types**: only automatically, when a decider's updated app opens the space (FR-005).
+   Members' apps never add types. A forum member who updates before an admin waits for the admin's open.
+3. **Caps**: desktop `maxOpen` 64 / `maxAnnounced` 32, phone 16 / 8; defaults, re-measured on a real
+   network in milestone 1. The memory budget is the app's choice.
+4. **Personal space**: one set of type names, a clash refused, apps prefix (FR-062).
+
+## Future direction (not in this spec)
+
+Once there are users, older apps may keep using a space whose types moved on, the way HyperDB keeps
+several versions of one schema: each record read with the version it was written for. A change made for
+a serious reason (a security hole) could still refuse old versions. Not built here, but the format leaves
+room: every `types/set` carries a version number and each version stays stored on its own (FR-008), so
+old type versions can be kept side by side later.

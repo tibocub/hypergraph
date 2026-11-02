@@ -9,22 +9,28 @@ A new decision type in a top space's decision log (`lib/decisions/`).
 
 | field | type | meaning |
 |---|---|---|
+| `version` | uint | the current version + 1 (1 for the first) |
 | `types` | string (compact JSON, ≤ 32 KB) | the full declaration, `Types#describe()` form: `{ name: { fields: [[field, kind]], links, onePerMember, editable, put, index } }` |
 
 Apply (deterministic on every member):
 1. the writer may `decide` in the space (as `settings/set`);
 2. `JSON.parse` succeeds and every type declares (`declare()` rules, no `hg/` names);
-3. `checkCompatible(current)` passes (adds types, appends fields, adds indexes; same links; same `put`);
-4. then `state.types = declaration`, `state.typesVersion += 1`. Otherwise: no effect.
+3. `version` is the current version + 1;
+4. `checkCompatible(current)` passes (adds types, appends fields, adds indexes; same links; same `put`);
+5. then the view stores `types:<version>` = declaration (never overwritten) and `state.typesVersion =
+   version`. Otherwise: no effect.
+
+Room for later (Tibo's future direction): every version stays readable in the view, so a later spec can
+read records with the version they were written for.
 
 Written by `createSpace({ types })` in the space's first batch, and at open by a decider's app whose
 declaration is a compatible superset. Sub-spaces: none (they use the top space's).
 
 ## Decision state additions [apply-time]
 
-- `types`: the latest applied declaration, or `null` (a space from before this spec: the app's own
+- `types`: the latest applied declaration (from `types:<typesVersion>`), or `null` (a space from before this spec: the app's own
   declaration is used, as today).
-- `typesVersion`: count of applied `types/set` (for "needs re-index" checks).
+- `typesVersion`: the latest applied version, 0 for none (for "needs re-index" checks).
 
 ## Space (lifecycle) [local]
 
@@ -50,6 +56,7 @@ Topic, per open or seeded space: `none → queued → joined (announced | lookup
 | `used` | uint | last use (ms): orders recent visits and LRU eviction |
 | `own` | bool | created by this identity (seeding priority) |
 | `pinned` | bool | pinned (also kept in the personal space as setting `pinned`, a list of keys) |
+| `as` | string | the identity holding it here: `'main'` or `'site'` (per-site key, research R5b); also in its `hg/space` record (new trailing field, read by the person's own devices only) |
 
 ## `@hg/meta` changes [local]
 
@@ -81,5 +88,5 @@ pass. Closed after 30 s unused. Served while closed by Corestore.
 
 ## Scoped handle [local, API]
 
-`{ topKey, refs }`: allows the space with `topKey` and its sub-spaces; holds one "in use" ref while
-alive.
+`{ topKey, identity, refs }`: allows the space with `topKey` and its sub-spaces; `identity` the key it
+acts under (per-site by default, the main one when opened so); holds one "in use" ref while alive.

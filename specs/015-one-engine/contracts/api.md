@@ -23,7 +23,8 @@ A single-app engine holding fewer spaces than `maxOpen` behaves exactly as today
 
 - `hg.createSpace({ name, policy, private, types })` — `types` defaults to the engine's `types`;
   recorded in the space (`types/set`). An engine with neither: `TypeError` ("a space needs types").
-- `space.types()` — the space's types (`hg.types()` form). New.
+- `space.types()` — the space's types (`hg.types()` form) and `space.typesVersion`. New. No call sets
+  them: a decider's app records its newer compatible version automatically at open.
 - `hg.types()` — the app's declaration (unchanged meaning).
 - `INCOMPATIBLE_TYPES` — now raised by the space: at a decider's open of a space whose types the app's
   declaration would break, and at a write of a type or field the space lacks ("this space doesn't have
@@ -44,12 +45,16 @@ A single-app engine holding fewer spaces than `maxOpen` behaves exactly as today
 
 ```js
 const site = await hg.scope(siteKey)      // held or not: opened by key; or hg.scope(invite)
+                                          // acts under the site's own key (derived, not linkable)
+const known = await hg.scope(siteKey, { identity: 'main' })  // only after the person said yes
 await site.put('post', { … })             // every Space method of that space and its sub-spaces
 site.query('post').live(render)
 site.on('change', …)                      // only this scope's events
-site.identity                             // { publicKey }
+site.identity                             // { publicKey }: the site's key, or the main one if opened so
 await site.close()                        // releases the space (idle close may follow)
 ```
+
+Until per-site keys are built, `hg.scope(key)` without `{ identity: 'main' }` throws `NOT_SUPPORTED`.
 
 Anything else (phrase, devices, personal space, other spaces, `spaces()`, budgets, swarm) is not on the
 object; a sub-space key of another top space → `NOT_ALLOWED`.
@@ -62,4 +67,4 @@ object; a sub-space key of another top space → `NOT_ALLOWED`.
 
 ## Errors
 
-New codes: `SUSPENDED`. `NOT_ALLOWED` reused for scope violations.
+New codes: `SUSPENDED`, `NOT_SUPPORTED`. `NOT_ALLOWED` reused for scope violations.

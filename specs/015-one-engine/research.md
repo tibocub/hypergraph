@@ -84,9 +84,14 @@ E from the code).
 name; readers decode with their own declaration and keep unknown types undecoded (`lib/gate.js`
 `checkRecord`).
 
-**Decision**: a new decision `types/set` in the top space's decision log carrying the full declaration
-(the `describe()` form: fields with kinds, links, onePerMember, editable, put, index), compact JSON,
-≤ 32 KB. Applied only if (a) its writer may `decide`, (b) it is compatible with the space's current types
+**Decision**: a new decision `types/set` in the top space's decision log carrying a `version` (uint,
+the previous version + 1) and the full declaration (the `describe()` form: fields with kinds, links,
+onePerMember, editable, put, index), compact JSON, ≤ 32 KB. Each applied version is stored as its own
+view entry (`types:<version>`), never overwritten, and the state points at the latest: that leaves room
+for Tibo's future direction (older apps reading with the version a record was written for, as HyperDB
+keeps several schema versions) without a format change. A `version` that isn't the current + 1 is
+refused (two concurrent `types/set`: the second in the order is refused, its writer's app records again
+at its next open). Applied only if (a) its writer may `decide`, (b) it is compatible with the space's current types
 (`checkCompatible`, the same function, run inside apply: deterministic). Sub-spaces use their top space's
 types (they already share its decision log). The state gains `types` (latest applied). **Apply-time**:
 older versions can't apply it, so everyone updates together.
@@ -98,9 +103,9 @@ a decider's app whose declaration is a compatible superset of the space's writes
 
 **Effect on a forum** (`test/next/forum/versions.js`): today a member who updates first can post polls
 right away; with this, polls work once a decider's updated app has opened the forum. Old apps decode the
-new fields too (they get the space's types), which is better than today. Open question 2 for Tibo:
-allow any member's app to record additive types whose rules are the defaults (`put` and `editable` left
-as members/author)? That keeps today's flow; proposed as a follow-up, not in this spec.
+new fields too (they get the space's types), which is better than today. Decided (Tibo, 2026-11-02):
+only a decider's app records types, automatically at open; members' apps never do, and there is no
+explicit call.
 
 **Indexing per space**: the index already keys every row by space (`lib/index/build.js`: `record`,
 `log`, `change` collections start with `space`), and `#purge` already deletes a space's rows. A types
@@ -161,11 +166,29 @@ fast enough through activity entries alone (a member who isn't online when an en
 the period's list at next contact: fine); that Autobase's own writer cores (decision log) stay open
 (they must). If (b) misses cases, fallback: keep logs of authors active in the newest period open.
 
+## R5b. Per-site keys (decided by Tibo, 2026-11-02)
+
+**Decision**: a scoped handle acts under a per-site key by default; the main identity only when the app
+opens the handle with `{ identity: 'main' }` (HyperBrowser asks the person first, remembers per site).
+`site.identity` returns the key in use. Shape now, derivation later:
+
+- A held space records which identity holds it here (`as`: `'main'` or `'site'`); one per space per
+  engine. The space's own log, invites redeemed and decisions all use that identity.
+- Derivation (follow-up spec): a per-site identity derived from the recovery phrase and the site's top
+  space key (deterministic, so every device of the person gets the same one; one-way, so it can't be
+  linked to the identity), with device proofs of its own. The personal space lists `as` with each space
+  (seen only by the person's devices) so other devices open it under the same key.
+- Until built: `hg.scope(key)` without `{ identity: 'main' }` throws `NOT_SUPPORTED` ("per-site keys
+  aren't built yet"); never a silent fallback to the main identity. HyperBrowser milestone 1 then runs
+  writing sites only with the person's yes.
+- Not covered: a site already held under the main identity switching to a site key (it would be a new
+  member): later, with the derivation.
+
 ## R5. Scoped handle (engine / web-view boundary)
 
-**Decision**: `hg.scope(key)` returns a `ScopedSpace`-style object: the space's own API (every method of
-`Space` for that top space and its sub-spaces, `on`/`off` filtered to that scope), `identity.publicKey`
-(records carry it anyway), nothing else: no phrase, devices, personal space, `spaces()`, other keys,
+**Decision**: `hg.scope(key, { identity })` returns a `ScopedSpace`-style object: the space's own API
+(every method of `Space` for that top space and its sub-spaces, `on`/`off` filtered to that scope),
+`identity.publicKey` (the per-site key by default, R5b), nothing else: no phrase, devices, personal space, `spaces()`, other keys,
 `connectToSwarm`, budgets. It is a plain JS object: HyperBrowser maps web-view messages (method name +
 args) onto it; anything not on it is `NOT_ALLOWED`. Opening a not-yet-held site: `hg.scope(key)` on an
 unknown key opens it by key (public reading) or `scope.redeem(invite)`. The handle holds the space "in
@@ -175,7 +198,7 @@ use" while the site's view is alive (`scope.close()` releases).
 
 ## R6. Personal space shared by apps
 
-The personal space has no decider other than the identity itself, and apps write their own records
+Confirmed by Tibo 2026-11-02. The personal space has no decider other than the identity itself, and apps write their own records
 there (SwarmFS's `held`). Its types are the union of every attached app's declarations, kept locally
 (not a `types/set`: the personal space's devices are one person, and every device runs its own apps).
 Two declarations of one name that differ → `INCOMPATIBLE_TYPES` at attach. Advice: prefix

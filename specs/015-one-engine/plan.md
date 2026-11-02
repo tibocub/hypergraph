@@ -39,7 +39,12 @@ no wire change; one apply-time change.
 
 **Scale/Scope**: 500 held spaces per engine, a few open; 2,000+ logs per space.
 
-**Dependencies on other work**:
+**Decided by Tibo (2026-11-02)**: per-site keys by default (API now, derivation later); types recorded
+only automatically by a decider's app; caps 64/32 desktop, 16/8 phone; one personal-space type namespace
+with prefixes. See `spec.md` "Decisions".
+
+**Dependencies on other work** (code starts only after `decisions-in-place` merges and the forum trial
+ends):
 - `lib/decisions/` is being changed now (decisions applied in place, session `decisions-in-place`):
   `types/set` lands after it merges, on its new apply path.
 - `npm run perf` (perf-habit branch): the perf scenarios land after it merges.
@@ -68,8 +73,9 @@ No violations; no Complexity Tracking.
 
 - `Types.from(describe)` builds a `Types` from the stored form (inverse of `describe()`), with the
   built-ins added.
-- Decision `types/set { types }` (encoding: trailing string; apply: `data-model.md`). State `types`,
-  `typesVersion`.
+- Decision `types/set { version, types }` (apply: `data-model.md`); each version kept as its own view
+  entry `types:<n>` (room for several versions later, spec "Future direction"). State `types`,
+  `typesVersion`. Only a decider's app writes it, automatically at open; no public call.
 - Each `Space` has `this.types`: from `state.types` when set, else the engine's declaration (old
   spaces); sub-spaces take their top space's. On a `typesVersion` change: if only types or indexes were
   added and rows of them exist in this space, re-index this space only (delete its rows, `#restore` for
@@ -107,8 +113,10 @@ No violations; no Complexity Tracking.
 
 ### E. Scoped handle (`lib/scope.js`, new)
 
-- `hg.scope(keyOrInvite)` → object exposing the `Space` methods of one top space and its sub-spaces
-  (an allow-list), `on/off` filtered, `identity`, `close()`. Holds the space in use.
+- `hg.scope(keyOrInvite, { identity })` → object exposing the `Space` methods of one top space and its
+  sub-spaces (an allow-list), `on/off` filtered, `identity`, `close()`. Holds the space in use.
+- Per-site key by default (research R5b): held spaces record `as`; `identity: 'main'` opens under the
+  main identity. The derivation is a follow-up spec: until then the default throws `NOT_SUPPORTED`.
 
 ### F. Migration (`lib/index.js`, `lib/instance.js`)
 
@@ -126,6 +134,7 @@ No violations; no Complexity Tracking.
 | logs open while used | local |
 | per-space index re-build, `@hg/meta` / `instance.json` layout | local (folder format, migrated forward) |
 | scoped handle | local API |
+| `as` on `hg/space` records (trailing field, personal space only) | format, read only by the person's own devices (older versions ignore it) |
 
 ## Forum scenario tests: expected changes (rule 3)
 
@@ -137,7 +146,8 @@ No violations; no Complexity Tracking.
   get the space's types): assertions on "kept, not decoded" change to "kept and decoded".
 - New `engine.js` (forum + wiki + a site in one engine, no engine `types`): each space with its own
   types; a wiki type change doesn't touch the forum's index; a scoped handle for the wiki can't reach the
-  forum or the personal space.
+  forum or the personal space; a default handle throws `NOT_SUPPORTED` until per-site keys exist, one
+  opened with `{ identity: 'main' }` works and shows the main identity.
 - New `lazy.js`: a member holding 100 forums (`maxOpen` 8): opens one on visit, reads, posts, closes on
   idle; a post arriving while closed shows at the next visit; pinned forums stay online.
 - `rebuild.js`: index rebuild still whole-folder after loss; a types change rebuilds one space (new test).
@@ -154,8 +164,8 @@ No violations; no Complexity Tracking.
   (HyperBrowser milestone 2): its spaces get its types; its personal-space types prefixed (`held` →
   `swarmfs/held`: a rename while it's unreleased, its own change). Its suite must pass against this
   working tree after each phase.
-- **HyperBrowser**: engine with no `types`; one `hg.scope(siteKey)` per web view; pins = bookmarks;
-  `suspend/resume` on mobile.
+- **HyperBrowser**: engine with no `types`; one `hg.scope(siteKey)` per web view (per-site key; the main
+  identity only with the person's yes, remembered per site); pins = bookmarks; `suspend/resume` on mobile.
 - **hyperDNS, HyperBBS**: v1, untouched.
 
 ## Phases (for `/speckit-tasks`)
