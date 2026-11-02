@@ -62,3 +62,18 @@ test('one engine, no types of its own: a forum, a wiki and a file share, each wi
   t.is(testing.indexedBlocks(f2), 0, 'and was not indexed again')
   t.is(a2.space(files).typesVersion, 1, 'the file share too')
 })
+
+test('a web view\'s handle: the wiki site reaches the wiki only', async (t) => {
+  const hg = await open(t, { label: 'browser' })
+  const f = await hg.createSpace({ name: 'Forum', types: forum.types })
+  const w = await hg.createSpace({ name: 'Wiki', types: wikiTypes })
+  t.is(await codeOf(hg.scope(w.key)), 'NOT_SUPPORTED', 'a site\'s own key is not built yet: no silent fallback')
+  const site = await hg.scope(w.key, { identity: 'main' }) // the person said yes to this site
+  t.alike(site.identity, hg.identity)
+  await site.put('article', { title: 'Home', body: '' })
+  t.is((await site.query('article').latest(5)).items.length, 1)
+  t.is(await codeOf(Promise.resolve().then(() => site.subspace(f.key))), 'NOT_ALLOWED', 'not the forum')
+  t.is(site.personal, undefined, 'not the personal space')
+  t.is(site.spaces, undefined, 'not the list of spaces')
+  await site.close()
+})
