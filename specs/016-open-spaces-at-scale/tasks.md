@@ -79,6 +79,17 @@ Run one file as `node <file>` (`bare <file>`), a group with `node scripts/test-r
   "the summaries settle it": with ranges, either side's summary starts the exchange, so a member deaf to notices
   and summaries still learns at once.
 
+### Full suites (T037, 2026-11-03, at f4190fc)
+
+- hypergraph `npm test` 390/390 (66 files, 76 s); `npm run test:next` 397/397 (91 files, 99 s);
+  `npm run test:next:bare` 396/396 (91 files, 130 s; run with a temporary `node_modules` junction to the main
+  checkout's, since `scripts/test-runner.js --bare` looks for `bare` only in the worktree's own `node_modules`,
+  unlike `perf/run.mjs`, which walks up).
+- SwarmFS (main 38cf8fb) against this worktree's code, from a scratch checkout whose `node_modules/hypergraph`
+  was a junction to this worktree (removed after): `npm test` 89/89 (108 s), `npm run test:bare` 89/89 (122 s).
+- HyperBBS `npm test` 90/90, hyperDNS `npm test` 46/46: their `node_modules/hypergraph` is the main checkout,
+  and they use the old core (`src/`), which this branch doesn't change (`git diff 4502f88 -- src index.js` empty).
+
 ### Perf (T034, T001 → after)
 
 `npm run perf` on master 4502f88 (before) and 8e83fcc (after), Node and Bare; `npm run perf:compare -- --sha
@@ -218,8 +229,8 @@ the lead before going on.
 - [X] T034 [P] Perf scenarios: `members.public-join`, `members.public-cost` (flat), `members.public-join-kb` (flat) in `perf/scenarios/members.mjs`; `logs.held-start` (flat), `logs.settle-kb` (flat) in `perf/scenarios/scale.mjs`; run `npm run perf`, then `npm run perf:compare` against T001
 - [X] T035 [P] Docs: `docs/next/api.md` (makePublic, isPublic, publicLink, redeemInvite's two links, members() = known members, redemptions, revokeInvite on the public link, OTHER_VERSION) and `docs/next/concepts.md` (public spaces, why the door can't close, logs made at the first record, logs open while used)
 - [X] T036 [P] `CHANGELOG.md` entry (apply-time + wire: update every app together; forum's openLink/revokeLink change), `ECOSYSTEM.md` note (SwarmFS moves with it), `ROADMAP.md` item 10(a) status, Story 6 (helpers' `listed:`) as a follow-up
-- [ ] T037 Full suites: `npm test`, `npm run test:next`, `npm run test:next:bare`; SwarmFS `npm test` and `npm run test:bare`; HyperBBS and hyperDNS `npm test`. Report numbers; any failure investigated, not retried away
-- [ ] T038 Fill "Built differently" and "Not built" at the top of this file
+- [X] T037 Full suites: `npm test`, `npm run test:next`, `npm run test:next:bare`; SwarmFS `npm test` and `npm run test:bare`; HyperBBS and hyperDNS `npm test`. Report numbers; any failure investigated, not retried away
+- [X] T038 Fill "Built differently" and "Not built" at the top of this file
 
 ## Dependencies
 
