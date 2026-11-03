@@ -22,7 +22,7 @@ test('a newcomer learns every member\'s log from one member', async (t) => {
     const got = (await forum.latest(fd)).map((p) => p.id)
     return got.includes(pb.id) && got.includes(pc.id)
   }, 5000), 'd sees b\'s and c\'s posts, learned from a alone')
-  t.is(testing.logs(fd).length, 4, 'd knows a, b, c and its own log')
+  t.is(testing.logs(fd).length, 2, "d knows b's and c's logs (a and d never wrote: no log yet, spec 016)")
 
   const pd = await forum.post(fd, 'from d', '')
   t.ok(await eventually(async () => (await forum.latest(fa)).some((p) => p.id === pd.id), 2000), 'd\'s new log reached a')
@@ -40,7 +40,7 @@ test('a non-member\'s log is neither kept nor passed on', async (t) => {
     t.absent((await forum.latest(f)).some((p) => p.title === 'spam'), 'no spam shown')
     t.absent(testing.logs(f).includes(testing.ownLog(fe)), 'the stranger\'s log is not in the directory')
   }
-  t.is(testing.logs(fa).length, 3, 'a, b and c only')
+  t.is(testing.logs(fa).length, 1, "b's only (a and c never wrote: no log yet, spec 016)")
 })
 
 test('a second space joined over a connection already open: its channel opens too', async (t) => {
@@ -93,7 +93,9 @@ test('a log whose announcement was missed still arrives: the summary sent every 
   const a = await account(t, 'a')
   const b = await account(t, 'b')
   const fa = await forum.createForum(a, 'Missed')
-  await forum.join(b, await forum.invite(fa))
+  const fb = await forum.join(b, await forum.invite(fa))
+  await forum.post(fa, 'from a', '') // a log exists from its first record (spec 016)
+  await forum.post(fb, 'from b', '')
   await eventually(async () => testing.logs(fa).length === 2, 5000)
   // a hears neither notices nor summaries while c joins and posts; then
   // nothing changes any more, so only the periodic summary can tell it.

@@ -10,18 +10,59 @@ written first and must fail before its code.
 **Paths**: `lib/` is hypergraph/next; tests under `test/next/{unit,net,forum}`; perf under `perf/scenarios/`.
 Run one file as `node <file>` (`bare <file>`), a group with `node scripts/test-runner.js next`.
 
+## Built differently
+
+- **T001**: perf "before" ran in a scratch worktree of master at 4502f88 (lines in `perf/history.jsonl` with
+  that sha); this branch's code was the same then (only `specs/` differed).
+- **`isMember` follows the fallback** (`State.isMember` = has a role), so everything asking "is this a member"
+  (activity lists, `#isMemberChannel`, held-spaces lists) treats a public joiner as one. New
+  `State.isRecorded(id)`: named by a decision. `#redeem`, `_redeem` and the redemption resent on a new channel
+  use it, so a public member can still redeem an invite link for a role (it is recorded as before).
+- **`removeRole` on a public joiner** (no `member:` entry) is refused (`NOT_ALLOWED` "ban them instead"):
+  the decision would change nothing (`member/remove` needs an entry), and they'd be back at once anyway.
+- **Sub-spaces**: as planned, `public` isn't inherited either way, so a public forum's public joiners write in a
+  (non-private) sub-forum only once that sub-forum is made public too (`sub.makePublic()`). Recorded members
+  still reach sub-forums through their parent as before.
+- **Joining with a public link** (`Space._joinPublic`): once a peer was reached and the decision log has its
+  `meta`, it catches up (`catchUp`), again while catching up named more writers, then answers public / not.
+  `lib/scope.js` needed no change: its link path is `redeemInvite`.
+- **T014**: `checkLog`, `limitOf` and `#mayPost`/`#whyNot` needed no change (they go through `roleOf`);
+  `mustAdmit` is false for fallback members in `State`.
+- **`redemptions(publicLink)`**: the fallback members `members()` lists (recorded people excluded).
+- **US3**: the personal space, like a private one, still accepts its own log at open (its devices find each
+  other through it).
+- **US3 readers of the own log** (T022): `#rediscover` (index rebuilt) used to leave the own log to the
+  decisions; it now accepts it there when written in. `lib/testing.js writeRaw` goes through the same accept as a
+  first record (`symbols.ownLog`), as a modified app would announce its log. `status()`, `inspect()`, budgets and
+  reads needed no guard (T021).
+- **Members' notices fetched first** (found by `test/next/net/adversarial.js`): with logs announced at the first
+  record, a member's first post waited behind a stranger's flood of made-up keys in the header queue (16 at a
+  time, 10 s each). A notice from a connection whose hello proves a member now gets its own 16 fetch slots
+  (`lib/directory.js` `urgent`); the bulk queue is unchanged.
+- **Tests that assumed a log per member from join** now have those members write first, or count only the logs
+  of who wrote: `test/next/forum/members.js`, `test/next/net/directory.js` (3 tests), `test/next/net/events.js`.
+- **Commits**: US1-US3 landed in one commit: several of their tests (a silent joiner isn't listed, a removed
+  member's new log) only hold once logs are made at the first record. While splitting them, a test found that a
+  removed member may still write into its cut log for a moment while its copy of the decision log is reordered
+  (an old race of every removal, not new here): `test/next/net/public-join.js` waits for the removal to settle.
+- quickstart.md names `test/next/replication/`: no such folder; the network tests are in `test/next/net/`.
+
+## Not built
+
+(none yet)
+
 ## Phase 1: Setup
 
-- [ ] T001 Record perf before: on master (4502f88) run `npm run perf` once, keep its line in `perf/history.jsonl` (the "before" of every scenario this spec touches)
-- [ ] T002 Read the plan's "Order" and research R1-R10; list in this file, under "Built differently", any place the code disagrees with them before building
+- [X] T001 Record perf before: on master (4502f88) run `npm run perf` once, keep its line in `perf/history.jsonl` (the "before" of every scenario this spec touches)
+- [X] T002 Read the plan's "Order" and research R1-R10; list in this file, under "Built differently", any place the code disagrees with them before building
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T003 [P] Test: `settings/set` with `public: true` by an owner/admin counts; by a member doesn't; `public: false` on a public scope doesn't count and leaves it public; scoped to a sub-space applies there only, not inherited, in `test/next/unit/decisions-public.js`
-- [ ] T004 [P] Test: `State.roleOf` falls back to `'member'` for an unrecorded, unbanned identity in a public scope only; a banned identity gets null; a recorded role wins; `mustAdmit` is false for fallback members; `touched()` marks `all` when `public` changes, in `test/next/unit/decisions-public.js`
-- [ ] T005 Add the trailing `public` field (bool, absent = unchanged) to `settings/set` in `lib/encodings.js` (old decisions decode with `public` absent)
-- [ ] T006 Apply `public` in `lib/decisions/apply.js` (`settings/set`: only a writer who may decide; `true` → the scope's `meta.public = true`; `false` on a public scope not counted; `decisionInfo` lists it)
-- [ ] T007 `State.public`, the `roleOf` fallback, `mustAdmit` for fallbacks, `touched()` in `lib/decisions/state.js` (and `SubState`: its own meta, not the parent's)
+- [X] T003 [P] Test: `settings/set` with `public: true` by an owner/admin counts; by a member doesn't; `public: false` on a public scope doesn't count and leaves it public; scoped to a sub-space applies there only, not inherited, in `test/next/unit/decisions-public.js`
+- [X] T004 [P] Test: `State.roleOf` falls back to `'member'` for an unrecorded, unbanned identity in a public scope only; a banned identity gets null; a recorded role wins; `mustAdmit` is false for fallback members; `touched()` marks `all` when `public` changes, in `test/next/unit/decisions-public.js`
+- [X] T005 Add the trailing `public` field (bool, absent = unchanged) to `settings/set` in `lib/encodings.js` (old decisions decode with `public` absent)
+- [X] T006 Apply `public` in `lib/decisions/apply.js` (`settings/set`: only a writer who may decide; `true` → the scope's `meta.public = true`; `false` on a public scope not counted; `decisionInfo` lists it)
+- [X] T007 `State.public`, the `roleOf` fallback, `mustAdmit` for fallbacks, `touched()` in `lib/decisions/state.js` (and `SubState`: its own meta, not the parent's)
 
 **Checkpoint**: T003-T004 pass; `node scripts/test-runner.js next` still green (no space is public yet).
 
@@ -32,15 +73,15 @@ Run one file as `node <file>` (`bare <file>`), a group with `node scripts/test-r
 **Independent test**: owner makes the forum public and goes offline; a newcomer joins with the link and
 posts; a third member sees the post; the decision log's length is unchanged.
 
-- [ ] T008 [P] [US1] Test: `publicLink` encodes `hg:` + z32(space key [+ root]) and `decodeLink` returns `{ public: true, space, root }` for 32/64-byte bodies, still decodes invite links, rejects other lengths, in `test/next/unit/invites-public.js`
-- [ ] T009 [P] [US1] Test (net, two processes not needed): a public space whose deciders are all offline; a newcomer `redeemInvite(publicLink)` resolves once it reaches a plain member; its records are accepted by a third member; decision log length unchanged; a not-public space's link → `INVITE_INVALID` "This space isn't public"; nobody reached → the timeout error, in `test/next/net/public-join.js`
-- [ ] T010 [P] [US1] Test: a banned identity's new device log in a public space counts for nothing; a removed (not banned) one writes in a new log that counts; `revokeInvite(publicLink)` → `NOT_ALLOWED`; `makePublic()` by a member → `NOT_ALLOWED`; a space from before (recorded members) keeps them all, in `test/next/net/public-join.js`
-- [ ] T011 [US1] `publicLink(space, root)` and the 32/64-byte branch of `decodeLink` in `lib/invites.js`
-- [ ] T012 [US1] `space.makePublic()` (`#unless` may decide; `#decide({ type: 'settings/set', public: true })`), `space.isPublic` (behind `_ready`, spec 015 getters), `space.publicLink()` (`NOT_ALLOWED` before), `revokeInvite` refusing the public link, in `lib/space.js`; add the new methods to the `OPENING` list
-- [ ] T013 [US1] `redeemInvite` for a public link: open, connect, wait for `state.meta` within the timeout; public → keep and return; else `INVITE_INVALID`; no `redeem` message sent, in `lib/index.js` (and `lib/scope.js`'s link path)
-- [ ] T014 [US1] Check `#redeem`, `_redeem`, `#mayPost`, `#whyNot`, `checkLog` (`lib/gate.js`) and `limitOf` against fallback members; fix what T009-T010 show
-- [ ] T015 [US1] Forum helpers (rule 3) in `test/next/forum/forum.js`: `openLink(forum, { perHour })` → `setWriteLimit` + `makePublic` + `publicLink`; drop `revokeLink`; `whoJoined` on the public link reads known members
-- [ ] T016 [US1] `test/next/forum/invites.js`: replace "a public link lets many in; revoked, it lets no one else in and members stay" with "a public forum lets many in with every admin offline; making it private again is refused; a one-use invite still works as before"; update `test/next/forum/open-forum.js` to the new helpers
+- [X] T008 [P] [US1] Test: `publicLink` encodes `hg:` + z32(space key [+ root]) and `decodeLink` returns `{ public: true, space, root }` for 32/64-byte bodies, still decodes invite links, rejects other lengths, in `test/next/unit/invites-public.js`
+- [X] T009 [P] [US1] Test (net, two processes not needed): a public space whose deciders are all offline; a newcomer `redeemInvite(publicLink)` resolves once it reaches a plain member; its records are accepted by a third member; decision log length unchanged; a not-public space's link → `INVITE_INVALID` "This space isn't public"; nobody reached → the timeout error, in `test/next/net/public-join.js`
+- [X] T010 [P] [US1] Test: a banned identity's new device log in a public space counts for nothing; a removed (not banned) one writes in a new log that counts; `revokeInvite(publicLink)` → `NOT_ALLOWED`; `makePublic()` by a member → `NOT_ALLOWED`; a space from before (recorded members) keeps them all, in `test/next/net/public-join.js`
+- [X] T011 [US1] `publicLink(space, root)` and the 32/64-byte branch of `decodeLink` in `lib/invites.js`
+- [X] T012 [US1] `space.makePublic()` (`#unless` may decide; `#decide({ type: 'settings/set', public: true })`), `space.isPublic` (behind `_ready`, spec 015 getters), `space.publicLink()` (`NOT_ALLOWED` before), `revokeInvite` refusing the public link, in `lib/space.js`; add the new methods to the `OPENING` list
+- [X] T013 [US1] `redeemInvite` for a public link: open, connect, wait for `state.meta` within the timeout; public → keep and return; else `INVITE_INVALID`; no `redeem` message sent, in `lib/index.js` (and `lib/scope.js`'s link path)
+- [X] T014 [US1] Check `#redeem`, `_redeem`, `#mayPost`, `#whyNot`, `checkLog` (`lib/gate.js`) and `limitOf` against fallback members; fix what T009-T010 show
+- [X] T015 [US1] Forum helpers (rule 3) in `test/next/forum/forum.js`: `openLink(forum, { perHour })` → `setWriteLimit` + `makePublic` + `publicLink`; drop `revokeLink`; `whoJoined` on the public link reads known members
+- [X] T016 [US1] `test/next/forum/invites.js`: replace "a public link lets many in; revoked, it lets no one else in and members stay" with "a public forum lets many in with every admin offline; making it private again is refused; a one-use invite still works as before"; update `test/next/forum/open-forum.js` to the new helpers
 
 **Checkpoint**: US1 tests pass; forum group green.
 
@@ -51,9 +92,9 @@ posts; a third member sees the post; the decision log's length is unchanged.
 **Independent test**: a public joiner who posted once is listed with its device by members who read it,
 not by one that didn't (until it does); the `members` event fires once.
 
-- [ ] T017 [P] [US2] Test: `members()` after a public joiner's first post: listed with role `member`, `you`, `devices: [{ device, log }]`, order unchanged (highest role first); a member that never met the log doesn't list it; `members` event fires; `redemptions(publicLink)` lists it with `at: null`, in `test/next/net/public-join.js`
-- [ ] T018 [US2] `members()` adds held device logs' identities whose role is the fallback member; `redemptions(publicLink)`, in `lib/space.js`
-- [ ] T019 [US2] Forum scenario `test/next/forum/public.js` (new): make public, sign up with every decider offline, post, appear in members on another member, ban a public joiner (its posts stop counting), making it private refused
+- [X] T017 [P] [US2] Test: `members()` after a public joiner's first post: listed with role `member`, `you`, `devices: [{ device, log }]`, order unchanged (highest role first); a member that never met the log doesn't list it; `members` event fires; `redemptions(publicLink)` lists it with `at: null`, in `test/next/net/public-join.js`
+- [X] T018 [US2] `members()` adds held device logs' identities whose role is the fallback member; `redemptions(publicLink)`, in `lib/space.js`
+- [X] T019 [US2] Forum scenario `test/next/forum/public.js` (new): make public, sign up with every decider offline, post, appear in members on another member, ban a public joiner (its posts stop counting), making it private refused
 
 ## Phase 5: User Story 3 - A silent member costs nothing (P1)
 
@@ -61,10 +102,10 @@ not by one that didn't (until it does); the `members` event fires once.
 
 **Independent test**: silent joiners never reach other members' directories; the first record does.
 
-- [ ] T020 [P] [US3] Test: a member (public or invited) that joined and never wrote: other members' `directory.logs` and summaries never hold its key; after its first `put` the log is announced and the record arrives; in a private space the log is accepted at join (grants still reach it), in `test/next/net/silent-members.js`
-- [ ] T021 [P] [US3] Test: `status()`, `inspect()`, budget passes and activity work for a member with no accepted own log yet, in `test/next/unit/lazy.js`
-- [ ] T022 [US3] Remove the own-log accept from `#onDecisions` except in a private space; `#log()` keeps accepting at the first write, in `lib/space.js`; guard every reader of `directory.logs.get(own)` that T021 shows
-- [ ] T023 [US3] Forum scenario in `test/next/forum/public.js`: a joiner who never wrote isn't listed by others, then is after its first post
+- [X] T020 [P] [US3] Test: a member (public or invited) that joined and never wrote: other members' `directory.logs` and summaries never hold its key; after its first `put` the log is announced and the record arrives; in a private space the log is accepted at join (grants still reach it), in `test/next/net/silent-members.js`
+- [X] T021 [P] [US3] Test: `status()`, `inspect()`, budget passes and activity work for a member with no accepted own log yet, in `test/next/unit/lazy.js`
+- [X] T022 [US3] Remove the own-log accept from `#onDecisions` except in a private space; `#log()` keeps accepting at the first write, in `lib/space.js`; guard every reader of `directory.logs.get(own)` that T021 shows
+- [X] T023 [US3] Forum scenario in `test/next/forum/public.js`: a joiner who never wrote isn't listed by others, then is after its first post
 
 ## Phase 6: User Story 4 - Logs open only while used (P2)
 
