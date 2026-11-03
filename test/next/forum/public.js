@@ -67,3 +67,12 @@ test('ban a public joiner: its posts stop counting; making the forum private aga
   t.ok(fa.isPublic, 'still public')
   t.is(await codeOf(forum.removeMember(fa, (await account(t, 'e')).identity.publicKey)), 'NOT_ALLOWED', 'a public joiner is banned, not removed')
 })
+
+test('a private forum can\'t be opened to everyone: whoever joined would get its key', async (t) => {
+  const a = await account(t, 'a')
+  const fa = await forum.createForum(a, 'Staff', { private: true })
+  t.is(await codeOf(forum.openLink(fa)), 'NOT_ALLOWED')
+  t.absent(fa.isPublic, 'still closed')
+  const sub = await forum.createSubforum(await forum.createForum(a, 'Open'), 'Mods', { private: true })
+  t.is(await codeOf(sub.makePublic()), 'NOT_ALLOWED', 'nor a private sub-forum')
+})

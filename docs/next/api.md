@@ -253,6 +253,8 @@ anywhere, so a silent account costs nobody anything. It can't be made private ag
 so no member could tell a join from before a "close" from one after. Floods are handled by bans and the write
 limit; `removeRole` on a public joiner is refused (they'd be back at once: ban them). A sub-space isn't
 public because its space is, nor the other way round (`sub.makePublic()` for a sub-forum anyone may post in).
+A private space or sub-space can't be made public (`NOT_ALLOWED`; peers ignore such a decision too):
+whoever joined would be given its key.
 Invite links (`createInvite`) work as before in a public space: recorded by a decider, counted, revocable,
 for any role. `redeemInvite(publicLink)` resolves once a peer holding the space was reached and the space
 is public; `INVITE_INVALID` "This space isn't public" if it isn't, or after the timeout if no one was

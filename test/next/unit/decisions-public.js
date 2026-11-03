@@ -13,14 +13,14 @@ const { Identity } = require('../../../lib/identity.js')
 
 const hex = (b) => b4a.toString(b, 'hex')
 
-async function setup () {
+async function setup ({ private: priv = false } = {}) {
   const map = new Map()
   const view = { get: async (k) => (map.has(k) ? { key: k, value: map.get(k) } : null), put: async (k, v) => { map.set(k, v) }, del: async (k) => { map.delete(k) } }
   let stamp = 1
   const owner = await Identity.create({ device: crypto.keyPair() })
   const space = crypto.randomBytes(32)
   const apply = (writer, d) => applyNodes([{ from: { key: writer }, value: c.encode(enc.decision, { stamp: stamp++, ...d }) }], view, null, { space })
-  await apply(space, { type: 'space/init', name: 'Open', parent: null, private: false, policy: 'auto', version: 1, proof: initProof(owner, space, space) })
+  await apply(space, { type: 'space/init', name: 'Open', parent: null, private: priv, policy: 'auto', version: 1, proof: initProof(owner, space, space) })
   // a writer key speaking for an identity with `role`
   const writerOf = async (role) => {
     const w = crypto.randomBytes(32)
@@ -87,6 +87,18 @@ test('scoped to a sub-space: public there only, not inherited either way', async
   await s.apply(s.space, s.settings({ public: true }))
   t.is(s.state().sub(other).public, false, 'a public top space doesn\'t make its sub-spaces public')
   t.is(s.state().sub(other).roleOf(stranger), null)
+})
+
+test('a private space or sub-space is never made public (whoever joined would get its key)', async (t) => {
+  const s = await setup({ private: true })
+  await s.apply(s.space, s.settings({ public: true }))
+  t.is(s.state().public, false, 'a private top space stays closed')
+  t.is(s.state().roleOf(crypto.randomBytes(32)), null)
+  const open = await setup()
+  const sub = crypto.randomBytes(32)
+  await open.apply(open.space, { type: 'subspace/create', key: sub, name: 'Staff', private: true, writeRoles: [] })
+  await open.apply(open.space, open.inSub(sub, open.settings({ public: true })))
+  t.is(open.state().sub(sub).public, false, 'nor a private sub-space')
 })
 
 test('roleOf falls back to member in a public space only; bans and recorded roles win', async (t) => {

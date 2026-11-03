@@ -18,7 +18,8 @@ are unchanged; existing spaces keep every recorded member. Detail: `specs/016-op
   `space.publicLink()` is the space's key in link form, the same on every member. `hg.redeemInvite(publicLink)`
   joins with no decision and no decider online (`INVITE_INVALID` "This space isn't public" otherwise). In a
   public space anyone not named by the decision log counts as `member` unless banned. It can't be made private
-  again: `revokeInvite(publicLink)` and a forged "not public" are refused; ban people or set a write limit.
+  again: `revokeInvite(publicLink)` and a forged "not public" are refused; ban people or set a write limit. A private
+  space can't be made public (`NOT_ALLOWED`).
   `removeRole` on a public joiner is `NOT_ALLOWED` (ban them). Sub-spaces are public only if made so. Invite
   links (`createInvite`) are unchanged.
 - **Known members.** `members()` lists the people the decision log names and, in a public space, everyone whose
