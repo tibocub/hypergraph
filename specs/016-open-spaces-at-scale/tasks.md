@@ -79,6 +79,25 @@ Run one file as `node <file>` (`bare <file>`), a group with `node scripts/test-r
   "the summaries settle it": with ranges, either side's summary starts the exchange, so a member deaf to notices
   and summaries still learns at once.
 
+### Perf (T034, T001 → after)
+
+`npm run perf` on master 4502f88 (before) and 8e83fcc (after), Node and Bare; `npm run perf:compare -- --sha
+4502f88…`: **no change for the worse beyond noise**; 15 "better" (chat.newcomer, forum.first-page, logs.open,
+mod.ban-drop-all, …, -20 to -35%), most likely the machine being quieter on the second run (nothing here speeds
+up reactions or decisions).
+
+- New, in `perf/scenarios/members.mjs` (not `scale.mjs`: it already has the members and the public space):
+  `members.public-join` 176 → 376 ms, `members.public-join-kb` 184 → 697 KB, `members.public-cost` 16 → 48 KB,
+  `logs.settle-kb` 1.4 → 4.8 KB, at 1,000 → 4,000 known members (their logs held, scripted).
+- **Not flat**: `public-join-kb` and `public-cost` grow with the logs members hold, not with members: every new
+  connection costs a replication open per open log (~170 B each), which is US4's (not built). Silent public
+  joiners have no log, so they add nothing to these curves. `members.join-kb` (invite joins) was already not
+  flat on master (×3.2).
+- `logs.settle-kb` in the perf scenario grows (×3.5) while the net test settles one new log in 1.3 / 1.6 /
+  1.7 KB at 2,000 / 4,000 / 10,000 logs (flat, under SC-005's 3 KB): the scenario's setup probably runs a second
+  exchange (its owner and reader both start one). To check in review: not chased further here.
+- `logs.held-start`: not added (US4, not built).
+
 ### T024 inventory: `log.core` on accepted logs (2026-11-03) — bigger than the phase, stopped here
 
 45 uses in 8 files (`lib/directory.js` 1, `lib/replication.js` 10, `lib/index/indexer.js` 10, `lib/space.js` 18,
@@ -196,7 +215,7 @@ the lead before going on.
 
 ## Phase 8: Polish and cross-cutting
 
-- [ ] T034 [P] Perf scenarios: `members.public-join`, `members.public-cost` (flat), `members.public-join-kb` (flat) in `perf/scenarios/members.mjs`; `logs.held-start` (flat), `logs.settle-kb` (flat) in `perf/scenarios/scale.mjs`; run `npm run perf`, then `npm run perf:compare` against T001
+- [X] T034 [P] Perf scenarios: `members.public-join`, `members.public-cost` (flat), `members.public-join-kb` (flat) in `perf/scenarios/members.mjs`; `logs.held-start` (flat), `logs.settle-kb` (flat) in `perf/scenarios/scale.mjs`; run `npm run perf`, then `npm run perf:compare` against T001
 - [X] T035 [P] Docs: `docs/next/api.md` (makePublic, isPublic, publicLink, redeemInvite's two links, members() = known members, redemptions, revokeInvite on the public link, OTHER_VERSION) and `docs/next/concepts.md` (public spaces, why the door can't close, logs made at the first record, logs open while used)
 - [X] T036 [P] `CHANGELOG.md` entry (apply-time + wire: update every app together; forum's openLink/revokeLink change), `ECOSYSTEM.md` note (SwarmFS moves with it), `ROADMAP.md` item 10(a) status, Story 6 (helpers' `listed:`) as a follow-up
 - [ ] T037 Full suites: `npm test`, `npm run test:next`, `npm run test:next:bare`; SwarmFS `npm test` and `npm run test:bare`; HyperBBS and hyperDNS `npm test`. Report numbers; any failure investigated, not retried away
