@@ -47,6 +47,38 @@ Run one file as `node <file>` (`bare <file>`), a group with `node scripts/test-r
   (an old race of every removal, not new here): `test/next/net/public-join.js` waits for the removal to settle.
 - quickstart.md names `test/next/replication/`: no such folder; the network tests are in `test/next/net/`.
 
+### US5: ranges (T029-T033)
+
+- **The range logic is its own pure module**, `lib/ranges.js` (`Keys`: sorted keys, counts and XOR digests of
+  any prefix range; `Session`: one peer's side), wired by `lib/directory.js`; unit-tested without a network.
+- **`keys` carries a `kind`** (data-model.md listed `{ prefix, bits, keys }`): 0 "mine, send what I lack",
+  1 "send me yours" (the peer showed at most 32 there), 2 "what you lack" (no answer), 3 `done`. `done` follows
+  every answer to a `ranges`/0/1 message, so a member knows when an exchange is over and only then counts the
+  directory as known (`isComplete`). A first version ended exchanges on a 300 ms quiet timer:
+  `test/next/net/directory.js` "a newcomer is not complete before…" (slow lists) caught it calling the
+  directory known before late keys arrived.
+- **Rounds**: one new log takes ⌈log16(L/32)⌉ levels plus 2-3 round trips (ask, answer, what's lacking, done),
+  not "+1": 5 rounds at 1,000 and 6 at 20,000 in the unit test; bytes 1.3 KB at 1,000, 1.9 KB at 20,000 (unit),
+  1.3-1.4 KB between two members holding 2,000 logs (net test).
+- **One exchange per difference**: both summaries cross, so at first both peers started one (2.7-3.1 KB). Now
+  the connection's initiator starts it, and any member that doesn't know the directory yet; the other side
+  starts one only if none came within 500 ms (so a big-space newcomer, which never starts one, is still heard).
+- **A newcomer reading by activity lists** (story 9, `byActivity`) only offers its own keys (kind 2), never asks
+  for the others' (they'd be the whole list).
+- **Lying peers**: an answer (kind 0) to our "send me yours" must match the count and XOR digest the peer gave
+  for that range, else it is ignored; unsolicited key lists are bounded (32 for kind 0, 1,000 per message) and
+  must lie in the range they claim. Every key learnt still goes through the gate.
+- **Range digests** are XORs of the keys themselves (random 32 bytes), not of their hashes; the summary's digest
+  is unchanged.
+- **`get`** (message 4) is answered with a `keys` kind 2 message (it used to send a one-key list).
+- **OTHER_VERSION**: `lib/network.js` pairs the old channel name (`hypergraph/space`) on every connection; a peer
+  opening it marks that connection in `directory.others` until it closes, and `status().warnings` shows it.
+- **Tests on the old messages** updated: `test/next/net/closed.js` (the spy asks with a `ranges` "I hold none"),
+  `test/next/net/adversarial.js` (key lists as `keys` messages, plus ranges claiming huge counts),
+  `test/next/unit/encodings.js`. `test/next/net/directory.js` "the summary sent every little while" became
+  "the summaries settle it": with ranges, either side's summary starts the exchange, so a member deaf to notices
+  and summaries still learns at once.
+
 ### T024 inventory: `log.core` on accepted logs (2026-11-03) — bigger than the phase, stopped here
 
 45 uses in 8 files (`lib/directory.js` 1, `lib/replication.js` 10, `lib/index/indexer.js` 10, `lib/space.js` 18,
@@ -69,7 +101,15 @@ means and is spec-012 territory; (5) touches spec 013. Not started: reported to 
 
 ## Not built
 
-(none yet)
+- **US4, logs open only while used (T025-T028)**: left out on the lead's call (2026-11-03) after T024's inventory
+  (above): it needs its own spec, "logs open only while used". Its starting points, the two design questions:
+  1. Where `isComplete()`, `missing()` and `#coveredFrom` get peers' lengths for a log whose core is closed
+     (today `unheard(log)` reads them from `core.peers`): per-log lengths in summaries or activity entries, or a
+     new rule (e.g. "complete" only for open logs).
+  2. `Helpers.hold(log.core)`: blind-peering is given an open core per held log; closed logs need a mirror request
+     without the core, or opening around it.
+  The rest (cached lengths, open/release around reads, replication on open logs only) is mechanical.
+  SC-004 (~20 open logs, start flat) is not met by this spec.
 
 ## Phase 1: Setup
 
@@ -136,10 +176,10 @@ log's core is open. Inventory them first (T024); if the change looks bigger than
 the lead before going on.
 
 - [X] T024 [US4] Inventory every use of `log.core` on accepted logs (`lib/directory.js`, `lib/replication.js`, `lib/index/indexer.js`, `lib/space.js`, `lib/storage.js`, `lib/activity.js`); write the list and the plan for each under "Built differently"
-- [ ] T025 [P] [US4] Test: a space with 2,000 logs (scripted, everyone keeps everything): after catching up at most ~20 cores open (own, decision log, downloading); a new record in a closed log arrives; a newcomer fetches a closed log's blocks from this member; reopening the space opens no other log, in `test/next/net/closed-logs.js`
-- [ ] T026 [US4] Directory entries without a core: `open(log)` / `release(log)`, closed after 30 s with no use (research R6) in `lib/directory.js`
-- [ ] T027 [US4] `Replicator.hold` only while open; open on "behind" (activity entry or a peer's length > indexed), on reads beyond the index, and for budget passes, in `lib/replication.js`, `lib/activity.js`, `lib/space.js`, `lib/storage.js`
-- [ ] T028 [US4] `_open` no longer opens every held log's core (rows only), in `lib/space.js`
+- [ ] T025 (not built: see "Not built") [P] [US4] Test: a space with 2,000 logs (scripted, everyone keeps everything): after catching up at most ~20 cores open (own, decision log, downloading); a new record in a closed log arrives; a newcomer fetches a closed log's blocks from this member; reopening the space opens no other log, in `test/next/net/closed-logs.js`
+- [ ] T026 (not built: see "Not built") [US4] Directory entries without a core: `open(log)` / `release(log)`, closed after 30 s with no use (research R6) in `lib/directory.js`
+- [ ] T027 (not built: see "Not built") [US4] `Replicator.hold` only while open; open on "behind" (activity entry or a peer's length > indexed), on reads beyond the index, and for budget passes, in `lib/replication.js`, `lib/activity.js`, `lib/space.js`, `lib/storage.js`
+- [ ] T028 (not built: see "Not built") [US4] `_open` no longer opens every held log's core (rows only), in `lib/space.js`
 
 ## Phase 7: User Story 5 - A new log costs one key, not the whole list (P2)
 
@@ -148,11 +188,11 @@ the lead before going on.
 **Independent test**: two peers with 10,000 logs, one new log: under 3 KB to settle, and about the same at
 1,000.
 
-- [ ] T029 [P] [US5] Test (unit, no network): range digests from a sorted key list (counts, XOR) match a brute-force computation; reconciling two sets with 0, 1, 50 and 5,000 differences converges to the union in ⌈log16(L/32)⌉+1 rounds; a peer whose keys don't match its counts is ignored for that round, in `test/next/unit/ranges.js`
-- [ ] T030 [P] [US5] Test (net): two members, 2,000 logs each, one new log on one side: settled, bytes sent under 3 KB; an old-protocol peer: no channel, `status().warnings` has `OTHER_VERSION`, in `test/next/net/directory.js`
-- [ ] T031 [US5] Range messages in `lib/encodings.js`: `ranges { prefix, bits, parts: 16 × { count, digest } }`, `keys { prefix, bits, keys }` (data-model.md "Space channel")
-- [ ] T032 [US5] Reconciliation in `lib/directory.js`: sorted key array beside `logs`; on a summary difference send `ranges` for the root; answer and recurse per sub-range; ≤ 32 keys → `keys`; replaces `want`/`logs`; `PROTOCOL = 'hypergraph/space/2'`
-- [ ] T033 [US5] `OTHER_VERSION` in `status()` warnings (a connection that opened `hypergraph/space` and not `/2`), in `lib/directory.js` and `lib/space.js`
+- [X] T029 [P] [US5] Test (unit, no network): range digests from a sorted key list (counts, XOR) match a brute-force computation; reconciling two sets with 0, 1, 50 and 5,000 differences converges to the union in ⌈log16(L/32)⌉+1 rounds; a peer whose keys don't match its counts is ignored for that round, in `test/next/unit/ranges.js`
+- [X] T030 [P] [US5] Test (net): two members, 2,000 logs each, one new log on one side: settled, bytes sent under 3 KB; an old-protocol peer: no channel, `status().warnings` has `OTHER_VERSION`, in `test/next/net/directory.js`
+- [X] T031 [US5] Range messages in `lib/encodings.js`: `ranges { prefix, bits, parts: 16 × { count, digest } }`, `keys { prefix, bits, keys }` (data-model.md "Space channel")
+- [X] T032 [US5] Reconciliation in `lib/directory.js`: sorted key array beside `logs`; on a summary difference send `ranges` for the root; answer and recurse per sub-range; ≤ 32 keys → `keys`; replaces `want`/`logs`; `PROTOCOL = 'hypergraph/space/2'`
+- [X] T033 [US5] `OTHER_VERSION` in `status()` warnings (a connection that opened `hypergraph/space` and not `/2`), in `lib/directory.js` and `lib/space.js`
 
 ## Phase 8: Polish and cross-cutting
 

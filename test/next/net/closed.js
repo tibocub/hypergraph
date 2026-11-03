@@ -11,6 +11,7 @@ const Hyperswarm = require('hyperswarm')
 const Protomux = require('protomux')
 const forum = require('../forum/forum.js')
 const activity = require('../../../lib/activity.js')
+const enc = require('../../../lib/encodings.js')
 const { PROTOCOL } = require('../../../lib/directory.js')
 const { threeMembers } = require('../forum/_setup.js')
 const { eventually, testBootstrap } = require('../helpers.js')
@@ -30,14 +31,14 @@ async function spy (t, space, guess) {
       id: space.discoveryKey,
       handshake: guess ? c.fixed32 : null,
       onopen () {
-        ch.messages[1].send(null) // want: the log list
+        ch.messages[1].send({ prefix: Buffer.alloc(0), bits: 0, parts: Array.from({ length: 16 }, () => ({ count: 0, digest: Buffer.alloc(32) })) }) // ranges: "I hold none", asking for every key (spec 016)
         ch.messages[9].send({ from: 0 }) // the activity lists from the start
       },
       onclose () { out.closed++ }
     })
     if (!ch) return
     for (let i = 0; i <= 10; i++) {
-      const encoding = i === 1 ? c.none : i === 9 ? activity.want : c.raw
+      const encoding = i === 1 ? enc.ranges : i === 9 ? activity.want : c.raw
       ch.addMessage({ encoding, onmessage: () => { if ([2, 3, 8, 10].includes(i)) out.got.push(i) } })
     }
     ch.open(guess)

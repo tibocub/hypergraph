@@ -90,7 +90,8 @@ test('invites and redemptions round trip', (t) => {
 test('channel messages round trip', (t) => {
   roundTrip(t, enc.summary, { count: 3, digest: key(), records: 1234 }) // story 9: how many records the sender's logs hold
   t.is(c.decode(enc.summary, c.encode(enc.struct([['count', c.uint], ['digest', c.fixed32]]), { count: 3, digest: key() })).records, 0, 'from a sender without it: 0')
-  roundTrip(t, enc.logs, [key(), key()])
+  roundTrip(t, enc.ranges, { prefix: Buffer.from([0xa0]), bits: 4, parts: Array.from({ length: 16 }, () => ({ count: 3, digest: key() })) }) // spec 016
+  roundTrip(t, enc.keys, { prefix: Buffer.from([0xab]), bits: 8, kind: 2, keys: [key(), key()] })
   roundTrip(t, enc.logKey, key())
   roundTrip(t, enc.redeem, { redemption: crypto.randomBytes(200) })
 })
