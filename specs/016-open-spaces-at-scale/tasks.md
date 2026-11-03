@@ -47,6 +47,26 @@ Run one file as `node <file>` (`bare <file>`), a group with `node scripts/test-r
   (an old race of every removal, not new here): `test/next/net/public-join.js` waits for the removal to settle.
 - quickstart.md names `test/next/replication/`: no such folder; the network tests are in `test/next/net/`.
 
+### T024 inventory: `log.core` on accepted logs (2026-11-03) — bigger than the phase, stopped here
+
+45 uses in 8 files (`lib/directory.js` 1, `lib/replication.js` 10, `lib/index/indexer.js` 10, `lib/space.js` 18,
+`lib/activity.js` 2, `lib/helpers.js` 2, plus the 41 readers of `directory.logs` that reach them). Grouped by
+what a closed core would need:
+
+| group | uses | what closing needs |
+|---|---|---|
+| length only: summary `records` (`directory.js` #summary), `status`/`inspect` length and held, budget sizes (`space.js` _usage, #droppable), `#seenOwn`, `#coveredFrom`, `_completeFor('own')`, `missing()` | ~14 | a cached `length`/`byteLength` per entry, kept by whoever had it open last; `heldCount` (inspect) needs the core: open for the call |
+| reads of blocks: indexer (`#scan`, holes, over-stamps, wipes, reauthorize, moderation), `space.js #content`, `#wipedEntry`, activity derivation (`activity.js` 182-184) | ~16 | `open(log)` around each read, `release` after; the indexer's per-log loops become open/scan/release |
+| replication: `Replicator.#watch` (`append`, `download` listeners), the download range, `clearBlocks` past a cut, stall detection by `core.peers` | ~10 | hold only while open; reopen on "behind" |
+| **peers' lengths**: `unheard(log)` reads `core.peers[].remoteLength`; `missing()` and `isComplete()` (spec 012 honest reads), `#coveredFrom` (story 9) build on it | 3, but load-bearing | **a design question, not a refactor**: with the core closed this peer can't hear a peer's length, so "complete" would have to come from summaries/activity entries instead (per-log lengths aren't in today's summary). Getting it wrong makes reads claim complete while records are missing (FR-004 of spec 012) |
+| helpers (spec 013): `Helpers.hold(log.core)` → `blind-peering addCoreBackground(core)` per held log | 2 | a blind-peering session needs an open core: either keep the mirror request without the core (check blind-peering's API) or open/close around it |
+| own and identity logs (`own.core`, `_idcore`) | — | stay open |
+
+Plan per group if it goes on: (1) cached lengths, (2) open/release around reads, (3) replication holds open
+logs only, opening on activity entries / summary differences, (4) needs a decision on how completeness is known
+for closed logs, (5) needs a look at blind-peering. (1)-(3) are the phase as written; (4) changes what `isComplete`
+means and is spec-012 territory; (5) touches spec 013. Not started: reported to the lead.
+
 ## Not built
 
 (none yet)
@@ -115,7 +135,7 @@ not by one that didn't (until it does); the `members` event fires once.
 log's core is open. Inventory them first (T024); if the change looks bigger than this phase, stop and tell
 the lead before going on.
 
-- [ ] T024 [US4] Inventory every use of `log.core` on accepted logs (`lib/directory.js`, `lib/replication.js`, `lib/index/indexer.js`, `lib/space.js`, `lib/storage.js`, `lib/activity.js`); write the list and the plan for each under "Built differently"
+- [X] T024 [US4] Inventory every use of `log.core` on accepted logs (`lib/directory.js`, `lib/replication.js`, `lib/index/indexer.js`, `lib/space.js`, `lib/storage.js`, `lib/activity.js`); write the list and the plan for each under "Built differently"
 - [ ] T025 [P] [US4] Test: a space with 2,000 logs (scripted, everyone keeps everything): after catching up at most ~20 cores open (own, decision log, downloading); a new record in a closed log arrives; a newcomer fetches a closed log's blocks from this member; reopening the space opens no other log, in `test/next/net/closed-logs.js`
 - [ ] T026 [US4] Directory entries without a core: `open(log)` / `release(log)`, closed after 30 s with no use (research R6) in `lib/directory.js`
 - [ ] T027 [US4] `Replicator.hold` only while open; open on "behind" (activity entry or a peer's length > indexed), on reads beyond the index, and for budget passes, in `lib/replication.js`, `lib/activity.js`, `lib/space.js`, `lib/storage.js`
