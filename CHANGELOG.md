@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-03: `hypergraph/next` — open spaces at scale (spec 016)
+
+**Apply-time and wire: update every app together** (SwarmFS; HyperBBS and hyperDNS use the old core, untouched). A
+`settings/set` decision gains `public`; the space channel is now `hypergraph/space/2`: peers of the previous
+version never pair with this one, and `space.status().warnings` shows `OTHER_VERSION`. Log and record formats
+are unchanged; existing spaces keep every recorded member. Detail: `specs/016-open-spaces-at-scale/`.
+
+- **Public spaces.** `space.makePublic()` (owner or admin) opens a space to everyone, for good; `space.isPublic`;
+  `space.publicLink()` is the space's key in link form, the same on every member. `hg.redeemInvite(publicLink)`
+  joins with no decision and no decider online (`INVITE_INVALID` "This space isn't public" otherwise). In a
+  public space anyone not named by the decision log counts as `member` unless banned. It can't be made private
+  again: `revokeInvite(publicLink)` and a forged "not public" are refused; ban people or set a write limit. A private
+  space can't be made public (`NOT_ALLOWED`).
+  `removeRole` on a public joiner is `NOT_ALLOWED` (ban them). Sub-spaces are public only if made so. Invite
+  links (`createInvite`) are unchanged.
+- **Known members.** `members()` lists the people the decision log names and, in a public space, everyone whose
+  device log this member holds; `redemptions(publicLink)` lists those joiners (`at: null`).
+- **No log before the first record.** A member's device log is announced when it first writes (a private
+  space still at join). Apps that counted logs or devices right after a join see them after a first write.
+- **Log lists settled by key ranges** instead of whole lists: one new log costs ~1.3 KB between members holding
+  2,000 logs (was ~64 KB). Notices from members are fetched ahead of key floods from strangers.
+- Forum example (`test/next/forum/forum.js`): `openLink()` now makes the forum public and returns its public
+  link; `revokeLink()` is gone.
+- Not in it: logs open only while used (a spec of its own), helpers' `listed:` entries (a helpers follow-up).
+
 ### 2026-11-02: `hypergraph/next` — one engine for many sites (spec 015)
 
 **Apply-time: everyone updates together.** A space records its record types in its decision log

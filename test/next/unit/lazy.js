@@ -169,3 +169,27 @@ test('a space whose closing failed half-way opens again on its next use (not CLO
   t.is((await s.query('post').latest(5)).items.length, 1, 'a call opens it again')
   t.ok(s.opened)
 })
+
+// Spec 016 (US3, research R4): a member's log is accepted at its first record,
+// so everything must work before it.
+test('a member with no own log yet: status, inspect, members, budgets, reopening', async (t) => {
+  const dir = tmpDir(t, 'silent')
+  let hg = await Hypergraph.open(dir, { types })
+  const s = await hg.createSpace({ name: 'Silent' })
+  t.absent(s.directory.logs.has(s.own.core.key.toString('hex')), 'no own log accepted before a write')
+  t.ok(s.status().warnings, 'status()')
+  t.ok(await s.inspect(), 'inspect()')
+  t.is((await s.members()).length, 1, 'members(): the owner, from the decision log')
+  t.is((await s.members())[0].devices.length, 0, 'with no device log yet')
+  await s.setBudget(10e6)
+  t.alike((await s.query('post').latest(5)).items, [], 'reads')
+  await hg.close()
+  hg = await Hypergraph.open(dir, { types })
+  t.teardown(() => hg.close(), { order: 0 })
+  const again = hg.space(s.key)
+  await again.ready()
+  t.ok(again.status(), 'reopened')
+  await again.put('post', { title: 'first' })
+  t.ok(again.directory.logs.has(again.own.core.key.toString('hex')), 'accepted at the first write')
+  t.is((await again.query('post').latest(5)).items.length, 1)
+})

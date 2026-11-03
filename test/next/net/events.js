@@ -46,6 +46,7 @@ test('\'members\' and \'decisions\' when roles change, \'members\' when a member
   t.ok(members.length >= 1, '\'members\' came')
   t.ok(decisions.length >= 1, '\'decisions\' came')
 
+  await forum.post(fa, 'from the laptop', '') // a device log exists from its first record (spec 016)
   members.length = 0
   const { code } = await forum.addDevice(a)
   const phone = await device(t, 'phone', code)

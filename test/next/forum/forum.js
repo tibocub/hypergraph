@@ -180,19 +180,17 @@ async function inviteFriend (forum) {
   return forum.createInvite({ role: 'friend' })
 }
 
-// An open forum: a public link for anyone, until revoked. `perHour`: how
-// much each device may post in an hour (against spam).
+// An open forum (spec 016): public for good, anyone joins with its one link,
+// no admin online needed. `perHour`: how much each device may post in an
+// hour (against spam); bans keep people out.
 async function openLink (forum, { perHour } = {}) {
   if (perHour) await forum.setWriteLimit({ records: perHour, periodMs: 3600e3 })
-  return forum.createInvite({ role: 'member', uses: Infinity })
+  await forum.makePublic()
+  return forum.publicLink()
 }
 
-// Nobody else gets in with it; who came in stays.
-function revokeLink (forum, link) {
-  return forum.revokeInvite(link)
-}
-
-// Who came in with a link: [{ identity, at }].
+// Who came in with a link: [{ identity, at }]; for the public link, the
+// people met (who posted), `at` null.
 function whoJoined (forum, link) {
   return forum.redemptions(link)
 }
@@ -485,7 +483,7 @@ module.exports = {
   addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
   forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
-  invite, inviteFriend, openLink, revokeLink, whoJoined, join, setHelpers, helpers,
+  invite, inviteFriend, openLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
   bookmark, unbookmark, bookmarks,
   hide, reveal, takeDown, flag, ban, unban, report, reports, moderated, setTheme, theme,

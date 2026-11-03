@@ -182,6 +182,11 @@ Per-project direction, and how firm it is:
   Since hypergraph spec 015 (2026-11): its spaces record their types (apply-time: SwarmFS peers on an
   older hypergraph don't apply them); on a shared engine (HyperBrowser), types it puts in the personal
   space must be prefixed (`held` → `swarmfs/held`), since every app shares that one space's names.
+  Since hypergraph spec 016 (2026-11, apply-time + wire): public spaces (`settings/set { public }`) and the
+  space channel renamed `hypergraph/space/2` (log lists settled by key ranges): a SwarmFS on an older hypergraph
+  doesn't sync with one on this (`status()` warns `OTHER_VERSION`); it runs on this checkout, so it moves with
+  it. Its spaces use invite links, unchanged; a member's device log is announced at its first record now, so
+  `members()` lists a device only once it wrote there.
 
 ## Where each project documents itself
 
