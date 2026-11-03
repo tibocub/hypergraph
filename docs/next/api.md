@@ -199,11 +199,15 @@ A call on a closed space while suspended throws `SUSPENDED`.
 ```js
 const forum = await hg.createSpace({ name: 'Hypergraph fans' })
 const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.now() + 7 * 864e5 })
-const open = await forum.createInvite({ uses: Infinity })   // a public link: an open forum
+const many = await forum.createInvite({ uses: Infinity })   // a link for anyone who gets it, until revoked
+await forum.makePublic()                                   // spec 016: open to everyone, for good (owner, admin)
+forum.isPublic                                             // true once public
+const open = forum.publicLink()                            // the space's one public link, the same on every member
 await forum.setWriteLimit({ records: 20, periodMs: 3600e3 })   // each device posts at most 20 records an hour
 const both = await forum.createInvite({ subspaces: [staff] })  // also gives the role in the private sub-space
 const joined = await hg.redeemInvite(link)                 // on the newcomer's app: resolves once let in
-await forum.revokeInvite(open)                             // no one else gets in with it; members stay
+await hg.redeemInvite(open)                                // a public link: in at once, no admin online needed
+await forum.revokeInvite(many)                             // no one else gets in with it; members stay
 await forum.redemptions(link)                              // [{ identity, at }]: who came in with it
 hg.spaces()            // [{ key, name, parent }]
 hg.on('spaces', (spaces) => {})   // the list changed: a space joined (here or on your other device), left,
@@ -239,6 +243,20 @@ An invite can list sub-spaces of the space (`subspaces`: Space objects or keys):
 same role in each, a private one included, so one link lets someone into the forum and its private room.
 Its maker must be able to invite to that role there (`NOT_ALLOWED` otherwise, with the reason); a sub-space
 not inside this space is `NOT_FOUND`.
+
+**Public spaces** (spec 016): `makePublic()` (who may decide) opens a space to anyone, **for good**: the
+space's public link (`publicLink()`, its key in link form, the same on every member; `NOT_ALLOWED` before
+it is public) lets anyone in with no decision and no admin online, as a public Discord server's link. In a
+public space anyone the decision log doesn't name counts as `member` unless banned; joining writes nothing
+anywhere, so a silent account costs nobody anything. It can't be made private again, nor its link revoked
+(`revokeInvite(publicLink)` is `NOT_ALLOWED`): nothing orders a log's first block against the decision log,
+so no member could tell a join from before a "close" from one after. Floods are handled by bans and the write
+limit; `removeRole` on a public joiner is refused (they'd be back at once: ban them). A sub-space isn't
+public because its space is, nor the other way round (`sub.makePublic()` for a sub-forum anyone may post in).
+Invite links (`createInvite`) work as before in a public space: recorded by a decider, counted, revocable,
+for any role. `redeemInvite(publicLink)` resolves once a peer holding the space was reached and the space
+is public; `INVITE_INVALID` "This space isn't public" if it isn't, or after the timeout if no one was
+reachable. `redemptions(publicLink)` lists the public joiners this member knows of (`at: null`).
 
 **Write limits** (open spaces): `setWriteLimit({ records, periodMs })` (who may decide; `null` lifts it)
 lets each device's log count at most `records` records within any `periodMs`. Every member judges it the
@@ -535,7 +553,10 @@ await forum.roles()   // [{ name, permissions, custom }]: owner, admin, moderato
 
 ```js
 await forum.members()       // [{ identity, role, you, banned, removed, devices: [{ device, log }] }]: members
-                            // highest role first, then people banned or removed (role null)
+                            // highest role first, then people banned or removed (role null). Known members
+                            // (spec 016): the people the decision log names, and in a public space everyone
+                            // whose device log this member holds; someone who never wrote has no log and isn't
+                            // listed. Two members may list different people; there is no exact member count
 await forum.decisions({ limit: 50, after })   // { items, complete }: newest first, what was decided —
                             // { seq, type, by, device, at, counted, ...what }: who (identity and device), when
                             // (their clock), what (identity, role, action, target, reason, name, permissions,
@@ -549,6 +570,10 @@ forum.on('members', () => {})      // members(), getRole(), roles() may have cha
 forum.on('decisions', () => {})    // decisions(), redemptions(), history may have changed: read again
 forum.on('logs', () => {})         // a member's log arrived or grew (at most every 100 ms)
 ```
+
+`status().warnings` may include `OTHER_VERSION` (spec 016): a connected peer runs a hypergraph version that
+can't sync with this one (its space channel has another name, so the two never half-sync): update every app
+together.
 
 `decisions()` is a moderation log your app can show ("bob hid this: off topic"): every member lists the
 same, in the order every member applies them. A decision whose author wasn't allowed to make it at that

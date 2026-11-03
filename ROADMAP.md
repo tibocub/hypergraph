@@ -479,11 +479,17 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
     chat 100k members, SwarmFS 10M files / 1,000 people, 500 sites on a phone, one 100 GB file). Silent members cost
     everyone forever: each join re-reads the whole decision state (25 s per member at 100k members, breaks at ~10k-30k),
     every full member keeps every log open (18 KB each). Order, before any forum grows past it:
-    (a) spec **"open spaces at scale"**: a plain member is not a decision (redemption in the log's header), logs open
-    only while used, paged log lists, no log before a first record; apply-time, so everyone updates together.
+    (a) spec **"open spaces at scale"** (016): **built 2026-11-03, branch `claude/016-open-spaces-build-a517b1`, not
+    merged**: public spaces (`makePublic()`, one link for everyone, one-way; joining is no decision), known
+    members, no log before a first record, log lists settled by key ranges (`hypergraph/space/2`); apply-time + wire,
+    everyone updates together. **Left out**: "logs open only while used" (its US4, spec 015's before it), now a
+    spec of its own, starting from two questions: where "complete" gets peers' lengths for a closed log
+    (`unheard`/`isComplete`/`#coveredFrom` read them from open cores), and blind-peering needing open cores
+    (`Helpers.hold`); and helpers' `listed:` entries (its Story 6, research R8: needs a list a blind peer can
+    serve), a helpers follow-up.
     (b) the "one engine for many sites" spec (lazy spaces, types per space): **merged 2026-11-02** (topic queue, spaces open while used, types in the space (apply-time), migration, a site's
-    handle with the main identity, suspend/resume); its "logs open only while used" (US4) left to (a), which has it
-    too; per-site keys a spec of their own. (c) SwarmFS: `held`/`has` as summaries,
+    handle with the main identity, suspend/resume); its "logs open only while used" (US4) left to (a), then to a spec of
+    its own; per-site keys a spec of their own. (c) SwarmFS: `held`/`has` as summaries,
     the tree read folder by folder, with its milestone-1 work. (d) swarmwire: hashes kept on disk, then profile small
     files (~33 ms each) and why more seeders are slower. Private keys per member wait for the chat spec.
     Perf suites (`npm run perf`, three repos, Node and Bare) merged after their noise fix (0 false flags).

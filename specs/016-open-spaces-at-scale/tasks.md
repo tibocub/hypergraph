@@ -197,8 +197,8 @@ the lead before going on.
 ## Phase 8: Polish and cross-cutting
 
 - [ ] T034 [P] Perf scenarios: `members.public-join`, `members.public-cost` (flat), `members.public-join-kb` (flat) in `perf/scenarios/members.mjs`; `logs.held-start` (flat), `logs.settle-kb` (flat) in `perf/scenarios/scale.mjs`; run `npm run perf`, then `npm run perf:compare` against T001
-- [ ] T035 [P] Docs: `docs/next/api.md` (makePublic, isPublic, publicLink, redeemInvite's two links, members() = known members, redemptions, revokeInvite on the public link, OTHER_VERSION) and `docs/next/concepts.md` (public spaces, why the door can't close, logs made at the first record, logs open while used)
-- [ ] T036 [P] `CHANGELOG.md` entry (apply-time + wire: update every app together; forum's openLink/revokeLink change), `ECOSYSTEM.md` note (SwarmFS moves with it), `ROADMAP.md` item 10(a) status, Story 6 (helpers' `listed:`) as a follow-up
+- [X] T035 [P] Docs: `docs/next/api.md` (makePublic, isPublic, publicLink, redeemInvite's two links, members() = known members, redemptions, revokeInvite on the public link, OTHER_VERSION) and `docs/next/concepts.md` (public spaces, why the door can't close, logs made at the first record, logs open while used)
+- [X] T036 [P] `CHANGELOG.md` entry (apply-time + wire: update every app together; forum's openLink/revokeLink change), `ECOSYSTEM.md` note (SwarmFS moves with it), `ROADMAP.md` item 10(a) status, Story 6 (helpers' `listed:`) as a follow-up
 - [ ] T037 Full suites: `npm test`, `npm run test:next`, `npm run test:next:bare`; SwarmFS `npm test` and `npm run test:bare`; HyperBBS and hyperDNS `npm test`. Report numbers; any failure investigated, not retried away
 - [ ] T038 Fill "Built differently" and "Not built" at the top of this file
 

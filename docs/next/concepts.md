@@ -17,6 +17,29 @@ You create a space with `hg.createSpace({ name })` and let people in with an inv
 space's key can connect to it: the topic members meet on, which anyone watching the DHT sees, isn't enough
 to read it.
 
+A **public space** (`space.makePublic()`, spec 016) is open to everyone, like a public Discord server: one
+link (`space.publicLink()`, the space's key in link form), the same for everyone. Joining with it is no
+decision: in a public space, anyone the decision log doesn't name counts as a member unless banned, and the
+proof every device log starts with ("this identity writes this log in this space") is all a reader checks.
+Nobody needs to be online to let people in, and nothing is written when they join. Going public is
+**one-way**: a member reading a log can't tell whether it was started before or after a "close" decision
+(nothing orders the two), so a door that closes would either end every past join or leave members seeing
+different people. Bans and the write limit handle floods. Invite links keep working as before (recorded,
+counted, revocable), e.g. to give someone a higher role.
+
+A member's device log is made known to others at its **first record**, not when it joins (a private space
+still announces it at join: key holders grant the key to the devices they see). So an account that never
+writes costs no other member anything, and members list the people they **know of**: those the decision log
+names, and the authors of the logs they hold. Two members may list different people.
+
+Members settle differences in their lists of logs by **key ranges**: counts and digests of key ranges,
+narrowed until the differing keys are found, so one new log costs about 1-2 KB whatever the list's size
+(a whole list used to be sent: 320 KB at 10,000 logs). The space channel is `hypergraph/space/2`; a peer of
+an older version opens the old channel, never syncs, and shows as `OTHER_VERSION` in `status()`.
+
+(Logs other than this device's own stay open while held. Opening them only while used is left to a spec of
+its own: see `specs/016-open-spaces-at-scale/tasks.md`, "Not built".)
+
 An instance is an **engine**: one identity, one storage folder and one set of connections, for one app
 or many (a browser running many sites holds every space of every site). Spaces it holds are open only
 while used, besides the ones it keeps online for others (pinned, the person's own, the recently used):
@@ -255,8 +278,8 @@ first page as soon as everything from its oldest post on is held. A read reachin
 page, the votes of an old post) widens what it reads, within its bound. In the background it goes on
 reading backwards while the space fits its share — so a small space ends up held whole, as before — and
 never past it: a space bigger than the share is held from some point in time on (`status().heldFrom`).
-Beyond 300 device logs, a newcomer doesn't even ask for the whole list of logs: it opens only the logs
-of the activity lists of the periods it reads.
+Beyond 300 device logs, a newcomer doesn't even settle the list of logs with members (it only offers its
+own keys): it opens only the logs of the activity lists of the periods it reads.
 
 Reading part of a space never changes what is shown, only when an answer is complete: a complete page is
 the page a member holding everything shows. Records that point at another (a comment, a vote, an edit)
