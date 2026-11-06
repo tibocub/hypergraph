@@ -2,12 +2,13 @@
 // XOR digests of 16 sub-ranges per message; equal ones stop, small ones are
 // answered with their keys, the rest recurse. Two sets converge to their
 // union in a few rounds whatever their size; a peer whose keys don't match
-// the counts it gave is ignored for that round.
+// the counts it gave is ignored for that round. Spec 017: each key comes with
+// its log's length, so a longer log at a peer is found the same way.
 
 const test = require('brittle')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
-const { Keys, Session, FEW } = require('../../../lib/ranges.js')
+const { Keys, Session, FEW, itemOf } = require('../../../lib/ranges.js')
 
 const keysOf = (n) => Array.from({ length: n }, () => crypto.randomBytes(32))
 const setOf = (list) => { const k = new Keys(); for (const x of list) k.add(x); return k }
@@ -32,7 +33,7 @@ test('range digests and counts match a brute-force computation', (t) => {
       }
       const mine = list.filter((k) => inPrefix(k) && nib(k) === i)
       const digest = b4a.alloc(32)
-      for (const k of mine) for (let j = 0; j < 32; j++) digest[j] ^= k[j]
+      for (const k of mine) { const it = itemOf(k, 0); for (let j = 0; j < 32; j++) digest[j] ^= it[j] }
       if (parts[i].count !== mine.length || !b4a.equals(parts[i].digest, digest)) return false
     }
     return true
@@ -50,14 +51,14 @@ test('range digests and counts match a brute-force computation', (t) => {
 
 // Two peers exchanging messages in rounds until both are quiet; what each
 // learns is added at once (as the gate would accept it).
-function settle (a, b, { lie = null } = {}) {
+function settle (a, b, { lie = null, onLearn = () => {} } = {}) {
   const sa = new Session(a)
   const sb = new Session(b)
   let toB = [sa.start()]
   let toA = []
   let rounds = 0
   let bytes = 0
-  const size = (m) => (m.parts ? 4 + m.parts.length * 34 : 4 + m.keys.length * 32) + m.prefix.byteLength
+  const size = (m) => (m.parts ? 4 + m.parts.length * 34 : 4 + m.keys.length * 34) + m.prefix.byteLength
   while (toA.length || toB.length) {
     rounds++
     const nextA = []
@@ -65,14 +66,14 @@ function settle (a, b, { lie = null } = {}) {
     for (const m of toB) {
       bytes += size(m)
       const r = m.parts ? { out: sb.onRanges(m), learn: [] } : sb.onKeys(m)
-      for (const k of r.learn) b.add(k)
+      for (const e of r.learn) { onLearn('b', e); b.set(e.key, e.length) }
       nextA.push(...r.out)
     }
     for (let m of toA) {
       if (lie) m = lie(m)
       bytes += size(m)
       const r = m.parts ? { out: sa.onRanges(m), learn: [] } : sa.onKeys(m)
-      for (const k of r.learn) a.add(k)
+      for (const e of r.learn) { onLearn('a', e); a.set(e.key, e.length) }
       nextB.push(...r.out)
     }
     toA = nextA
@@ -109,7 +110,7 @@ test('a peer whose keys don\'t match the counts it gave is ignored for that roun
   const junk = keysOf(3)
   // a's peer (b) answers a's request for its keys with made-up ones
   const out = settle(a, b, {
-    lie: (m) => (m.keys && m.kind === 0 ? { ...m, keys: [...m.keys, ...junk.map((k) => { const x = b4a.from(k); x.set(m.prefix.subarray(0, m.prefix.byteLength)); return x })] } : m)
+    lie: (m) => (m.keys && m.kind === 0 ? { ...m, keys: [...m.keys, ...junk.map((k) => { const x = b4a.from(k); x.set(m.prefix.subarray(0, m.prefix.byteLength)); return x })], lengths: [...m.lengths, 0, 0, 0] } : m)
   })
   t.ok(out.rounds > 0)
   t.is(a.size, 2000, 'nothing learnt from the lying answer')
@@ -120,7 +121,7 @@ test('keys outside the range they claim are ignored', (t) => {
   const s = new Session(a)
   const outside = crypto.randomBytes(32)
   outside[0] = 0x00
-  const r = s.onKeys({ prefix: b4a.from([0xf0]), bits: 4, kind: 2, keys: [outside] })
+  const r = s.onKeys({ prefix: b4a.from([0xf0]), bits: 4, kind: 2, keys: [outside], lengths: [0] })
   t.is(r.learn.length, 0)
   t.ok(r.ignored)
 })
@@ -137,4 +138,49 @@ test('a peer that doesn\'t take keys only offers its own', (t) => {
   const r = a.onKeys(out.find((m) => m.kind === 2))
   t.is(r.learn.length, 1)
   t.is(r.out.length, 0, 'nothing pushed back')
+})
+
+test('one log longer at a peer: both sides learn it, at the cost of a missing key', (t) => {
+  for (const n of [1000, 10000]) {
+    const common = keysOf(n)
+    const a = setOf(common)
+    const b = setOf(common)
+    b.set(common[5], 7) // b holds 7 blocks of it, a none
+    t.unlike(a.digest, b.digest, 'the digests differ')
+    const learnt = []
+    const { bytes } = settle(a, b, { onLearn: (side, e) => learnt.push([side, hex(e.key), e.length]) })
+    t.is(a.lengthOf(common[5]), 7, 'a learns the longer length')
+    t.alike(a.digest, b.digest, 'then they agree')
+    t.ok(learnt.some(([side, k, len]) => side === 'a' && k === hex(common[5]) && len === 7), 'reported to a as { key, length }')
+    t.ok(bytes < 3000, `${n} logs: ${bytes} bytes`)
+  }
+})
+
+test('the longer side sends its entry: the shorter one starts the exchange', (t) => {
+  const common = keysOf(2000)
+  const a = setOf(common)
+  const b = setOf(common)
+  a.set(common[9], 3)
+  settle(b, a) // b (shorter) starts
+  t.is(b.lengthOf(common[9]), 3)
+})
+
+test('a shorter length is not learnt', (t) => {
+  const common = keysOf(50)
+  const a = setOf(common)
+  const b = setOf(common)
+  a.set(common[1], 9)
+  b.set(common[1], 4)
+  const s = new Session(a)
+  const prefix = b4a.alloc(0)
+  const r = s.onKeys({ prefix, bits: 0, kind: 2, keys: [common[1]], lengths: [4] })
+  t.is(r.learn.length, 0, 'nothing new')
+})
+
+test('lengths that don\'t match the keys: ignored', (t) => {
+  const s = new Session(setOf(keysOf(10)))
+  const r = s.onKeys({ prefix: b4a.alloc(0), bits: 0, kind: 2, keys: [crypto.randomBytes(32)], lengths: [] })
+  t.ok(r.ignored)
+  const r2 = s.onKeys({ prefix: b4a.alloc(0), bits: 0, kind: 2, keys: [crypto.randomBytes(32)], lengths: [-1] })
+  t.ok(r2.ignored)
 })

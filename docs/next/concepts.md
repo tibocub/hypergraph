@@ -34,11 +34,17 @@ names, and the authors of the logs they hold. Two members may list different peo
 
 Members settle differences in their lists of logs by **key ranges**: counts and digests of key ranges,
 narrowed until the differing keys are found, so one new log costs about 1-2 KB whatever the list's size
-(a whole list used to be sent: 320 KB at 10,000 logs). The space channel is `hypergraph/space/2`; a peer of
-an older version opens the old channel, never syncs, and shows as `OTHER_VERSION` in `status()`.
+(a whole list used to be sent: 320 KB at 10,000 logs). Each entry covers the log's **length** too (spec
+017), so the same exchange finds a log a peer holds more of. The space channel is `hypergraph/space/3`; a
+peer of an older version opens an old channel, never syncs, and shows as `OTHER_VERSION` in `status()`.
 
-(Logs other than this device's own stay open while held. Opening them only while used is left to a spec of
-its own: see `specs/016-open-spaces-at-scale/tasks.md`, "Not built".)
+A member keeps other authors' logs **open only while it uses them** (spec 017): to read their blocks, to
+download what a peer holds more of, to hand them to helpers. About 30 s unused, a log closes; its length
+and size stay in the index, and peers still get its blocks (the storage opens it to serve them). Opening a
+space opens none of them. A closed log counts as complete only once every connected peer's latest summary
+agreed with this member's, so `complete` stays honest. A peer claiming more of a log than anyone serves
+within a minute stops counting and shows as `UNSERVED_LENGTH` in `status()`. A newcomer reading a big
+space by activity lists (story 9) keeps the few logs it reads open.
 
 An instance is an **engine**: one identity, one storage folder and one set of connections, for one app
 or many (a browser running many sites holds every space of every site). Spaces it holds are open only

@@ -96,6 +96,12 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-06 (spec 017, logs open only while used)** — other authors' logs close ~30 s unused; summaries and key
+  ranges carry each log's length (`hypergraph/space/3`), so a closed log is complete only once every connected
+  peer's summary agreed (Tibo: lengths in summaries, not activity entries; helpers: open, hand off, close). 2,000
+  held logs: ≤ 20 open once idle, 0 at reopen; one-log length difference at 10k logs 1.7 KB; reopen with 10k held
+  logs 1.5 s (×2.2 from 1k: a row read per log, no core). Readers by activity lists keep their logs open.
+
 - **2026-11-06 (hyperdht)** — #283 released (6.35.1): pin 6.32.0 dropped, hyperdht 6.36.0 in hypergraph and SwarmFS
   (`overrides` kept), swarmwire `^6.36.0`, lockfiles of swarmwire-cli, HyperBBS, hyperDNS refreshed. Our demo on
   6.36.0: 0 dead out of 100 dials (5 runs). #304 still open upstream (#308, `OPEN` clients, not in our demo).
