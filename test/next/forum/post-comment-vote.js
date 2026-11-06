@@ -5,6 +5,7 @@ const test = require('brittle')
 const forum = require('./forum.js')
 const { threeMembers } = require('./_setup.js')
 const { eventually } = require('../helpers.js')
+const testing = require('../../../lib/testing.js')
 
 const ids = (records) => records.map((r) => r.id).sort()
 
@@ -81,4 +82,21 @@ test('a field passed as undefined counts as absent: old and new helpers share co
   const err = await f.put('post', { title: 'Hi', txet: 'typo' }).then(() => null, (x) => x)
   t.is(err && err.code, 'INVALID_RECORD', 'an unknown field with a value is a typo')
   t.ok(err && /txet/.test(err.message), 'named')
+})
+
+test('a vote indexed twice still counts (the 2026-11-06 soak)', async (t) => {
+  const { fa, fb, all } = await threeMembers(t)
+  const p = await forum.post(fa, 'P', '')
+  t.ok(await eventually(async () => !!(await fb.get(p.id)).record, 5000))
+  const v = await forum.vote(fb, p, 1)
+  t.ok(await eventually(async () => (await forum.score(fa, p)) === 1, 5000), 'a has b\'s vote')
+  await testing.indexAgain(fa, testing.ownLog(fb))
+  t.is(await forum.score(fa, p), 1, 'still counts')
+  t.ok((await fa.query('vote').latest(10)).items.some((r) => r.id === v.id), 'still listed')
+  const w = await forum.vote(fb, p, -1) // b changes its mind: the earlier vote stays replaced
+  t.ok(await eventually(async () => (await forum.score(fa, p)) === -1, 5000))
+  await testing.indexAgain(fa, testing.ownLog(fb))
+  t.is(await forum.score(fa, p), -1, 'the latest counts, indexed twice too')
+  t.alike((await fa.query('vote').latest(10)).items.map((r) => r.id), [w.id])
+  t.ok(all)
 })

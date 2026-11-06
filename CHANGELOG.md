@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-06: a vote indexed twice no longer hides itself
+
+The 3-hour soak lost one vote on one member: the indexer had looked at its block twice, and the second
+time the vote counted as replaced by itself (one-per-member types). A record of a one-per-member type
+now never competes with itself. What made the block be looked at twice is not found yet (ROADMAP
+follow-ups). Not breaking; an index already holding such a row heals when the record is indexed again.
+
+### 2026-11-06: reading a space before its types arrived
+
+`space.query(type)` on a space opened by key whose types haven't arrived (found by HyperBrowser's spike)
+answered `INVALID_TYPE`; it now answers empty and `complete: false`, then the records once the types are
+in. An unknown type still throws once the space is complete. Found with it: such a visitor said
+`isComplete()` for ~30 ms before any of the space's decisions had arrived (spec 012 FR-004); a space
+whose decisions name no member yet is never complete now. Not breaking.
+
 ### 2026-11-06: `hypergraph/testing` — a test helper for apps (spec 018)
 
 New export `require('hypergraph/testing')`: `open(t)` (an online instance in a temp folder, closed after the

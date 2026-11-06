@@ -518,6 +518,10 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Follow-ups (not built yet)
 
+- A block indexed twice within one run (2026-11-06 3-hour soak, member m1: a vote hid itself, fixed in the
+  one-per-member code). Every re-look path read is guarded (`had.records` or `rescanned`); the one taken is
+  unknown. Twice-indexed rows also count their index bytes twice, and could lose an edit when `had.changes` is
+  false. Next soak: a check that counts blocks indexed twice.
 - From the audit (`specs/011-spaces-core/audit.md`): request floods, fake-key floods delaying newcomers, decisions
   re-read in full.
 - SwarmFS's later requests (`SwarmFS/specs/requests-to-hypergraph.md`), for its later stories:

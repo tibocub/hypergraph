@@ -129,7 +129,9 @@ member uses it from then on. Until then, writing a type or field the space doesn
 `INCOMPATIBLE_TYPES` ("this space doesn't have ... yet"). Two admins' apps adding different types: the
 second can't record its own until it declares the first's too; its writes of them say so, and
 `status()` warns `TYPES_BEHIND` (naming what the app lacks). One engine can hold spaces of different apps,
-each with its own types.
+each with its own types. A space opened by key before its types arrived (a visitor, a browser with no
+types of its own) reads a type it doesn't know yet as empty and `complete: false`; once the space is
+complete, an unknown type throws `INVALID_TYPE`.
 
 **App versions.** Members never all update at once, so between versions you may only add fields at the
 end of a type (a link field with its `links`), add types and add indexes. An app whose declaration

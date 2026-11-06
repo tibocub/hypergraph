@@ -77,3 +77,27 @@ test('a web view\'s handle: the wiki site reaches the wiki only', async (t) => {
   t.is(site.spaces, undefined, 'not the list of spaces')
   await site.close()
 })
+
+test('a visitor reads a public site before its types arrive: not complete yet, not INVALID_TYPE', async (t) => {
+  const a = await open(t, { label: 'owner' })
+  const b = await open(t, { label: 'visitor' }) // HyperBrowser: no types of its own
+  await a.connectToSwarm()
+  await b.connectToSwarm()
+  const fa = await a.createSpace({ name: 'Forum', types: forum.types })
+  await forum.post(fa, 'Hello', 'from the owner', 'meta')
+  await fa.makePublic()
+  const site = await b.scope(fa.key, { identity: 'main' })
+  let early = false // complete before its decisions arrived: happened every time before the fix (~30 ms)
+  const watch = setInterval(() => { if (site.typesVersion === 0 && site.isComplete()) early = true }, 2)
+  t.teardown(() => clearInterval(watch))
+  const first = await site.query('post').latest(5) // its types haven't arrived: found by the HyperBrowser spike
+  t.is(first.complete, false, 'not complete yet')
+  t.is(first.items.length, 0)
+  t.is((await site.query('post').where({ topic: 'meta' }).latest(5)).complete, false, 'an index of its types too')
+  t.ok(await eventually(async () => (await site.query('post').latest(5)).items.length === 1, 15000), 'then its post')
+  t.ok(await eventually(() => site.isComplete(), 15000))
+  clearInterval(watch)
+  t.absent(early, 'never complete before its decisions arrived')
+  t.is(await codeOf(Promise.resolve().then(() => site.query('nope'))), 'INVALID_TYPE', 'a type the space really lacks still throws')
+  await site.close()
+})
