@@ -1,7 +1,8 @@
 // Spec 017: a member holding many authors' logs keeps their cores closed until it uses them.
 //   logs.held-start      reopening an account whose forum holds N other authors' logs (scripted,
-//                        two blocks each, by a member), until the forum's first page: ms per 1,000
-//                        logs held. flat: no core is opened per held log, only its row is read
+//                        two blocks each, by a member), until the forum's first page (ms). flat
+//                        (SC-002): no core is opened per held log; what grows is one index row read
+//                        per log
 //   logs.held-open       held logs whose core is open right after that (count). flat (SC-001: none)
 //   logs.length-settle-kb  two members holding the same N logs, all closed; one log grows at one
 //                        of them: bytes of ranges and keys until the other holds the new block
@@ -22,6 +23,7 @@ async function script (space, author, from, to, blocks = ['header', 'x']) {
   const out = []
   for (let i = from; i < to; i++) {
     const core = space.store.get({ name: 'scripted-' + i })
+    await core.ready()
     if (blocks.length) await core.append(blocks)
     await space.directory.accept(core.key, core, { identity: author, device: hc.randomBytes(32) }, { announce: false })
     out.push(core.key)
@@ -53,7 +55,7 @@ try {
       hg = await helpers.open(t, { types, label: 'held', dir, bootstrap: null })
       space = hg.space(key)
       const page = await space.query('post').latest(20)
-      starts.push((now() - start) / (n / 1000))
+      starts.push(now() - start)
       if (page.items.length !== 1) throw new Error('the post is gone')
       if (space.directory.logs.size < n) throw new Error(`reopened with ${space.directory.logs.size} logs, not ${n}`)
       open.push(testing.openLogs(space).length)

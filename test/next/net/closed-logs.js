@@ -6,6 +6,7 @@
 
 const test = require('brittle')
 const b4a = require('b4a')
+const z32 = require('z32')
 const hc = require('hypercore-crypto')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
@@ -127,6 +128,26 @@ test('a peer claiming more of a log than anyone serves: not incomplete for ever,
   t.ok(await eventually(warned, 20000, 100), 'then status warns')
   t.ok(warned().message.includes(testing.ownLog(fa)), 'naming the log')
   t.ok(await eventually(() => fb.isComplete(), 10000, 50), 'and b is complete again')
+})
+
+// Found by perf/scenarios/logs.mjs: a claim of the header block alone (length
+// 0 → 1, below where indexing starts) never opened the log, and the two
+// summaries never agreed again.
+test('a log that grew by its header only: opened, and the summaries agree again', { timeout: 60000 }, async (t) => {
+  const { fa, fb } = await pair(t)
+  const someone = { identity: fa.hg._identity.publicKey, device: hc.randomBytes(32) }
+  const core = fa.store.get({ name: 'empty' })
+  await core.ready()
+  await fa.directory.accept(core.key, core, someone, { announce: false })
+  await fb.directory.accept(core.key, fb.store.get({ key: core.key }), someone, { announce: false })
+  t.ok(await eventually(() => testing.digestOf(fa) === testing.digestOf(fb) && fb.isComplete(), 20000, 50), 'settled, empty at both')
+  const z = z32.encode(core.key)
+  t.ok(await eventually(() => !testing.openLogs(fb).includes(z), 20000, 50), 'closed at b')
+  const log = fa.directory.logs.get(b4a.toString(core.key, 'hex'))
+  await fa.directory.use(log, (c) => c.append('header'))
+  t.ok(await eventually(() => !fb.isComplete() || fb.directory.logs.get(b4a.toString(core.key, 'hex')).length === 1, 10000, 10), 'b hears of it')
+  t.ok(await eventually(() => fb.directory.logs.get(b4a.toString(core.key, 'hex')).length === 1, 20000, 50), 'b gets the header')
+  t.ok(await eventually(() => testing.digestOf(fa) === testing.digestOf(fb) && fb.isComplete(), 20000, 50), 'the summaries agree, b complete')
 })
 
 test('closed logs are handed to the helper, and again when they grow', { timeout: 180000 }, async (t) => {
