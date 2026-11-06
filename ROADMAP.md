@@ -86,7 +86,10 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
        sequential stream (Hyperbeam-like), still verified piece by piece.
      - video: fetch a byte range first, changeable while running, readable before the file completes; SwarmFS serves
        ranges to the web view.
-  1. Desktop shell + a static site + the forum as a site, opened from a key.
+  1. Desktop shell + a static site + the forum as a site, opened from a key. **Designed 2026-11-06**
+     (`specs/research/hyperbrowser-milestone-1.md`): the official HyperBrowser site (HyperMD + JS, user docs, also on
+     GitHub Pages via `hypermd build`) and the official forum (new, not the example; UI only after a forum talk with
+     Tibo and mockups). Started: shell spike (Pear), HyperMD tests + HTML, SwarmFS's 4 prerequisites.
   2. SwarmFS inside the engine (sites can use it), then the file manager page.
   3. Friends and messages; then Android, then iOS; push wake-ups.
 - **Learned from others**: Beaker (archived 2022; its post-mortem: a static-site maker as first product, no mobile,
@@ -95,6 +98,11 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
   JS/HyperMD, easy to build with; Pear: the shell, no help for loading or sandboxing strangers' sites.
 
 ## Decisions (newest first)
+
+- **2026-11-06 (HyperBrowser milestone 1, grilled with Tibo)** — two official sites (static home with user docs,
+  dynamic forum), Windows + Linux tested, macOS "not tested"; Pear kept (Electron only for a confirmed blocker);
+  engine a Bare `start(ipc)` worker with our own framed protocol, reused on mobile (react-native-bare-kit); a site
+  is one space, one key; Pear P2P distribution. Details: `specs/research/hyperbrowser-milestone-1.md`.
 
 - **2026-11-06 (spec 017, logs open only while used)** — other authors' logs close ~30 s unused; summaries and key
   ranges carry each log's length (`hypergraph/space/3`), so a closed log is complete only once every connected
