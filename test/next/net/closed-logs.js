@@ -186,3 +186,36 @@ test('closed logs are handed to the helper, and again when they grow', { timeout
   await fa.directory.use(log, (core) => core.append('grown'))
   t.ok(await eventually(() => holds(server, { key: made[3].key, length: 3 }), 30000, 250), 'and the new block of the one that grew')
 })
+
+// Lead review: a start handed every held log to the helpers again (one open
+// per log at each start). What was handed, and to which list, is saved.
+test('restarted, a space with helpers hands nothing again, unless the list changed', { timeout: 180000 }, async (t) => {
+  const server = await helper(t)
+  const { a, fa } = await pair(t)
+  await fa.setHelpers([server.key])
+  const someone = await member(fa)
+  const made = []
+  for (let i = 0; i < 50; i++) {
+    const core = fa.store.get({ name: 'made-' + i })
+    await core.append(['header', 'block ' + i])
+    made.push({ key: core.key, length: 2 })
+    await fa.directory.accept(core.key, core, someone, { announce: false })
+  }
+  const all = async () => { for (const c of made) if (!(await holds(server, c))) return false; return true }
+  t.ok(await eventually(all, 60000, 500), 'the helper mirrors all 50')
+  t.ok(await eventually(() => testing.openLogs(fa).length === 0, 30000, 100), 'all closed')
+
+  await a.close()
+  const a2 = await account(t, 'a2', { dir: a.dir })
+  testing.idleLogs(a2, IDLE)
+  const fa2 = a2.space(fa.key)
+  await forum.latest(fa2)
+  t.ok(await eventually(() => fa2._helpers.peering, 20000, 50), 'the helpers client runs again')
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  t.is(fa2._helpers.peering.stats.addCore, 0, 'no log handed again at start')
+  t.is(testing.openLogs(fa2).length, 0, 'none opened')
+
+  const other = await helper(t)
+  await fa2.setHelpers([server.key, other.key])
+  t.ok(await eventually(() => fa2._helpers.peering && fa2._helpers.peering.stats.addCore >= 50, 60000, 200), 'a new list: every log handed to it')
+})

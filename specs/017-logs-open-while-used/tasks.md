@@ -22,8 +22,10 @@ Starts from spec 016's "T024 inventory" (45 `log.core` uses in 8 files) and its 
   `behind()` (lib/replication.js), regression test in test/next/net/closed-logs.js.
 - **Unserved claims**: `testing.idleLogs(hg, ms, { claims })` shortens the 60 s for tests; the warning is
   `UNSERVED_LENGTH` with the peer and log in its message.
-- **Helpers' first hand-off after a start**: every held log is opened and handed once per space start (one at a
-  time, in the background), since what was handed isn't saved. A follow-up could save `handed` in the counters.
+- **What was handed to helpers is saved** (lead review): a log's counters keep `hand` (its length at the last
+  hand-off) and `to` (a short hash of the helper list), so a start hands nothing again unless the log grew or the
+  list changed. Before the fix every start reopened and re-handed every held log (test: "restarted, a space with
+  helpers hands nothing again" in test/next/net/closed-logs.js).
 - SwarmFS against this tree (a scratch copy whose `node_modules/hypergraph` points here): Node 89/89 and Bare
   89/89 on the final code, except `test/link.test.js` failing alone on Node; it fails the same on master with the
   real SwarmFS (case-insensitive copy names), so it is not 017's. `conflict.test.js` failed once in a parallel run
