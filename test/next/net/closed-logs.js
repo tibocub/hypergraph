@@ -19,15 +19,24 @@ const IDLE = 300
 // `n` made-up logs of two blocks, written at `from` and held by every
 // space in `to` (scripted, past the gate, as perf/scenarios/members.mjs
 // does): those get them by replication, a length claim each (spec 017).
-// Their author: `from`'s member, on devices of its own.
+// Their author: a member `from` adds (not `from`'s own identity: the logs of
+// its own devices are read at start, lib/space.js #seenOwn).
 async function script (from, to, n) {
-  const someone = { identity: from.hg._identity.publicKey, device: hc.randomBytes(32) }
+  const someone = await member(from, to)
   for (let i = 0; i < n; i++) {
     const core = from.store.get({ name: 'scripted-' + i })
     await core.append(['header', 'x'])
     await from.directory.accept(core.key, core, someone, { announce: false })
     for (const s of to) await s.directory.accept(core.key, s.store.get({ key: core.key }), someone, { announce: false })
   }
+}
+
+// A made-up member of `space`, known to `others` too: { identity, device }.
+async function member (space, others = []) {
+  const identity = hc.randomBytes(32)
+  await testing.decide(space, { type: 'member/add', identity })
+  for (const s of [space, ...others]) if (!await eventually(() => s.state.isMember(identity), 20000)) throw new Error('the member never showed')
+  return { identity, device: hc.randomBytes(32) }
 }
 
 // Has `space` heard the summary `other` sends now?
@@ -59,7 +68,7 @@ function watch (space, present) {
 }
 
 test('2,000 held logs: few open once idle, none at reopen, reads still work', { timeout: 180000 }, async (t) => {
-  const { b, fa, fb } = await pair(t)
+  const { a, b, fa, fb } = await pair(t)
   const post = await forum.post(fa, 'hello', 'text')
   t.ok(await eventually(async () => (await forum.latest(fb)).length === 1, 20000), 'b has the post')
   await script(fa, [fb], 2000)
@@ -77,6 +86,13 @@ test('2,000 held logs: few open once idle, none at reopen, reads still work', { 
   t.alike((await forum.latest(fb2)).map((p) => p.title), ['hello'], 'reopened: the same posts')
   t.is(testing.openLogs(fb2).length, 0, 'reopened: no held log open')
   t.ok(testing.logs(fb2).length >= 2000, `and every log held (${testing.logs(fb2).length})`)
+
+  // a's logs never changed after it accepted them (open): still saved, so closed at reopen
+  await a.close()
+  const a2 = await account(t, 'a2', { dir: a.dir })
+  const fa2 = a2.space(fa.key)
+  await forum.latest(fa2)
+  t.is(testing.openLogs(fa2).length, 0, 'the author reopened: none of them open')
 })
 
 test('a record in a log closed at the reader: never complete before it arrives', { timeout: 180000 }, async (t) => {
@@ -135,7 +151,7 @@ test('a peer claiming more of a log than anyone serves: not incomplete for ever,
 // summaries never agreed again.
 test('a log that grew by its header only: opened, and the summaries agree again', { timeout: 60000 }, async (t) => {
   const { fa, fb } = await pair(t)
-  const someone = { identity: fa.hg._identity.publicKey, device: hc.randomBytes(32) }
+  const someone = await member(fa, [fb])
   const core = fa.store.get({ name: 'empty' })
   await core.ready()
   await fa.directory.accept(core.key, core, someone, { announce: false })
@@ -155,7 +171,7 @@ test('closed logs are handed to the helper, and again when they grow', { timeout
   const { fa } = await pair(t)
   await fa.setHelpers([server.key])
   const made = []
-  const someone = { identity: fa.hg._identity.publicKey, device: hc.randomBytes(32) }
+  const someone = await member(fa)
   for (let i = 0; i < 100; i++) {
     const core = fa.store.get({ name: 'made-' + i })
     await core.append(['header', 'block ' + i])
