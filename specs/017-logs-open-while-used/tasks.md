@@ -16,7 +16,7 @@ Starts from spec 016's "T024 inventory" (45 `log.core` uses in 8 files) and its 
   settle a closed log. They hold only the logs of the periods they read.
 - **`logs.held-start` isn't strictly flat**: reopening reads one index row (and its counters) per held log, so
   it grows with the logs by nature; no core is opened per log (`logs.held-open`: 0). Measured before the full run:
-  519 ms at 1k logs, ~1.3 s at 10k (×2.5 for ×10 logs), mostly the instance's own start at 1k.
+  full run: 674 ms at 1k logs, 1,505 ms at 10k (×2.2 for ×10 logs), much of it the instance's own start.
 - **Found while building `logs.length-settle-kb`**: a claim of the header block alone (0 → 1, below where
   indexing starts) didn't open the log, so the reader said complete and the summaries never agreed again. Fixed in
   `behind()` (lib/replication.js), regression test in test/next/net/closed-logs.js.
@@ -24,6 +24,10 @@ Starts from spec 016's "T024 inventory" (45 `log.core` uses in 8 files) and its 
   `UNSERVED_LENGTH` with the peer and log in its message.
 - **Helpers' first hand-off after a start**: every held log is opened and handed once per space start (one at a
   time, in the background), since what was handed isn't saved. A follow-up could save `handed` in the counters.
+- SwarmFS against this tree (a scratch copy whose `node_modules/hypergraph` points here): Node 89/89 and Bare
+  89/89 on the final code, except `test/link.test.js` failing alone on Node; it fails the same on master with the
+  real SwarmFS (case-insensitive copy names), so it is not 017's. `conflict.test.js` failed once in a parallel run
+  and passed in 3 runs since.
 - The test runner (`scripts/test-runner.js --bare`) finds `bare` only in the checkout's own `node_modules`: in a
   worktree, link the main checkout's (`node_modules` junction, gitignored) to run Bare. Not changed here.
 
