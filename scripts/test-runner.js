@@ -14,6 +14,8 @@
 // (by their last run, kept in .test-times.json). Each file gets its own
 // process, so a file that hangs or force-exits can't take others down, and
 // every file must report its own "# tests = n/n" line to count as passed.
+// HG_TEST_TMP puts the files' temp folders (os.tmpdir()) there: on an SSD.
+// Six files at once on a spinning disk run ~10x slower and time out (2026-11-06).
 
 const { spawn } = require('child_process')
 const path = require('path')
@@ -39,6 +41,9 @@ const GROUPS = {
   next: ['test/next/unit', 'test/next/net', 'test/next/forum', 'test/next/tools']
 }
 const DEFAULT_GROUPS = ['core', 'networking', 'replication', 'forum', 'integration', 'v2']
+
+const TMP = process.env.HG_TEST_TMP
+const ENV = TMP ? { ...process.env, TEMP: TMP, TMP, TMPDIR: TMP } : process.env
 
 // test/next/forum/forum.js is the reference app the forum tests share, not a test.
 const NOT_TESTS = new Set(['test/next/forum/forum.js'])
@@ -71,7 +76,7 @@ function run (file, bare) {
   return new Promise((resolve) => {
     const start = Date.now()
     const args = bare ? [BARE, file] : [file]
-    const p = spawn(process.execPath, args, { cwd: ROOT })
+    const p = spawn(process.execPath, args, { cwd: ROOT, env: ENV })
     try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL) } catch {} // keep the machine responsive
     let out = ''
     p.stdout.on('data', (d) => { out += d })
@@ -93,6 +98,11 @@ async function main () {
   const opts = parseArgs(process.argv.slice(2))
   const targets = opts.targets.length ? opts.targets : DEFAULT_GROUPS
   const files = targets.flatMap(t => GROUPS[t] ? filesOf(t) : [t])
+  const tmp = TMP || os.tmpdir()
+  fs.mkdirSync(tmp, { recursive: true })
+  const { bavail, bsize } = fs.statfsSync(tmp)
+  // a full disk fails tests with "not enough space", which reads like a bug
+  if (bavail * bsize < 3e9) process.stdout.write(`(warning: ${Math.round(bavail * bsize / 1e6)} MB free in ${tmp}, the tests' temp folder)\n`)
 
   let times = {}
   try { times = JSON.parse(fs.readFileSync(TIMES, 'utf-8')) } catch {}
