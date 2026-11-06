@@ -39,6 +39,7 @@ async function nap (ms, file) {
 // (it survives the restarts).
 const mine = new Map() // id -> { id, type }
 const voted = new Set()
+const seen = new Set() // others' records already logged as seen
 if (fs.existsSync(logFile)) {
   for (const l of fs.readFileSync(logFile, 'utf-8').split('\n').filter(Boolean)) {
     let e
@@ -46,6 +47,7 @@ if (fs.existsSync(logFile)) {
     if (e.ev === 'put') mine.set(e.id, { id: e.id, type: e.type })
     if (e.ev === 'put' && e.type === 'vote') voted.add(e.on)
     if (e.ev === 'delete') mine.delete(e.id)
+    if (e.ev === 'seen') seen.add(e.id)
   }
 }
 
@@ -72,8 +74,14 @@ async function goOnline () {
   await forum.bookmark(hg, f) // the app keeps its forum open, as a forum screen would
   f.on('change', ({ records }) => {
     const at = Date.now()
-    for (const r of records) if (!mine.has(r.id)) log({ ev: 'seen', id: r.id, type: r.type, deleted: !!r.deleted, at })
+    for (const r of records) if (!mine.has(r.id)) { seen.add(r.id); log({ ev: 'seen', id: r.id, type: r.type, deleted: !!r.deleted, at }) }
   })
+  // Records that arrived while opening, before the listener: no `change` for them,
+  // so without this they'd count as seen only at their next edit (2026-11-06 soak).
+  const at = Date.now()
+  for (const r of await snapshot()) {
+    if (!mine.has(r.id) && !seen.has(r.id)) { seen.add(r.id); log({ ev: 'seen', id: r.id, type: r.type, deleted: false, open: true, at }) }
+  }
   f.on('status', (s) => {
     const codes = s.warnings.map((w) => w.code).sort().join(',')
     if (codes === lastWarnings) return
