@@ -517,4 +517,4 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
     `read` role.
   - **H6** concurrent versions of a record (conflict copies): SwarmFS can do it alone with a `base` field; decide
     whether hypergraph exposes "versions that lost to a concurrent edit".
-  - **H7** a public test helper for apps (local DHT + tmp dirs, `hypergraph/testing`-style).
+  - ~~**H7** a public test helper for apps~~: done, `hypergraph/testing` (spec 018).
