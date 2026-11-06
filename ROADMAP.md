@@ -497,11 +497,10 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
     (a) spec **"open spaces at scale"** (016): **merged 2026-11-03** (cf99bd8; a private space can't be made
     public): public spaces (`makePublic()`, one link for everyone, one-way; joining is no decision), known
     members, no log before a first record, log lists settled by key ranges (`hypergraph/space/2`); apply-time + wire,
-    everyone updates together. **Left out**: "logs open only while used" (its US4, spec 015's before it), now a
-    spec of its own, starting from two questions: where "complete" gets peers' lengths for a closed log
-    (`unheard`/`isComplete`/`#coveredFrom` read them from open cores), and blind-peering needing open cores
-    (`Helpers.hold`); and helpers' `listed:` entries (its Story 6, research R8: needs a list a blind peer can
-    serve), a helpers follow-up.
+    everyone updates together. Its "logs open only while used" became spec **017**: **merged 2026-11-06**
+    (3347788; lengths in the summaries, `hypergraph/space/3`, helpers handed each log then closed). Left from it:
+    bounding opens while catching up, one index row per held log at start. Still left out of 016: helpers'
+    `listed:` entries (its Story 6, research R8: needs a list a blind peer can serve), a helpers follow-up.
     (b) the "one engine for many sites" spec (lazy spaces, types per space): **merged 2026-11-02** (topic queue, spaces open while used, types in the space (apply-time), migration, a site's
     handle with the main identity, suspend/resume); its "logs open only while used" (US4) left to (a), then to a spec of
     its own; per-site keys a spec of their own. (c) SwarmFS: `held`/`has` as summaries,
