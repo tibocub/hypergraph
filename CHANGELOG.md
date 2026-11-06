@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 2026-11-06: a vote indexed twice no longer hides itself
+### 2026-11-06: a block announced again while being indexed is indexed once
 
-The 3-hour soak lost one vote on one member: the indexer had looked at its block twice, and the second
-time the vote counted as replaced by itself (one-per-member types). A record of a one-per-member type
-now never competes with itself. What made the block be looked at twice is not found yet (ROADMAP
-follow-ups). Not breaking; an index already holding such a row heals when the record is indexed again.
+The 3-hour soak lost one vote on one member. Cause: the indexer walked its list of arrived blocks while
+reading each one; a block announced again meanwhile (a peer back online) was visited again and put in the
+same batch twice, up to 256 times. A vote indexed twice counted as replaced by itself. The walk now uses a
+copy (the block waits for the next batch), and a one-per-member record never competes with itself. It
+also overcounted index bytes (storage estimates) and could lose an edit. Not breaking; an index already
+holding such a row heals when the record is indexed again.
 
 ### 2026-11-06: reading a space before its types arrived
 

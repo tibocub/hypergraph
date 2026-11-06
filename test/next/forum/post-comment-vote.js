@@ -100,3 +100,30 @@ test('a vote indexed twice still counts (the 2026-11-06 soak)', async (t) => {
   t.alike((await fa.query('vote').latest(10)).items.map((r) => r.id), [w.id])
   t.ok(all)
 })
+
+test('a block announced again while the indexer reads it is indexed once (the soak\'s cause)', async (t) => {
+  const Hypercore = require('hypercore')
+  const b4a = require('b4a')
+  const { fa, fb } = await threeMembers(t)
+  await forum.post(fb, 'first', '')
+  t.ok(await eventually(async () => (await forum.latest(fa)).length === 1, 5000))
+  const key = fb.own.key
+  const seq = fb.own.core.length // b's next record
+  const log = fa.directory.logs.get(b4a.toString(key, 'hex'))
+  // On a: the block isn't held at first (a hole), and it is announced again
+  // while the indexer reads it, as a member coming back online can.
+  const get = Hypercore.prototype.get
+  let calls = 0
+  Hypercore.prototype.get = async function (i, opts) {
+    if (!b4a.equals(this.key, key) || this.core === fb.own.core.core || i !== seq || !opts || opts.wait !== false) return get.call(this, i, opts)
+    if (calls++ === 0) return null
+    fa.indexer.arrived(log, seq)
+    return get.call(this, i, opts)
+  }
+  t.teardown(() => { Hypercore.prototype.get = get })
+  const before = testing.indexedBlocks(fa)
+  await forum.post(fb, 'second', '')
+  t.ok(await eventually(async () => (await forum.latest(fa)).length === 2, 5000))
+  t.ok(calls >= 2, 'it was a hole, then read again')
+  t.is(testing.indexedBlocks(fa) - before, 1, 'one block, indexed once')
+})
