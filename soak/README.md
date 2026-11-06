@@ -42,7 +42,9 @@ m0          15     0      0   0.00s   5.76s    7.74s        1       0      0   S
   period. Should be 0.
 - **stale**: records it holds in an old version: an edit or a delete that didn't arrive. Should be 0.
 - **p50 / p95 / max**: delivery delay of others' records: when it first showed up here (a `change`
-  event) minus when its author's `put` returned. A record written while this member was offline
+  event) minus when its author started the `put`. All members share one clock (one machine), so a
+  record seen before it was written is a bug: it is not counted as a delay but shown in warnings as
+  `SEEN_BEFORE_WRITTEN(n)`. A record written while this member was offline
   counts its whole wait, so the max is mostly offline time.
 - **offline**: offline periods. **crashes**: the process died unexpectedly (see `m<i>.err`; run.js
   restarts it). **errors**: actions that failed (in the log as `{ ev: 'error' }`).
@@ -51,5 +53,6 @@ m0          15     0      0   0.00s   5.76s    7.74s        1       0      0   S
 
 Exit code 1 if anything is lost or stale, or a member wrote no final snapshot.
 
-Not measured: edit and delete delays (only that they arrived), sub-forums, moderation, invites
+Not measured: edit and delete delays (only that they arrived by the end: a record's `seen` lines
+after its first one are not used), sub-forums, moderation, invites
 beyond the public link, more than one device per member.

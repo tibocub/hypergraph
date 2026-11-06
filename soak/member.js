@@ -89,14 +89,15 @@ async function act () {
   const targets = [...posts, ...comments]
   const own = [...mine.values()].filter((r) => r.type !== 'vote')
   const roll = Math.random()
+  const at = Date.now() // before the write: others may see it before the call returns
   if (roll < 0.25 || !targets.length) {
     const text = `post by ${name} at ${new Date().toISOString()}`
     const r = await forum.post(f, `soak ${name}`, text)
-    record(r, text)
+    record(r, text, at)
   } else if (roll < 0.55) {
     const text = `comment by ${name}`
     const r = await forum.comment(f, pick(targets), text)
-    record(r, text)
+    record(r, text, at)
   } else if (roll < 0.8) {
     const open = targets.filter((t) => !voted.has(t.id))
     if (!open.length) return
@@ -104,24 +105,24 @@ async function act () {
     const value = Math.random() < 0.8 ? 1 : -1
     const r = await forum.vote(f, on, value)
     voted.add(on.id)
-    record(r, value, on.id)
+    record(r, value, at, on.id)
   } else if (roll < 0.9 || own.length < 3) {
     if (!own.length) return
     const r = pick(own)
     const text = `edit by ${name} at ${new Date().toISOString()}`
     await f.edit(r.id, { text })
-    log({ ev: 'edit', id: r.id, v: text })
+    log({ ev: 'edit', id: r.id, v: text, at })
   } else {
     const r = pick(own)
     await f.del(r.id)
     mine.delete(r.id)
-    log({ ev: 'delete', id: r.id })
+    log({ ev: 'delete', id: r.id, at })
   }
 }
 
-function record (r, v, on) {
+function record (r, v, at, on) {
   mine.set(r.id, { id: r.id, type: r.type })
-  log({ ev: 'put', id: r.id, type: r.type, v, ...(on ? { on } : {}) })
+  log({ ev: 'put', id: r.id, type: r.type, v, at, ...(on ? { on } : {}) })
 }
 
 // Everything this member holds of the types it writes, each with its text or value.

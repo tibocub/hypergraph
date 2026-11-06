@@ -64,3 +64,15 @@ test('soak report: everything delivered is ok', (t) => {
   t.ok(ok)
   t.alike(total.delay, { n: 1, p50: 1, p95: 1, max: 1 })
 })
+
+test('soak report: a record seen before it was written is a warning, not a 0 delay', (t) => {
+  const { members, total, ok } = analyze({
+    m0: [{ ev: 'put', id: 'p1', type: 'post', at: 1000, v: 'x' }, { ev: 'put', id: 'p2', type: 'post', at: 2000, v: 'y' }, held({ id: 'p1', v: 'x' }, { id: 'p2', v: 'y' })],
+    m1: [{ ev: 'seen', id: 'p1', at: 990 }, { ev: 'seen', id: 'p2', at: 2050 }, held({ id: 'p1', v: 'x' }, { id: 'p2', v: 'y' })]
+  })
+  t.is(members.m1.early, 1)
+  t.alike(members.m1.warnings, ['SEEN_BEFORE_WRITTEN(1)'])
+  t.alike(members.m1.delay, { n: 1, p50: 50, p95: 50, max: 50 }, 'only the real delay counts')
+  t.is(total.early, 1)
+  t.ok(ok, 'nothing lost')
+})

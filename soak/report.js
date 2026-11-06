@@ -22,7 +22,7 @@ function delays (list) {
 }
 
 // `logs`: { member name: [events] } in each log's order. Events:
-//   { ev: 'put', id, type, at, v }   a record this member wrote (v: its text or vote value)
+//   { ev: 'put', id, type, at, v }   a record this member wrote (at: before the write; v: its text or vote value)
 //   { ev: 'edit', id, at, v }        this member edited its record to v
 //   { ev: 'delete', id, at }         this member deleted its record
 //   { ev: 'seen', id, at }           a record arrived or changed here
@@ -49,10 +49,15 @@ function analyze (logs) {
     // an edit or a delete that didn't arrive: the old text, or a deleted record still here
     const stale = final ? all.filter((r) => held.has(r.id) && (r.deleted || held.get(r.id) !== r.v)).map((r) => r.id) : []
     const mine = []
+    let early = 0 // seen before its author started writing it: one clock on one machine, so a bug
     for (const r of all) {
       if (r.author === name || !seen.has(r.id)) continue
-      mine.push(Math.max(0, seen.get(r.id) - r.at))
+      const d = seen.get(r.id) - r.at
+      if (d < 0) early++
+      else mine.push(d)
     }
+    const warnings = [...new Set(events.filter((e) => e.ev === 'warning').map((e) => e.code))]
+    if (early) warnings.push(`SEEN_BEFORE_WRITTEN(${early})`)
     allDelays.push(...mine)
     members[name] = {
       written: all.filter((r) => r.author === name).length,
@@ -63,7 +68,8 @@ function analyze (logs) {
       offline: events.filter((e) => e.ev === 'offline').length,
       crashes: events.filter((e) => e.ev === 'crash').length,
       errors: events.filter((e) => e.ev === 'error').length,
-      warnings: [...new Set(events.filter((e) => e.ev === 'warning').map((e) => e.code))]
+      early,
+      warnings
     }
   }
   const list = Object.values(members)
@@ -75,6 +81,7 @@ function analyze (logs) {
     offline: list.reduce((n, m) => n + m.offline, 0),
     crashes: list.reduce((n, m) => n + m.crashes, 0),
     errors: list.reduce((n, m) => n + m.errors, 0),
+    early: list.reduce((n, m) => n + m.early, 0),
     missingFinal: Object.keys(members).filter((n) => !members[n].final)
   }
   return { members, total, ok: total.lost === 0 && total.stale === 0 && total.missingFinal.length === 0 }

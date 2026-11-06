@@ -24,6 +24,7 @@ test('soak run on a local DHT: nothing lost', { timeout: 300000 }, async (t) => 
   t.is(total.stale, 0, 'every edit and delete arrived')
   t.ok(total.written >= 10, `records written (${total.written})`)
   t.ok(total.delay.n > 0, 'deliveries measured')
+  t.is(total.early, 0, 'nothing seen before it was written')
   t.ok(total.offline > 0, 'members went offline and back')
   t.ok(out.includes('OK: nothing lost'))
 })
