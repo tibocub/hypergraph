@@ -2,7 +2,8 @@
 // test's local DHT, closed after the test. Not part of the forum app.
 
 const forum = require('./forum.js')
-const { tmpDir, testBootstrap, bounded } = require('../helpers.js')
+const { tmpDir, bootstrap: testBootstrap } = require('hypergraph/testing') // as an app's tests do (spec 018)
+const { bounded } = require('../helpers.js')
 
 async function account (t, label, opts = {}) {
   const dir = opts.dir || tmpDir(t, label)

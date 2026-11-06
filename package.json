@@ -6,6 +6,7 @@
   "exports": {
     ".": "./index.js",
     "./next": "./lib/index.js",
+    "./testing": "./lib/test-helper.js",
     "./v2": "./src/v2/index.js",
     "./tools/inspector": "./tools/inspector/index.js",
     "./package.json": "./package.json",
@@ -75,6 +76,7 @@
     "compact-encoding": "^3.5.2",
     "corestore": "^7.13.0",
     "hyperbee": "^2.27.3",
+    "hyperdht": "6.36.0",
     "hypercore": "^11.37.2",
     "hypercore-crypto": "^3.7.0",
     "hyperdb": "^6.10.0",
@@ -97,7 +99,6 @@
     "brittle": "^4.5.0",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
-    "hyperdht": "6.36.0",
     "random-access-memory": "^6.2.1"
   },
   "license": "MIT",

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-06: `hypergraph/testing` — a test helper for apps (spec 018)
+
+New export `require('hypergraph/testing')`: `open(t)` (an online instance in a temp folder, closed after the
+test), `bootstrap(t)` (a 3-node DHT on 127.0.0.1 per test; `HG_TEST_PUBLIC_DHT=1`: the public one), `tmpDir`,
+`eventually`, `within`, `codeOf`, `sleep`. Works with brittle or `node:test`. `hyperdht` (6.36.0) moved from
+devDependencies to dependencies, so apps can drop their own pin. Not breaking. Docs: `docs/next/testing.md`;
+detail: `specs/018-test-helper/`.
+
 ### 2026-11-06: `hypergraph/next` — logs open only while used (spec 017)
 
 **Wire: update every app together** (SwarmFS; HyperBBS and hyperDNS use the old core, untouched). The space
