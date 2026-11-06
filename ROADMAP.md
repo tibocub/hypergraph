@@ -471,7 +471,8 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
    (drop the F10–F13 workarounds, re-pin), then Tibo tries it himself. No friends' week-long trial (2026-11-02:
    nobody is around to use a test app that long); its job (catch replication bugs like H17, measure delays) goes
    to a **soak run**: a few scripted forum members on the public DHT for some hours, posting, going offline and
-   back, each keeping a delivery log, at low load. Nothing waits for it. Tibo's answers (2026-10-30): any
+   back, each keeping a delivery log, at low load (the tool exists: `npm run soak`, `soak/README.md`;
+   first 15-min public run 2026-11-06). Nothing waits for it. Tibo's answers (2026-10-30): any
    member invites (admins-only invites and invite-less public spaces later, for SwarmFS/HyperBrowser); online only
    while the program runs (a background service later, likely in SwarmFS); friends send their delivery log at the
    end (it mostly catches replication bugs like H17 and measures delays: a post is lost for good only if its

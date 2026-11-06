@@ -20,6 +20,8 @@
     "bench:chat": "node bench/chat.js 100000 --writers 10 --live 30",
     "perf": "node perf/run.mjs",
     "perf:compare": "node perf/compare.mjs",
+    "soak": "node soak/run.js",
+    "soak:check": "node soak/check.js",
     "test:all": "npm test && npm run test:next && npm run test:next:bare",
     "test:serial": "npm run test:core && npm run test:networking && npm run test:replication && npm run test:forum && npm run test:integration",
     "test:entities": "npx brittle-node test/brittle/core/entities.js",
