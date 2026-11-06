@@ -4,23 +4,23 @@
 
 ## Phase 1: Setup
 
-- [X] T001 Export `./testing` → `./lib/test-helper.js` and move `hyperdht` (6.36.0) to `dependencies` in package.json
+- [X] T001 Export `./testing` → `./lib/app-testing.js` and move `hyperdht` (6.36.0) to `dependencies` in package.json
 
 ## Phase 2: User Story 1 - a two-member test in a few lines (P1)
 
-- [X] T002 [US1] Test first: `test/next/unit/test-helper.js` — two instances via `open(t)` see each other's post;
+- [X] T002 [US1] Test first: `test/next/unit/app-testing.js` — two instances via `open(t)` see each other's post;
       teardown order (instances, DHT, folders) on a fake `t`; `within` returns the fallback and leaves no timer
-- [X] T003 [US1] `lib/test-helper.js`: per-test cleanup list, `open`, `tmpDir`, `bootstrap`, `within`, `eventually`, `codeOf`
+- [X] T003 [US1] `lib/app-testing.js`: per-test cleanup list, `open`, `tmpDir`, `bootstrap`, `within`, `eventually`, `codeOf`
 
 ## Phase 3: User Story 2 - apps with their own wrapper (P2)
 
-- [X] T004 [US2] Test: same bootstrap twice per test; `HG_TEST_PUBLIC_DHT=1` gives `undefined`, in test/next/unit/test-helper.js
+- [X] T004 [US2] Test: same bootstrap twice per test; `HG_TEST_PUBLIC_DHT=1` gives `undefined`, in test/next/unit/app-testing.js
 - [X] T005 [US2] `test/next/helpers.js` takes `within`, `eventually`, `codeOf`, `tmpDir`, `testBootstrap` from the helper
 - [X] T006 [US2] `test/next/forum/_setup.js` requires `hypergraph/testing` (rule 3: as an app does)
 
 ## Phase 4: User Story 3 - any test runner (P3)
 
-- [X] T007 [US3] Test: a `node:test`-style `t` (only `after`) and a `t` with neither (TypeError), in test/next/unit/test-helper.js
+- [X] T007 [US3] Test: a `node:test`-style `t` (only `after`) and a `t` with neither (TypeError), in test/next/unit/app-testing.js
 
 ## Phase 5: Polish
 

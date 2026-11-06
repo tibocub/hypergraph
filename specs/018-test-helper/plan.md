@@ -4,7 +4,7 @@
 
 ## Summary
 
-One new file, `lib/test-helper.js`, exported as `hypergraph/testing`: the pieces every app copied (local DHT,
+One new file, `lib/app-testing.js`, exported as `hypergraph/testing`: the pieces every app copied (local DHT,
 temp folders, `within`, `eventually`, `codeOf`) plus `open(t)`, an online `Hypergraph` closed after the test.
 `test/next/helpers.js` re-exports them instead of its own copies; the forum scenario `_setup.js` requires
 `hypergraph/testing` as an app does.
@@ -44,7 +44,7 @@ No `{ connect: false }`: `test/next/helpers.js` keeps its own offline `open()` (
 ## Constitution Check
 
 - I/II (concurrency, test-first): no replication code changes. A test of the helper itself
-  (`test/next/unit/test-helper.js`): teardown order, `within` leaves no timer, public-DHT switch, `node:test`-style `t`.
+  (`test/next/unit/app-testing.js`): teardown order, `within` leaves no timer, public-DHT switch, `node:test`-style `t`.
 - III (thin composition): wraps `hyperdht/testnet`, no new mechanism.
 - IV (one API surface): replaces the copies in hypergraph's own tests, not added next to them.
 - V: not breaking. CHANGELOG entry (new export, hyperdht now a dependency).
@@ -54,11 +54,11 @@ No `{ connect: false }`: `test/next/helpers.js` keeps its own offline `open()` (
 ## Project Structure
 
 ```
-lib/test-helper.js              new
+lib/app-testing.js              new
 package.json                    exports "./testing"; hyperdht → dependencies
 test/next/helpers.js            re-exports the helper's pieces, keeps its own extras
 test/next/forum/_setup.js       require('hypergraph/testing')
-test/next/unit/test-helper.js   new
+test/next/unit/app-testing.js   new
 docs/next/testing.md            new; api.md links it
 CHANGELOG.md, ROADMAP.md (H7 done)
 ```

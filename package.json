@@ -6,7 +6,7 @@
   "exports": {
     ".": "./index.js",
     "./next": "./lib/index.js",
-    "./testing": "./lib/test-helper.js",
+    "./testing": "./lib/app-testing.js",
     "./v2": "./src/v2/index.js",
     "./tools/inspector": "./tools/inspector/index.js",
     "./package.json": "./package.json",

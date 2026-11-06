@@ -78,7 +78,7 @@ The helper works with brittle (`t.teardown`) and Node's `node:test` (`t.after`);
   `next/…` path would break every app's tests; `hypergraph/testing` keeps working. It doesn't collide with the
   internal hooks: those are `hypergraph/lib/testing.js` (through the `./*` export), a different path, and stay
   internal (they bypass the API's checks: fine for hypergraph's own adversarial tests, wrong for apps). The file
-  is `lib/test-helper.js`, so the two can't be mixed up in the code either.
+  is `lib/app-testing.js`, so the two can't be mixed up in the code either.
 - **No brittle dependency.** Apps may use `node:test` or another runner. The helper needs only a way to run
   something at the test's end; it keeps its own ordered cleanup list (so it needs no runner-specific `order`
   option), registered once per test.
