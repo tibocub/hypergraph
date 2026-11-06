@@ -24,6 +24,7 @@ node hyperdht-lan-race.js 10             # both sides dial at once
 | 6.34.1 | 2–10 |
 | **6.35.0** (latest) | **3–7** (4 runs) |
 | 6.35.0 + PR #283 | **0** (5 runs, 100 dials); hyperdht's suite 107/107 |
+| **6.36.0** (#283 released in 6.35.1; 2026-11-06) | **0** (5 runs, 100 dials) |
 | any, `--one-way` | 0 |
 | 6.35.0 + #278, #279, #281, #286 or #308 (each alone) | still 0–10 (3 runs each): none fixes it |
 
@@ -41,5 +42,5 @@ fails and aborts the handshake, discarding that same connection; the dialer lear
 from 6.33 (issue #304). PR #283 keeps the handshake alive while the LAN route is pending (`lanPending`), which fixes it
 here. Real apps hit it too: two devices behind one home router count as "same network".
 
-To try the PR: clone hyperdht, apply #283's `lib/server.js` change on v6.35.0 (it applies cleanly), and link it as
-`node_modules/hyperdht`.
+#283 shipped in hyperdht 6.35.1; this demo now pins 6.36.0. (#304 stays open upstream for the `OPEN`-client
+variant, #308, which this demo doesn't exercise.)

@@ -96,6 +96,10 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-06 (hyperdht)** — #283 released (6.35.1): pin 6.32.0 dropped, hyperdht 6.36.0 in hypergraph and SwarmFS
+  (`overrides` kept), swarmwire `^6.36.0`, lockfiles of swarmwire-cli, HyperBBS, hyperDNS refreshed. Our demo on
+  6.36.0: 0 dead out of 100 dials (5 runs). #304 still open upstream (#308, `OPEN` clients, not in our demo).
+
 - **2026-11-01 (HyperBrowser design, grilled with Tibo)** — One app, not a separate SwarmFS app: one engine, built-in
   apps as sites; details in "The final app" above. Pear: `pear run` removed (June 2026), now `pear-runtime` (desktop,
   experimental) + `pear-mobile`; a Bare worker owns P2P, the web view talks to it by messages; nothing for loading

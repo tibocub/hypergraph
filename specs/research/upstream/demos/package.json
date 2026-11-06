@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "b4a": "1.9.0",
-    "hyperdht": "6.35.0"
+    "hyperdht": "6.36.0"
   }
 }
