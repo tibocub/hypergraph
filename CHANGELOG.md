@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-06: hyperdht 6.36.0 (pin 6.32.0 dropped)
+
+hyperdht's fix for dead same-host/LAN connections (hyperdht #283, released in 6.35.1) replaces our 6.32.0 pin:
+`hyperdht` is now `6.36.0` (still forced on every package by `overrides`). SwarmFS pins the same; swarmwire,
+swarmwire-cli, HyperBBS and hyperDNS lockfiles moved to 6.36.0. No API change. Our demo
+(`specs/research/upstream/demos/`): 0 dead connections out of 100 simultaneous dials.
+
 ### 2026-11-03: `hypergraph/next` — open spaces at scale (spec 016)
 
 **Apply-time and wire: update every app together** (SwarmFS; HyperBBS and hyperDNS use the old core, untouched). A

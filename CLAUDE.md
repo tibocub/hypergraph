@@ -180,7 +180,9 @@ npm run perf:compare                       # last run vs previous (-- --sha <sha
 ```
 
 `npm test` (`scripts/test-runner.js`) uses all cores but two (`HG_TEST_JOBS=n` to change), runs
-test processes at below-normal priority, waits while free memory is under 1.5 GB, starts the
+test processes at below-normal priority, puts their temp folders in `HG_TEST_TMP` when set (on an SSD:
+E: here is a spinning disk, where six files at once run ~10x slower and time out; measured 2026-11-06), warns
+under 3 GB free there, waits while free memory is under 1.5 GB, starts the
 longest files first (by their last run, in the gitignored `.test-times.json`), fails a file that
 doesn't print its own `# tests = n/n` line, and prints the slowest files. While iterating, run only the affected files or group; run the full
 suite once before committing. Tests use `brittle`. Run one file as a plain script: `node <file>`
