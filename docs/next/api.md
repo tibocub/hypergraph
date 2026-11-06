@@ -575,7 +575,8 @@ forum.on('logs', () => {})         // a member's log arrived or grew (at most ev
 
 `status().warnings` may include `OTHER_VERSION` (spec 016): a connected peer runs a hypergraph version that
 can't sync with this one (its space channel has another name, so the two never half-sync): update every app
-together.
+together. And `UNSERVED_LENGTH` (spec 017): a peer said it holds more of a log than anyone served within a
+minute; the message names the peer and the log, and those blocks no longer keep the space incomplete.
 
 `decisions()` is a moderation log your app can show ("bob hid this: off topic"): every member lists the
 same, in the order every member applies them. A decision whose author wasn't allowed to make it at that

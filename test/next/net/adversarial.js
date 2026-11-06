@@ -122,7 +122,7 @@ test('malformed and odd messages from a stranger: no crash, nothing kept, the me
   for (const ch of [...fe.directory.channels]) {
     // well-formed but odd
     ch.messages[0].send({ count: big, digest: random(), records: big }) // summary
-    ch.messages[2].send({ prefix: Buffer.alloc(0), bits: 0, kind: 2, keys: Array.from({ length: 1000 }, random) }) // keys of logs nobody has
+    ch.messages[2].send({ prefix: Buffer.alloc(0), bits: 0, kind: 2, keys: Array.from({ length: 1000 }, random), lengths: Array(1000).fill(1) }) // keys of logs nobody has
     ch.messages[1].send({ prefix: Buffer.alloc(0), bits: 0, parts: Array.from({ length: 16 }, () => ({ count: big, digest: random() })) }) // ranges claiming huge counts
     ch.messages[3].send(random()) // a notice
     ch.messages[4].send(random()) // a get
@@ -160,7 +160,7 @@ test('a flood of log keys from a stranger: fetched a few at a time, the queue bo
   let most = 0
   const watch = setInterval(() => { most = Math.max(most, ...[fa, fb].map((f) => testing.fetching(f).running + testing.fetching(f).waiting)) }, 20)
   for (const ch of [...fe.directory.channels]) {
-    for (let i = 0; i < 2; i++) ch.messages[2].send({ prefix: Buffer.alloc(0), bits: 0, kind: 2, keys: Array.from({ length: 1000 }, () => crypto.randomBytes(32)) }) // lists of logs
+    for (let i = 0; i < 2; i++) ch.messages[2].send({ prefix: Buffer.alloc(0), bits: 0, kind: 2, keys: Array.from({ length: 1000 }, () => crypto.randomBytes(32)), lengths: Array(1000).fill(1) }) // lists of logs
     for (let i = 0; i < 500; i++) ch.messages[3].send(crypto.randomBytes(32)) // notices
   }
   await sleep(3000)

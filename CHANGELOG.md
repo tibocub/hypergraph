@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-06: `hypergraph/next` — logs open only while used (spec 017)
+
+**Wire: update every app together** (SwarmFS; HyperBBS and hyperDNS use the old core, untouched). The space
+channel is now `hypergraph/space/3` (its summaries and key ranges carry each log's length): peers on `/2` or
+older never pair with this one, and `space.status().warnings` shows `OTHER_VERSION`. No API change; log, record
+and index formats unchanged (each log's counters gain its cached length and size; older data opens each log once
+to read them). Detail: `specs/017-logs-open-while-used/`.
+
+- A member keeps other authors' logs closed unless it reads them, downloads them, or hands them to helpers;
+  ~30 s unused, a log closes. Opening a space opens none of them. Closed logs are still served to peers.
+- `complete` stays honest: a closed log counts once every connected peer's latest summary agreed with this
+  member's. A peer claiming more of a log than anyone serves within a minute stops counting: new warning
+  `UNSERVED_LENGTH` in `status()`.
+- Helpers get each held log opened for the hand-off only, and again when it grew.
+
 ### 2026-11-06: hyperdht 6.36.0 (pin 6.32.0 dropped)
 
 hyperdht's fix for dead same-host/LAN connections (hyperdht #283, released in 6.35.1) replaces our 6.32.0 pin:

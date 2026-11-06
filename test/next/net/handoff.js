@@ -9,6 +9,7 @@ const DHT = require('hyperdht')
 const Corestore = require('corestore')
 const BlindPeering = require('blind-peering')
 const { helper } = require('./_helper.js')
+const { sent } = require('../../../lib/helpers.js')
 const { tmpDir, testBootstrap, eventually } = require('../helpers.js')
 
 async function holdsUpTo (server, key, length) {
@@ -17,15 +18,6 @@ async function holdsUpTo (server, key, length) {
   const ok = copy.length >= length && await copy.has(0, length)
   await copy.close()
   return ok
-}
-
-// Was the request for this core written to every helper it goes to?
-function sent (peering, core) {
-  for (const peer of peering.blindPeers.values()) {
-    const info = peer.cores.get(core)
-    if (info && !(peer.connected && info.flushed === peer.connects)) return false
-  }
-  return true
 }
 
 test('a log handed to a helper and closed at once is mirrored; grown, handed again', { timeout: 120000 }, async (t) => {
