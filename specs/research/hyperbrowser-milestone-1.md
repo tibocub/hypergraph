@@ -115,7 +115,7 @@ people's sites look as they like.
 - **Votes**: ▲▼ with the score, small, the accent once you voted.
 - **Unread**: threads and posts you haven't read are marked with the accent; read state stays on your devices.
 - **Mockups**: first pass at https://claude.ai/artifact/Vo3NWXhGwF6SXY74qKZRe5 (front page, a thread; accent and
-  dark mode as tweaks; Plex Mono stands in for Cozette until its font file is added). Tibo may bring his own
+  dark mode as tweaks; Cozette Vector 1.30.0, MIT, for the interface, Plex Mono for post text). Tibo may bring his own
   (e.g. Figma's AI) for the second pass.
 
 ## Order of work
