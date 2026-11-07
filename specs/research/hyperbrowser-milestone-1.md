@@ -91,6 +91,33 @@ is not the official forum and is not ported into HyperBrowser.
 - **Distribution** (Tibo): Pear's P2P distribution, updates arriving by themselves as for Keet (which runs on
   Windows, Linux, macOS, BSD, Android, iOS). The spike confirms how pear-runtime does it.
 
+## Visual identity and the official forum (forum talk with Tibo, 2026-11-07)
+
+The look of everything the project makes (the shell, built-in pages, the official site, the forum); other
+people's sites look as they like.
+
+- **Style**: simple, a bit minimalist, black and white, the Macintosh System 1 spirit (window frames, striped
+  title bars, dithered grays, 1-bit pixel icons), with box-drawing characters where they read best (the reply
+  tree, separators, quotes). Not today's over-designed web; usability of the old forums, modern care.
+- **Colour**: black and white plus **one accent** (links, unread, your own posts, your votes). Dark mode = the
+  same design inverted.
+- **Fonts**: TTF fonts in the old IBM / Cozette spirit, never a game "pixel" font: **Cozette** for the interface,
+  titles and the tree, **IBM Plex Mono** for post text: all monospace.
+- **Forum front page**: boards on the left, the chosen board's threads on the right (a System 1 window with
+  panes); on a phone, boards then threads.
+- **Sorting**: the reader chooses; default **latest activity first** (a reply brings a thread back up); also
+  newest, top (votes), lively (most replies and votes lately, computed on the device, never by a server).
+- **Replies**: a tree, with very small indentation (one box-drawing step, ~2 characters, per level); folding.
+- **Members**: a tiny 16×16 1-bit icon, drawn by the member or made from their key, next to the name.
+- **Posts**: a HyperMD subset (bold, italic, links, quotes, code, images), no scripts; `@name` mentions store
+  the member's key, show the current name (names aren't unique), and go into a **Mentions** list you open
+  yourself: no badge, no counter; the accent marks the unread ones.
+- **Votes**: ▲▼ with the score, small, the accent once you voted.
+- **Unread**: threads and posts you haven't read are marked with the accent; read state stays on your devices.
+- **Mockups**: first pass at https://claude.ai/artifact/Vo3NWXhGwF6SXY74qKZRe5 (front page, a thread; accent and
+  dark mode as tweaks; Plex Mono stands in for Cozette until its font file is added). Tibo may bring his own
+  (e.g. Figma's AI) for the second pass.
+
 ## Order of work
 
 Three pieces start at once, one worker session each, own worktree, test suites one after another (machine load):
