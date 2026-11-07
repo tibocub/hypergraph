@@ -116,6 +116,21 @@ people's sites look as they like.
   yourself: no badge, no counter; the accent marks the unread ones.
 - **Votes**: ▲▼ with the score, small, the accent once you voted.
 - **Unread**: threads and posts you haven't read are marked with the accent; read state stays on your devices.
+- **The shell** (interface talk, 2026-11-07): a light window-manager feel, because HyperBrowser is a superapp.
+  - The shell draws the frame; sites draw only their content (a site can't fake the shell).
+  - Top bar: **"HyperBrowser ▾"** menu (installed apps, settings, your identity), then the **tabs, drawn as a
+    taskbar** of open sites and apps. Each fills the space: no dragging, no resizing; others stay open in the
+    background. On a phone the taskbar is at the bottom. Overlapping windows: maybe later, as a first plugin,
+    if HyperBrowser gets plugins like Firefox and Chrome.
+  - Under it, the current tab's **toolbar**: back, forward, reload, the address, ☆, and the site's state on the
+    right (complete or loading, peers, what you hold).
+  - The address shows the site's name and a short key (`HyperBrowser Forum · 6x99a3…cjy`); the full key when
+    editing; a full key pasted by hand opens the site; hyperDNS names later in the same field.
+  - **Home = a desktop**: a grid of 1-bit icons (each site's own, from `site.json`) you arrange; folders later;
+    Mentions is an icon there.
+  - **One kind of thing, a site**: "install" = an icon on the desktop, kept whole on disk (never evicted) and
+    seeded; a bookmark = a lighter icon, cached and evicted as usual. Downloadable apps that can't run as a site
+    (maybe SwarmFS's file manager): a second kind later, only if needed.
 - **Mockups**: first pass at https://claude.ai/artifact/Vo3NWXhGwF6SXY74qKZRe5 (front page, a thread; accent and
   dark mode as tweaks; Cozette Vector 1.30.0, MIT, for the interface, Plex Mono for post text). Tibo may bring his own
   (e.g. Figma's AI) for the second pass.
