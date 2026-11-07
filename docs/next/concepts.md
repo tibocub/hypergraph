@@ -86,7 +86,8 @@ makes them.
 The types live in the space, not in the app: the space records its declaration (in its decision log,
 like its roles), and every member reads, checks and indexes with it. An old app reads new fields, members
 on any version agree on what a record says, and spaces of different apps share one engine. The owner's or
-an admin's app, updated, records the next version when it opens the space; members' apps never do (so a
+an admin's app, updated, records the next version when it opens the space, or they add a space's own
+types with `space.declareTypes()` (a site's, in an engine of many sites); members' apps never do (so a
 member can't change a space's types by installing something).
 
 ## Edits and deletes
