@@ -39,4 +39,5 @@ test('leave a forum: its data goes from this device; joining again brings it bac
 
   const back = await forum.join(b2, await forum.invite(fa))
   t.ok(await eventually(async () => !!(await back.get(theirs.id)).record, 10000), 'joining again brings it back')
+  t.ok(await eventually(() => forum.subforums(back).length === 1 && b2.spaces().length === 2, 10000), 'its sub-forum too (left with it, joined again with it)')
 })
