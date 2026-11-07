@@ -1,6 +1,7 @@
 // Spec 015 (US1): each space carries its own types. createSpace records them
 // (the app's, or `types`); a decider's app adding to them records the next
-// version when it opens the space; an app whose types break a space's gets
+// version when it opens the space, keeping the space's types it lacks (spec
+// 019); a decider adds a space's own with space.declareTypes() (spec 019); an app whose types break a space's gets
 // INCOMPATIBLE_TYPES from that space only; a space whose types gained an
 // index is indexed again, the others are not.
 
@@ -149,7 +150,7 @@ const withPoll = { ...v1, poll: { fields: { question: 'string' } } }
 const withBoth = { ...withComment, poll: withPoll.poll }
 const own = (s) => Object.keys(s.types()).filter((n) => !n.startsWith('hg/')).sort().join()
 
-test('an admin whose app lacks types another admin\'s app added is told so, not "not yet recorded"', async (t) => {
+test('an admin whose app lacks types another admin\'s app added records its own on top (spec 019)', async (t) => {
   const { reopenOne, eventually } = await twoDeciders(t)
   const x = await reopenOne(0, withComment)
   await x.s.ready()
@@ -160,12 +161,9 @@ test('an admin whose app lacks types another admin\'s app added is told so, not 
   await old.hg.close()
   const y = await reopenOne(1, withPoll)
   await y.s.ready()
-  t.ok(await eventually(() => y.s.typesVersion === 2 && own(y.s) === 'comment,post', 15000), 'b has it')
-  t.ok(await eventually(() => y.s.status().warnings.some((w) => w.code === 'TYPES_BEHIND' && w.message.includes('comment')), 10000), 'b\'s status says its app lacks comment')
-  const err = await y.s.put('poll', { question: 'q' }).catch((e) => e)
-  t.is(err.code, 'INCOMPATIBLE_TYPES')
-  t.ok(/can't record/.test(err.message) && err.message.includes('comment'), err.message)
-  t.is(y.s.typesVersion, 2, 'nothing recorded by b')
+  t.ok(await eventually(() => y.s.typesVersion === 3 && own(y.s) === 'comment,poll,post', 15000), 'b recorded poll, comment kept')
+  await y.s.put('poll', { question: 'q' })
+  t.absent(y.s.status().warnings.some((w) => w.code === 'TYPES_BEHIND'), 'nobody is behind')
 })
 
 test('two deciders record the next version at once: the one refused records again on top of the other', { timeout: 120000 }, async (t) => {
@@ -192,4 +190,77 @@ test('two deciders record the next version at once: the one refused records agai
   const sets = await round({ ...withBoth, note, tag }, { ...withBoth, note }, 'comment,note,poll,post,tag')
   t.is(sets.filter((d) => !d.counted).length, 2, 'two versions counted for nothing: both rounds raced')
   t.ok(sets.filter((d) => d.counted).length >= 4, 'and a loser recorded again (the space\'s first, then 2 or 3 per round)')
+})
+
+// --- spec 019: space.declareTypes() ---
+
+const site = { post: { fields: { title: 'string', file: 'link' }, links: { file: ['file'] } }, vote: { fields: { on: 'link', value: 'int' }, links: { on: ['post'] }, onePerMember: true } }
+const engine = { file: { fields: { path: 'string' } } } // an engine's own types, none of the site's
+
+test('declareTypes: a decider adds a site\'s types to one space, kept with the space\'s; additions only', async (t) => {
+  const hg = await open(t, tmpDir(t), { types: engine })
+  const s = await hg.createSpace({ name: 'site' })
+  const other = await hg.createSpace({ name: 'other' })
+  t.is(await codeOf(s.put('post', { title: 'x' })), 'INVALID_TYPE', 'not a type of the space yet')
+  await s.declareTypes(site)
+  t.is(s.typesVersion, 2)
+  t.is(own(s), 'file,post,vote', 'the engine\'s types kept, the site\'s added')
+  const f = await s.put('file', { path: '/a' })
+  const p = await s.put('post', { title: 'hello', file: f.id })
+  await s.put('vote', { on: p.id, value: 1 })
+  t.is((await s.query('post').latest(5)).items[0].title, 'hello', 'written at once')
+  t.is(own(other), 'file', 'another space unchanged')
+
+  await s.declareTypes(site)
+  t.is(s.typesVersion, 2, 'the same declaration again records nothing')
+  await s.declareTypes({ post: { fields: { title: 'string', file: 'link', body: 'text' }, links: { file: ['file'] } } })
+  t.is(s.typesVersion, 3, 'a field added at the end: recorded')
+  await s.put('post', { title: 'two', body: 'b' })
+
+  t.is(await codeOf(s.declareTypes({ post: { fields: { title: 'text' } } })), 'INCOMPATIBLE_TYPES', 'a field retyped')
+  t.is(await codeOf(s.declareTypes({ vote: { fields: { on: 'link', value: 'int' }, links: { on: ['post'] } } })), 'INCOMPATIBLE_TYPES', 'onePerMember changed')
+  t.is(await codeOf(s.declareTypes({ 'hg/x': { fields: { a: 'string' } } })), 'INVALID_TYPE', 'hypergraph\'s own names')
+  t.is(await codeOf(s.declareTypes({ c: { fields: { on: 'link' }, links: { on: ['nope'] } } })), 'INVALID_TYPE', 'a link to an unknown type')
+  t.is(s.typesVersion, 3, 'nothing recorded by the refusals')
+
+  const sub = await s.createSubspace({ name: 'pages' })
+  t.is(await codeOf(sub.declareTypes(site)), 'NOT_ALLOWED', 'a sub-space has its top space\'s types')
+})
+
+test('declareTypes: the engine\'s updated app keeps a space\'s declared types', async (t) => {
+  const { eventually } = require('../helpers.js')
+  const dir = tmpDir(t)
+  let hg = await Hypergraph.open(dir, { types: engine })
+  const s = await hg.createSpace({ name: 'site' })
+  await s.declareTypes(site)
+  await s.put('post', { title: 'kept' })
+  const key = s.key
+  await hg.close()
+
+  hg = await open(t, dir, { types: { file: { fields: { path: 'string', size: 'uint' } } } })
+  const r = hg.space(key)
+  await r.ready()
+  t.ok(await eventually(() => r.typesVersion === 3, 10000), 'the update recorded')
+  t.is(own(r), 'file,post,vote')
+  t.alike(Object.keys(r.types().file.fields), ['path', 'size'])
+  t.is((await r.query('post').latest(5)).items[0].title, 'kept')
+})
+
+test('declareTypes on a live space: a second peer accepts the new types; a member is refused', { timeout: 60000 }, async (t) => {
+  const { testBootstrap, eventually } = require('../helpers.js')
+  const bootstrap = await testBootstrap(t)
+  const a = await open(t, tmpDir(t, 'a'), { types: engine, bootstrap })
+  const b = await open(t, tmpDir(t, 'b'), { types: engine, bootstrap })
+  await a.connectToSwarm()
+  await b.connectToSwarm()
+  const sa = await a.createSpace({ name: 'site' })
+  const sb = await b.redeemInvite(await sa.createInvite())
+
+  t.is(await codeOf(sb.declareTypes(site)), 'NOT_ALLOWED', 'a member may not add types')
+  await sa.declareTypes(site)
+  const p = await sa.put('post', { title: 'from the owner' })
+  t.ok(await eventually(async () => sb.typesVersion === 2 && (await sb.query('post').latest(5)).items.some((r) => r.title === 'from the owner'), 15000), 'b reads the owner\'s post')
+  t.is(own(sb), 'file,post,vote', 'b reads with the space\'s types')
+  await sb.put('vote', { on: p.id, value: 1 })
+  t.ok(await eventually(async () => (await sa.count('vote', { on: p.id })).value === 1, 15000), 'b\'s vote, a type b\'s app never declared, counts at a')
 })

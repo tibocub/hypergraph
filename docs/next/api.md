@@ -123,15 +123,28 @@ names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are tak
 `types` you give it); every member reads, checks and indexes the space's records with the space's
 types, whatever their own app declares, so members on two app versions see the same fields.
 `space.types()` lists them (as `hg.types()` lists your app's) and `space.typesVersion` says which
-version the space has. No call sets them: when the owner's or an admin's app opens a space and declares
-more than the space has (types, fields at the end, indexes), it records the next version, and every
-member uses it from then on. Until then, writing a type or field the space doesn't have throws
-`INCOMPATIBLE_TYPES` ("this space doesn't have ... yet"). Two admins' apps adding different types: the
-second can't record its own until it declares the first's too; its writes of them say so, and
-`status()` warns `TYPES_BEHIND` (naming what the app lacks). One engine can hold spaces of different apps,
+version the space has. When the owner's or an admin's app opens a space that has at least one of its
+types and declares more than the space has (types, fields at the end, indexes), it records the next version,
+and every member uses it from then on; the space's types the app doesn't declare (another admin's newer
+app's, a site's) stay. Until then, writing a type or field the space doesn't have throws
+`INCOMPATIBLE_TYPES` ("this space doesn't have ... yet"). One engine can hold spaces of different apps,
 each with its own types. A space opened by key before its types arrived (a visitor, a browser with no
 types of its own) reads a type it doesn't know yet as empty and `complete: false`; once the space is
 complete, an unknown type throws `INVALID_TYPE`.
+
+**A space's own types** (spec 019). An engine serving many apps' spaces (a browser of sites) can't declare
+every site's types when it opens. The owner or an admin adds them to one space:
+
+```js
+await space.declareTypes({ post: { fields: { title: 'string' } }, vote: { fields: { on: 'link', value: 'int' }, links: { on: ['post'] } } })
+```
+
+Same form as `Hypergraph.open`'s `types`; links may point at the space's types. The types named replace
+the space's version of them, the others stay; the same rules as between app versions apply (anything but
+an addition: `INCOMPATIBLE_TYPES`, nothing recorded). Anyone else: `NOT_ALLOWED`; a sub-space has its top
+space's types (`NOT_ALLOWED`: declare them there). It resolves once this device reads with them; the same
+declaration again records nothing. Every member then reads, checks and indexes them, whatever their app.
+A site's handle (`hg.scope`) has it too.
 
 **App versions.** Members never all update at once, so between versions you may only add fields at the
 end of a type (a link field with its `links`), add types and add indexes. An app whose declaration

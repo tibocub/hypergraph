@@ -2,7 +2,8 @@
 // (a browser, HyperBrowser) holds a forum, a wiki and a file share, each with
 // the types it was created with; another engine reads each with that space's
 // types. A wiki app's update records new types in the wiki only, and only the
-// wiki is indexed again.
+// wiki is indexed again. Spec 019: a forum site published from an engine
+// with types of its own (SwarmFS's) gets the forum's types from its owner.
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -99,5 +100,28 @@ test('a visitor reads a public site before its types arrive: not complete yet, n
   clearInterval(watch)
   t.absent(early, 'never complete before its decisions arrived')
   t.is(await codeOf(Promise.resolve().then(() => site.query('nope'))), 'INVALID_TYPE', 'a type the space really lacks still throws')
+  await site.close()
+})
+
+test("a forum site in an engine with other types: its owner declares the forum's types in its space only", async (t) => {
+  const a = await open(t, { label: 'owner', types: fileTypes }) // HyperBrowser: SwarmFS's types, none of the forum's
+  const b = await open(t, { label: 'member', types: fileTypes })
+  await a.connectToSwarm()
+  await b.connectToSwarm()
+  const files = await a.createSpace({ name: 'Files' })
+  const space = await a.createSpace({ name: 'Forum site' })
+  const site = await a.scope(space.key, { identity: 'main' }) // the site's code, from its site.json
+  await site.declareTypes(forum.types)
+  t.ok(['post', 'comment', 'vote'].every((n) => site.types()[n]), "the forum's types")
+  t.ok(site.types()['swarmfs/file'], "next to the engine's")
+  t.absent(files.types().post, "not in the engine's other spaces")
+
+  const fb = await b.redeemInvite(await space.createInvite())
+  t.is(await codeOf(fb.declareTypes({ poll: { fields: { q: 'string' } } })), 'NOT_ALLOWED', "a member doesn't add types")
+  const p = await forum.post(site, 'Welcome', 'the official forum', 'meta')
+  t.ok(await eventually(async () => fb.typesVersion === 2 && (await forum.latest(fb)).some((x) => x.id === p.id), 15000), 'the member reads the post')
+  await forum.comment(fb, p.id, 'hi')
+  await forum.vote(fb, p.id, 1)
+  t.ok(await eventually(async () => (await forum.comments(site, p.id)).length === 1 && (await forum.score(site, p.id)) === 1, 15000), "the owner sees the member's comment and vote")
   await site.close()
 })

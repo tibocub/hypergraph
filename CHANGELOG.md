@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-07: `space.declareTypes(types)` — a space's own types (spec 019)
+
+The owner or an admin adds record types to one space (a site's, in an engine that doesn't declare them):
+merged onto the space's, additions only (`INCOMPATIBLE_TYPES` otherwise), `NOT_ALLOWED` for anyone else;
+also on `hg.scope()` handles. **Behavior change**: a decider's app opening a space now keeps the space's
+types it lacks and records its own additions on top, only in spaces sharing at least one of its types; the
+`TYPES_BEHIND` warning is gone (nobody is behind). No wire or apply change. See `specs/019-space-types/`.
+
 ### 2026-11-06: a block announced again while being indexed is indexed once
 
 The 3-hour soak lost one vote on one member. Cause: the indexer walked its list of arrived blocks while
