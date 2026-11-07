@@ -99,6 +99,8 @@ people's sites look as they like.
 - **Style**: simple, a bit minimalist, black and white, the Macintosh System 1 spirit (window frames, striped
   title bars, dithered grays, 1-bit pixel icons), with box-drawing characters where they read best (the reply
   tree, separators, quotes). Not today's over-designed web; usability of the old forums, modern care.
+  System 1 gives the **look**, not the interface: no copied menu bar (File, Edit, View...); HyperBrowser's
+  own controls are designed for what it does (Tibo, after the first mockup).
 - **Colour**: black and white plus **one accent** (links, unread, your own posts, your votes). Dark mode = the
   same design inverted.
 - **Fonts**: TTF fonts in the old IBM / Cozette spirit, never a game "pixel" font: **Cozette** for the interface,
