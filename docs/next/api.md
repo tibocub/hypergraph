@@ -235,8 +235,8 @@ forum.on('change', ({ types, records }) => {})   // records changed: records [{ 
 **Leaving** (`leaveSpace`) closes the space on this device and deletes what this device holds of it (its
 logs, its records in the index), its sub-spaces held here included. It changes nobody's membership: the
 other members keep everything, your posts included, and your other devices keep the space. This device
-doesn't open it again (though your personal space still lists it) until you join it again with an invite.
-`NOT_FOUND` if it isn't held here.
+doesn't open it again (though your personal space still lists it) until you join it again with an invite
+or its public link; its sub-spaces left with it come back with it. `NOT_FOUND` if it isn't held here.
 
 **Who can read a space**: only peers that know its key (its members, and whoever holds an invite link, which
 carries it). Members meet on a topic derived from the key, which DHT nodes see; a peer knowing only the topic

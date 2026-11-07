@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-07: a space left on this device can be joined again (HyperBrowser 004)
+
+Joining again a space this device had left (`leaveSpace`) hung forever when this device had never written in
+it (a public site's visitor): leaving cleared every block of this device's own two logs, their headers
+included, and opening the space again reads the header of its own log, which nobody else holds. Leaving
+now keeps those two headers (block 0, a few hundred bytes); every record is still deleted. Also, the
+sub-spaces left with a space stayed left once it was joined again (a site's pages never came back): they
+are now joined again with it (the instance meta `left-with` remembers which top space each was left with).
+Not breaking. Tests: `test/next/net/public-join.js`, `test/next/forum/leave.js`.
+
 ### 2026-11-07: `space.declareTypes(types)` — a space's own types (spec 019)
 
 The owner or an admin adds record types to one space (a site's, in an engine that doesn't declare them):
