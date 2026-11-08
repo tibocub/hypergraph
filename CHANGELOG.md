@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-08: `close()` right after a join returns; a killed folder opens again (HyperBrowser B4)
+
+A device just added (`joinCode`) closing within seconds of `open` hung forever: a space's decision log
+re-read its view from blocks not downloaded yet, which wait for peers, and closing waited for that read
+after the network was gone. Closing now closes the log first, which ends the read, and cancels decision
+logs still opening. A folder whose process died meanwhile never opened again: `Hypergraph.open` waited for
+the kept-open spaces to open, and one missing view blocks waited for peers before `connectToSwarm()` could
+run. **Behavior change**: `Hypergraph.open` no longer waits for a kept-open (seeded) space whose decision view
+isn't all held here; it opens in the background (`space.ready()` before its sync getters; a rebuild still
+waits). A space still opening now joins its topic (at `connectToSwarm()`, or as it opens when connected),
+so it finds a peer holding its decisions. No wire or apply change. Tests: `test/next/net/join-close.js`.
+
 ### 2026-11-07: a space left on this device can be joined again (HyperBrowser 004)
 
 Joining again a space this device had left (`leaveSpace`) hung forever when this device had never written in
