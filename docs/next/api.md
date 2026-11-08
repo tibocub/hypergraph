@@ -163,7 +163,10 @@ An engine may hold hundreds of spaces (every forum, chat or site the person join
 and online: the pinned ones, the person's own, then the most recently used, up to `maxAnnounced`. Any
 other opens by itself on its first call, closes `idleMs` after its last use, and at most `maxOpen` are
 open (the least recently used closes first). Nothing to manage: `hg.space(key)` works whether it is open
-or not, and every async call opens it.
+or not, and every async call opens it. `Hypergraph.open` opens the kept-open ones, except one whose decisions
+aren't all on this device yet (a device just added, a process killed while they downloaded): it opens
+once `connectToSwarm()` reaches a peer holding them (`await space.ready()` before its sync getters).
+`close()` returns whatever is still opening.
 
 ```js
 hg.spaces()                    // [{ key, name, parent, opened, pinned, own }]
