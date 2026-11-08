@@ -92,6 +92,21 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
      Tibo and mockups). Started: shell spike (Pear), HyperMD tests + HTML, SwarmFS's 4 prerequisites.
   2. SwarmFS inside the engine (sites can use it), then the file manager page.
   3. Friends and messages; then Android, then iOS; push wake-ups.
+- **App ideas** (Tibo, 2026-11-08; none designed yet, each gets its own grilling):
+  - **HyperSite Creator** (a hyperapp): make and edit sites and apps from templates (static site, blog, phpBB-like
+    forum, reddit-like site...); users share more templates.
+  - **Federated forum** (open question): the official forum as one app whose instances anyone creates and owns (like
+    the hypergraph forum example), vs one forum site and templates for others. An app that opens many spaces of its
+    own needs more than today's site API (a site reaches only its own space).
+  - **Paint**: a 1-bit drawing app (inspiration: hundredrabbits/Noodle) for icons, media and **pixel patterns**
+    (backgrounds, fills, shadows) site authors can pick instead of the checkerboard.
+  - **WebAssembly** in sites (allowed in the sandbox from spec 008): fast apps on mobile too, ports of existing
+    programs (e.g. a P2P multiplayer Doom).
+  - **Chat**: 1-to-1 messages, private and public groups; in a private group the owner chooses who may invite (only
+    them, everyone, or chosen people). **HyperIRC**: a room's address is the hash of its name, so everyone asking for
+    "hyperbrowser" meets in one room; a discovery list of rooms with active users. **Contact book.**
+  - **File explorer** (milestone 2, central, to discuss in depth): local drives and HyperBrowser's desktop folders
+    plus SwarmFS in one UI (inspiration: Spacedrive); a simple local explorer first, then SwarmFS's features.
 - **Learned from others**: Beaker (archived 2022; its post-mortem: a static-site maker as first product, no mobile,
   no sync between one person's devices, slow first load); Freenet (relaunched 2025–26, apps with network-held state,
   River chat) and Holochain: the same idea elsewhere, so our angle is local reads, offline, the Holepunch stack, plain
