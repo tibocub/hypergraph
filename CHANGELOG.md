@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-09: packs: `hg.exportSpaces(keys, folder)`, `hg.importSpaces(folder)` (HyperBrowser 015)
+
+An app can ship public spaces with it: the build exports what a visitor would download of them (their
+decision logs and accepted logs, signed, nothing private), a new install imports them with nobody online,
+checked as if replicated, and gets later blocks from peers. New error code `IMPORT_INVALID`. Additive; no
+wire or apply change. Spec: `specs/020-packs/spec.md`. Tests: `test/next/forum/bundled.js`.
+
 ### 2026-11-08: `close()` right after a join returns; a killed folder opens again (HyperBrowser B4)
 
 A device just added (`joinCode`) closing within seconds of `open` hung forever: a space's decision log
