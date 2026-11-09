@@ -107,6 +107,10 @@ const joined = await hg.redeemInvite(link, { timeout })  // ✓ joins (connectin
                                                 // member who records decisions let us in. ✓ story 5: waits up to
                                                 // 30 s by default (reads don't wait); refused: INVITE_EXPIRED, INVITE_USED_UP,
                                                 // INVITE_REVOKED, NOT_ALLOWED; nobody answered: INVITE_INVALID
+await hg.exportSpaces(keys, folder)             // ✓ spec 020: what a visitor downloads of these public spaces, into
+                                                //   a folder (cores by key + spaces.json); NOT_ALLOWED if not public
+await hg.importSpaces(folder, { timeout })      // ✓ spec 020: joins them offline, checked as from a peer; → keys;
+                                                //   IMPORT_INVALID (missing/changed blocks, not public): none kept
 hg.spaces()                                     // ✓ sync: [{ key, name, parent }]
 hg.on('spaces', (spaces) => {})                 // ✓ SwarmFS requests (A18): the list changed: a space created, joined,
                                                 //   opened from another device's list or a sub-space, or left here;
@@ -401,7 +405,8 @@ relies on it).
 ## Error codes
 
 `NOT_ALLOWED`, `NOT_FOUND`, `INVALID_RECORD`, `INVALID_TYPE`, `INCOMPATIBLE_TYPES`, `RULE_REJECTED`,
-`INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`.
+`INVITE_INVALID`, `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`, `DEVICE_REMOVED`, `CLOSED`,
+`IMPORT_INVALID` (spec 020).
 
 Story 5 uses: `INVALID_RECORD` (a relation's value or data, an empty type or tag), `NOT_ALLOWED` (relating from,
 tagging or editing a record you may not edit; deleting someone else's record without moderating; a role losing

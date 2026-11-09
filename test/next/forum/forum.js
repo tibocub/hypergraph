@@ -372,6 +372,18 @@ async function postsPage (forum, n, after) {
   return (await forum.query('post').latest(n, { after })).items
 }
 
+// --- shipped with the app (spec 020): a public forum's data, packed by the app's build ---
+
+// What a visitor would download of these public forums, into a folder.
+function packForums (hg, forums, folder) {
+  return hg.exportSpaces(forums.map((f) => f.key), folder)
+}
+
+// At first start: the forums packed with the app, before any peer is reached.
+async function unpackForums (hg, folder) {
+  return (await hg.importSpaces(folder)).map((key) => hg.space(key))
+}
+
 // --- tags and links between posts ---
 
 // Tags are the post's: its author (or an editor, for pages) tags it.
@@ -487,6 +499,7 @@ module.exports = {
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
   bookmark, unbookmark, bookmarks,
   hide, reveal, takeDown, flag, ban, unban, report, reports, moderated, setTheme, theme,
+  packForums, unpackForums,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
   makeEditor, writePage, readPage, pin, moveNote, column, ask, polls,

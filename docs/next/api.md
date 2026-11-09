@@ -278,6 +278,17 @@ for any role. `redeemInvite(publicLink)` resolves once a peer holding the space 
 is public; `INVITE_INVALID` "This space isn't public" if it isn't, or after the timeout if no one was
 reachable. `redemptions(publicLink)` lists the public joiners this member knows of (`at: null`).
 
+**Packs** (spec 020: an app shipping public spaces with it). `await hg.exportSpaces(keys, folder)` writes what a
+visitor would download of the public spaces `keys` (held here; a sub-space by its own key): each space's
+decision log and accepted logs, whole and signed by their writers, and `spaces.json` listing them. Nothing
+else leaves: no key pair, identity, personal space or setting. `NOT_ALLOWED` for a space that isn't public.
+`await hg.importSpaces(folder, { timeout })` joins them with nobody online, as `redeemInvite(publicLink)`
+does once a peer answers: every block is checked against its writer's signature, every log by the space's
+rules; only public spaces are kept, all or none; resolves to their keys. A core held here already as long or
+longer is left as is (an older pack never takes a space back); later blocks come from peers as usual.
+`IMPORT_INVALID` if blocks are missing or changed, or a space isn't public. The folder is only read (it may
+be inside a read-only app); its Corestore has a random root key of its own, which signs nothing.
+
 **Write limits** (open spaces): `setWriteLimit({ records, periodMs })` (who may decide; `null` lifts it)
 lets each device's log count at most `records` records within any `periodMs`. Every member judges it the
 same way, so a record beyond it counts for nobody (a member who was there and a newcomer agree); your app's
