@@ -19,3 +19,5 @@
 - A `timeout` option, or fetching dropped content: a check answers at once.
 - A way to go back for records that start counting later (spec.md, Not covered).
 - A compact cursor: its size follows the number of logs.
+- No test for a big space's log first read in an older period (returned as new, spec.md Not covered): it needs a
+  space read by activity lists and a widened horizon, not cheap; documented instead.

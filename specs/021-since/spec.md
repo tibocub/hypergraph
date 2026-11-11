@@ -31,6 +31,10 @@ shows it: a `put: { permission }` record whose author got the permission later, 
 write limit raised later, a type the app learnt with an update, older periods of a big space read later. Going back would
 mean re-reading what was passed on every check, against FR-009, for records that aren't news when they appear.
 
+Big spaces only, the other way: a log not read here yet (`log.from === null`) isn't in the cursor; once reading an
+older period reaches it, it counts from `log.from`, so old records come back as new. Kept: skipping it would lose a
+new author's recent records.
+
 A block that can't be read holds back the records after it in its log. One number per log can't say "all but that
 one"; they arrive late, never lost.
 

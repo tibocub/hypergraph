@@ -663,7 +663,10 @@ save(next)                                    // the next call goes on from ther
 **What it doesn't cover.** The cursor never goes back, so a record that starts counting after the cursor passed it
 isn't returned (`query()` shows it): a `put: { permission }` record whose author got the permission later, a
 record revealed by a moderator, one refused by a write limit that was raised later, a type this app learnt later
-(an update), and older periods of a big space read later on (history isn't news). The other way round: a record that
+(an update), and older periods of a big space read later on, in logs the cursor already names (history isn't news).
+**Big spaces only, the opposite case:** a log this device wasn't reading yet isn't in the cursor, so when reading an
+older period starts it, its records from there on are returned as new, old ones included (kept so: the other choice
+would lose a new author's recent records). The other way round: a record that
 can't be read yet (a block not here, a private space's key not arrived) holds back the records after it **in its
 log**, until it can: they arrive late, never lost.
 
