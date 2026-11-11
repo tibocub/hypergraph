@@ -114,6 +114,50 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-11 (HyperBrowser notifications, forum panel, circles, helper; grilled with Tibo)** — Order: notifications,
+  forum panel, circles and helper, encrypted private files, Android; iOS much later. Hosting comes before Android:
+  two phones are almost never online at once, so private chat needs someone holding the data. Windows support for
+  helpers is a priority.
+  - **Notifications** (HyperBrowser spec 016): an app's code can't run while closed (constitution I), so an app
+    declares what to watch, the engine watches, the shell shows it. Any app may ask, Chat and Forum included, once
+    each; blocked per app, muted per forum or conversation. A counter between the address bar and the peers counter
+    with a list, counters on desktop icons, system popups when the window isn't focused, a mark on the tray. At launch
+    one summary popup, then one per conversation. Text shown, a "hide content" switch per app. Reading on one device
+    clears the others. Chats stay connected first (32 spaces online, 8 on a phone); other watched spaces are checked
+    in turn, the same loop a phone needs. All settings on a Configuration page opened from the menu.
+  - **Forum panel**: joined list and quick switching, Leave, and forums left behind get closed (visited forums stay
+    open until their tab closes today). Default notifications: mentions, replies, pings (ping = mention; a reply also
+    writes a mention for the parent's author). Follow a board (new threads) or a person (threads and comments). A dot
+    means new since you last opened it; numbers only for mentions and replies.
+  - **Circles**: groups people create and join, invited by owner and admins, about 50 people at first, to keep
+    private data alive while its people are offline. Not all users of an app: nothing is trustless enough yet. Each
+    member gives 1 GB by default, configurable (phones on Wi-Fi only), with a share limit per person. Everyone holds
+    everything up to their cap, whole conversations, oldest dropped first; smarter spreading once measured. All of a
+    member's conversations are covered, outsiders' included: known limit, a holder sees the IP of whoever connects
+    and that a conversation grew. Needs non-owners to be able to name helpers (hypergraph).
+  - **Helper**: for people, not only us. Our headless engine with `blind-peer` inside (blind-peer alone can't hold
+    SwarmFS files), always blind: its own key, never the person's. Install command or Docker, a pairing code, managed
+    from HyperBrowser over P2P, no open ports. Linux x64 and ARM; on Windows a "help my circles" setting in
+    HyperBrowser, a service later. It joins a circle like a person and serves all its members (the family's nerd sets
+    it up, grandma does nothing), and may answer that circle's invites. Rule: anything private leaves a device
+    encrypted, even for a server meant to read it. Stored SwarmFS files aren't encrypted today, so private files stay
+    off helpers until their own spec.
+  - **Android**: periodic wake-ups only, frequency set by the person (30 min by default), cycling through spaces. No
+    Google push for now: `blind-push` exists and keeps content encrypted, but Google learns the timing and it needs one
+    central relay with the app's Google key. Later, a sealed inbox for friend requests to offline people (look at
+    holepunchto/autopass: `blind-pairing`, its mirrors list, `blindEncryption`).
+  - **Spec 021 `space.since(cursor)` merged** (2777971, HyperBrowser B7): what's new by a seq per log, not by stamps,
+    for notifications and unread dots. Lead's run: next 456/456 Node, 455/455 Bare; SwarmFS against it 106/107 Node,
+    105/107 Bare: `link.test.js` and `mirror.test.js` pass alone on Node; Bare `link.test.js` "A.txt on a
+    case-insensitive disk: a copy name too" fails on master too (2 runs of 3): a SwarmFS issue, not 021's. Before
+    that, HyperBrowser's chat scroll, caret and page-load subscription leak merged there (1292319).
+  - **HyperBrowser spec 016 notifications merged** (962efa8). Lead's run: Bare 73/73, Node 71/72 (`hosting.test.js`
+    crashed under load with "not a site", 3/3 alone on the branch and on main), sandbox 5/5, framecheck pass. Found
+    in review and fixed: checking for news opened every watched space on any settings change (`since()` opens a
+    closed space); only open or held places are checked now. A turn reached a place in 9 to 22 s on the public DHT.
+    Left: Windows popups and the tray mark checked by hand; Chat and Forum republished (`apps:publish`) before their
+    watches reach anyone. Next: the forum panel.
+
 - **2026-11-06 (HyperBrowser milestone 1, grilled with Tibo)** — two official sites (static home with user docs,
   dynamic forum), Windows + Linux tested, macOS "not tested"; Pear kept (Electron only for a confirmed blocker);
   engine a Bare `start(ipc)` worker with our own framed protocol, reused on mobile (react-native-bare-kit); a site
