@@ -245,6 +245,10 @@ useful — show it, and read again when told (a live query, or the read's event:
 on your only device, is always complete. A member nobody has heard from doesn't make answers incomplete: what nobody here knows
 of can't be waited for. Records deleted by their authors leave nothing to wait for either.
 
+"What's new since I last looked" is a question about this device, not about time: a log only grows, so a seq per
+log says exactly what was seen, with no clock to trust ([`space.since()`](api.md#whats-new-since-i-last-looked)). The
+cursor only passes what is indexed here, so a record received later, or readable later, is still ahead of it.
+
 ## Holding part of a space
 
 Each device keeps its spaces within its **storage budget**: one for the whole app (5 GB by default, less on

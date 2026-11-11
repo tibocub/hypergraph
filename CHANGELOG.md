@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-11: `space.since(cursor, { types, limit })`: what's new since I last looked (HyperBrowser B7)
+
+The records created past a cursor of a seq per log, in `query()`'s shape: late arrivals found, future stamps
+harmless, safe across restarts, no log opened. On a site's handle too. A read-only addition; no wire or apply change.
+Spec: `specs/021-since/`. Docs: `docs/next/api.md`, with what it doesn't cover.
+
 ### 2026-11-09: packs: `hg.exportSpaces(keys, folder)`, `hg.importSpaces(folder)` (HyperBrowser 015)
 
 An app can ship public spaces with it: the build exports what a visitor would download of them (their

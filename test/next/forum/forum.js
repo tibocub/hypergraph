@@ -384,6 +384,23 @@ async function unpackForums (hg, folder) {
   return (await hg.importSpaces(folder)).map((key) => hg.space(key))
 }
 
+// --- what's new (spec 021): where this person stands, kept in their settings ---
+
+const standing = async (hg, forum) => (await hg.settings())['last-visit:' + forum.key] ?? null
+const news = (forum, cursor) => forum.since(cursor, { types: ['post', 'comment'] })
+
+// The forum's unread dot: how many posts and comments since the last visit.
+async function unread (hg, forum) {
+  return (await news(forum, await standing(hg, forum))).records.length
+}
+
+// Opening the forum: what's new since the last visit, now seen.
+async function visit (hg, forum) {
+  const { records, cursor } = await news(forum, await standing(hg, forum))
+  await hg.setSetting('last-visit:' + forum.key, cursor)
+  return { posts: records.filter((r) => r.type === 'post'), comments: records.filter((r) => r.type === 'comment') }
+}
+
 // --- tags and links between posts ---
 
 // Tags are the post's: its author (or an editor, for pages) tags it.
@@ -499,7 +516,7 @@ module.exports = {
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
   bookmark, unbookmark, bookmarks,
   hide, reveal, takeDown, flag, ban, unban, report, reports, moderated, setTheme, theme,
-  packForums, unpackForums,
+  packForums, unpackForums, unread, visit,
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
   makeEditor, writePage, readPage, pin, moveNote, column, ask, polls,

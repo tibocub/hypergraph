@@ -635,6 +635,38 @@ async reads, read again.
 Not covered: `hg.storage()` and `status().stored` / `share` (estimates: read them when you need them),
 `hg.types()` (fixed at open).
 
+### What's new since I last looked
+
+Events fire only while you listen. To know what arrived while the app was closed (a notification, an unread dot):
+
+```js
+let { cursor } = await forum.since(null)      // from now on: records empty, cursor is where this device stands
+save(cursor)                                  // plain JSON, good after a restart
+
+const { records, cursor: next } = await forum.since(load(), { types: ['post', 'comment'], limit: 500 })
+save(next)                                    // the next call goes on from there
+```
+
+- `records` are the records **created** past the cursor, in the shape `query()` gives, in no particular order. An
+  edit isn't a new record (a record is returned at its current version); hypergraph's own types only if named in `types`.
+- It goes by what this device **received and indexed**, never by clocks: a post written offline and received days later
+  is returned; a stamp far in the future silences nothing (`query().since()` goes by stamps and can't do either).
+- The cursor is a seq per log: `{ [log]: nextSeq }`. A log it doesn't name counts from its start (a new author).
+- `limit`: when reached, the cursor stops there, nothing is skipped: call again. No limit by default.
+- `types` filters what is returned; the cursor still goes on. Callers with different `types` keep separate cursors.
+- Deleted, hidden, banned-out and rule-rejected records aren't returned, and the cursor passes them.
+- A record whose content was dropped here (budgets) is returned without its fields, with `dropped: true`; `get()`
+  fetches it.
+- It answers at once, opens a closed space by itself, and opens no log: the cost follows what is new. The cursor's
+  size follows the number of logs (about 60 bytes each as JSON).
+
+**What it doesn't cover.** The cursor never goes back, so a record that starts counting after the cursor passed it
+isn't returned (`query()` shows it): a `put: { permission }` record whose author got the permission later, a
+record revealed by a moderator, one refused by a write limit that was raised later, a type this app learnt later
+(an update), and older periods of a big space read later on (history isn't news). The other way round: a record that
+can't be read yet (a block not here, a private space's key not arrived) holds back the records after it **in its
+log**, until it can: they arrive late, never lost.
+
 `change` lists every record whose answer changed, on this device and from others: `records: [{ id, type,
 deleted }]` for a put, an **edit**, a delete, a hide, reveal or flag, a take-down, records dropped by a ban
 `from` them or a write limit, and content fetched back. `deleted` is `null`, `{ by: 'author', stamp, device }`
