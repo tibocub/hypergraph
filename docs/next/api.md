@@ -253,7 +253,7 @@ when it has no power over others (no `moderate`, `roles` or `decide`): friends i
 theirs, and nobody can mint a moderator or an admin. Leave `invite` out of every role but admin's for
 admins-only invites. `redeemInvite` waits up to 30 s (connecting alone can take a few
 seconds on a real network; `{ timeout }` overrides it) and says why when it is refused: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`,
-`NOT_ALLOWED` (its maker may not give that role, or you are banned); `INVITE_INVALID` if nobody able to
+`NOT_ALLOWED` (its maker may not give that role, or you are banned), `CIRCLE_FULL` (a circle has 50); `INVITE_INVALID` if nobody able to
 let you in answered in time (try again later). The maker or an admin revokes a link. Joining never
 lowers a role someone already has.
 
@@ -589,6 +589,19 @@ reading work exactly as without, and nothing waits for a helper. Owner only for 
 otherwise); a sub-space uses its top space's helpers. At most 8; each core goes to 2 of them. A helper is
 a cache, not an archive: a full one drops whole old cores and never fetches them again
 (`specs/research/availability.md`). Joining still needs a member online (invites are answered by members).
+
+## Circles: people keeping each other's spaces online
+
+```js
+const family = await hg.createCircle({ name: 'Family' })   // a private space, marked a circle for good
+family.circle                                              // true (false for any other space)
+const link = await family.createInvite()                   // owner and admins only: others get NOT_ALLOWED
+```
+
+A **circle** is a group of invited people (50 at most: a 51st redemption is refused `CIRCLE_FULL`) whose
+devices keep each other's spaces online. It is a private space (encrypted on disk, spec 022) with the
+usual members, roles, `removeMember` and `leaveSpace`; only its owner and admins invite (a custom role
+given `invite` lets nobody in). Spec: `specs/023-circles/`.
 
 ## Roles, listed
 

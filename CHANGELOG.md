@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-13: circles: `hg.createCircle({ name })` (spec 023, in progress)
+
+A circle is a private space marked a circle at creation (`space.circle`): 50 members at most (a 51st
+redemption is refused with the new code `CIRCLE_FULL`), invited by its owner and admins only. **Apply
+change**: `space/init` gains a trailing `circle` flag; a peer without this change ignores it (and the limits).
+Spec: `specs/023-circles/`. Docs: `docs/next/api.md`.
+
 ### 2026-11-13: private spaces encrypted on disk; `space.rotateKey()` (spec 022)
 
 A private top space created from now on is encrypted on disk with its own key, as the personal space is:
