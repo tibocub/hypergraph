@@ -621,6 +621,14 @@ holds it, as for its members. In `status()`, a circle adds `members`, `holders` 
 holding, this device included) and `keptBy` (other members holding all this device hands, for "kept by
 N of M").
 
+**Leaving and removal.** `hg.leaveSpace(circle.key)` on one device is the person leaving the circle: it
+writes a `hg/holder` record saying so (only a person's own records count), waits up to 10 s for a member
+online to get it, then leaves as for any space; their other devices see it and leave too. Removing a
+member (`removeMember`) works through the decisions as usual. Either way every holder deletes that
+person's data at once, and the person's devices delete what they held for that circle, unless another
+circle they share still covers it. Joining again with a new invite clears it. Known limit: if no member
+is online when someone leaves, holders keep their data until the record reaches them.
+
 Not covered: helper machines joining a circle (the helper spec, next), smarter spreading than
 "everyone holds everything up to their share", SwarmFS files. The 200 MB per member is kept by the
 member's own device (a device ignoring it is out of scope while circles are invited people).

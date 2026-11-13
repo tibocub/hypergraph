@@ -8,7 +8,7 @@ const test = require('brittle')
 const b4a = require('b4a')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
-const { account } = require('../forum/_setup.js')
+const { account, device } = require('../forum/_setup.js')
 const { eventually, codeOf } = require('../helpers.js')
 
 const titles = async (f) => (await forum.latest(f)).map((p) => p.title).sort().join()
@@ -171,4 +171,49 @@ test('removal and leaving delete at once, unless another shared circle covers it
   await b.leaveSpace(second.key)
   t.ok(await eventually(async () => !(await holdsAll(b, aa)), 20000), 'left both: a\'s data gone from b')
   t.ok(await eventually(async () => second.status().keptBy === 0, 20000), 'kept by nobody')
+})
+
+test('a holder who is also in a held space never loses its own copy: past its share, or leaving the circle', { timeout: 150000 }, async (t) => {
+  const { a, b, circle } = await pair(t)
+  const shared = await forum.createForum(a, 'Shared', { private: true })
+  const sb = await forum.join(b, await forum.invite(shared)) // b is in it too
+  await fill(shared, 4, 'z')
+  t.ok(await eventually(async () => (await forum.latest(sb)).length === 4, 30000), 'b has it as a member')
+  const other = await forum.createForum(a, 'Other', { private: true })
+  await fill(other, 2, 'w')
+  t.ok(await eventually(() => holdsAll(b, other), 30000), 'b holds a\'s other one')
+  t.ok(b.spaces().some((s) => s.key === shared.key) && !b.spaces().some((s) => s.key === other.key), 'only its own space is among b\'s')
+  await b.setHolding({ on: true, bytes: 1000 }) // far past its share
+  t.ok(await eventually(async () => !(await holdsAll(b, other)), 20000), 'what it held goes')
+  await b.leaveSpace(circle.key)
+  await a.close()
+  t.is((await forum.latest(sb)).length, 4, 'b still reads its own space, a offline')
+})
+
+test('leaving: from one device the person leaves; only their own records count; rejoining holds again', { timeout: 180000 }, async (t) => {
+  const { a, b, circle } = await pair(t)
+  const { code } = await forum.addDevice(b)
+  const b2 = await device(t, 'b2', code)
+  t.ok(await eventually(() => b2.spaces().some((s) => s.key === circle.key), 20000), 'b2 has the circle')
+  await b2.setHolding({ on: true })
+  const talk = await forum.createForum(a, 'Talk', { private: true })
+  await forum.post(talk, 'hi', '')
+  t.ok(await eventually(async () => (await holdsAll(b, talk)) && (await holdsAll(b2, talk)), 30000), 'both of b\'s devices hold a\'s')
+
+  // c writes `left` in its own name: only c counts as gone
+  const c = await account(t, 'c')
+  const cc = await forum.join(c, await circle.createInvite())
+  t.ok(await eventually(() => circle.status().members === 3, 20000))
+  await cc._put('hg/holder', { client: Buffer.alloc(32), on: false, left: true })
+  t.ok(await eventually(() => circle.status().members === 2, 20000), 'c counts as gone')
+  t.ok(await holdsAll(b, talk), 'b still holds a\'s')
+
+  await b.leaveSpace(circle.key)
+  t.ok(await eventually(async () => !(await holdsAll(b, talk)), 20000), 'gone from b')
+  t.ok(await eventually(async () => !(await holdsAll(b2, talk)) && !b2.spaces().some((s) => s.key === circle.key), 30000), 'b2 left too, and dropped it')
+  t.ok(await eventually(() => circle.status().members === 1, 20000), 'a sees b gone')
+
+  await forum.join(b, await circle.createInvite()) // back, after its `left`
+  t.ok(await eventually(() => circle.status().members === 2, 20000), 'a sees b back')
+  t.ok(await eventually(() => holdsAll(b, talk), 30000), 'b holds a\'s again')
 })

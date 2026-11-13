@@ -16,7 +16,9 @@ change**: `space/init` gains a trailing `circle` flag; a peer without this chang
 spaces (encrypted ones unreadable to it) and serves them to anyone in them while their members are offline,
 through a blind peer inside the instance (on its own store and swarm; records in `<folder>/holding`).
 `space.status()` of a circle adds `members`, `holders`, `keptBy`. New built-in record type `hg/holder`.
-Loading the instance now loads `blind-peer`, which turns on Hypercore's small wants process-wide.
+Loading the instance now loads `blind-peer`, which turns on Hypercore's small wants process-wide. Leaving a circle (`leaveSpace`,
+from any device) is the person leaving it: holders delete their data unless another shared circle covers it;
+removal likewise.
 Spec: `specs/023-circles/`. Docs: `docs/next/api.md`.
 
 ### 2026-11-13: private spaces encrypted on disk; `space.rotateKey()` (spec 022)
