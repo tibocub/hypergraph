@@ -510,8 +510,8 @@ function keepOnline (hg, bytes) {
 }
 
 // "Kept by N of M members", for the circle's page.
-async function keptBy (circle) {
-  const { members, keptBy } = await circle.status()
+function keptBy (circle) {
+  const { members, keptBy } = circle.status()
   return { kept: keptBy, of: members }
 }
 

@@ -603,6 +603,28 @@ devices keep each other's spaces online. It is a private space (encrypted on dis
 usual members, roles, `removeMember` and `leaveSpace`; only its owner and admins invite (a custom role
 given `invite` lets nobody in). Spec: `specs/023-circles/`.
 
+```js
+await hg.setHolding({ on: true })            // this device keeps its circles' spaces: off until set
+await hg.setHolding({ on: true, bytes: 5e8 }) // its share for all its circles together (1 GB at first)
+hg.holding()                                 // { on, bytes, used }: used is what it holds for them
+family.status()                              // ... members: 3, holders: 2, keptBy: 1 (and 'status' events)
+```
+
+**Holding** is per device: each device of a person where it's on keeps, for every member of its circles,
+every space in that member's list (joined or created, sub-spaces too, closed ones too), private ones
+first, the newest activity first, up to 200 MB per member; past its own share the space handed the
+longest ago goes first (public before private). It holds them encrypted when they are private: it never
+has their keys, can't read them, and they are not among its own spaces (`spaces()`), its budget or
+`storage()`. Anyone in a held space finds it there, member of the circle or not, so a conversation
+stays readable while all its members are offline; anyone who knows that space's key sees that some IP
+holds it, as for its members. In `status()`, a circle adds `members`, `holders` (members with a device
+holding, this device included) and `keptBy` (other members holding all this device hands, for "kept by
+N of M").
+
+Not covered: helper machines joining a circle (the helper spec, next), smarter spreading than
+"everyone holds everything up to their share", SwarmFS files. The 200 MB per member is kept by the
+member's own device (a device ignoring it is out of scope while circles are invited people).
+
 ## Roles, listed
 
 ```js

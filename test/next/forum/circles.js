@@ -21,8 +21,8 @@ test('a private board is kept by a friend\'s device while its members are offlin
   await cat.close()
 
   await forum.post(board, 'Next book', 'Dune, chapter 3')
-  t.ok(await eventually(async () => (await forum.keptBy(friends)).kept === 1, 30000), 'kept by 1 of 2')
-  t.alike(await forum.keptBy(friends), { kept: 1, of: 2 })
+  t.ok(await eventually(async () => forum.keptBy(friends).kept === 1, 30000), 'kept by 1 of 2')
+  t.alike(forum.keptBy(friends), { kept: 1, of: 2 })
   await ann.close()
 
   const cat2 = await account(t, 'cat again', { dir: cat.dir })

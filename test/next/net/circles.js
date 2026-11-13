@@ -5,6 +5,7 @@
 // another shared circle covers it.
 
 const test = require('brittle')
+const b4a = require('b4a')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
 const { account } = require('../forum/_setup.js')
@@ -12,17 +13,19 @@ const { eventually, codeOf } = require('../helpers.js')
 
 const titles = async (f) => (await forum.latest(f)).map((p) => p.title).sort().join()
 
-// Does `holder` hold every core of `space` as long as `owner`'s device has it?
-async function holdsAll (holder, space) {
-  for (const key of (await testing.coreKeys(space)).values()) {
+// Does `holder` hold every core of `space`, as much as the member's device has of it?
+// `keys`: the space's cores, taken while it was open.
+async function holdsAll (holder, space, keys = null) {
+  for (const key of keys || (await testing.coreKeys(space)).values()) {
     const mine = space.hg.store.get({ key })
     await mine.ready()
-    const length = mine.length
+    const length = mine.contiguousLength // what the member has to hand
     await mine.close()
     if (!length) continue
     const copy = holder.store.get({ key })
     await copy.ready()
     const ok = copy.length >= length && await copy.has(0, length)
+
     await copy.close()
     if (!ok) return false
   }
@@ -30,6 +33,11 @@ async function holdsAll (holder, space) {
 }
 
 // a and b in a circle, b holding; `opts` for setHolding.
+// `n` posts of 50 KB (a record is 64 KB at most)
+async function fill (f, n, ch) {
+  for (let i = 0; i < n; i++) await forum.post(f, ch + i, ch.repeat(50000))
+}
+
 async function pair (t, opts = {}) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
@@ -64,7 +72,7 @@ test('holding: off until set, 1 GB by default, used counted', { timeout: 60000 }
   t.alike(a.holding(), { on: true, bytes: 1e9, used: 0 })
   await a.setHolding({ on: true, bytes: 5e8 })
   t.is(a.holding().bytes, 5e8)
-  await t.exception(a.setHolding({ on: true, bytes: -1 }), /bytes/)
+  await t.exception.all(a.setHolding({ on: true, bytes: -1 }), /bytes/)
   const dir = a.dir
   await a.close()
   const a2 = await account(t, 'a2', { dir })
@@ -82,7 +90,7 @@ test('an outsider in a member\'s private conversation reads its latest from a ho
   await forum.post(talk, 'late-1', 'secret-7071')
   await forum.post(talk, 'late-2', 'secret-7071')
   t.ok(await eventually(() => holdsAll(b, talk), 30000), 'b holds a\'s conversation')
-  t.ok(await eventually(async () => (await circle.status()).keptBy === 1, 30000), 'a sees it kept by 1')
+  t.ok(await eventually(async () => circle.status().keptBy === 1, 30000), 'a sees it kept by 1')
   t.absent(testing.inClear(await testing.rawBlocks(b.store, [...(await testing.coreKeys(talk)).values()]), 'secret-7071'), 'b can\'t read it')
   t.absent(b.spaces().some((s) => s.key === talk.key), 'nor is it one of b\'s spaces')
   await a.close()
@@ -94,26 +102,27 @@ test('an outsider in a member\'s private conversation reads its latest from a ho
   t.comment(`read from the holder in ${Date.now() - t0} ms`)
 })
 
-test('a closed space is handed too', { timeout: 120000 }, async (t) => {
-  const a = await account(t, 'a', { idleMs: 500 })
+test('a closed space is handed without being opened', { timeout: 120000 }, async (t) => {
+  const a = await account(t, 'a', { idleMs: 500, maxAnnounced: 1 }) // only the circle stays open
+  const circle = await a.createCircle({ name: 'C' })
   const old = await forum.createForum(a, 'Old-1')
   await forum.post(old, 'kept-while-closed', '')
-  t.ok(await eventually(() => !a.spaces().find((s) => s.key === old.key).opened, 15000), 'closed when idle')
+  const keys = [...(await testing.coreKeys(old)).values()]
+  const opened = () => a.spaces().find((s) => s.key === old.key).opened
+  t.ok(await eventually(() => !opened(), 15000), 'closed when idle')
   const b = await account(t, 'b')
-  const circle = await a.createCircle({ name: 'C' })
   await forum.join(b, await circle.createInvite())
   await b.setHolding({ on: true })
-  const closedOld = a.spaces().find((s) => s.key === old.key)
-  t.absent(closedOld.opened, 'still closed')
-  t.ok(await eventually(() => holdsAll(b, old), 30000), 'b holds it')
+  t.ok(await eventually(() => holdsAll(b, old, keys), 30000), 'b holds it')
+  t.absent(opened(), 'never opened for it')
 })
 
 test('caps: the member cap hands the newest first; past the share, the oldest activity goes first', { timeout: 150000 }, async (t) => {
   const { a, b } = await pair(t)
   const older = await forum.createForum(a, 'Older', { private: true })
-  await forum.post(older, 'o', 'x'.repeat(200000))
+  await fill(older, 4, 'x')
   const newer = await forum.createForum(a, 'Newer', { private: true })
-  await forum.post(newer, 'n', 'y'.repeat(200000))
+  await fill(newer, 4, 'y')
   t.ok(await eventually(async () => (await holdsAll(b, older)) && (await holdsAll(b, newer)), 30000), 'both held')
   await b.setHolding({ on: true, bytes: 300000 })
   t.ok(await eventually(async () => b.holding().used <= 300000, 30000), 'b fits its share again')
@@ -124,9 +133,9 @@ test('caps: the member cap hands the newest first; past the share, the oldest ac
   testing.memberBytes(c, 300000) // the 200 MB per member, lowered
   await forum.join(c, await a.createCircle({ name: 'C2' }).then((x) => x.createInvite()))
   const c1 = await forum.createForum(c, 'C-old', { private: true })
-  await forum.post(c1, 'o', 'x'.repeat(200000))
+  await fill(c1, 4, 'x')
   const c2 = await forum.createForum(c, 'C-new', { private: true })
-  await forum.post(c2, 'n', 'y'.repeat(200000))
+  await fill(c2, 4, 'y')
   await a.setHolding({ on: true })
   t.ok(await eventually(() => holdsAll(a, c2), 30000), 'c\'s newest is handed')
   t.absent(await holdsAll(a, c1), 'not the one past c\'s cap')
@@ -142,10 +151,10 @@ test('removal and leaving delete at once, unless another shared circle covers it
   await forum.post(aa, 'from a', '')
   t.ok(await eventually(async () => (await holdsAll(b, da)) && (await holdsAll(b, aa)), 30000), 'b holds a\'s and d\'s')
   t.ok(await eventually(async () => {
-    const s = await circle.status()
+    const s = circle.status()
     return s.members === 3 && s.holders === 1 && s.keptBy === 1
   }, 30000), 'status: 3 members, 1 holding, kept by 1')
-  t.alike(await cd.status().then((s) => s.members), 3)
+  t.is(cd.status().members, 3)
 
   // d is removed: b deletes d's at once
   await forum.removeMember(circle, d.identity.publicKey)
@@ -158,8 +167,8 @@ test('removal and leaving delete at once, unless another shared circle covers it
   await b.leaveSpace(circle.key)
   await new Promise((resolve) => setTimeout(resolve, 3000))
   t.ok(await holdsAll(b, aa), 'still covered by the second circle')
-  t.ok(await eventually(async () => (await circle.status()).members === 1, 20000), 'a sees b gone from the first')
+  t.ok(await eventually(async () => circle.status().members === 1, 20000), 'a sees b gone from the first')
   await b.leaveSpace(second.key)
   t.ok(await eventually(async () => !(await holdsAll(b, aa)), 20000), 'left both: a\'s data gone from b')
-  t.ok(await eventually(async () => (await second.status()).keptBy === 0, 20000), 'kept by nobody')
+  t.ok(await eventually(async () => second.status().keptBy === 0, 20000), 'kept by nobody')
 })
