@@ -7,6 +7,8 @@
 //                     members (the audit's top risk, #1)
 //   members.join      a newcomer redeems an invite with N members in: until let in (ms)
 //   members.join-kb   what it downloaded to get there (KB). flat
+//   members.private-join  the same into a private space with N members (spec 022: its disk key
+//                     comes first, from the decider recording the redemption: one round trip more)
 //   members.public-join  spec 016: a newcomer joins a public space with N known public members
 //                     (their logs held: scripted, keys only) through its link, and posts: until
 //                     another member reads the post (ms)
@@ -37,11 +39,16 @@ try {
   const owner = await helpers.open(t, { types, label: 'owner' })
   await owner.connectToSwarm()
   const space = await owner.createSpace({ name: 'Club' })
+  const secret = await owner.createSpace({ name: 'Secret', private: true })
   let count = 0
+  let secretCount = 0
   const add = async (k) => {
     for (let i = 0; i < k; i++) await testing.decide(space, { type: 'member/add', identity: hc.randomBytes(32) })
     count += k
     if (!await eventually(async () => (await space.members()).length >= count + 1, 60000)) throw new Error('the members never showed')
+  }
+  const addSecret = async (n) => {
+    for (; secretCount < n; secretCount++) await testing.decide(secret, { type: 'member/add', identity: hc.randomBytes(32) })
   }
   for (const n of sizes([100, 400])) {
     await add(n - count)
@@ -74,6 +81,23 @@ try {
     }
     record('members.join', n, 'ms', joins)
     record('members.join-kb', n, 'KB', kbs, { flat: true })
+
+    await addSecret(n)
+    const privateJoins = []
+    for (let j = 0; j < 3; j++) {
+      const c = await helpers.open(t, { types, label: 'private-newcomer' })
+      try {
+        await c.connectToSwarm()
+        const link = await secret.createInvite({ role: 'member' })
+        const start = now()
+        await c.redeemInvite(link)
+        privateJoins.push(now() - start)
+      } finally {
+        await c.close()
+      }
+      secretCount++
+    }
+    record('members.private-join', n, 'ms', privateJoins)
   }
 
   // public spaces (spec 016)

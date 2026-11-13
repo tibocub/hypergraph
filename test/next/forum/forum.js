@@ -235,6 +235,12 @@ function roles (forum) {
   return forum.roles()
 }
 
+// A private forum's key changed now (a leak suspected): what is written next
+// is read by its members only. Owner, admins and moderators.
+function changeKey (forum) {
+  return forum.rotateKey()
+}
+
 // Takes someone out of the forum (v1's removeRole): what they wrote so far stays.
 function removeMember (forum, who) {
   return forum.removeRole(who)
@@ -510,7 +516,7 @@ function liveForums (hg, onUpdate) {
 module.exports = {
   types, rules, signUp, restore, recoveryPhrase, protectPhrase, forgetPhrase,
   addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
-  forums, createForum, keepEverything, setAppBudget, setForumBudget, storage,
+  forums, createForum, changeKey, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, inviteFriend, openLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,

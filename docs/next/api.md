@@ -314,6 +314,7 @@ await staff.removeRole(someone)          // and out: the key changes, they can't
 const club = await hg.createSpace({ name: 'Club', private: true })   // a private top space
 await club.setHistory('hidden')   // newcomers read from their join on ('visible', the default: everything)
 club.history                      // 'visible' | 'hidden'
+await club.rotateKey()            // a leak suspected: a new key now (who may decide or moderate)
 await forum.put('shortcut', { title: 'See News', to: news })          // a 'space' field: a link to a space
 hg.space(record.to)      // follow it: the Space if you're in it, NOT_FOUND otherwise (an invite lets you in)
 ```
@@ -351,6 +352,21 @@ whose key hasn't arrived yet is `'waiting'` (reads answer at once, incomplete; `
 turns `'full'`). A record someone wrote in the clear in a private space is
 listed as `unreadable: true`, never with its content. Keys are never shown: not by `inspect()`,
 `status()`, errors or the inspector.
+
+`rotateKey()` changes the key by hand (a device stolen, a leak suspected), as a removal does: who may decide
+or moderate (`NOT_ALLOWED` otherwise, and for a space that isn't private); it resolves once the new key is
+recorded, granted to every member's device. Removals already change it by themselves.
+
+**On disk (spec 022).** A private top space created from now on is also encrypted on disk, as the personal
+space is: its decision log, every member's log and its sub-spaces' logs. Whoever holds its data without being
+let in (a copied disk, a relay, a helper) sees how many blocks there are and their sizes, nothing else: not the
+members, the record types, the name or when anyone wrote. Its invite links carry a check of that key, never
+the key: the member who records a newcomer's redemption sends it the key, sealed to its device, and the
+person's other devices get it from the personal space. So joining a private space needs a member who may
+decide online, as before; a link that is refused gets its reason as before (`INVITE_USED_UP`,
+`INVITE_REVOKED`, `NOT_ALLOWED`), sent by that member since the newcomer can't read the space yet. The disk key never changes: a removed member keeps it (members and timing, never
+what is written after the removal). Not covered: a private sub-space of a space that isn't private (its
+decisions are in its parent's log, readable by its parent's members), and private spaces made before.
 
 ## Roles and moderation
 
