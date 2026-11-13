@@ -5,7 +5,6 @@
 // another shared circle covers it.
 
 const test = require('brittle')
-const b4a = require('b4a')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
 const { account, device } = require('../forum/_setup.js')

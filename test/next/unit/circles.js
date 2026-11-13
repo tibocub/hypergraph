@@ -4,7 +4,6 @@
 // cap, and what a holder deletes when people leave.
 
 const test = require('brittle')
-const b4a = require('b4a')
 const c = require('compact-encoding')
 const crypto = require('hypercore-crypto')
 const { applyNodes, initProof } = require('../../../lib/decisions/apply.js')
