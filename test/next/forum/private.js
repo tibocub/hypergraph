@@ -120,21 +120,23 @@ test('a record written in the clear is shown as unreadable, never as content; no
   for (const k of keys) t.absent((err.message + err.stack).includes(b4a.toString(k, 'hex')), 'nor in errors')
 })
 
-test('a private forum: its members read it, whoever holds its blocks without a key doesn\'t', async (t) => {
+test('a private forum: its members read it; nothing of it is in the clear on disk; the owner changes its key by hand', async (t) => {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
-  const c = await account(t, 'c')
-  const club = await forum.createForum(a, 'Club', { private: true })
+  const club = await forum.createForum(a, 'Club-3391', { private: true })
   t.ok(club.private)
   const p = await forum.post(club, 'members only', '')
   const fb = await forum.join(b, await forum.invite(club))
   t.ok(await eventually(() => shows(fb, p.id), 10000), 'a member reads it')
   const q = await forum.post(fb, 'hello', '')
   t.ok(await eventually(() => shows(club, q.id), 10000), 'and writes')
-  const rc = await testing.openSpace(c, club.key)
-  t.ok(await eventually(() => testing.holdsBlock(rc, p.id), 10000), 'a stranger holds the block')
-  t.absent(b4a.includes(await testing.rawBlock(rc, p.id), b4a.from('members only')), 'no plaintext in it')
-  t.alike(await titles(rc), [], 'and reads nothing')
+  // A copied disk, a relay, a helper: blocks without the forum's keys.
+  const held = await testing.rawBlocks(b.store, await testing.coreKeys(fb))
+  for (const text of ['members only', 'hello', 'Club-3391', 'post']) t.absent(testing.inClear(held, text), `"${text}" isn't in the clear`)
+  // A leak suspected: the owner changes the key, the members read on.
+  await forum.changeKey(club)
+  const r = await forum.post(club, 'after the change', '')
+  t.ok(await eventually(() => shows(fb, r.id), 10000), 'members read with the new key')
 })
 
 // Routed to story 9: an invite to the forum that also gives its role in listed
