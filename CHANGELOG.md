@@ -14,9 +14,8 @@ its decision log, members' logs and sub-spaces' logs. A holder without the key (
 sees block counts and sizes only. The key is never in a link: a link carries a 16-byte check of it, and the
 decider that records a newcomer's redemption sends the key sealed to its device (new space channel message);
 the person's other devices get it from the personal space (`hg/space` gains a `disk` field). `rotateKey()`
-changes the content key by hand (who may decide or moderate). **Behavior change**: a refused redemption into
-such a space now fails with `INVITE_INVALID` after the timeout (no reason: the newcomer can't read the space).
-**Wire change**: sealed spaces' links are longer, and a peer without this change can't join one. Unchanged:
+changes the content key by hand (who may decide or moderate); a refused newcomer gets the refusal's code the
+same way (never the key). **Wire change**: sealed spaces' links are longer, and a peer without this change can't join one. Unchanged:
 public and closed spaces, the personal space, private spaces made before, private sub-spaces of spaces that
 aren't private. Spec: `specs/022-sealed-places/`. Docs: `docs/next/api.md`.
 

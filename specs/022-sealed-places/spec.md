@@ -15,7 +15,7 @@ private spaces get the same. "User" here: a developer calling the API.
   lengths and sizes only.
 - **FR-002** The disk key is **never in an invite**. When a decider records a redemption, its device sends the disk key
   to the newcomer's device directly (the space's channel), sealed to that device's box key (`lib/private/crypto.js`).
-  The newcomer can then read the decision log and find its grants as today. A redemption that is refused sends nothing.
+  The newcomer can then read the decision log and find its grants as today. A refused redemption gets its refusal code, never the key.
 - **FR-003** The disk key follows the person: kept in the personal space with the joined space, so their other devices
   (spec 012) open it without asking anyone.
 - **FR-004** A device added to a person later, and a device rejoining after a restart, get it from the personal space.

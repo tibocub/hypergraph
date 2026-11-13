@@ -43,8 +43,11 @@ space and gets nothing readable). A peer sending a wrong key is ignored (the com
 Decider side: `Space.#redeem` (`space.js:2398`), after appending `invite/redeem`, reads `redeemed:<id>:<identity>`;
 if recorded, it sends the disk key sealed to the redeeming device on the channel the redemption came on (new message,
 index 11). A recorded member's redemption that comes again (lost message) gets it again, unless the device is removed
-or the member banned. A refused redemption gets nothing: the newcomer times out with today's `INVITE_INVALID`
-(it can't read the log to tell why; written in the docs).
+or the member banned. A refused redemption gets its refusal code instead, sealed the same way (the newcomer can't
+read the log to tell why): `INVITE_USED_UP`, `INVITE_REVOKED`, `NOT_ALLOWED` as today, at once. (Changed after
+SwarmFS's invite tests caught the first version, which sent nothing: a 30 s timeout instead of the reason. Agreed
+with the lead, 2026-11-13.) A refusal isn't authenticated: any peer knowing the space key could fake one, which
+only makes the join fail, as dropping the redemption would.
 
 ## R3 — the newcomer's device box key
 

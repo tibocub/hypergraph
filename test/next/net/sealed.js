@@ -33,16 +33,26 @@ test('a newcomer gets the disk key from the decider that lets it in, and reads a
   t.absent(await plainIn(b.store, await spaceCores(fb), 'Secret-8812'), 'its decision log too')
 })
 
-test('a refused redemption gets no key: the newcomer times out as when nobody answers', { timeout: 90000 }, async (t) => {
+test('a refused redemption gets its refusal code at once, never the key: used up, revoked, banned', { timeout: 90000 }, async (t) => {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
   const c = await account(t, 'c')
   const fa = await forum.createForum(a, 'Once', { private: true })
   const link = await forum.invite(fa) // one use
   await forum.join(b, link)
-  t.is(await codeOf(forum.join(c, link, { timeout: 6000 })), 'INVITE_INVALID', 'the second taker is not let in')
-  t.is(c._diskKeys.size, 0, 'and never got the key')
-  t.exception(() => c.space(fa.key), 'nor the space')
+  const refused = async (p) => {
+    const start = Date.now()
+    const code = await codeOf(p)
+    return { code, fast: Date.now() - start < 10000 }
+  }
+  t.alike(await refused(forum.join(c, link, { timeout: 20000 })), { code: 'INVITE_USED_UP', fast: true }, 'used up, told at once')
+  const revoked = await forum.invite(fa)
+  await fa.revokeInvite(revoked)
+  t.alike(await refused(forum.join(c, revoked, { timeout: 20000 })), { code: 'INVITE_REVOKED', fast: true }, 'revoked')
+  await forum.ban(fa, c.identity.publicKey, { reason: 'no' })
+  t.alike(await refused(forum.join(c, await forum.invite(fa), { timeout: 20000 })), { code: 'NOT_ALLOWED', fast: true }, 'banned')
+  t.is(c._diskKeys.size, 0, 'never got the key')
+  t.exception(() => c.space(fa.key), 'nor the space: nothing of it readable')
 })
 
 test('a second device opens it from the personal space; a restart reopens it', { timeout: 120000 }, async (t) => {

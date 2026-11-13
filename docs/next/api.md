@@ -363,9 +363,8 @@ let in (a copied disk, a relay, a helper) sees how many blocks there are and the
 members, the record types, the name or when anyone wrote. Its invite links carry a check of that key, never
 the key: the member who records a newcomer's redemption sends it the key, sealed to its device, and the
 person's other devices get it from the personal space. So joining a private space needs a member who may
-decide online, as before; a link that is refused (used up, revoked, expired, or the newcomer is banned) gets
-no answer and fails with `INVITE_INVALID` after the timeout, as when nobody answers (the newcomer can't read
-the space to tell why). The disk key never changes: a removed member keeps it (members and timing, never
+decide online, as before; a link that is refused gets its reason as before (`INVITE_USED_UP`,
+`INVITE_REVOKED`, `NOT_ALLOWED`), sent by that member since the newcomer can't read the space yet. The disk key never changes: a removed member keeps it (members and timing, never
 what is written after the removal). Not covered: a private sub-space of a space that isn't private (its
 decisions are in its parent's log, readable by its parent's members), and private spaces made before.
 
