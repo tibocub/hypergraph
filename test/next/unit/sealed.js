@@ -65,6 +65,7 @@ test('the disk key is never in an invite link', async (t) => {
   const sub = await space.createSubspace({ name: 'sub' })
   t.alike(testing.diskKey(sub), key, 'a sub-space uses its top space\'s key')
   t.absent(b4a.includes(z32.decode((await sub.createInvite({ role: 'guest' })).slice(3)), key), 'nor in a sub-space\'s')
+  t.is(await codeOf(sub.makePublic()), 'NOT_ALLOWED', 'its sub-spaces may not be made public (no key for public joiners)')
 })
 
 test('after a restart a private space opens with its key: readable, writable', async (t) => {

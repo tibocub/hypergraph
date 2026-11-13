@@ -195,8 +195,9 @@ with a key that only its members' devices receive, each sealed to one device in 
 someone loses access, the key changes: they keep reading what came before, not what comes after. Each key
 unlocks the ones before it, so newcomers read the history, unless the space hides it (newcomers then read
 from their join on). A
-member without a key holds the blocks it relays and reads nothing. Design and limits:
-`specs/011-spaces-core/research.md` A13.
+member without a key holds the blocks it relays and reads nothing. A private top space is also encrypted on
+disk (spec 022): its members, record types and timing too are hidden from whoever stores it without being let
+in. Design and limits: `specs/011-spaces-core/research.md` A13, `specs/022-sealed-places/`.
 
 ## Roles and moderation
 

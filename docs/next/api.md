@@ -352,6 +352,18 @@ turns `'full'`). A record someone wrote in the clear in a private space is
 listed as `unreadable: true`, never with its content. Keys are never shown: not by `inspect()`,
 `status()`, errors or the inspector.
 
+**On disk (spec 022).** A private top space created from now on is also encrypted on disk, as the personal
+space is: its decision log, every member's log and its sub-spaces' logs. Whoever holds its data without being
+let in (a copied disk, a relay, a helper) sees how many blocks there are and their sizes, nothing else: not the
+members, the record types, the name or when anyone wrote. Its invite links carry a check of that key, never
+the key: the member who records a newcomer's redemption sends it the key, sealed to its device, and the
+person's other devices get it from the personal space. So joining a private space needs a member who may
+decide online, as before; a link that is refused (used up, revoked, expired, or the newcomer is banned) gets
+no answer and fails with `INVITE_INVALID` after the timeout, as when nobody answers (the newcomer can't read
+the space to tell why). The disk key never changes: a removed member keeps it (members and timing, never
+what is written after the removal). Not covered: a private sub-space of a space that isn't private (its
+decisions are in its parent's log, readable by its parent's members), and private spaces made before.
+
 ## Roles and moderation
 
 ```js

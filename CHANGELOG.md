@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-13: private spaces encrypted on disk; `space.rotateKey()` (spec 022)
+
+A private top space created from now on is encrypted on disk with its own key, as the personal space is:
+its decision log, members' logs and sub-spaces' logs. A holder without the key (relay, helper, copied disk)
+sees block counts and sizes only. The key is never in a link: a link carries a 16-byte check of it, and the
+decider that records a newcomer's redemption sends the key sealed to its device (new space channel message);
+the person's other devices get it from the personal space (`hg/space` gains a `disk` field). `rotateKey()`
+changes the content key by hand (who may decide or moderate). **Behavior change**: a refused redemption into
+such a space now fails with `INVITE_INVALID` after the timeout (no reason: the newcomer can't read the space).
+**Wire change**: sealed spaces' links are longer, and a peer without this change can't join one. Unchanged:
+public and closed spaces, the personal space, private spaces made before, private sub-spaces of spaces that
+aren't private. Spec: `specs/022-sealed-places/`. Docs: `docs/next/api.md`.
+
 ### 2026-11-11: `space.since(cursor, { types, limit })`: what's new since I last looked (HyperBrowser B7)
 
 The records created past a cursor of a seq per log, in `query()`'s shape: late arrivals found, future stamps
