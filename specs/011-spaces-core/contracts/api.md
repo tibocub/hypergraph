@@ -342,6 +342,9 @@ staff.history                                    //   private spaces only (NOT_A
                                                  //   join on; what came before doesn't count as missing for it.
 // A closed (non-private) space is readable by anyone holding its key, removed members included; only a private
 //   one stops them reading what is written after their removal.
+await club.rotateKey()                           // spec 022: a new content key now; who may decide or moderate;
+                                                 //   NOT_ALLOWED otherwise or if not private. A private top space is
+                                                 //   also encrypted on disk (its links carry a check of that key).
 // Not built: a sub-space's own custom roles (defineRole is the top space's).
 ```
 
