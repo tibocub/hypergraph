@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 2026-11-13: circles: `hg.createCircle({ name })` (spec 023, in progress)
+### 2026-11-13: circles: `hg.createCircle()`, `hg.setHolding()`: people keeping each other's spaces online (spec 023)
 
 A circle is a private space marked a circle at creation (`space.circle`): 50 members at most (a 51st
 redemption is refused with the new code `CIRCLE_FULL`), invited by its owner and admins only. **Apply
