@@ -5,6 +5,7 @@
 // another shared circle covers it.
 
 const test = require('brittle')
+const crypto = require('hypercore-crypto')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
 const { account, device } = require('../forum/_setup.js')
@@ -215,4 +216,48 @@ test('leaving: from one device the person leaves; only their own records count; 
   await forum.join(b, await circle.createInvite()) // back, after its `left`
   t.ok(await eventually(() => circle.status().members === 2, 20000), 'a sees b back')
   t.ok(await eventually(() => holdsAll(b, talk), 30000), 'b holds a\'s again')
+})
+
+test('a member handing a holder\'s own cores under a made-up referrer can\'t make it delete them', { timeout: 150000 }, async (t) => {
+  const a = await account(t, 'a')
+  const b = await account(t, 'b')
+  const circle = await a.createCircle({ name: 'C' })
+  await forum.join(b, await circle.createInvite())
+  await a.setHolding({ on: true }) // a holds; b hands
+  const shared = await forum.createForum(b, 'Shared', { private: true })
+  const sa = await forum.join(a, await forum.invite(shared))
+  await forum.post(shared, 'kept-4411', '')
+  t.ok(await eventually(async () => (await forum.latest(sa)).length === 1, 20000), 'a reads the shared space')
+  t.ok(await eventually(() => !!b._circles.peering, 20000), 'b hands to a')
+
+  const personal = a._personal.decisionLog.base.local.key // a's personal space
+  const own = sa.own.key // a's log in a space it is in
+  const lengths = []
+  for (const key of [personal, own]) {
+    const core = a.store.get({ key })
+    await core.ready()
+    lengths.push(core.length)
+    await core.close()
+  }
+  t.ok(lengths.every((n) => n > 0), 'a has blocks in both')
+  const fake = crypto.randomBytes(32)
+  for (const [i, key] of [personal, own].entries()) {
+    const core = b.store.get({ key })
+    await core.ready()
+    await b._circles.peering.addCore(core, { referrer: fake, announce: false })
+    t.comment('handed ' + i)
+  }
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  t.absent(a._circles.held.has(personal.toString('hex')) || a._circles.held.has(own.toString('hex')), 'neither recorded as held')
+
+  await b.leaveSpace(circle.key)
+  await a.setHolding({ on: false }) // drops everything held
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  for (const [i, key] of [personal, own].entries()) {
+    const core = a.store.get({ key })
+    await core.ready()
+    t.ok(core.length === lengths[i] && await core.has(0, lengths[i]), 'a\'s blocks intact ' + i)
+    await core.close()
+  }
+  t.is((await forum.latest(sa)).length, 1, 'a still reads the shared space')
 })
