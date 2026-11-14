@@ -607,19 +607,26 @@ given `invite` lets nobody in). Spec: `specs/023-circles/`.
 await hg.setHolding({ on: true })            // this device keeps its circles' spaces: off until set
 await hg.setHolding({ on: true, bytes: 5e8 }) // its share for all its circles together (1 GB at first)
 hg.holding()                                 // { on, bytes, used }: used is what it holds for them
-family.status()                              // ... members: 3, holders: 2, keptBy: 1 (and 'status' events)
+family.status()                              // ... members: 3, holders: 2 (and 'status' events)
+hg.copiesOf(board.key)                       // { wanted: 5, kept: 4, online: 3 } for a space of yours ('copies' events)
 ```
 
-**Holding** is per device: each device of a person where it's on keeps, for every member of its circles,
-every space in that member's list (joined or created, sub-spaces too, closed ones too), private ones
-first, the newest activity first, up to 200 MB per member; past its own share the space handed the
-longest ago goes first (public before private). It holds them encrypted when they are private: it never
+**Holding** is per device. Each space in a member's list (joined or created, sub-spaces too, closed ones
+too) is kept in **5 copies in all** (spec 024), split across the member's circles that have someone
+holding (1 circle: 5; 2: 3 + 2; 3: 2 + 2 + 1; 5 or more: 1 each), on the holders a hash of (space, device)
+ranks first, one device per person; a circle with fewer holders keeps it on all of them. Every device
+computes the same holders with no coordination, and a holder leaving or removed is replaced by the next
+ranked one at once. A member hands its spaces private ones first, the newest activity first, up to 200 MB
+per member; past its own share a holder drops the space handed the longest ago first (public before private). It holds them encrypted when they are private: it never
 has their keys, can't read them, and they are not among its own spaces (`spaces()`), its budget or
 `storage()`. Anyone in a held space finds it there, member of the circle or not, so a conversation
 stays readable while all its members are offline; anyone who knows that space's key sees that some IP
-holds it, as for its members. In `status()`, a circle adds `members`, `holders` (members with a device
-holding, this device included) and `keptBy` (other members holding all this device hands, for "kept by
-N of M").
+holds it, as for its members. In `status()`, a circle adds `members` and `holders` (members with a device
+holding, this device included). `hg.copiesOf(key)`, for a space of this person's: `wanted` (5, or one per
+circle past 5 circles; 0 when it isn't handed: no circle with a holder, or past the 200 MB), `kept` (its
+holders with all its latest data, as they acknowledged it to this device) and `online` (of those, connected
+now), for "kept by N of 5 copies" (warn under 2 online). As of the last update; a `'copies'` event on `hg`
+tells when they may have changed.
 
 **Leaving and removal.** `hg.leaveSpace(circle.key)` on one device is the person leaving the circle: it
 writes a `hg/holder` record saying so (only a person's own records count), waits up to 10 s for a member
@@ -629,8 +636,8 @@ person's data at once, and the person's devices delete what they held for that c
 circle they share still covers it. Joining again with a new invite clears it. Known limit: if no member
 is online when someone leaves, holders keep their data until the record reaches them.
 
-Not covered: helper machines joining a circle (the helper spec, next), smarter spreading than
-"everyone holds everything up to their share", SwarmFS files. The 200 MB per member is kept by the
+Not covered: helper machines joining a circle (the helper spec, next), picking the holders online most
+(spec 024 records the numbers for it), SwarmFS files. The 200 MB per member is kept by the
 member's own device (a device ignoring it is out of scope while circles are invited people).
 
 ## Roles, listed
