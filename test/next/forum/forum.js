@@ -509,10 +509,10 @@ function keepOnline (hg, bytes) {
   return hg.setHolding({ on: true, ...(bytes ? { bytes } : {}) })
 }
 
-// "Kept by N of M members", for the circle's page.
-function keptBy (circle) {
-  const { members, keptBy } = circle.status()
-  return { kept: keptBy, of: members }
+// "Kept by N of 5 copies" for a forum of this person's (spec 024): `online`
+// of them reachable now (warn under 2).
+function copies (hg, forum) {
+  return hg.copiesOf(forum.key)
 }
 
 // Who is here, as people() lists them.
@@ -544,5 +544,5 @@ module.exports = {
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
   makeEditor, writePage, readPage, pin, moveNote, column, ask, polls,
   liveLatest, liveThread, liveMembers, liveForums,
-  createCircle, keepOnline, keptBy
+  createCircle, keepOnline, copies
 }
