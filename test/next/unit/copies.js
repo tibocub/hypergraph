@@ -33,7 +33,7 @@ test('holders: ranked by hash, stable, one device per person, at most its part p
   t.is(holders.length, 5)
   t.is(new Set(holders.map((d) => devices.find((x) => x.device === d).identity)).size, 5, 'five people')
   t.alike(holdersOf(space, [{ key: c.key, devices: [...devices].reverse() }]), holders, 'any order in, the same out')
-  t.alike(holdersOf(space, [{ key: c.key, devices: devices.slice(0, 3) }]).length, 2, 'fewer holders than the part: all of them (2 people)')
+  t.is(holdersOf(space, [{ key: c.key, devices: devices.slice(0, 3) }]).length, 2, 'fewer holders than the part: all of them (2 people)')
   t.not(holdersOf(key(), [c]).join(), holders.join(), 'another space, other holders')
 
   // a holder leaving: the others stay, the next takes over
@@ -51,6 +51,43 @@ test('holders: ranked by hash, stable, one device per person, at most its part p
   const inC1 = two.filter((d) => c1.devices.some((x) => x.device === d)).length
   t.ok(inC1 === 3 || inC1 === 2 || (inC1 === 4 && two.includes(shared.device)), 'split 3+2 (the shared person counts once)')
   t.is(new Set(two).size, 5)
+})
+
+test('a circle short of its part: the missing copies from the other circles', (t) => {
+  const inBoth = (two, c) => two.filter((d) => c.devices.some((x) => x.device === d)).length
+  for (let i = 0; i < 20; i++) { // whichever circle the hash gives the 3
+    const space = key()
+    const c1 = { key: key(), devices: people(6) }
+    const c2 = { key: key(), devices: people(1) }
+    const two = holdersOf(space, [c1, c2])
+    t.is(two.length, 5, '5 copies')
+    t.is(inBoth(two, c1), 4, '4 in the first circle')
+    t.ok(two.includes(c2.devices[0].device), 'the second circle\'s one device')
+    t.alike(holdersOf(space, [c2, c1]), two, 'the same whatever the order given')
+  }
+  // stale ones still last in the top-up
+  const space = key()
+  const c1 = { key: key(), devices: people(5) }
+  const c2 = { key: key(), devices: people(1) }
+  const all = holdersOf(space, [c1, c2])
+  const left = c1.devices.map((d) => d.device).find((d) => !all.includes(d))
+  const stale = new Set(all.filter((d) => d !== c2.devices[0].device).slice(0, 1))
+  const again = holdersOf(space, [c1, c2], stale)
+  t.is(again.length, 5)
+  t.ok(again.includes(left), 'the one left out comes in before the stale one')
+  t.absent(again.includes([...stale][0]))
+})
+
+test('the same person in two circles counts once, the top-up included', (t) => {
+  const space = key()
+  const shared = people(1)[0]
+  const c1 = { key: key(), devices: [shared, ...people(1)] }
+  const c2 = { key: key(), devices: [shared, ...people(1)] }
+  const two = holdersOf(space, [c1, c2])
+  t.is(two.length, 3, 'three people, three copies (never the shared one twice)')
+  t.is(new Set(two).size, 3)
+  const deviceTwo = { device: key(), identity: shared.identity } // the shared person's other device
+  t.is(holdersOf(space, [c1, { key: c2.key, devices: [...c2.devices, deviceTwo] }]).length, 3, 'nor two of their devices')
 })
 
 test('7 days unseen: ranked after everyone seen, until needed again', (t) => {

@@ -614,7 +614,8 @@ hg.copiesOf(board.key)                       // { wanted: 5, kept: 4, online: 3 
 **Holding** is per device. Each space in a member's list (joined or created, sub-spaces too, closed ones
 too) is kept in **5 copies in all** (spec 024), split across the member's circles that have someone
 holding (1 circle: 5; 2: 3 + 2; 3: 2 + 2 + 1; 5 or more: 1 each), on the holders a hash of (space, device)
-ranks first, one device per person; a circle with fewer holders keeps it on all of them. Every device
+ranks first, one device per person; a circle with fewer holders than its part (or whose people already
+hold it through another circle) leaves the rest to the next ranked holders of the member's other circles. Every device
 computes the same holders with no coordination, and a holder leaving or removed is replaced by the next
 ranked one at once. A member hands its spaces private ones first, the newest activity first, up to 200 MB
 per member; past its own share a holder drops the space handed the longest ago first (public before private).

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Breaking**: a circle's `status()` loses `keptBy`; use `hg.copiesOf(spaceKey)` → `{ wanted, kept, online }`
 ("kept by N of 5 copies"; a `'copies'` event on `hg` when they may have changed). Each space a member hands
 now goes to 5 holders in all (split across the member's circles, ranked by a hash, one device per person)
-instead of every holding device; the rarest first; an extra copy while none is online; a holder unseen 7 days
+instead of every holding device (a circle short of its part leaves the rest to the others); the rarest first; an extra copy while none is online; a holder unseen 7 days
 replaced. A holder no longer holding a space is told to delete it (blind-peer `delete-core`), accepted only from
 the person who handed that core; blind-peer's own delete-core (any trusted member, any core) is replaced, so a
 member can no longer make a holder clear its own spaces' cores. `hg/holder` gains a trailing `online` field

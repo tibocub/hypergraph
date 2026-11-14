@@ -15,7 +15,8 @@ well with no configuration, fine-tuned by hand if wanted). "User" here: a develo
 - **FR-001** Each space a member hands is kept in **5 copies in total**, split as evenly as possible across the
   member's circles, at least 1 per circle (1 circle: 5; 2: 3+2; 3: 2+2+1; 5 or more: 1 each). Which circle gets the
   larger part: a hash of the space and circle keys, so it changes from space to space. A circle with fewer holders than
-  its part keeps it on all of them.
+  its part (or whose people are already holders through another circle): the rest go to the member's other
+  circles, their next ranked holders (same order, one device per person), up to 5 in all (one per circle past 5).
 - **FR-002** The holders of a space in a circle: its holding devices ranked by a hash of (space key, device key)
   (rendezvous hashing), the top ones, at most one device per person. Whole spaces, never part of one (023 drops whole
   spaces).
