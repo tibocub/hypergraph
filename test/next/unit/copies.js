@@ -78,6 +78,35 @@ test('a circle short of its part: the missing copies from the other circles', (t
   t.absent(again.includes([...stale][0]))
 })
 
+test('stale devices after every fresh one of every circle: within a part, and in the top-up', (t) => {
+  for (let i = 0; i < 20; i++) {
+    // a 3 + 2 split: the 3-circle has 2 fresh and 1 stale, the other a spare fresh one
+    const space = key()
+    const keys = [key(), key()]
+    const three = split(space, keys).indexOf(3)
+    const big = { key: keys[three], devices: people(3) }
+    const small = { key: keys[1 - three], devices: people(3) }
+    const stale = new Set([big.devices[0].device])
+    const circles = three === 0 ? [big, small] : [small, big]
+    const out = holdersOf(space, circles, stale)
+    t.is(out.length, 5)
+    t.absent(out.includes(big.devices[0].device), 'the stale one left out: the other circle\'s spare instead')
+  }
+  for (let i = 0; i < 20; i++) {
+    // three circles, the third empty: the top-up takes the fresh spares, whichever circle comes first
+    const space = key()
+    const keys = [key(), key(), key()]
+    const parts = split(space, keys)
+    const x = { key: keys[0], devices: people(parts[0] + 1) } // its spare is stale
+    const y = { key: keys[1], devices: people(parts[1] + 2) } // two fresh spares
+    const z = { key: keys[2], devices: [] }
+    const stale = new Set(x.devices.map((d) => d.device))
+    const out = holdersOf(space, [x, y, z], new Set([...stale].slice(0, 1)))
+    t.is(out.length, 5)
+    t.absent(out.includes([...stale][0]), 'a stale device in one circle after a fresh spare in another')
+  }
+})
+
 test('the same person in two circles counts once, the top-up included', (t) => {
   const space = key()
   const shared = people(1)[0]
