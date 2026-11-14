@@ -498,6 +498,23 @@ function liveThread (forum, on, onUpdate, n = 100) {
   return forum.query('comment').on(on).live(({ items, complete }) => onUpdate(items, complete), { limit: n })
 }
 
+// Spec 023: a circle of friends whose devices keep each other's forums online
+// (private boards included, unreadable to them) while their members are away.
+function createCircle (hg, name) {
+  return hg.createCircle({ name })
+}
+
+// This device keeps its circles' forums: `bytes` for all of them (1 GB by default).
+function keepOnline (hg, bytes) {
+  return hg.setHolding({ on: true, ...(bytes ? { bytes } : {}) })
+}
+
+// "Kept by N of M members", for the circle's page.
+function keptBy (circle) {
+  const { members, keptBy } = circle.status()
+  return { kept: keptBy, of: members }
+}
+
 // Who is here, as people() lists them.
 function liveMembers (forum, onUpdate) {
   const show = async () => onUpdate(await forum.members())
@@ -526,5 +543,6 @@ module.exports = {
   post, comment, vote, edit, remove, latest, comments, thread, score, postsPage, byTopic,
   tag, untag, tagsOf, tagged, seeAlso, unlink, referencedBy,
   makeEditor, writePage, readPage, pin, moveNote, column, ask, polls,
-  liveLatest, liveThread, liveMembers, liveForums
+  liveLatest, liveThread, liveMembers, liveForums,
+  createCircle, keepOnline, keptBy
 }

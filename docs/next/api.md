@@ -253,7 +253,7 @@ when it has no power over others (no `moderate`, `roles` or `decide`): friends i
 theirs, and nobody can mint a moderator or an admin. Leave `invite` out of every role but admin's for
 admins-only invites. `redeemInvite` waits up to 30 s (connecting alone can take a few
 seconds on a real network; `{ timeout }` overrides it) and says why when it is refused: `INVITE_EXPIRED`, `INVITE_USED_UP`, `INVITE_REVOKED`,
-`NOT_ALLOWED` (its maker may not give that role, or you are banned); `INVITE_INVALID` if nobody able to
+`NOT_ALLOWED` (its maker may not give that role, or you are banned), `CIRCLE_FULL` (a circle has 50); `INVITE_INVALID` if nobody able to
 let you in answered in time (try again later). The maker or an admin revokes a link. Joining never
 lowers a role someone already has.
 
@@ -589,6 +589,49 @@ reading work exactly as without, and nothing waits for a helper. Owner only for 
 otherwise); a sub-space uses its top space's helpers. At most 8; each core goes to 2 of them. A helper is
 a cache, not an archive: a full one drops whole old cores and never fetches them again
 (`specs/research/availability.md`). Joining still needs a member online (invites are answered by members).
+
+## Circles: people keeping each other's spaces online
+
+```js
+const family = await hg.createCircle({ name: 'Family' })   // a private space, marked a circle for good
+family.circle                                              // true (false for any other space)
+const link = await family.createInvite()                   // owner and admins only: others get NOT_ALLOWED
+```
+
+A **circle** is a group of invited people (50 at most: a 51st redemption is refused `CIRCLE_FULL`) whose
+devices keep each other's spaces online. It is a private space (encrypted on disk, spec 022) with the
+usual members, roles, `removeMember` and `leaveSpace`; only its owner and admins invite (a custom role
+given `invite` lets nobody in). Spec: `specs/023-circles/`.
+
+```js
+await hg.setHolding({ on: true })            // this device keeps its circles' spaces: off until set
+await hg.setHolding({ on: true, bytes: 5e8 }) // its share for all its circles together (1 GB at first)
+hg.holding()                                 // { on, bytes, used }: used is what it holds for them
+family.status()                              // ... members: 3, holders: 2, keptBy: 1 (and 'status' events)
+```
+
+**Holding** is per device: each device of a person where it's on keeps, for every member of its circles,
+every space in that member's list (joined or created, sub-spaces too, closed ones too), private ones
+first, the newest activity first, up to 200 MB per member; past its own share the space handed the
+longest ago goes first (public before private). It holds them encrypted when they are private: it never
+has their keys, can't read them, and they are not among its own spaces (`spaces()`), its budget or
+`storage()`. Anyone in a held space finds it there, member of the circle or not, so a conversation
+stays readable while all its members are offline; anyone who knows that space's key sees that some IP
+holds it, as for its members. In `status()`, a circle adds `members`, `holders` (members with a device
+holding, this device included) and `keptBy` (other members holding all this device hands, for "kept by
+N of M").
+
+**Leaving and removal.** `hg.leaveSpace(circle.key)` on one device is the person leaving the circle: it
+writes a `hg/holder` record saying so (only a person's own records count), waits up to 10 s for a member
+online to get it, then leaves as for any space; their other devices see it and leave too. Removing a
+member (`removeMember`) works through the decisions as usual. Either way every holder deletes that
+person's data at once, and the person's devices delete what they held for that circle, unless another
+circle they share still covers it. Joining again with a new invite clears it. Known limit: if no member
+is online when someone leaves, holders keep their data until the record reaches them.
+
+Not covered: helper machines joining a circle (the helper spec, next), smarter spreading than
+"everyone holds everything up to their share", SwarmFS files. The 200 MB per member is kept by the
+member's own device (a device ignoring it is out of scope while circles are invited people).
 
 ## Roles, listed
 

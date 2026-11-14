@@ -48,8 +48,8 @@ test('malformed record bytes throw INVALID_RECORD', (t) => {
 test('every decision of data-model.md round trips', (t) => {
   const id = enc.idFromString(enc.idToString({ log: key(), seq: 1 }))
   const all = [
-    { type: 'space/init', stamp: 1, name: 'Forum', parent: null, private: false, policy: 'auto', version: 1, proof: crypto.randomBytes(150) },
-    { type: 'space/init', stamp: 1, name: 'Sub', parent: key(), private: true, policy: 'everything', version: 1, proof: crypto.randomBytes(150) },
+    { type: 'space/init', stamp: 1, name: 'Forum', parent: null, private: false, policy: 'auto', version: 1, proof: crypto.randomBytes(150), circle: null },
+    { type: 'space/init', stamp: 1, name: 'Sub', parent: key(), private: true, policy: 'everything', version: 1, proof: crypto.randomBytes(150), circle: true }, // spec 023: a circle (trailing)
     { type: 'member/add', stamp: 2, identity: key() },
     { type: 'member/remove', stamp: 3, identity: key(), cut: [{ log: key(), length: 4 }] },
     { type: 'role/define', stamp: 4, name: 'editor', permissions: ['post', 'edit-pages'] },
