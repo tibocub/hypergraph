@@ -1,6 +1,6 @@
 // Spec 023: circles. People in a circle keep each other's places online:
-// each device with holding on holds every member's spaces (encrypted ones
-// stay unreadable to it) and serves them to anyone in those spaces, a
+// devices with holding on hold the members' spaces (5 copies of each, spec
+// 024; encrypted ones stay unreadable to them) and serve them to anyone in those spaces, a
 // member's offline or not; leaving or removal deletes it at once, unless
 // another shared circle covers it.
 
@@ -10,27 +10,9 @@ const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
 const { account, device } = require('../forum/_setup.js')
 const { eventually, codeOf } = require('../helpers.js')
+const { holdsAll, heldBy } = require('./_circles.js')
 
 const titles = async (f) => (await forum.latest(f)).map((p) => p.title).sort().join()
-
-// Does `holder` hold every core of `space`, as much as the member's device has of it?
-// `keys`: the space's cores, taken while it was open.
-async function holdsAll (holder, space, keys = null) {
-  for (const key of keys || (await testing.coreKeys(space)).values()) {
-    const mine = space.hg.store.get({ key })
-    await mine.ready()
-    const length = mine.contiguousLength // what the member has to hand
-    await mine.close()
-    if (!length) continue
-    const copy = holder.store.get({ key })
-    await copy.ready()
-    const ok = copy.length >= length && await copy.has(0, length)
-
-    await copy.close()
-    if (!ok) return false
-  }
-  return true
-}
 
 // a and b in a circle, b holding; `opts` for setHolding.
 // `n` posts of 50 KB (a record is 64 KB at most)
@@ -80,7 +62,7 @@ test('holding: off until set, 1 GB by default, used counted', { timeout: 60000 }
 })
 
 test('an outsider in a member\'s private conversation reads its latest from a holder while the member is offline', { timeout: 180000 }, async (t) => {
-  const { a, b, circle } = await pair(t)
+  const { a, b } = await pair(t)
   const c = await account(t, 'c') // not in the circle
   const talk = await forum.createForum(a, 'Talk-7071', { private: true })
   const ct = await forum.join(c, await forum.invite(talk))
@@ -90,7 +72,7 @@ test('an outsider in a member\'s private conversation reads its latest from a ho
   await forum.post(talk, 'late-1', 'secret-7071')
   await forum.post(talk, 'late-2', 'secret-7071')
   t.ok(await eventually(() => holdsAll(b, talk), 30000), 'b holds a\'s conversation')
-  t.ok(await eventually(async () => circle.status().keptBy === 1, 30000), 'a sees it kept by 1')
+  t.ok(await eventually(async () => a.copiesOf(talk.key).kept === 1, 30000), 'a sees it kept by 1 copy')
   t.absent(testing.inClear(await testing.rawBlocks(b.store, [...(await testing.coreKeys(talk)).values()]), 'secret-7071'), 'b can\'t read it')
   t.absent(b.spaces().some((s) => s.key === talk.key), 'nor is it one of b\'s spaces')
   await a.close()
@@ -152,8 +134,8 @@ test('removal and leaving delete at once, unless another shared circle covers it
   t.ok(await eventually(async () => (await holdsAll(b, da)) && (await holdsAll(b, aa)), 30000), 'b holds a\'s and d\'s')
   t.ok(await eventually(async () => {
     const s = circle.status()
-    return s.members === 3 && s.holders === 1 && s.keptBy === 1
-  }, 30000), 'status: 3 members, 1 holding, kept by 1')
+    return s.members === 3 && s.holders === 1 && a.copiesOf(aa.key).kept === 1
+  }, 30000), 'status: 3 members, 1 holding; kept by 1 copy')
   t.is(cd.status().members, 3)
 
   // d is removed: b deletes d's at once
@@ -170,7 +152,7 @@ test('removal and leaving delete at once, unless another shared circle covers it
   t.ok(await eventually(async () => circle.status().members === 1, 20000), 'a sees b gone from the first')
   await b.leaveSpace(second.key)
   t.ok(await eventually(async () => !(await holdsAll(b, aa)), 20000), 'left both: a\'s data gone from b')
-  t.ok(await eventually(async () => second.status().keptBy === 0, 20000), 'kept by nobody')
+  t.ok(await eventually(async () => a.copiesOf(aa.key).kept === 0, 20000), 'kept by nobody')
 })
 
 test('a holder who is also in a held space never loses its own copy: past its share, or leaving the circle', { timeout: 150000 }, async (t) => {
@@ -196,9 +178,13 @@ test('leaving: from one device the person leaves; only their own records count; 
   const b2 = await device(t, 'b2', code)
   t.ok(await eventually(() => b2.spaces().some((s) => s.key === circle.key), 20000), 'b2 has the circle')
   await b2.setHolding({ on: true })
+  // a ranks the holding devices it knows: knowing both first, its first pick is the final one (else it may move the copy)
+  const devs = [b, b2].map((x) => x._identity.device.publicKey.toString('hex'))
+  t.ok(await eventually(() => devs.every((d) => a._circles.holders.has(d)), 20000), 'a knows both of b\'s devices holding')
   const talk = await forum.createForum(a, 'Talk', { private: true })
   await forum.post(talk, 'hi', '')
-  t.ok(await eventually(async () => (await holdsAll(b, talk)) && (await holdsAll(b2, talk)), 30000), 'both of b\'s devices hold a\'s')
+  t.ok(await eventually(async () => (await heldBy([b, b2], talk)).length === 1, 30000), "one of b's devices holds a's (one per person, spec 024)")
+  const bh = (await heldBy([b, b2], talk))[0]
 
   // c writes `left` in its own name: only c counts as gone
   const c = await account(t, 'c')
@@ -206,7 +192,7 @@ test('leaving: from one device the person leaves; only their own records count; 
   t.ok(await eventually(() => circle.status().members === 3, 20000))
   await cc._put('hg/holder', { client: Buffer.alloc(32), on: false, left: true })
   t.ok(await eventually(() => circle.status().members === 2, 20000), 'c counts as gone')
-  t.ok(await holdsAll(b, talk), 'b still holds a\'s')
+  t.ok(await holdsAll(bh, talk), "b still holds a's")
 
   await b.leaveSpace(circle.key)
   t.ok(await eventually(async () => !(await holdsAll(b, talk)), 20000), 'gone from b')
@@ -215,7 +201,7 @@ test('leaving: from one device the person leaves; only their own records count; 
 
   await forum.join(b, await circle.createInvite()) // back, after its `left`
   t.ok(await eventually(() => circle.status().members === 2, 20000), 'a sees b back')
-  t.ok(await eventually(() => holdsAll(b, talk), 30000), 'b holds a\'s again')
+  t.ok(await eventually(async () => (await heldBy([b, b2], talk)).length === 1, 30000), "b holds a's again")
 })
 
 test('a member handing a holder\'s own cores under a made-up referrer can\'t make it delete them', { timeout: 150000 }, async (t) => {
@@ -249,6 +235,7 @@ test('a member handing a holder\'s own cores under a made-up referrer can\'t mak
   }
   await new Promise((resolve) => setTimeout(resolve, 3000))
   t.absent(a._circles.held.has(personal.toString('hex')) || a._circles.held.has(own.toString('hex')), 'neither recorded as held')
+  for (const key of [personal, own]) t.is(await testing.askDelete(b, a, key), false, 'its delete-core for them is refused (blind-peer would have cleared them)')
 
   await b.leaveSpace(circle.key)
   await a.setHolding({ on: false }) // drops everything held

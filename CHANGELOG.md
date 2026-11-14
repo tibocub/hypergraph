@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-14: circles keep 5 copies of each space; `hg.copiesOf()` (spec 024)
+
+**Breaking**: a circle's `status()` loses `keptBy`; use `hg.copiesOf(spaceKey)` → `{ wanted, kept, online }`
+("kept by N of 5 copies"; a `'copies'` event on `hg` when they may have changed). Each space a member hands
+now goes to 5 holders in all (split across the member's circles, ranked by a hash, one device per person)
+instead of every holding device (a circle short of its part leaves the rest to the others); the rarest first; an extra copy while none is online; a holder unseen 7 days
+replaced. A holder no longer holding a space is told to delete it (blind-peer `delete-core`), accepted only from
+the person who handed that core; blind-peer's own delete-core (any trusted member, any core) is replaced, so a
+member can no longer make a holder clear its own spaces' cores. `hg/holder` gains a trailing `online` field
+(a holding device's own share of hours online). **Wire change**: a 023 peer hands everything to everyone and
+answers delete-core the old way; mixed circles work but keep more copies. New direct dependency `protomux-rpc`
+(already installed through blind-peer); `blind-peer` moves from devDependencies to dependencies (lib/ needed it
+since 023). Spec: `specs/024-copies/`. Docs: `docs/next/api.md`.
+
 ### 2026-11-13: circles: `hg.createCircle()`, `hg.setHolding()`: people keeping each other's spaces online (spec 023)
 
 A circle is a private space marked a circle at creation (`space.circle`): 50 members at most (a 51st

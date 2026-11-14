@@ -4,8 +4,12 @@
 //   circles.start       a holder holding N MB for a friend reopens: until open with its holding
 //                       running again (ms). flat: must not grow with what it holds (spec: 1 GB;
 //                       `--sizes 1000` for that, slow to fill)
+//   circles.upload      a member in a circle of N (all the others holding) writes a private
+//                       conversation of ~1 MB: what its device uploads until held, in times its
+//                       size (spec 024: about 5, was N - 1)
+//   circles.share       the same: what the holders use for it in all, in times its size (the copies)
 
-import { context, record, now, eventually, sizes } from '../harness.mjs'
+import { context, record, now, eventually, sizes, sleep } from '../harness.mjs'
 import helpers from '../../test/next/helpers.js'
 import testing from '../../lib/testing.js'
 
@@ -75,6 +79,56 @@ try {
       await b2.close()
     }
     record('circles.start', mb, 'ms', samples, { flat: true })
+    await a.close()
+  }
+
+  // what the member's device sent: its swarm connections and its blind-peering ones
+  const sent = (hg) => {
+    let n = 0
+    for (const conn of hg._network.connections) n += conn.rawBytesWritten || 0
+    const peering = hg._circles.peering
+    if (peering) for (const p of peering.blindPeers.values()) n += (p.socket && p.socket.rawBytesWritten) || 0
+    return n
+  }
+  for (const n of sizes([8])) {
+    const a = await helpers.open(t, { types, label: 'member' })
+    await a.connectToSwarm()
+    const circle = await a.createCircle({ name: 'Friends' })
+    const holders = []
+    for (let i = 1; i < n; i++) {
+      const h = await helpers.open(t, { types, label: 'friend ' + i })
+      await h.connectToSwarm()
+      await h.redeemInvite(await circle.createInvite())
+      await h.setHolding({ on: true })
+      holders.push(h)
+    }
+    await sleep(3000) // circle records settled
+    const s = await a.createSpace({ name: 'talk', private: true })
+    const before = sent(a)
+    for (let i = 0; i < 16; i++) await s.put('post', { title: 'p' + i, body: 'z'.repeat(60000) })
+    let bytes = 0
+    for (const key of await testing.coreKeys(s)) {
+      const core = a.store.get({ key })
+      await core.ready()
+      bytes += core.byteLength
+      await core.close()
+    }
+    const held = async () => {
+      let k = 0
+      for (const h of holders) if (await holdsAll(h, a, [s])) k++
+      return k
+    }
+    if (!await eventually(async () => (await held()) >= Math.min(5, n - 1), 120000)) throw new Error('never held')
+    let last = -1
+    while (last !== await held()) { // until no more holders fetch it
+      last = await held()
+      await sleep(5000)
+    }
+    record('circles.upload', n, 'x', (sent(a) - before) / bytes)
+    let used = 0
+    for (const h of holders) used += h.holding().used
+    record('circles.share', n, 'x', used / bytes)
+    for (const h of holders) await h.close()
     await a.close()
   }
 } finally {
