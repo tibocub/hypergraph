@@ -1,6 +1,6 @@
 # Spec 024: a fixed number of copies, rarest first, and online numbers
 
-**Created**: 2026-11-14 · **Asked by**: lead review of 023, grilled with Tibo (2026-11-14) · **Status**: draft
+**Created**: 2026-11-14 · **Asked by**: lead review of 023, grilled with Tibo (2026-11-14) · **Status**: built (branch 024-copies)
 
 Spec 023 hands every space of a member to every holding device of their circles: in a full circle 49 copies, the
 sender uploads each one, and every holder drops the same oldest spaces together when its share is full. 024 keeps a
