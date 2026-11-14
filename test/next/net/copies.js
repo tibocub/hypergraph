@@ -83,7 +83,8 @@ test('no copy online: one extra copy at once, dropped once 2 are back; a delete 
   const dirs = regular.map((h) => h.dir)
   for (const h of regular) await h.close()
   t.ok(await eventually(() => holdsAll(spare, s), 60000), 'the spare holds an extra copy')
-  t.alike(a.copiesOf(s.key), { wanted: 5, kept: 6, online: 1 })
+  t.ok(await eventually(() => a.copiesOf(s.key).kept === 6, 20000))
+  t.alike(a.copiesOf(s.key), { wanted: 5, kept: 6, online: 1 }, 'the 5 regular ones and the extra')
 
   const back = []
   for (const [i, dir] of dirs.slice(0, 2).entries()) back.push(await account(t, 'back' + i, { dir }))

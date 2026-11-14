@@ -232,6 +232,7 @@ test('a member handing a holder\'s own cores under a made-up referrer can\'t mak
   }
   await new Promise((resolve) => setTimeout(resolve, 3000))
   t.absent(a._circles.held.has(personal.toString('hex')) || a._circles.held.has(own.toString('hex')), 'neither recorded as held')
+  for (const key of [personal, own]) t.is(await testing.askDelete(b, a, key), false, 'its delete-core for them is refused (blind-peer would have cleared them)')
 
   await b.leaveSpace(circle.key)
   await a.setHolding({ on: false }) // drops everything held

@@ -617,7 +617,15 @@ holding (1 circle: 5; 2: 3 + 2; 3: 2 + 2 + 1; 5 or more: 1 each), on the holders
 ranks first, one device per person; a circle with fewer holders keeps it on all of them. Every device
 computes the same holders with no coordination, and a holder leaving or removed is replaced by the next
 ranked one at once. A member hands its spaces private ones first, the newest activity first, up to 200 MB
-per member; past its own share a holder drops the space handed the longest ago first (public before private). It holds them encrypted when they are private: it never
+per member; past its own share a holder drops the space handed the longest ago first (public before private).
+Each device tracks how many copies of each of its spaces are online (connected to it) and hands the
+rarest first. With **none online** while the member is, one extra copy goes at once to the next ranked
+holder online; it is deleted there once 2 regular ones are back. A holder this device hasn't seen for **7
+days** is replaced by the next ranked one for good (ranked after everyone else, a regular holder again only
+when nobody else is left). A holder that stops holding a space (replaced, pushed out by a newcomer
+ranked above it, an extra copy no longer needed) is told to delete it once its new holders have it all,
+through blind-peer's `delete-core`: a holder accepts that only from the person who handed it that core,
+and only for their part (another member who handed it too keeps it held); never for its own spaces' cores. It holds them encrypted when they are private: it never
 has their keys, can't read them, and they are not among its own spaces (`spaces()`), its budget or
 `storage()`. Anyone in a held space finds it there, member of the circle or not, so a conversation
 stays readable while all its members are offline; anyone who knows that space's key sees that some IP

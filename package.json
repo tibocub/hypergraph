@@ -85,6 +85,7 @@
     "index-encoder": "^3.5.0",
     "keet-identity-key": "^3.2.0",
     "protomux": "^3.12.1",
+    "protomux-rpc": "^1.10.1",
     "protomux-wakeup": "^2.9.0",
     "ready-resource": "^1.2.0",
     "safety-catch": "^1.0.3",
