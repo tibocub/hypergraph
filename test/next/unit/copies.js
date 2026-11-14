@@ -4,7 +4,7 @@
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
-const { COPIES, UNSEEN_MS, split, holdersOf, extraFor, rarest, markHour, onlineShare } = require('../../../lib/circles.js')
+const { COPIES, UNSEEN_MS, split, holdersOf, extraFor, rarest, markHour, onlineShare, packHours, unpackHours } = require('../../../lib/circles.js')
 
 const key = () => crypto.randomBytes(32).toString('hex')
 // `n` people, `per` devices each: [{ device, identity }]
@@ -96,4 +96,7 @@ test('online hours: the last 30 days, as a whole percent', (t) => {
   markHour(hours, now + 400 * H) // 400 hours later: those older than 30 days go
   t.ok(hours.size < 361, 'old hours dropped')
   t.is(onlineShare(hours, now + 400 * H), Math.round(100 * hours.size / 720))
+  const packed = packHours(hours, now + 400 * H)
+  t.is(packed.bits.length, 180, 'saved in 90 bytes')
+  t.alike([...unpackHours(packed)].sort(), [...hours].sort(), 'and back')
 })
