@@ -256,7 +256,7 @@ test('a member handing a holder\'s own cores under a made-up referrer can\'t mak
   for (const [i, key] of [personal, own].entries()) {
     const core = a.store.get({ key })
     await core.ready()
-    t.ok(core.length === lengths[i] && await core.has(0, lengths[i]), 'a\'s blocks intact ' + i)
+    t.ok(core.length >= lengths[i] && await core.has(0, lengths[i]), 'a\'s blocks intact ' + i) // the personal core may grow meanwhile (a lists the space it joined)
     await core.close()
   }
   t.is((await forum.latest(sa)).length, 1, 'a still reads the shared space')
