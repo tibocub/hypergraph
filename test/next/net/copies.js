@@ -147,3 +147,16 @@ test('online numbers: hours seen per holder, kept on the device; a holder report
   await b.leaveSpace(circle.key)
   t.ok(await eventually(async () => { await a._circles.update(); return !a._circles.hours.has(dev) }, 20000), 'deleted with the circle')
 })
+
+test('in no circle with a holder: nothing handed, no closed space opened for it', { timeout: 60000 }, async (t) => {
+  const a = await account(t, 'a', { idleMs: 500, maxAnnounced: 1 })
+  await a.createCircle({ name: 'Alone' }) // a circle nobody else holds in (it stays open: the one announced)
+  const old = await forum.createForum(a, 'Old')
+  await forum.post(old, 'hi', '')
+  const opened = () => a.spaces().find((s) => s.key === old.key).opened
+  t.ok(await eventually(() => !opened(), 15000), 'closed when idle')
+  await a._circles.update()
+  t.absent(opened(), 'not opened to list its cores')
+  t.is(a._circles.peering, null, 'no blind-peering client')
+  t.alike(a.copiesOf(old.key), { wanted: 0, kept: 0, online: 0 })
+})
