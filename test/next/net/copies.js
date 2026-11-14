@@ -5,6 +5,7 @@
 // seen again; hg.copiesOf() for "kept by N of 5 copies".
 
 const test = require('brittle')
+const z32 = require('z32')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
 const { account } = require('../forum/_setup.js')
@@ -113,4 +114,30 @@ test('a holder unseen 7 days is replaced, and deletes when seen again', { timeou
   t.ok(await eventually(async () => !(await holdsAll(again, s)), 60000), 'seen again: it deleted it')
   t.ok(await holdsAll(spare, s), 'the replacement keeps it')
   t.ok(await eventually(() => a.copiesOf(s.key).kept === 5, 20000))
+})
+
+test('online numbers: hours seen per holder, kept on the device; a holder reports its own share at most once a day', { timeout: 120000 }, async (t) => {
+  const { a, circle, holders: [b] } = await circleOf(t, 1)
+  const dev = b._identity.device.publicKey.toString('hex')
+  await a._circles.update()
+  t.ok(await eventually(() => (a._circles.hours.get(dev) || new Set()).size === 1, 20000), 'a saw b online this hour')
+  const own = b._circles.hours.get(dev)
+  const H = 3600 * 1000
+  for (let i = 1; i < 360; i++) own.add(Math.floor((Date.now() - i * H) / H)) // online half of the last 30 days
+  await b._circles.update()
+  const record = async () => {
+    const items = (await circle.query('hg/holder').latest(100)).items
+    return items.find((r) => r.device === z32.encode(b._identity.device.publicKey))
+  }
+  t.ok(await eventually(async () => (await record() || {}).online === 50, 20000), 'b reports 50%')
+  for (let i = 360; i < 720; i++) own.add(Math.floor((Date.now() - i * H) / H))
+  await b._circles.update()
+  await sleep(2000)
+  t.is((await record()).online, 50, 'not again the same day')
+  testing.holdingClock(b, 25 * H)
+  await b._circles.update()
+  t.ok(await eventually(async () => (await record()).online > 90, 20000), 'a day later, the new share')
+
+  await b.leaveSpace(circle.key)
+  t.ok(await eventually(async () => { await a._circles.update(); return !a._circles.hours.has(dev) }, 20000), 'deleted with the circle')
 })
