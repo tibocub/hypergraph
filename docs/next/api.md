@@ -621,7 +621,8 @@ per member; past its own share a holder drops the space handed the longest ago f
 Each device tracks how many copies of each of its spaces are online (connected to it) and hands the
 rarest first. With **none online** while the member is, one extra copy goes at once to the next ranked
 holder online; it is deleted there once 2 regular ones are back. A holder this device hasn't seen for **7
-days** is replaced by the next ranked one for good (ranked after everyone else, a regular holder again only
+days**, while this device was itself online at least 24 hours of them (a phone back from a long trip
+doesn't replace everyone at once), is replaced by the next ranked one for good (ranked after everyone else, a regular holder again only
 when nobody else is left). A holder that stops holding a space (replaced, pushed out by a newcomer
 ranked above it, an extra copy no longer needed) is told to delete it once its new holders have it all,
 through blind-peer's `delete-core`: a holder accepts that only from the person who handed it that core,

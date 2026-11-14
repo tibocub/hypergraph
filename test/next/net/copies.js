@@ -94,7 +94,7 @@ test('no copy online: one extra copy at once, dropped once 2 are back; a delete 
   t.is(a.copiesOf(s.key).kept, 5)
 })
 
-test('a holder unseen 7 days is replaced, and deletes when seen again', { timeout: 300000 }, async (t) => {
+test('a holder unseen 7 days (this device online a day of them) is replaced, and deletes when seen again', { timeout: 300000 }, async (t) => {
   const { a, holders } = await circleOf(t, 6)
   const s = await forum.createForum(a, 'S', { private: true })
   await forum.post(s, 'hi', '')
@@ -107,7 +107,13 @@ test('a holder unseen 7 days is replaced, and deletes when seen again', { timeou
   await sleep(2000)
   t.absent(await holdsAll(spare, s), 'not replaced at once')
 
-  testing.holdingClock(a, 8 * DAY)
+  testing.holdingClock(a, 10 * DAY) // a off for 10 days (its own hours none), back for minutes
+  await a._circles.update()
+  await sleep(3000)
+  t.is(a._circles.replaced.size, 0, 'back after 10 days off: nobody replaced yet')
+  t.absent(await holdsAll(spare, s))
+
+  testing.holdingClock(a, 10 * DAY, { online: 25 }) // then online a day
   await a._circles.update()
   t.ok(await eventually(() => holdsAll(spare, s), 60000), 'replaced by the next ranked')
   const again = await account(t, 'again', { dir })

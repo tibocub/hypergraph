@@ -4,7 +4,7 @@
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
-const { COPIES, UNSEEN_MS, split, holdersOf, extraFor, rarest, markHour, onlineShare, packHours, unpackHours } = require('../../../lib/circles.js')
+const { COPIES, UNSEEN_MS, split, holdersOf, extraFor, rarest, unseen, markHour, onlineShare, packHours, unpackHours } = require('../../../lib/circles.js')
 
 const key = () => crypto.randomBytes(32).toString('hex')
 // `n` people, `per` devices each: [{ device, identity }]
@@ -66,6 +66,19 @@ test('7 days unseen: ranked after everyone seen, until needed again', (t) => {
   const few = { key: c.key, devices: devices.filter((d) => holders.includes(d.device)) }
   t.ok(holdersOf(space, [few], stale).includes(holders[1]), 'a regular holder again when there is nobody else')
   t.is(UNSEEN_MS, 7 * 24 * 3600 * 1000)
+})
+
+test('unseen: 7 days, and this device online 24 hours itself since', (t) => {
+  const H = 3600 * 1000
+  const seenAt = 1000 * 720 * H
+  const now = seenAt + 10 * 24 * H // 10 days later
+  const online = (n) => new Set(Array.from({ length: n }, (_, i) => Math.floor(now / H) - i))
+  t.ok(unseen(seenAt, online(24), now), 'online a day since: replaced')
+  t.absent(unseen(seenAt, online(1), now), 'off 10 days, back 10 minutes: not replaced')
+  t.absent(unseen(seenAt, new Set(), now), 'never online since')
+  t.absent(unseen(seenAt, online(48), seenAt + 6 * 24 * H), 'under 7 days: never')
+  const before = new Set(Array.from({ length: 48 }, (_, i) => Math.floor(seenAt / H) - i))
+  t.absent(unseen(seenAt, before, now), 'hours before it was last seen don\'t count')
 })
 
 test('the extra copy: when no copy is online, on the next ranked online holder; dropped at 2 online', (t) => {
