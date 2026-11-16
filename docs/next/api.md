@@ -566,7 +566,9 @@ their own budget get it; the others share the rest in proportion to what each ho
 [concepts.md](concepts.md#holding-part-of-a-space). `heldFrom` (ms) is set while this device reads a big space
 from a point in time on (newest first, [concepts.md](concepts.md#big-spaces)); `held` is then `'part'`. Warnings: `BELOW_POLICY` (the space asks to keep
 everything and this device can't: give it more room), `OVER_BUDGET` (what this device may not drop —
-its own records, the decisions, the list of records — is already more than its share).
+its own records, the decisions, the list of records — is already more than its share), `DECISIONS_FAILED`
+(the space's decision log stopped on an error: its decisions stand still on this device until the app is
+opened again; the error never ends the app's process).
 
 ## Helpers: keeping a space available while everyone is offline
 
