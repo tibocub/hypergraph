@@ -8,7 +8,11 @@
 //                       conversation of ~1 MB: what its device uploads until held, in times its
 //                       size (spec 024: about 5, was N - 1)
 //   circles.share       the same: what the holders use for it in all, in times its size (the copies)
+//   circles.join        3 circles; N others join all three, holding on: each person's 3 joins (ms).
+//                       From 7 people this crashed the process (2026-11-16: a holder announced
+//                       message logs as decision writers); the run fails on anything uncaught
 
+import process from 'process' // Bare: bare-process (package.json imports)
 import { context, record, now, eventually, sizes, sleep } from '../harness.mjs'
 import helpers from '../../test/next/helpers.js'
 import testing from '../../lib/testing.js'
@@ -130,6 +134,41 @@ try {
     record('circles.share', n, 'x', used / bytes)
     for (const h of holders) await h.close()
     await a.close()
+  }
+
+  for (const n of sizes([8])) {
+    const uncaught = []
+    const onerr = (err) => uncaught.push(err)
+    process.on('uncaughtException', onerr)
+    process.on('unhandledRejection', onerr)
+    try {
+      const a = await helpers.open(t, { types, label: 'owner' })
+      await a.connectToSwarm()
+      await a.setHolding({ on: true })
+      const circles = []
+      for (let i = 0; i < 3; i++) circles.push(await a.createCircle({ name: 'C' + i }))
+      const people = []
+      const samples = []
+      for (let p = 0; p < n; p++) {
+        const h = await helpers.open(t, { types, label: 'person ' + p })
+        await h.connectToSwarm()
+        const start = now()
+        for (const c of circles) {
+          await h.redeemInvite(await c.createInvite())
+          await h.setHolding({ on: true })
+        }
+        samples.push(now() - start)
+        people.push(h)
+      }
+      await sleep(5000) // hand-offs and wakeups after the last join
+      if (uncaught.length) throw uncaught[0]
+      record('circles.join', n, 'ms', samples)
+      for (const h of people) await h.close()
+      await a.close()
+    } finally {
+      process.off('uncaughtException', onerr)
+      process.off('unhandledRejection', onerr)
+    }
   }
 } finally {
   await t.close()

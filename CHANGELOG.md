@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-16: fix: circles of 8+ people crashed the process while people joined
+
+From ~7 people joining 3 circles with holding on, Autobase threw `Writer._loadNextNode: 'node' of null`,
+uncaught, ending the app's process (found by HyperBrowser 018). A holder's blind peer announced every core
+handed to it (members' message logs too) on the space's Autobase wakeup topic as a decision writer; a member's
+decision log then read a log's first block while the directory cleared it. Now: a holder keeps no referrer in
+blind-peer's records (nothing announced; it still joins the space's topic itself); the directory clears only a
+header its own fetch brought, never one the decision log is reading or this device held already (a peer naming
+one of your logs from another space no longer clears its header); an Autobase error no longer ends the process:
+`space.status().warnings` gains `DECISIONS_FAILED` (with a `'status'` event), the decisions standing still until
+the app is opened again. No API or wire change. Docs: `docs/next/api.md`. Test: `test/next/net/circle-crash.js`;
+perf: `circles.join`.
+
 ### 2026-11-14: circles keep 5 copies of each space; `hg.copiesOf()` (spec 024)
 
 **Breaking**: a circle's `status()` loses `keptBy`; use `hg.copiesOf(spaceKey)` → `{ wanted, kept, online }`
