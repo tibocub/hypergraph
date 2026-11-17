@@ -609,7 +609,8 @@ given `invite` lets nobody in). Spec: `specs/023-circles/`.
 await hg.setHolding({ on: true })            // this device keeps its circles' spaces: off until set
 await hg.setHolding({ on: true, bytes: 5e8 }) // its share for all its circles together (1 GB at first)
 hg.holding()                                 // { on, bytes, used }: used is what it holds for them
-family.status()                              // ... members: 3, holders: 2 (and 'status' events)
+family.status()                              // ... members: 3, holders: 2, total: 8e8 (and 'status' events)
+await family.members()                       // [{ identity, role, ..., share: 3e9, used: 8e8 }]: null when not holding or not reported
 hg.copiesOf(board.key)                       // { wanted: 5, kept: 4, online: 3 } for a space of yours ('copies' events)
 ```
 
@@ -635,14 +636,21 @@ yet): each device keeps, for every holding device of its circles, the hours it s
 last 30 days (on the device only, dropped with the circle); each holding device writes its own share of
 hours online (a whole percent, last 30 days) in its `hg/holder` record (field `online`), at most once a
 day and only when it moved 5 points or more.
+**Storage numbers** (spec 026): each holding device also writes its `share` (its `bytes`; 0 when holding is
+off) and `used` (what it holds now, as `holding()` reports) in its `hg/holder` records: at once when its share
+changes, and when what it holds moved 10 % or more since its last record, at most once an hour.
 
 Holders can't read a private space, but they see how many spaces a member hands them, their sizes and
-when they change. It holds them encrypted when they are private: it never
+when they change. Members see each holding device's share and how much it holds (spec 026). It holds them encrypted when they are private: it never
 has their keys, can't read them, and they are not among its own spaces (`spaces()`), its budget or
 `storage()`. Anyone in a held space finds it there, member of the circle or not, so a conversation
 stays readable while all its members are offline; anyone who knows that space's key sees that some IP
 holds it, as for its members. In `status()`, a circle adds `members` and `holders` (members with a device
-holding, this device included). `hg.copiesOf(key)`, for a space of this person's: `wanted` (5, or one per
+holding, this device included) and `total`: the circle's room after its copies, every known share ÷ 5,
+approximate (a device's one share also serves its other circles; null while no share is known). A circle's
+`members()` adds, per person, `share` and `used` (bytes): added up over their holding devices' latest records,
+across all their circles (one share per device); null when none of their devices holds, or none reported
+(records from before 026). As of the last update; this device's own numbers live. `hg.copiesOf(key)`, for a space of this person's: `wanted` (5, or one per
 circle past 5 circles; 0 when it isn't handed: no circle with a holder, or past the 200 MB), `kept` (its
 holders with all its latest data, as they acknowledged it to this device) and `online` (of those, connected
 now), for "kept by N of 5 copies" (warn under 2 online). As of the last update; a `'copies'` event on `hg`

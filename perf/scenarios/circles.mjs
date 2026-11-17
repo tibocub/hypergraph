@@ -1,6 +1,8 @@
 // Circles (spec 023): people keeping each other's spaces online, real peers on a local DHT:
 //   circles.hand        a member with N private conversations (a few posts each) in a circle; a
 //                       friend turns holding on: until the friend holds all of them (ms)
+//   circles.records     the same holder's hg/holder records once it holds them all (spec 026: share and
+//                       use rewritten on a 10 % move, at most hourly). flat: not one per space
 //   circles.start       a holder holding N MB for a friend reopens: until open with its holding
 //                       running again (ms). flat: must not grow with what it holds (spec: 1 GB;
 //                       `--sizes 1000` for that, slow to fill)
@@ -56,6 +58,9 @@ try {
     await b.setHolding({ on: true })
     if (!await eventually(() => holdsAll(b, a, spaces), 120000)) throw new Error('never held')
     record('circles.hand', n, 'ms', now() - start)
+    // spec 026: the holder's own hg/holder records (share and use), flat: not one per space held
+    const records = (await circle.query('hg/holder').latest(1000)).items.filter((r) => r.device === b.device.publicKey).length
+    record('circles.records', n, 'records', records, { flat: true })
     await a.close()
     await b.close()
   }
