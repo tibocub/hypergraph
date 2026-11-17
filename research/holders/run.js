@@ -18,6 +18,7 @@ const seeds = Number(opt('seeds', 5))
 const mixes = opt('mix', 'friends,global,phones').split(',')
 const strategies = opt('strategies', Object.keys(STRATEGIES).join(',')).split(',')
 const pct = (x) => (100 * x).toFixed(1)
+const extra = { lazy: { extra: 'lazy' }, none: { extra: false } }[opt('extra', '')] || {} // --extra lazy|none: the extra copy rule for every strategy
 
 function average (make, strategy, simOpts) {
   const runs = []
@@ -51,7 +52,7 @@ if (flag('analytic')) {
       const make = (seed) => circle({ size, mix: mixes[0], helper, seed })
       console.log(`\n### RQ2 repair, ${mixes[0]}, ${size} people${helper ? ' + helper' : ''}\n\n| strategy | rule | avail % | worst 10% | uploads/wk | copies |\n|---|---|---|---|---|---|`)
       for (const s of strategies) {
-        for (const [rule, o] of [['024 (7 d, extra)', {}], ['no extra copy', { extra: false }], ['1 day', { staleH: 24 }], ['never replace', { staleH: Infinity }]]) {
+        for (const [rule, o] of [['024 (7 d, extra)', {}], ['no extra copy', { extra: false }], ['1 day', { staleH: 24 }], ['never replace', { staleH: Infinity }], ['back = counts again', { reintegrate: true }], ['back again + no extra', { reintegrate: true, extra: false }], ['lazy extras (kept)', { extra: 'lazy' }], ['lazy extras, never replace', { extra: 'lazy', staleH: Infinity }]]) {
           const r = average(make, s, o)
           console.log(`| ${s} | ${rule} | ${pct(r.avail)} | ${pct(r.worst)} | ${r.uploads.toFixed(2)} | ${r.copies.toFixed(2)} |`)
         }
@@ -75,7 +76,7 @@ if (flag('analytic')) {
 } else {
   for (const mix of mixes) {
     for (const size of sizes) {
-      for (const helper of [false, true]) table(`${mix}, ${size} people${helper ? ' + helper' : ''} (${seeds} seeds, ${8 - 4} weeks measured)`, (seed) => circle({ size, mix, helper, seed }))
+      for (const helper of [false, true]) table(`${mix}, ${size} people${helper ? ' + helper' : ''} (${seeds} seeds, ${8 - 4} weeks measured)`, (seed) => circle({ size, mix, helper, seed }), extra)
     }
   }
 }

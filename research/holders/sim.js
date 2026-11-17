@@ -159,14 +159,17 @@ class View {
   on (d, t) { return this.devices[d].online[t] === 1 }
   count (d, from, to) { return this.prefix[d][to] - this.prefix[d][Math.max(0, from)] }
 
-  // The self-reported share (hg/holder.online): its last 30 days as of the day's start.
+  // The self-reported share (hg/holder.online): its last 30 days as of the
+  // day's start, written only by a device online the day before (a device
+  // gone keeps its last report).
   reported (d, t) {
     const day = Math.floor(t / 24)
     const k = d * 1e6 + day
     if (!this.reports.has(k)) {
       const to = day * 24
       const from = Math.max(this.devices[d].joinAt, to - WINDOW)
-      this.reports.set(k, to > from ? this.count(d, from, to) / (to - from) : 0)
+      const wrote = to > from && (day === 0 || this.count(d, to - 24, to) > 0)
+      this.reports.set(k, wrote ? this.count(d, from, to) / (to - from) : day > 0 && to > from ? this.reported(d, to - 24) : 0)
     }
     return this.reports.get(k)
   }
@@ -230,6 +233,20 @@ function sticky (order, ctx, steps) {
   return [...top, ...order.filter((d) => !top.includes(d))]
 }
 
+// S1-S5, any part off: S1 cap, S3 wilson, S4 first, S5 sticky (S2 always)
+function parts ({ cap = true, wilson = true, first = true, sticky: stick = true }) {
+  return (cands, ctx) => {
+    const st = new Map(cands.map((d) => {
+      const p = cap ? s1(d, ctx) : ctx.view.reported(d, ctx.t)
+      return [d, step(wilson ? s3(p, d, ctx) : p)]
+    }))
+    const w = (d) => Math.max(0.01, st.get(d) / 10)
+    const top = first ? [...cands].sort((a, b) => st.get(b) - st.get(a) || ctx.u(a) - ctx.u(b)).slice(0, 1) : [] // S4
+    const order = [...top, ...rendezvous(cands.filter((d) => !top.includes(d)), ctx, w)]
+    return stick ? sticky(order, ctx, (d) => st.get(d)) : order
+  }
+}
+
 const STRATEGIES = {
   // 024: plain rendezvous hash
   hash: (cands, ctx) => [...cands].sort(byU(ctx)),
@@ -238,13 +255,14 @@ const STRATEGIES = {
   // literature's greedy: the most available first (Total Recall-like / selfish placement)
   top: (cands, ctx) => [...cands].sort((a, b) => ctx.view.reported(b, ctx.t) - ctx.view.reported(a, ctx.t) || ctx.u(a) - ctx.u(b)),
   // S1-S5 together
-  s15 (cands, ctx) {
-    const st = new Map(cands.map((d) => [d, step(s3(s1(d, ctx), d, ctx))]))
-    const w = (d) => Math.max(0.01, st.get(d) / 10)
-    const first = [...cands].sort((a, b) => st.get(b) - st.get(a) || ctx.u(a) - ctx.u(b))[0] // S4
-    const order = first === undefined ? [] : [first, ...rendezvous(cands.filter((d) => d !== first), ctx, w)]
-    return sticky(order, ctx, (d) => st.get(d))
-  },
+  s15: parts({}),
+  // ... each without one part (the ablation)
+  's15-noS1cap': parts({ cap: false }),
+  's15-noS3': parts({ wilson: false }),
+  's15-noS4': parts({ first: false }),
+  's15-noS5': parts({ sticky: false }),
+  // research.md's recommendation: S2-S5, no S1 cap (run it with extra: 'lazy')
+  rec: parts({ cap: false }),
   // S2 with S5's stickiness only (no cap, no Wilson, no S4)
   weightedSticky (cands, ctx) {
     const st = new Map(cands.map((d) => [d, step(ctx.view.reported(d, ctx.t))]))
@@ -283,9 +301,10 @@ const STRATEGIES = {
 
 // --- the replay ---
 
-// opts: copies (5), staleH (168, 024's 7 days; Infinity = never), lookedH (24), extra (true)
+// opts: copies (5), staleH (168, 024's 7 days; Infinity = never), lookedH (24),
+// extra (true), reintegrate (false: 024 replaces for good)
 function simulate ({ devices, H, M0 }, strategy, opts = {}) {
-  const { copies = 5, staleH = 168, lookedH = 24, extra: useExtra = true, seed = 1 } = opts
+  const { copies = 5, staleH = 168, lookedH = 24, extra: useExtra = true, reintegrate = false, seed = 1 } = opts
   const order = typeof strategy === 'function' ? strategy : STRATEGIES[strategy]
   const view = new View(devices, H, seed)
   const n = devices.length
@@ -307,7 +326,10 @@ function simulate ({ devices, H, M0 }, strategy, opts = {}) {
         for (let d = 0; d < n; d++) {
           if (d === o || t < devices[d].joinAt) continue
           if (s.knownSince[d] < 0) { s.knownSince[d] = t; s.seenAt[d] = t }
-          if (view.on(d, t)) s.seenAt[d] = t
+          if (view.on(d, t)) {
+            s.seenAt[d] = t
+            if (reintegrate) s.replaced.delete(d) // Carbonite: a holder back counts again
+          }
           if (!s.replaced.has(d) && t - s.seenAt[d] > staleH && view.count(o, s.seenAt[d] + 1, t + 1) >= lookedH) s.replaced.add(d)
           cands.push(d)
         }
@@ -319,12 +341,17 @@ function simulate ({ devices, H, M0 }, strategy, opts = {}) {
         const regular = ranked.slice(0, copies)
         if (t >= M0) for (const d of regular) if (!s.regular.includes(d)) s.moves++
         s.regular = regular
-        if (useExtra) { // lib/circles.js extraFor
+        if (useExtra === 'lazy') { // Carbonite-like: extras kept (up to `copies` more), a new one only while no copy is online (024's trigger)
+          const lazy = s.lazy || (s.lazy = [])
+          for (let i = lazy.length - 1; i >= 0; i--) if (regular.includes(lazy[i])) lazy.splice(i, 1)
+          const up = regular.filter((d) => view.on(d, t)).length + lazy.filter((d) => view.on(d, t)).length
+          if (up === 0 && lazy.length < copies) { const d = ranked.slice(copies).find((x) => view.on(x, t) && !lazy.includes(x)); if (d !== undefined) lazy.push(d) }
+        } else if (useExtra) { // lib/circles.js extraFor
           const up = regular.filter((d) => view.on(d, t)).length
           if (up >= 2) s.extra = null
           else if (!(up === 1 || (s.extra !== null && view.on(s.extra, t)))) s.extra = ranked.slice(copies).find((d) => view.on(d, t)) ?? null
         }
-        const targets = s.extra === null ? regular : [...regular, s.extra]
+        const targets = s.lazy ? [...regular, ...s.lazy] : s.extra === null ? regular : [...regular, s.extra]
         for (const d of targets) {
           if (!view.on(d, t) || s.holds[d] >= s.version) continue
           if (s.holds[d] < 0 && t >= M0) s.uploads++
