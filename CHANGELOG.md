@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-17: circles: members see each holder's share and use, and the circle's room (spec 026)
+
+`hg/holder` records gain `share` and `used` (bytes; absent in older records: read as unknown). A holding device
+rewrites its record when its share changes (at once) or what it holds moved 10 % or more (at most hourly). A
+circle's `members()` gains per person `share` and `used` (their holding devices added up; null when not holding
+or not reported) and its `status()` gains `total` (every known share ÷ 5, approximate; null if none). Additive:
+older peers ignore the fields. Docs: `docs/next/api.md`. Tests: `test/next/unit/storage.js`,
+`test/next/net/circles.js`, `test/next/forum/circles.js`; perf: `circles.records`. Spec: `specs/026-storage-numbers/`.
+
 ### 2026-11-16: fix: circles of 8+ people crashed the process while people joined
 
 From ~7 people joining 3 circles with holding on, Autobase threw `Writer._loadNextNode: 'node' of null`,

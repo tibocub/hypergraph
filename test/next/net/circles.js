@@ -248,3 +248,35 @@ test('a member handing a holder\'s own cores under a made-up referrer can\'t mak
   }
   t.is((await forum.latest(sa)).length, 1, 'a still reads the shared space')
 })
+
+test('storage numbers (spec 026): members see each holder\'s share and use, a share change at once, the circle\'s total', { timeout: 120000 }, async (t) => {
+  const { a, b, circle } = await pair(t, { bytes: 3e9 })
+  await a.setHolding({ on: true, bytes: 2e9 })
+  const cb = b.space(circle.key)
+  const person = async (s, who) => (await s.members()).find((m) => m.identity === who.identity.publicKey)
+  t.ok(await eventually(async () => (await person(circle, b)).share === 3e9 && (await person(cb, a)).share === 2e9, 30000), 'each sees the other\'s share')
+  t.is(typeof (await person(circle, b)).used, 'number', 'and its use')
+  t.ok(await eventually(() => circle.status().total === 5e9 / 5 && cb.status().total === 5e9 / 5, 30000), 'total: shares / 5')
+
+  await b.setHolding({ on: true, bytes: 4e9 })
+  t.ok(await eventually(async () => (await person(circle, b)).share === 4e9, 20000), 'a share change shows at once')
+  t.ok(await eventually(() => circle.status().total === 6e9 / 5, 20000))
+
+  const records = async () => (await circle.query('hg/holder').latest(1000)).items.length
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  const before = await records()
+  await b._circles.update()
+  await b._circles.update()
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  t.is(await records(), before, 'nothing moved: no new record')
+
+  // an old record (before 026: no share, no use) reads unknown
+  const c = await account(t, 'c')
+  const cc = await forum.join(c, await circle.createInvite())
+  await cc._put('hg/holder', { client: crypto.randomBytes(32), on: true, left: false }) // as a device before 026 writes it
+  t.ok(await eventually(async () => circle.status().holders === 3, 20000), 'a sees c holding')
+  const pc = await person(circle, c)
+  t.is(pc.share, null, 'share unknown')
+  t.is(pc.used, null, 'use unknown')
+  t.is(circle.status().total, 6e9 / 5, 'not in the total')
+})
