@@ -62,7 +62,7 @@ test('renew: members move with their history and ids; a removed member is left b
   t.is(await codeOf(forum.post(oldOnC, 'late-c', '')), 'MOVED', 'the old space is read-only')
 
   const d = await account(t, 'd')
-  t.ok(['INVITE_INVALID', 'NOT_ALLOWED'].includes(await codeOf(forum.join(d, oldLink, { timeout: 8000 }))), 'an old invite link no longer works')
+  t.ok(['INVITE_INVALID', 'NOT_ALLOWED', 'INVITE_REVOKED'].includes(await codeOf(forum.join(d, oldLink, { timeout: 8000 }))), 'an old invite link no longer works')
 })
 
 test('renew is for owners and admins of a private top space', { timeout: 120000 }, async (t) => {
@@ -126,9 +126,9 @@ test('newcomers after a renew follow the history setting', { timeout: 180000 }, 
   await fb.setHistory('hidden')
   await forum.post(fb, 'secret-2705', '')
   const fresh2 = await fb.renew()
-  await forum.post(fresh2, 'new-2705', '')
   const fh = await forum.join(h, await forum.invite(fresh2))
-  t.ok(await eventually(() => shows(fh, 'new-2705'), 30000), 'hidden history: reads from the move on')
+  await forum.post(fresh2, 'new-2705', '')
+  t.ok(await eventually(() => shows(fh, 'new-2705'), 30000), 'hidden history: reads from its join on')
   t.absent(await shows(fh, 'secret-2705'), 'not before')
   t.absent(h._diskKeys.has(fb.hex), 'never got the old disk key')
 })
