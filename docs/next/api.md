@@ -195,6 +195,7 @@ site.query('post').live(render)
 site.on('change', onChange)                   // its own events only
 const sub = site.subspace(subKey)             // one of its sub-spaces; any other: NOT_ALLOWED
 site.identity                                 // { publicKey }
+site.moved; site.movedTo; site.renewal        // spec 027, read only: renew() and trimHistory() are not on a handle
 await site.close()
 ```
 
@@ -367,6 +368,53 @@ decide online, as before; a link that is refused gets its reason as before (`INV
 `INVITE_REVOKED`, `NOT_ALLOWED`), sent by that member since the newcomer can't read the space yet. The disk key never changes: a removed member keeps it (members and timing, never
 what is written after the removal). Not covered: a private sub-space of a space that isn't private (its
 decisions are in its parent's log, readable by its parent's members), and private spaces made before.
+
+## Renewing a space and trimming its history (spec 027)
+
+```js
+const fresh = await club.secure()                  // rotateKey() now, then renew(): owners and admins, private top spaces
+const fresh2 = await club.secure({ forget: true }) // ...and everything written before now is deleted
+const fresh3 = await club.renew()                  // the renew alone
+club.moved        // true once it renewed (read-only: writes and decisions throw MOVED)
+club.movedTo      // the new key (z32); null for a removed person (they never learn it)
+hg.space(club.key)                                 // the new space: links and bookmarks follow by themselves
+fresh.renewal     // { from, waiting }: waiting while no other owner's or admin's device has opened it
+fresh.status().warnings                            // RENEW_WAITING meanwhile: keep this device online
+club.on('moved', ({ to }) => {})                   // another device renewed it (to: null when you were left out)
+await forum.trimHistory({ before: Date.now() - 90 * 24 * 3600 * 1000 })  // keep the last 90 days (any top space)
+```
+
+**Renew** gives a private space a new decision log, new logs and a new disk key: for after an incident or a
+ban, when the content key alone (`rotateKey()`) isn't enough. Who keeps the old disk key and the old cores
+can read, after `rotateKey()` alone, everything but content: the whole decision log (who joins and leaves,
+roles, bans, moderation, timing), and each record's type, time, author, size and edit/delete target. After a
+renew they get nothing of what comes next: the new space's address is sealed to each current member's
+device, so they don't even learn where it went. Holders (circles, helpers) see what they saw before: sizes
+and timing, never content or members.
+
+- The **history** stays: the old logs are the new space's history, read with the old key, with the same
+  record ids (links, edits and deletes keep working; nothing is copied, nothing is downloaded again). What
+  removed people could read before, they still can; nothing they couldn't.
+- **Members** come along without new invites; removed people don't; old invite links stop working
+  (`INVITE_REVOKED`). Roles, bans, moderation, types and settings are carried. **Sub-spaces** come along
+  with new keys. A **newcomer** later gets the history if the space's `history` is `'visible'`, else reads
+  from its join on.
+- Every member's device moves by itself once the move is settled. **Two renews at once**: the first decided
+  wins, the other gets `ALREADY_RENEWED`. The renewer's device must stay online until another owner's or
+  admin's device has opened the new space (`renewal.waiting`, warning `RENEW_WAITING`); with no other
+  decider there is nothing to wait for. A renew needs the old space's settlers online to settle at once;
+  without them the renewer goes first after 10 s and the others follow when they come back.
+- **Late writes**: a device that wrote in the old space before it heard of the move re-posts its own
+  records into the new space (new ids, sealed with the new keys), once; never anyone else's, and never
+  for a removed person, whose late writes count nowhere.
+- The old space is kept, read-only, 30 days after the move (for devices that were away), then left; its
+  logs stay as the new space's history.
+
+**Trim** (owners and admins of a top space, private or not; its sub-spaces too) deletes the records written
+before a time, on every member's device and every holder of its circles, which stop serving them; what stays
+keeps its ids. A private space's keys stay (they open what is left). Copies others already took (a
+screenshot, a member's export, a peer outside the circles) **can't be recalled**: tell members before you
+trim. `secure({ forget: true })` trims everything before the renew.
 
 ## Roles and moderation
 

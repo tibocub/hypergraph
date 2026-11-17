@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-17: renew a private space, trim any space's history (spec 027)
+
+`space.renew()` / `space.secure({ forget })` (owners and admins of a private top space): a new decision log,
+new logs and a new disk key; the old logs are the new space's history (read with the old key, **same record
+ids**, nothing copied); the "moved to" pointer is sealed to each current device, so removed people neither
+read nor find it; sub-spaces get new keys; members, roles, bans, moderation, types carried; old invite links
+answer `INVITE_REVOKED`. The old space is read-only (`MOVED`), `space.moved` / `movedTo`, a `'moved'` event;
+`hg.space(oldKey)` and bookmarks lead to the new one; it is left 30 days after the move. Two renews at once:
+`ALREADY_RENEWED`. `fresh.renewal` `{ from, waiting }` and warning `RENEW_WAITING` while no other owner's or
+admin's device opened it. A device's late writes in the old log are re-posted by it, once (records gain a
+`from` flag). `space.trimHistory({ before })` (any top space): every member's device and every circle holder
+(new `hypergraph/holding-clear` channel, `clear-core` only from a member who handed the core) drops records
+before that time; a private space's keys stay. New decision types (`space/renewed`, `space/moved`,
+`history/trim`): **older peers ignore them** and don't follow a move. Docs: `docs/next/api.md`. Tests:
+`test/next/net/renew.js`, `renew-late.js`, `trim.js`, `test/next/unit/renew.js`, `test/next/forum/renew.js`;
+perf: `renew.time`, `renew.kb`, `trim.time`. Spec: `specs/027-renew-space/`.
+
 ### 2026-11-17: circles: members see each holder's share and use, and the circle's room (spec 026)
 
 `hg/holder` records gain `share` and `used` (bytes; absent in older records: read as unknown). A holding device
