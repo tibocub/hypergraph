@@ -160,7 +160,7 @@ test('paging through posts by three members never skips or repeats, equal stamps
     }
   }
   written.push((await forum.post(fa, 'last', '')).id)
-  await eventually(async () => (await fc.query('post').latest(50)).items.length === 25, 10000)
+  t.ok(await eventually(async () => (await fb.query('post').latest(50)).items.length === 25, 10000), 'b has them all') // the member paged below (waiting on fc raced under load)
   const seen = []
   let after
   for (;;) {
