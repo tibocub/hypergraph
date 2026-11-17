@@ -241,6 +241,19 @@ function changeKey (forum) {
   return forum.rotateKey()
 }
 
+// After a ban or an incident: new keys now, then the forum moves to a new
+// address its members follow by themselves (spec 027); `forgetHistory`:
+// everything written before now goes. Owners and admins of a private forum.
+function secure (forum, { forgetHistory = false } = {}) {
+  return forum.secure({ forget: forgetHistory })
+}
+
+// Keep the last `days` days only, on every member's device (copies others
+// already took can't be recalled). Owners and admins.
+function trimHistory (forum, days) {
+  return forum.trimHistory({ before: Date.now() - days * 24 * 3600 * 1000 })
+}
+
 // Takes someone out of the forum (v1's removeRole): what they wrote so far stays.
 function removeMember (forum, who) {
   return forum.removeRole(who)
@@ -533,7 +546,7 @@ function liveForums (hg, onUpdate) {
 module.exports = {
   types, rules, signUp, restore, recoveryPhrase, protectPhrase, forgetPhrase,
   addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
-  forums, createForum, changeKey, keepEverything, setAppBudget, setForumBudget, storage,
+  forums, createForum, changeKey, secure, trimHistory, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, inviteFriend, openLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,
