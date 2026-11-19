@@ -114,6 +114,84 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-13 (circles, encrypted places; grilled with Tibo)** — Replaces the 2026-11-11 circles notes where they
+  differ. Order: hypergraph 022 (private spaces encrypted on disk, `rotateKey()`), hypergraph 023 (circles), HyperBrowser
+  018 (circles UI), then "renew space", the helper, HyperDNS on the current hypergraph.
+  - **Found**: private spaces already seal content with epoch keys, grant keys per device after joining, change key on
+    removal and chain keys for history; but their cores are plain, so a holder sees members, types and timing. 022 adds
+    a disk key (the personal space's way: Autobase `encryptionKey`, `_coreOpts`), handed sealed to the newcomer's device
+    when a decider records the redemption, never in an invite; kept in the personal space for the person's devices.
+    The disk key can't change on stored data: "renew space" (new cores, copied progressively, triggered by owners and
+    admins, later after removals) is its own spec. Own per-block rotating crypto refused. No migration: today's apps and
+    sites are recreated for the public beta.
+  - **Circles live in hypergraph** (023), shared by HyperBrowser, HyperDNS and later SwarmFS: one mechanism, one
+    workflow. A circle is a space whose members' devices (and later helpers) hold each other's spaces as blind peers
+    (ciphertext for private ones). An HyperDNS authority stays a naming group, kept online by a circle; federation
+    (trusting another authority's names) stays separate. Holders announce what they hold for trusted keys (blind-peer's
+    `announce` needs the client in `trustedPubKeys`: circle members trust each other), so outsiders find the data with
+    no change to the space's settings (to test first).
+  - **Rules**: owner and admins invite and remove; removal = leaving; the owner may leave with the forum's warning; at
+    most 50 members; each gives 1 GB by default, at most 200 MB per person, oldest dropped first; holds everything a
+    member is in or publishes, private first; several circles per person, each holding all; leaving deletes at once.
+  - **HyperBrowser 018**: a Circles section on the Configuration page (create, invite link, members, my share); invite a
+    contact from its "…" menu (no button per row: Tibo's rule against cluttered lists); one notice on joining (what it
+    costs, what holders see); "kept by N of M members", "you hold X of 1 GB"; "Change key" in each place's "…" menu
+    through `hyper.rotateKey()` (own place only); holding while the engine runs, in the background only if switched on
+    (off by default).
+  - **Spec 022 merged** (c63df4c): new private spaces encrypted on disk (a holder's store has no member key, type or
+    field), disk key sealed to the newcomer's device on redemption (a refused one gets its refusal code, never the
+    key), kept in the personal space, `space.rotateKey()` for deciders and moderators, blind peers serve without the
+    key. Joining got faster (105–235 ms vs 200–330 ms). Lead's run: next 468/468 Node, 467/467 Bare; SwarmFS 107/107
+    both; HyperBrowser 80/80 both. Known limits: private sub-spaces of public forums aren't disk-encrypted (decided in
+    the forum's plain log); a refusal isn't authenticated (an invite holder can fake one, learns nothing). Not checked:
+    public DHT, HyperDNS, HyperBBS. Next: 023 circles.
+  - **Spec 023 circles written** (grilled): one share per device for all its circles (1 GB default), each device
+    with holding on holds; holders are found by anyone in a held place (its key shows some IP holds it: accepted, said
+    in the join notice); on leave or removal held data goes at once unless another shared circle covers it.
+  - **Spec 023 merged** (71e22f9): `createCircle`, `setHolding`/`holding()`, circle numbers in `space.status()`
+    (`members`, `holders`, `keptBy`), an in-instance blind peer on the instance's store and swarm, holders join held
+    spaces' topics (no announce), closed spaces handed from saved core lists, leaving via an `hg/holder {left}` record.
+    Found in review and fixed: a member could make a holder clear its own cores by handing them under a made-up
+    referrer (checked by core key now, tested). Lead's run: next 482/483 Node, 481/482 Bare; SwarmFS 107/107 Node,
+    105/106 Bare; HyperBrowser 80/80 both; the failures pass alone (load). Not checked: 1 GB held, public DHT,
+    phones, HyperDNS, HyperBBS. Known: every holding device gets everything (49 copies in a full circle, the sender
+    uploads to each, all holders drop the same oldest places together); holders learn each member's count, sizes
+    and activity times of private places (metadata). Next: 024, a fixed number of copies, before HyperBrowser 018.
+- **2026-11-14 (spec 024 copies; grilled with Tibo)** — 5 copies of each space in total, split across the member's
+  circles (at least 1 each), holders picked by rendezvous hashing, one device per person; rarest handed first, an
+  extra copy when none is online; a holder unseen 7 days is replaced. Online numbers tracked from now in the code
+  (observed per holder, locally; self-reported in `hg/holder`), like swarmwire's rarity, for a later algorithm that
+  picks the holders online most and works with no configuration (hand fine-tuning optional). HyperBrowser 018 shows
+  "kept by N of 5 copies" and tells joiners what holders see (count, sizes, timing).
+  - **Spec 024 merged** (a98f08e): `hg.copiesOf(key)` → `{ wanted, kept, online }`, `keptBy` gone. A circle short
+    of its part hands the rest to the member's other circles; holders unseen 7 days come last. Replacement only after
+    this device was online 24 h itself since it last saw the holder (no mass replacement after a holiday); it is for
+    good. Reruns: next Node 500/500, Bare 499/499; SwarmFS and HyperBrowser 107/107 and 80/80 on both.
+    Fixed: 023's `delete-core` let any member delete any core a holder had (now only the member who handed it, their
+    part); `blind-peer` in dependencies. Limits: the sender uploads ~1.55× per copy (predates 024, follow-up); spaces
+    left or past the 200 MB cap stay held until the share drops them; online numbers recorded, not used yet.
+- **2026-11-16 (HyperBrowser 018 circles UI; grilled with Tibo)** — Replaces the 018 line of 2026-11-13 where they
+  differ. Configuration gets a Circles section (holding switch, share as a GB number field checked against free disk
+  space, "you hold X of Y GB") and a "Your circles…" window (create, invite link, members, rename, leave). Invites:
+  one use, 7 days, also from a Contacts row's "…" (posted in the Chat conversation as a Join button; joining only
+  through HyperBrowser's own flow). Holding runs whenever the engine runs (it follows "When the window closes"): no
+  background switch, since turning holding off deletes what is held. Chat conversations and private boards show
+  "Kept by N of 5 copies, M online", warn under 2 online, and have "Change key". Only "share full" notifies. A
+  circle is not a group chat in 018. Spec and plan: HyperBrowser `specs/018-circles/`.
+  - **HyperBrowser 018 merged** (7c3d367): Lead's run: Node 93/93, Bare 93/93, sandbox 5/5, framecheck pass. An
+    outsider reads a member's conversation from a holder while the member is offline (two-engine test, 12 s).
+    Formats fixed: Chat `message` gains `circle` and `circleName`; a `circle-name` record (latest by a current owner
+    or admin) for renaming. A page's `instances.join` of a circle link is left at once (its one use is spent: known
+    limit). Forum has no private boards, so copies show per forum and Change key nowhere yet. **Blocker before
+    publishing Chat and Forum**: hypergraph's autobase crashes the engine (uncaught `Writer._loadNextNode`, 'node'
+    of null) when 3 circles reach 8+ people joining (`npm run perf:circles -- --people 10`); 50 not measured.
+  - **Circle crash fixed** (f827f3e): a holder's blind peer announced every held core (message logs too) as a
+    decision writer; a decision log then read a header the directory was clearing. Holders now announce nothing,
+    the directory clears only a header its own fetch brought, and an Autobase error is a `DECISIONS_FAILED`
+    warning instead of ending the process. Lead's run: next 504/504 Node, 503/503 Bare, HyperBrowser
+    `--people 10` passes (194 s, idle 0.3 %); SwarmFS failures flaky, same on master. Chat and Forum may be
+    republished. **Open**: at `--people 49` joins time out from person 31 ("No member able to let you in", 30 s);
+    all engines share one process, so maybe load, maybe a real limit. HyperBrowser shows no space warnings yet.
 - **2026-11-11 (HyperBrowser notifications, forum panel, circles, helper; grilled with Tibo)** — Order: notifications,
   forum panel, circles and helper, encrypted private files, Android; iOS much later. Hosting comes before Android:
   two phones are almost never online at once, so private chat needs someone holding the data. Windows support for
@@ -157,6 +235,11 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
     closed space); only open or held places are checked now. A turn reached a place in 9 to 22 s on the public DHT.
     Left: Windows popups and the tray mark checked by hand; Chat and Forum republished (`apps:publish`) before their
     watches reach anyone. Next: the forum panel.
+  - **HyperBrowser spec 017 forum panel merged** (87c1831): forums and boards columns, dots (`"show":"dot"`
+    watches), follows (runtime watches, own app's places only), unread threads by `since()` cursors, Chat's unread
+    numbers, "New messages" line and "…" menu. Lead's run: Node 80/80, Bare 80/80, sandbox 5/5, framecheck pass. No
+    hypergraph change. Left: SC-002 (handles released after 20 switches) and SC-003 measured only in part; a second
+    person's posts lighting dots not yet seen in a real window; Chat and Forum republished. Next: circles and helper.
 
 - **2026-11-06 (HyperBrowser milestone 1, grilled with Tibo)** — two official sites (static home with user docs,
   dynamic forum), Windows + Linux tested, macOS "not tested"; Pear kept (Electron only for a confirmed blocker);
