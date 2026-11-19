@@ -1,0 +1,578 @@
+# Decision log
+
+The dated record of the project's decisions, reviews and plans, newest first within each section. Kept as
+written at the time, for maintainers and agents; the short version is [ROADMAP.md](../ROADMAP.md).
+
+## The projects, in order
+
+| # | Project | What it proves | Status |
+|---|---|---|---|
+| 1 | **hypergraph's new core** ("spaces", spec 011) | the kit itself | **merged into master 2026-10-22** (`require('hypergraph/next')`) |
+| 2 | **Forum scenario tests** (in this repo, no UI) | the API is easy; every flow tested | built alongside 1, from its first story |
+| 3 | [hypergraph-forum-example](https://github.com/tibocub/hypergraph-forum-example) | A forum client with a nodeJS backend + a WebUI |
+| 4 | [SwarmFS](https://github.com/tibocub/SwarmFS) rewrite on the new core + swarmwire | files and folders, two devices, big archives | a library (its CLI is for debugging and tests); its UI becomes a HyperBrowser page |
+| 5 | **HyperBrowser** (own repo) | a real app people use; a forum site is the real proof | after milestone 0 below |
+
+v1 (`src/`) stays frozen until hyperDNS moves to the new core. HyperBBS (the terminal app) is paused.
+Spec 009 (helpers, availability) is retargeted onto the new core after 1.
+
+## The final app: HyperBrowser
+
+(Grilled with Tibo 2026-11-01; Pear research in Decisions.)
+
+- **Layers**:
+  - libraries: hypergraph, swarmwire, SwarmFS, HyperMD. Each stays usable alone and runs on Node and Bare; none
+    depends on Pear.
+  - **one engine**: one identity, one swarm, every site's spaces and files. It runs without a window too (CLI,
+    helper).
+  - the app shell: Pear (`pear-runtime` + its Electron template; `pear-mobile` later).
+  - built-in apps (file manager, friends, messages) are sites themselves.
+- **A site** = a SwarmFS space (its pages, scripts, media) + a `site.json` manifest at its root (title, entry page,
+  the permissions it asks for). A dynamic site's JS gets the hypergraph API for its own space; a static site's JS
+  runs without it. HyperMD + JS first, plain HTML/CSS/JS sites later.
+- **Storage: SwarmFS only.** No multi-writer Hyperdrive (it would rebuild SwarmFS). SwarmFS gains an app-storage mode
+  (a site's files in the engine's folder, evicted like a cache, not in the user's folders), small files inside the
+  record, and watched-part-first downloads for video. Fallback, only if the study measures static sites too slow on
+  a space: single-writer Hyperdrive for static sites.
+- **Rules for every spec**:
+  - site code runs only in a sandboxed web view, one per site, never in the engine (also Apple's rule for
+    downloaded code, to verify).
+  - the site API is async (messages): dot notation returns promises or live views.
+  - a site reaches only its own spaces; anything more (the user's name, files, friends) asks the user, per site,
+    remembered.
+  - visitors always run a site's latest version; breaking type changes are refused (hypergraph's compatibility
+    check).
+  - addresses are keys; a name is a hyperDNS lookup that returns a key.
+- **Availability**:
+  - desktop: the engine keeps running in the tray (on by default, easy to turn off), seeding your spaces, bookmarked
+    sites, and recent visits up to a size cap (only the media you viewed).
+  - mobile: no long background run; a push wakes the app for seconds (how Keet notifies). Needs a helper that sends
+    pushes with the app's Apple/Google keys: later, with the availability plan. Tibo asks Keet's devs how they do it.
+- **Known limits** (say them to app builders): a removed member keeps what they already read; a first visit to a site
+  is slow (to measure).
+- **Milestones**:
+  0. Storage study (`specs/research/`): first visit of a 20-page site with images (space + inline small files, vs a
+     Hyperdrive), disk and memory for 1 and 50 sites, visitors' media (a forum image) with roles, video seeking
+     through swarmwire. And a hypergraph spec: **one engine for many sites** (today one instance = one folder, one
+     identity, one swarm, one fixed set of types; a site's types must live in its space).
+     **Storage study done** (`specs/research/site-storage.md`, 2026-11-01): SwarmFS-only stays; no Hyperdrive fallback
+     now. On loopback a space shows a 20-page site's entry page in 0.29 s (0.13 s with small files inline) vs 0.03 s
+     for a Hyperdrive; ~3 MB memory per open space vs 1.8 MB. Speed doesn't block; roles and storage do. Re-decide the
+     fallback in milestone 1, between two real machines: build it for static sites only if a space's entry page
+     takes over ~2× a Hyperdrive's or over 1 s after connecting, and the swarmwire work below doesn't close it.
+     **Before milestone 1**, SwarmFS needs:
+     - visitors who only read (an invite without `post`; reading a public site without being let in). Same need as
+       H5 below; hypergraph may not give readers a private space's key (to confirm).
+     - protected pages: the owner and admins write the pages, members upload, an upload editable by its author only
+       (hypergraph's sub-spaces with `writeRoles` already do it; SwarmFS has no call for them). Today every invitee
+       is an `editor` who can rename or bin the site's pages, and the owner's disk follows.
+     - app-storage mode: a site's files in the engine's folder, evicted like a cache; the owner's app keeps members'
+       uploads.
+     - small files (up to ~60 KB) inside their record: halves a first visit.
+
+     swarmwire requests (speed; none optimized yet, lots of room):
+     - small files: ~30 ms fixed cost per file, mostly setup (asking holders, `.part` file, progress sidecar,
+       rename), not bytes. Ideas: one request for many small files, no `.part`/sidecar under a size.
+     - one peer: ~10 MB/s vs Hypercore's ~28 MB/s. Tibo's idea: below a size or with one peer, switch to one big
+       sequential stream (Hyperbeam-like), still verified piece by piece.
+     - video: fetch a byte range first, changeable while running, readable before the file completes; SwarmFS serves
+       ranges to the web view.
+  1. Desktop shell + a static site + the forum as a site, opened from a key. **Designed 2026-11-06**
+     (`specs/research/hyperbrowser-milestone-1.md`): the official HyperBrowser site (HyperMD + JS, user docs, also on
+     GitHub Pages via `hypermd build`) and the official forum (new, not the example; UI only after a forum talk with
+     Tibo and mockups). Started: shell spike (Pear), HyperMD tests + HTML, SwarmFS's 4 prerequisites.
+  2. SwarmFS inside the engine (sites can use it), then the file manager page.
+  3. Friends and messages; then Android, then iOS; push wake-ups.
+- **App ideas** (Tibo, 2026-11-08; none designed yet, each gets its own grilling):
+  - **HyperSite Creator** (a hyperapp): make and edit sites and apps from templates (static site, blog, phpBB-like
+    forum, reddit-like site...); users share more templates.
+  - **Federated forum** (open question): the official forum as one app whose instances anyone creates and owns (like
+    the hypergraph forum example), vs one forum site and templates for others. An app that opens many spaces of its
+    own needs more than today's site API (a site reaches only its own space).
+  - **Paint**: a 1-bit drawing app (inspiration: hundredrabbits/Noodle) for icons, media and **pixel patterns**
+    (backgrounds, fills, shadows) site authors can pick instead of the checkerboard.
+  - **WebAssembly** in sites (allowed in the sandbox from spec 008): fast apps on mobile too, ports of existing
+    programs (e.g. a P2P multiplayer Doom).
+  - **Chat**: 1-to-1 messages, private and public groups; in a private group the owner chooses who may invite (only
+    them, everyone, or chosen people). **HyperIRC**: a room's address is the hash of its name, so everyone asking for
+    "hyperbrowser" meets in one room; a discovery list of rooms with active users. **Contact book.**
+  - **File explorer** (milestone 2, central, to discuss in depth): local drives and HyperBrowser's desktop folders
+    plus SwarmFS in one UI (inspiration: Spacedrive); a simple local explorer first, then SwarmFS's features.
+- **Learned from others**: Beaker (archived 2022; its post-mortem: a static-site maker as first product, no mobile,
+  no sync between one person's devices, slow first load); Freenet (relaunched 2025–26, apps with network-held state,
+  River chat) and Holochain: the same idea elsewhere, so our angle is local reads, offline, the Holepunch stack, plain
+  JS/HyperMD, easy to build with; Pear: the shell, no help for loading or sandboxing strangers' sites.
+
+## Decisions (newest first)
+
+- **2026-11-11 (HyperBrowser notifications, forum panel, circles, helper; grilled with Tibo)** — Order: notifications,
+  forum panel, circles and helper, encrypted private files, Android; iOS much later. Hosting comes before Android:
+  two phones are almost never online at once, so private chat needs someone holding the data. Windows support for
+  helpers is a priority.
+  - **Notifications** (HyperBrowser spec 016): an app's code can't run while closed (constitution I), so an app
+    declares what to watch, the engine watches, the shell shows it. Any app may ask, Chat and Forum included, once
+    each; blocked per app, muted per forum or conversation. A counter between the address bar and the peers counter
+    with a list, counters on desktop icons, system popups when the window isn't focused, a mark on the tray. At launch
+    one summary popup, then one per conversation. Text shown, a "hide content" switch per app. Reading on one device
+    clears the others. Chats stay connected first (32 spaces online, 8 on a phone); other watched spaces are checked
+    in turn, the same loop a phone needs. All settings on a Configuration page opened from the menu.
+  - **Forum panel**: joined list and quick switching, Leave, and forums left behind get closed (visited forums stay
+    open until their tab closes today). Default notifications: mentions, replies, pings (ping = mention; a reply also
+    writes a mention for the parent's author). Follow a board (new threads) or a person (threads and comments). A dot
+    means new since you last opened it; numbers only for mentions and replies.
+  - **Circles**: groups people create and join, invited by owner and admins, about 50 people at first, to keep
+    private data alive while its people are offline. Not all users of an app: nothing is trustless enough yet. Each
+    member gives 1 GB by default, configurable (phones on Wi-Fi only), with a share limit per person. Everyone holds
+    everything up to their cap, whole conversations, oldest dropped first; smarter spreading once measured. All of a
+    member's conversations are covered, outsiders' included: known limit, a holder sees the IP of whoever connects
+    and that a conversation grew. Needs non-owners to be able to name helpers (hypergraph).
+  - **Helper**: for people, not only us. Our headless engine with `blind-peer` inside (blind-peer alone can't hold
+    SwarmFS files), always blind: its own key, never the person's. Install command or Docker, a pairing code, managed
+    from HyperBrowser over P2P, no open ports. Linux x64 and ARM; on Windows a "help my circles" setting in
+    HyperBrowser, a service later. It joins a circle like a person and serves all its members (the family's nerd sets
+    it up, grandma does nothing), and may answer that circle's invites. Rule: anything private leaves a device
+    encrypted, even for a server meant to read it. Stored SwarmFS files aren't encrypted today, so private files stay
+    off helpers until their own spec.
+  - **Android**: periodic wake-ups only, frequency set by the person (30 min by default), cycling through spaces. No
+    Google push for now: `blind-push` exists and keeps content encrypted, but Google learns the timing and it needs one
+    central relay with the app's Google key. Later, a sealed inbox for friend requests to offline people (look at
+    holepunchto/autopass: `blind-pairing`, its mirrors list, `blindEncryption`).
+  - **Spec 021 `space.since(cursor)` merged** (2777971, HyperBrowser B7): what's new by a seq per log, not by stamps,
+    for notifications and unread dots. Lead's run: next 456/456 Node, 455/455 Bare; SwarmFS against it 106/107 Node,
+    105/107 Bare: `link.test.js` and `mirror.test.js` pass alone on Node; Bare `link.test.js` "A.txt on a
+    case-insensitive disk: a copy name too" fails on master too (2 runs of 3): a SwarmFS issue, not 021's. Before
+    that, HyperBrowser's chat scroll, caret and page-load subscription leak merged there (1292319).
+  - **HyperBrowser spec 016 notifications merged** (962efa8). Lead's run: Bare 73/73, Node 71/72 (`hosting.test.js`
+    crashed under load with "not a site", 3/3 alone on the branch and on main), sandbox 5/5, framecheck pass. Found
+    in review and fixed: checking for news opened every watched space on any settings change (`since()` opens a
+    closed space); only open or held places are checked now. A turn reached a place in 9 to 22 s on the public DHT.
+    Left: Windows popups and the tray mark checked by hand; Chat and Forum republished (`apps:publish`) before their
+    watches reach anyone. Next: the forum panel.
+
+- **2026-11-06 (HyperBrowser milestone 1, grilled with Tibo)** — two official sites (static home with user docs,
+  dynamic forum), Windows + Linux tested, macOS "not tested"; Pear kept (Electron only for a confirmed blocker);
+  engine a Bare `start(ipc)` worker with our own framed protocol, reused on mobile (react-native-bare-kit); a site
+  is one space, one key; Pear P2P distribution. Details: `specs/research/hyperbrowser-milestone-1.md`.
+
+- **2026-11-06 (spec 017, logs open only while used)** — other authors' logs close ~30 s unused; summaries and key
+  ranges carry each log's length (`hypergraph/space/3`), so a closed log is complete only once every connected
+  peer's summary agreed (Tibo: lengths in summaries, not activity entries; helpers: open, hand off, close). 2,000
+  held logs: ≤ 20 open once idle, 0 at reopen; one-log length difference at 10k logs 1.7 KB; reopen with 10k held
+  logs 1.5 s (×2.2 from 1k: a row read per log, no core). Readers by activity lists keep their logs open.
+
+- **2026-11-06 (hyperdht)** — #283 released (6.35.1): pin 6.32.0 dropped, hyperdht 6.36.0 in hypergraph and SwarmFS
+  (`overrides` kept), swarmwire `^6.36.0`, lockfiles of swarmwire-cli, HyperBBS, hyperDNS refreshed. Our demo on
+  6.36.0: 0 dead out of 100 dials (5 runs). #304 still open upstream (#308, `OPEN` clients, not in our demo).
+  Same day: suites failing on timeouts (indexers, forum/invites, pairing, wiki; on 6.32.0 too) were the disk: E: is
+  a spinning disk, six test files at once ran ~10x slower. `HG_TEST_TMP` (runners of hypergraph and SwarmFS) puts
+  test temp on the C: SSD: next 399/399 Node 142 s, 398/398 Bare 171 s, SwarmFS 89/89 Node and Bare. Merged with
+  the soak tool (`npm run soak`; first 15-min public run, 3 members: nothing lost; self-check on master passes).
+
+- **2026-11-01 (HyperBrowser design, grilled with Tibo)** — One app, not a separate SwarmFS app: one engine, built-in
+  apps as sites; details in "The final app" above. Pear: `pear run` removed (June 2026), now `pear-runtime` (desktop,
+  experimental) + `pear-mobile`; a Bare worker owns P2P, the web view talks to it by messages; nothing for loading
+  many third-party sites or sandboxing them (ours to build). Storage: SwarmFS only (Hyperdrives are single-writer: an
+  owner couldn't edit from two devices; multi-writer would rebuild SwarmFS), measured before building. Blocker found
+  in our own core: one Hypergraph instance per folder, identity, swarm and type set.
+
+- **2026-10-29 (forum web app, grilled with Tibo)** — Forum before HyperBrowser: a plain web app on `hypergraph/next`,
+  its own repo `E:\Code\P2P\hypergraph-forum-example` (a consumer with `specs/requests-to-hypergraph.md`, like
+  SwarmFS), built so its pieces seed HyperBrowser. Reddit-style, exactly what `test/next/forum/` covers (boards,
+  threads, comments, votes, edit/delete, moderation, invites, devices); one forum, no community creation, no new core
+  features. Invite-only (one-time codes sent by any chat), 5–20 friends. Every member keeps everything. Node + browser
+  tab on `127.0.0.1` (README + copy-paste install script); plain HTML/JS, no build; a local JSON API mirroring the
+  core's calls plus a live channel, random token. Text with basic Markdown, no images, no HyperMD yet. Device pairing
+  in v1. Desktop only. Done = Tibo + 4 friends, 2 weeks, nothing lost, every post reaches everyone (a "posted at" vs
+  "first seen elsewhere" log). **Helpers** (blind peers) built in parallel as hypergraph spec 013, never required: the
+  forum works with no helper or with its VPS down (`addAutobaseBackground`, not `addAutobase`, which hangs while one
+  is down — `specs/research/availability.md`). The owner lists helpers in the space's settings (end goal: anyone may
+  add helpers unless it's a security risk); members connect to all of them in the background. The VPS runs
+  `blind-peer-cli` unchanged, open to any forum, capped by `maxBytes` (blind-peer also has `trustedPubKeys`; untrusted
+  clients can't make it announce, so members dial it directly).
+- **2026-10-29 (SwarmFS 002 merged; hypergraph review read)** — SwarmFS spec 002 merged into its `001-personal-sync`
+  (e450c4a, 63/63 Node and Bare; SC-001 3.8 s for 10,000 files, SC-004 36 s for 1,000). It filed H16 (no `change`
+  for another device's edit), H17 (a device paired after a private space got ~1,000 records never gets access:
+  blocks real use) and swarmwire S9 (served files stay open: Windows folders can't be renamed). The "Hypergraph
+  code review" session (2026-10-28) found the root of H10/H12/H14/H16: reads wait by default and changing state has
+  no signal. Decided (Tibo): hypergraph and SwarmFS kept in step: hypergraph is the foundation and must be
+  reliable; SwarmFS is its real-usage test. Started in parallel: H17 fix (`lib/`), a spec "reads that don't
+  wait, change events for everything that changes" (docs only until H17 merges), swarmwire S9.
+
+- **2026-10-28 (SwarmFS spec 002 "always on", grilled with Tibo)** — Next after v1 (shared workspaces after it).
+  Host: the running `swarmfs` shell acts on its own (watch, fetch, serve); no service, no IPC; login start and tray
+  come with the desktop app. Desktops only; the library stays on Bare (the phone app, its own project, embeds it).
+  Every added folder is a **linked folder** (two-way): new local files added, missing ones fetched; `link` links an
+  existing space folder to a local path on another device, `unlink` leaves files. Inside linked folders SwarmFS
+  renames, moves and updates files, and what it replaces or removes goes to `.swarmfs-trash` (constitution I amended
+  for linked folders only, MINOR). A local delete removes the entry for everyone; a vanished or unreadable linked
+  folder is paused, never read as deleted. Concurrent edits → conflict copies `name (device's copy).ext` (a `base`
+  field on file records). Watching: a fixed ignore list + a synced `.swarmfsignore` (gitignore subset); hash once
+  still 2 s. Auto-fetch stops below max(5 GB, 5 %) free. Trash never emptied on its own (`trash`, `trash empty`).
+  Later, as user settings: the floor, trash auto-empty, a bandwidth cap.
+
+- **2026-10-28 (SwarmFS review, lead)** — Branch `claude/vibrant-chaplygin-a50df1` 22/22 Node and Bare, not merged.
+  Measured: a paired PC reopened with the phone offline takes ~0.4 s per held file (300 files: 124 s; rescan's two
+  `space.get` per file, run before connecting); a second open of the instance folder fails on its lock, so `serve`
+  blocks every other command. Decided (Tibo): the CLI is a trial tool → one long-running shell (online, serving,
+  commands on stdin), no IPC; one-shot commands stay and refuse clearly while a shell runs. A password at init/join
+  (as decided 2026-10-09). The background process comes sooner than "later". Local DHT stays the test network until
+  a VPS. Served files stay editable, renamable and deletable by the person (checked: Node's read handles allow it on
+  Windows). Before shared workspaces: `resolve` must be scoped by peer and space.
+
+- **2026-10-28 (SwarmFS story 3)** — hypergraph `member-removed` merged (next 263/263): `member-disconnection`, rejoin
+  fires `member-connection` again, H10 (`fromDevice(me)` complete at once). swarmwire S7 fixed on `main` (c1e06d0): a
+  stream handed to one side late connected on neither (Protomux rejected the early open); unit/fs/swarm/net and Bare
+  pass, swarmwire-cli 15/15. H11: `docs/next/api.md` swarmwire example passes `{ publicKey }`. SwarmFS story 3 (fetch)
+  and `MOVE_INTO_SELF` merged into `001-personal-sync`: 19/19 Node and Bare, 100 MB in ~10 s. HyperDHT #283 comment
+  posted by Tibo. Then: S6 dropped (SwarmFS stats around `hashFile`, rehashes a file changed meanwhile); `stalled`
+  already worked (NOT_AVAILABLE ~1 ms after the peer leaves), but a stopped download kept emitting: fixed in swarmwire;
+  swarmwire's collection/list/on-demand tests hung ~50% on a busy disk (5000-round test budget): now by time; move onto
+  a file → `NOT_FOUND`.
+
+- **2026-10-27 (upstream)** — Hypercore PR merged upstream (#891 fix + stale-queue fix). HyperDHT: 6.35.0 (released
+  today) still leaves dead connections (4–7 per run of our demo); open PR #283 (Holepunch staff, branch in their repo)
+  applied on 6.35.0: 0 dead out of 100 dials, their suite 107/107 — comment drafted for Tibo. Pin 6.32.0 stays until it
+  ships. swarmwire 0.7.0 on `main` (verify before send, bounded cache, `hashFile`). SwarmFS spec 001 stories 1, 2, 4
+  built (14/14 Node and Bare); new request H10 (own records must not wait the read bound) sent to the
+  `member-removed` session.
+
+- **2026-10-27 (SwarmFS's requests, reviewed by the lead)** — hypergraph `swarmfs-requests` merged into master (next 279/279
+  on the lead's run): `space.on('member-connection')` / `memberConnections()` (members' streams for a library with its own
+  wire, complements `addProtocol`), `hg.on('spaces')`, H2–H4 confirmed. swarmwire `004-on-demand-serving` merged into its
+  `main` locally (0.6.0; unit 88/88, fs 20/20, Bare 190/190; contract test fixed for CRLF): `resolve(root)` on demand,
+  no-announce mode by adapter (no code needed), `.part` downloads, `stalled` when every peer says unavailable. Rule
+  (Tibo): a device hosts all it holds; nothing per file announced or hashed for serving. SwarmFS spec 001 updated
+  against swarmwire `main`. Open, small: swarmwire verify-before-send (a changed file can send wrong bytes and get the
+  sender banned), bounded hash cache, stable `hashFile()`; hypergraph event when a connected member is removed.
+
+- **2026-10-22** — **Spec 011 merged into master** (`2a64be8`). Before: hyperDNS tests fixed for Autobase 7.28.2's close
+  order (hyperDNS `8cc62f1`; Tibo's uncommitted private-authority work reviewed: v1-only, compatible, untouched);
+  hyperdht pinned 6.32.0 (`overrides` + devDependency; demo 0 dead connections); Tibo's ESLint setup kept, `test:all`
+  now v1 + next on Node and Bare. Results on master: v1 390/390, next 273/273 Node, hyperDNS 46/46, HyperBBS 126/126.
+  Hypercore PR opened by Tibo (#891 fix + stale-queue fix). **Next: SwarmFS.**
+
+- **2026-10-21 (Hypercore PR prepared with Tibo)** — The clear bug was already reported (hypercore #891, Oct 15,
+  same cause and fix; no PR). Writing its regression test the Hypercore way found a **second, independent
+  bug**: a stale block-queue entry (a `get()` that timed out) can use up a peer's only `_updatePeer` turn and
+  leave a live request unsent — in stock 11.39.0, without any clear, the next `get()` fails ~half the time.
+  Both fixes and two tests on branch `fix-clear-remote-contiguous` in `E:\Code\P2P\hypercore` (commit
+  e33e633, local only); each fix proven necessary on its own; Hypercore's suite 434/434 on Node. PR text:
+  `specs/research/upstream/hypercore-pr.md`. Tibo pushes to his fork and opens the PR. HyperDHT: pin 6.32.0
+  (issue #304 already covers it).
+
+- **2026-10-17 (last check of the upstream demos, against each library's README, examples, tests and the
+  docs.pears.com pages)** — Both demos use only documented calls the documented way (Hypercore:
+  `replicate`, `get(index, { timeout })`, `clear(start, end)`, whose README says peers are told; HyperDHT:
+  `createServer`, `listen()`, `connect()`, `open`, one node both listening and dialing as Hyperswarm does).
+  **Hypercore**: still reproduces on 11.39.0 (published 2026-10-14; the replicator unchanged since
+  September); its own `test/clear.js` never clears while connected after a `want`. **HyperDHT**: dead
+  connections confirmed with a 15 s wait; **0 on 6.32.0, many on 6.34.1 → a 6.33 regression**, matching issue
+  #304 (opened by someone else, same symptom). Tibo will message the Holepunch devs privately first.
+  Option for later: pin hyperdht 6.32.0 via npm `overrides` until a fix ships, and drop our workaround.
+
+- **2026-10-15 (review of the dependency update and upstream analysis)** — Branch `deps-and-upstream`:
+  every dependency at its latest (Hypercore 11.37.2, Corestore 7.13.0, HyperDHT 6.34.1 were already;
+  brittle 4 needs `brittle-node` for Node runs; Autobase 7.28.2 throws if a base is closed after its
+  storage — 4 v1 tests reordered, v1 code unchanged; Tibo kept 7.28.2). v1 390/390, core 273/273 Node and
+  272/272 Bare. **Blocker before merging**: 3 hyperDNS test files close in the old order and crash on
+  this branch — a session in the hyperDNS repo fixes them first. Upstream: **Hypercore** — confirmed theirs
+  (after a peer clears a block, a read of a later block hangs if a `want` was already sent; 7-line patch,
+  their suite 421/421 with it; nothing similar reported); our workaround stays. **The "Hyperswarm" race is
+  really HyperDHT's** (local-address shortcut vs abandoned hole-punch; already issue #304, open PR #283
+  fixes our case); the lead's earlier Hyperswarm reading was wrong. Standalone demos for Tibo and
+  Holepunch: `specs/research/upstream/demos/` (`npm install`, `npm run hypercore`, `npm run hyperdht`),
+  checked in a clean folder by the lead. Posting (a new Hypercore issue; a comment on hyperdht #304)
+  waits for Tibo's OK.
+
+- **2026-10-11 (review of the pre-merge fixes)** — Accepted and merged into `011-spaces-core` (272/272 Node,
+  re-run in the lead conversation). Closed spaces give log keys only to peers proving the space key;
+  phrase file 0600; crash-safe writes; `addProtocol()`, `leaveSpace()`; the key chain and `history`
+  setting; dead connections closed and re-dialed (SC-005 now 47 of 50 authors, all posts within 1.5 s).
+  `bench/next/double-dial.js` reproduces the Hyperswarm problem with plain Hyperswarm + Protomux across 8
+  processes (no hypergraph). Tibo: **before reporting anything, update every dependency to its latest
+  version**, then (if problems remain) a full analysis proving each is in the library and not our code,
+  pinning the exact cause, with fix suggestions. Dependencies were already recent (Hypercore 11.37.2 and
+  Corestore latest); behind: patch releases (Hyperswarm 4.17.0 → 4.17.2, whose changes don't touch
+  duplicate connections; Autobase, Protomux, bare-*), and test tools brittle 3 → 4, random-access-memory 3 → 6.
+  Pre-merge open questions settled by the lead: in hidden-history mode each newcomer needs an online
+  decider for a new key (acceptable, documented); a needless key change when an admin reopens the app is
+  harmless, fix later.
+
+- **2026-10-11 (upstream bugs, checked in the lead conversation)** — **Hypercore**: confirmed with plain
+  Hypercore (`specs/research/upstream/hypercore-clear-repro.js`) that after a peer clears block k, the other
+  side records its contiguous length as k and forgets it holds k+1.. (`onrange` lowers
+  `_remoteContiguousLength` without first setting those bits) — **but nothing stalls in plain Hypercore**
+  (`get`, range and live downloads still fetch). So our stall (story 2) most likely comes from our own code
+  (`get(seq, { wait: false })` reads, ranges restarting at the indexed position); follow-up: find it and
+  remove the workaround that calls Hypercore internals (`core.replicator.onhave`). No bug report; at most a
+  question with the script. **Hyperswarm**: reading `_handleServerConnection`, the duplicate-connection rule
+  mixes a symmetric key tie-break with a timing-dependent "existing already sent and received bytes"
+  test, so two sides can keep different connections; consistent with the measurements (joins ~1 s or
+  ~15 s, only across processes). Report only if the pre-merge session's plain-Hyperswarm script reproduces
+  it, with Tibo's OK.
+
+- **2026-10-11** — Private spaces never re-encrypt data; a **key chain** (each new room key carries the
+  previous one, locked with it) lets newcomers read history without re-encryption; per-space setting
+  `history: 'visible' | 'hidden'` (default visible). Found in review after Tibo's question: newcomers only
+  got the current key. Docs say plainly that a *closed* (non-private) space is readable by anyone holding
+  its key, removed members included; only private spaces cut them off. Added to the pre-merge session.
+  **Upstream reports** (Hypercore clear, Hyperswarm double dial): only after a minimal script using only
+  their library reproduces the problem here, and their trackers are checked; otherwise the bug is ours.
+
+- **2026-10-11 (review of spec 011's final pass)** — Merged into `011-spaces-core` (257/257 Node, re-run in
+  the lead conversation). Success criteria met except SC-005 (partly: 34 of 50 authors joined; every post
+  seen within 2 s). SC-004 met: first page 227 ms / 77 KB at 1M records (203 ms / 73 KB at 10k). Found and
+  **fixed before merging to master** (one session): a closed (non-private) forum is readable by anyone who
+  sees its topic — members give the log list only to peers proving they know the space key; the
+  recovery-phrase file readable by other local users; a stranger can make a page "complete"; crash-unsafe
+  writes of the phrase and the log list; peers dialing each other at once keep a dead connection (plain
+  Hyperswarm — hypergraph drops a connection whose space channel doesn't open and reconnects; re-run the
+  50-author benchmark); `addProtocol()` (SwarmFS needs it) and `leaveSpace()` were never built. The other
+  audit findings (`specs/011-spaces-core/audit.md`: request floods, fake-key floods delaying newcomers,
+  decisions re-read in full) go to a follow-up list after the merge. Tibo: **ponytail also for new code**
+  from now on (worker sessions use `/ponytail`). Pending with Tibo: upstream reports for the two
+  Holepunch bugs (Hypercore clear, Hyperswarm double dial) — drafted by the lead, posted only with his OK.
+
+- **2026-10-11 (review of spec 011 story 9)** — Accepted and merged into `011-spaces-core` (250/250 Node,
+  249/249 Bare, re-run in the lead conversation). **All nine stories are built.** Newcomer's first page:
+  223 ms / 92 KB at 10k records, 238 ms / 95 KB at 100k (flat); 1M not yet run. Switch-over to activity
+  lists at 300 logs (measured). Three "complete while missing the newest posts" bugs fixed. Settled by the
+  lead: modified apps writing out of time order can fool members holding part of a space (documented
+  limit; full holders are right); write limits rely on stamps (future stamps are flagged); a reply or
+  vote is stamped after what it points to. Unproven: SC-005 (50 writers) — the benchmark harness stalls
+  with many writers in one process (Hypercore catch-up), to be measured with writers in separate
+  processes. Tibo: **yes to the 1M benchmark** (alone, few writers); **ponytail: only the read-only
+  `/ponytail-audit` of `lib/` in the final pass**, its findings applied only where agreed in the lead
+  conversation — not as a mode for new code, no wholesale rewrite.
+
+- **2026-10-10 (review of spec 011 story 8)** — Accepted and merged into `011-spaces-core` (226/226 Node,
+  225/225 Bare, re-run in the lead conversation). Tibo (in the session): a sub-space's decisions live in
+  its parent's decision log; a private sub-space is read by those invited to it plus the parent's owner
+  and admins. Settled by the lead: only someone who can read a private space changes its key (a
+  moderator who made a new key would read everything after it — that's access, not moderation); a
+  member holding a private space without its key gets a "not for me" state answered at once instead of
+  waiting for the bound (story 9); `createInvite({ subspaces })` comes with story 9; sub-spaces' own
+  custom roles later. forum.js is at 395/400: story 9 must not grow it past the limit.
+
+- **2026-10-10 (review of the core follow-ups)** — Accepted and merged into `011-spaces-core` (202/202 on
+  Node and on Bare, both re-run in the lead conversation on the merged branch). The link consistency
+  bug is fixed (a link to a wrong-type target counts for nothing, on every member, whatever the order).
+  New reads: `members()`, `decisions()` (a moderation log), `hg.types()`, `tags()`, `peers()`, events,
+  `inspect({ records })`; the inspector uses them. Routed to story 8 (first): members re-exchange the
+  log directory summary periodically, so a missed announcement of a log is recovered without a
+  reconnect. Accepted limits: a decision by a moderator demoted before it settles can vanish from
+  `decisions()`; members on an older app version count links through fields they don't know.
+  The swarm now uses each device's own key (so `peers()` can prove who a peer is): peers see a device
+  key on connecting. Tibo: accepted for now; **later**, a random key per connection with identity
+  proven inside the space channel (better privacy) — not urgent, planned with story 9 or after.
+
+- **2026-10-09 (review of spec 011 story 7 and the inspector)** — Both accepted and merged into
+  `011-spaces-core` (story 7: 188/188 on Node and Bare; inspector: read-only, `node
+  tools/inspector/demo.js` plays a three-member forum at http://127.0.0.1:4401-4403). On the merged
+  branch the full suite passed 188/189: `test/next/forum/inspect.js` fails under load and passes alone
+  (4/4) — timing-sensitive, like `budgets.js` on Bare. Next session ("core follow-ups", before story 8):
+  (1) **a Principle I bug** found by story 7: a link's allowed target type is checked only if the
+  target is held when the record arrives, so two honest members can disagree — fix deterministically
+  (a link to a wrong-type target is ignored, the record kept, on every member); (2) unknown `hg/` types
+  kept like unknown app types (future hypergraph versions); (3) the two flaky tests wait for
+  conditions; (4) the inspector's requests: `members()`, a readable `decisions()` list, declared types,
+  a record's tags, connected peers, hidden/deleted records in diagnostics, events when logs or peers
+  change; (5) the storage estimate counts app index entries; (6) a field passed as `undefined` counts as
+  absent (old and new app code can share helpers); (7) app rules get ids and a space records which are
+  active, so `status()` warns when an app's rules differ (rules are code; mismatches can't be prevented,
+  only detected).
+
+- **2026-10-09 (review of spec 011 story 6)** — Story 6 accepted (180/180 on Node and on Bare, both
+  re-run in the lead conversation; v1 390/390; hyperDNS 46/46; 100k-record index rebuild 20.6 s;
+  `011-spaces-core` fast-forwarded). Departures accepted (research.md A10): dropped content keeps a
+  ~0.5 KB entry per record so counts stay exact (`OVER_BUDGET` when the list alone exceeds a share);
+  rebuild from a file listing accepted logs; self-compaction after dropping a tenth of the budget.
+  Routed to story 9 (T071b): a newcomer downloads a space bigger than its share once in full.
+  Watch: forum.js is at 371 of 400 lines — story 7 separates test plumbing from app code.
+
+- **2026-10-09** — **An inspector**: a read-only web page (local Node server + browser) showing what is
+  inside a hypergraph (spaces, members, roles, decisions, logs and devices, records by type, storage,
+  peers). For Tibo to see the core work during development, for app developers to debug, and later
+  HyperBrowser's developer-tools panel. Guardrails against rot: read-only first; public API plus one
+  documented diagnostics method (`space.inspect()`, built in story 6); a smoke test in the suite; its
+  own folder, built by its own session alongside story 7. (Tibo's idea, agreed by the lead.)
+
+- **2026-10-09 (review of spec 011 story 5)** — Story 5 accepted (153/153 on Node and Bare, re-run in the
+  lead conversation; `011-spaces-core` fast-forwarded). Accepted by the lead (research.md A9): a link or
+  tag counts only if its author may edit the source record (so nobody labels others' posts; community
+  labels would be a separate feature); the owner holds every permission, app ones included; a custom
+  role can't lose an app permission (like `post`); an edit made by a modified app before its author got
+  the permission starts counting once given (everyone still agrees). Next story: `space.roles()`, and a
+  device just made admin/moderator waits (bounded) until it may record decisions instead of failing
+  (the device tests still retry).
+
+- **2026-10-09** — Shared records (wiki pages, shared folders): **only the author and moderators can
+  delete**; other allowed editors can only edit (a blanked page is restored by the next edit). (Tibo)
+
+- **2026-10-09 (review of spec 011 story 4)** — Story 4 accepted (128/128 on Node and Bare, re-run in the
+  lead conversation; `011-spaces-core` fast-forwarded). Security: a device counts only if the identity
+  key itself vouched for it (a stolen device could mint devices no removal named); decision rights
+  follow devices; one settler device per decider (Tibo); unban = the member writes in a new log (Tibo);
+  write limits for open spaces moved to story 9 (Tibo). Settled by the lead: joining waits 30 s by
+  default (connecting alone can take 5 s on a real network) while reads keep 5 s; a decision method
+  first catches up with connected decision writers (bounded) before refusing, and NOT_ALLOWED says why
+  (story 5: the forum test had to retry setRole after an unban); the "new log prepared during a ban"
+  gap (modified apps only) goes with story 9's spam work; a space whose only settler is lost for good
+  can't settle again — docs say "give a space an admin", `status()` warns about a single settler, and
+  Autobase `fork()` is studied with spec 009 (resilience).
+
+- **2026-10-09 (review of spec 011 story 3)** — Story 3 accepted (99/99 on Node and Bare, re-run in the
+  lead conversation; `011-spaces-core` fast-forwarded). **SwarmFS can start on the core.** Decided by
+  Tibo: **removing a device needs the recovery phrase** (signed by the identity key, never by another
+  device alone); each device keeps the phrase encrypted with a password by default (Argon2id via
+  sodium), forgetting it is opt-in; a device added by code receives the phrase over the pairing
+  connection. Routed to story 4 (first): a removed device that could record decisions must lose that
+  right (a stolen owner laptop could still ban people), and a member's other devices can record
+  decisions; `Hypergraph.open(dir, { password })` / `{ joinCode, password }` so the phrase is protected
+  from the first moment; `query().fromDevice(key)` for apps like SwarmFS. Routed to story 6: superseded
+  personal-space records (device heads, settings) are cleared locally so they don't pile up.
+
+- **2026-10-09 (review of spec 011 story 2)** — Story 2 and the review fixes accepted (87/87 on Node and
+  Bare, re-run in the lead conversation; `011-spaces-core` fast-forwarded). Decided: a ban can start
+  from a chosen record ("drop everything from this post on"; built with story 3); **unban** comes with
+  story 4 (writes during the ban stay ignored); in story 4 **admins share the settling of the decision
+  order with the owner** (Autobase indexers), so a space outlives its owner (v1 spec 003's lesson).
+  Settled by the lead: rule-rejected records stay only on their author's device; a custom role can't
+  lose `post`. A Hypercore bug was found (a cleared block makes peers forget later held blocks) and
+  worked around with a test; an upstream report is drafted only with Tibo's OK.
+
+- **2026-10-08 (review of spec 011 story 1)** — Story 1 accepted (59/59 on Node and Bare, re-run in the
+  lead conversation). Found in review, fixed in the story 2 session: removing a member made members
+  disagree (fix: a removal is a cut, like a ban — also the pattern for losing an edit permission in
+  story 5); deletes must stay wiped after a reconnect (test first). Decided: the person chooses whether
+  the recovery phrase is erased after being written down or kept encrypted with a password; "complete"
+  means "everything this member knows of is held, and it reached another member since starting".
+  Story 5 must decide who may delete shared records (a delete that always wins lets one vandal erase a
+  wiki page).
+
+- **2026-10-08 (SwarmFS / HyperBrowser grilling)**:
+  - Everything is immutable underneath: an edit is a new record replacing an earlier one, a delete a
+    tombstone. A type says who may edit its records (author, a permission, any member) — wikis, shared
+    folders.
+  - **Sub-spaces** instead of areas: the API offers `createSubspace()`; underneath, a separate space
+    linked from its parent, inheriting members and roles; stricter rules or private allowed; its own
+    extra members allowed; **a parent ban always wins**. Admins split big archives explicitly.
+  - **A personal space per identity** across its own devices (device list, my spaces, settings, what
+    each device holds); devices join by code / QR.
+  - **One instance, one storage folder, many spaces**, one set of connections.
+  - **Storage budget**: one for the whole app, and optionally a budget for a given space taken out of
+    it (10 GB app, 1 GB for one space → 9 GB shared by the others). Policies cover records, not file
+    bytes moved by apps.
+  - Apps can add their own protocol to a space's connections (hypergraph's own stays on by default);
+    defaults work untuned, settings adjustable.
+  - App rules reject bad data before it is kept or passed on.
+  - The reddit-clone app is dropped: **forum scenario tests** (no UI) in this repo instead; the real
+    proof is a forum site in HyperBrowser. HyperBrowser = HyperBBS's vision in a web UI (codename,
+    renamed before 1.0); HyperMD scripts must be sandboxed (its spec).
+  - Spec 011's story order: forum basics, rules, devices + personal space (SwarmFS can start), invites,
+    graph vocabulary + shared editing, partial holding, app versions, sub-spaces, big spaces.
+  - SwarmFS keeps "full file list per member" in small and medium spaces (auto policy does it; ~0.6 GB
+    per million files); huge archives split into sub-spaces; redundancy for huge ones waits for spec 009.
+
+- **2026-10-08** — The web app starts as a local Node program plus a browser tab (fast to build), and
+  ships later as a Pear app (desktop, then Android and iOS). **The core is tested on Bare as well as
+  Node from the start**, not when shipping. Checked: every Holepunch dependency (Hypercore, Corestore,
+  Hyperswarm, Autobase, Hyperbee, HyperDB, keet-identity-key, Protomux, sodium) loads in Bare 1.27;
+  Node's built-ins (`path`, `fs`, `os`) don't, so the new core never uses them directly.
+- **2026-10-08** — SwarmFS and the web app are consumers of the core like the reddit clone: their
+  needs go into spec 011 before planning; their own specs start once the core's first stories work
+  (earlier, they would drift from the real API).
+- **2026-10-08** — Latest wins for edits and votes from several devices (stamped with the later of the
+  device clock and one more than the newest own record seen); `context` → `space`; default storage
+  policy "auto". See the design brief.
+- **2026-10-07** — Redesign instead of porting v1 onto v2: records owned by authors, a decision log per
+  space, readers enforce the rules, local indexes (HyperDB). See the design brief.
+
+## How we work
+
+- **Lead conversation** (Tibo + Claude): decides direction, writes and reviews specs, prepares the
+  prompts for worker sessions, reviews their work before merge. It may be restarted fresh at any time:
+  this file and the specs carry everything.
+- **Worker sessions**: one job each (a spec's plan, a phase of tasks, a research question), on their
+  own branch and worktree, following CLAUDE.md and the spec-kit flow. They commit on their branch and
+  stop; nothing merges to master without a review in the lead conversation.
+- **One session building the core at a time** (conflicts, and the dev machine's load limits);
+  research, docs or another repo can run alongside.
+- Every change to the core's API updates the reddit clone and its tests in the same change
+  (CLAUDE.md rule 3).
+- **Measured like tested** (2026-11-01): each repo has `npm run perf` (real app flows, Node and Bare, a few
+  sizes) and a committed `perf/history.jsonl`; a hot-path change runs it before and after, the lead
+  compares (`npm run perf:compare`) before merge (CLAUDE.md rule 2).
+- **hypergraph and SwarmFS stay in step**: a SwarmFS request (`SwarmFS/specs/requests-to-*.md`) that shows a flaw
+  in the core is fixed in hypergraph as a rule, not patched case by case; after any change to the new core, the
+  lead runs SwarmFS's `npm run test:all` too, and marks the request done there.
+
+## Now
+
+(2026-10-29; spec 011 merged into master 2026-10-22, history in Decisions.)
+
+1. ~~H17~~ merged (053324d: the indexer stopped at a full batch of locked records; any private space with 256+
+   records ahead of a newcomer's key). ~~swarmwire S9~~ merged (c1f6484). SwarmFS 63/63 Node and Bare on both.
+2. ~~Spec 012 "honest reads"~~ merged (2bf51dc): reads at once (`timeout` 0 by default, `readTimeout` removed),
+   `change` carries `records: [{ id, type, deleted }]` (edits too: H16's cause was `#settle()` returning true only
+   for deletes), events for every read, `get().deleted`. Lead's run: v1 390/390, next 304/304 Node, 303/303 Bare;
+   SwarmFS unchanged 63/63 Node, 62/63 Bare (its own `ino` bug, below).
+3. ~~SwarmFS adopts 012~~ merged into its `001-personal-sync` (a2db790; 66/66 Node and Bare, lead's run): shortcuts
+   gone, re-reads only changed entries, an edit newer than a delete re-added; exact file ids (Node bigint stat; Bare
+   has none, so renames there are confirmed by hashing). Filed H18 (a record doesn't say when it was edited).
+   ~~R13~~ merged (a9e271b): not a bug, a test's clock-ahead stamps; guard test added. Open question it raised: a
+   fast writer's stamps run ahead of the clock, so others' posts sort below theirs (a spam lever in open forums).
+4. ~~Spec 013 "helpers"~~ merged (bab86c3): `space.setHelpers(keys)` (owner, top space), `space.helpers`, members hand
+   the space to blind peers in the background, never awaited; deciders list logs (`logs/list`) so members find
+   authors they never met. Lead's run: next 311 Node / 310 Bare (file by file), SwarmFS 66/66 Node and Bare.
+   Not in 013 (forum F4c): whether this device reaches each helper now. One client per space, sub-spaces included
+   (fine for a forum; one per account later).
+5. ~~Forum F5–F7 core fixes~~ merged (29e8423): live lists call back only on change; sub-spaces take the parent's
+   policy; a role with `invite` and no power over others invites to itself (friends invite friends); `subspaces()`
+   lists a board once it opens; the runner counts crashed files. Lead's run: next 315/315 Node, 314/314 Bare;
+   SwarmFS 66/66 Bare, 65/66 Node (`pause.test.js` timed out under load, 4/4 run alone twice).
+6. ~~Spec 014 "moderation tools"~~ merged (290a86a, forum F10–F13): `put: { permission }` on a type, sealed
+   `report()`/`reports()`, `query().moderated()`, `ban { drop: 'all' }`. Apply-time: everyone updates together.
+   Lead's run: next 323/323 Node, 322/322 Bare; SwarmFS 66/66 (worker's run). Gap: `count`/`sum` ignore `put`.
+   Open forum requests: F8 (sort by sums/counts), F9 (text search): later, when a forum gets big.
+7. Now: forum (`hypergraph-forum-example`) has F5–F7 and all of Tibo's to-dos (main 151806e). Next: adopt 014
+   (drop the F10–F13 workarounds, re-pin), then Tibo tries it himself. No friends' week-long trial (2026-11-02:
+   nobody is around to use a test app that long); its job (catch replication bugs like H17, measure delays) goes
+   to a **soak run**: a few scripted forum members on the public DHT for some hours, posting, going offline and
+   back, each keeping a delivery log, at low load (the tool exists: `npm run soak`, `soak/README.md`;
+   first 15-min public run 2026-11-06). Nothing waits for it. Tibo's answers (2026-10-30): any
+   member invites (admins-only invites and invite-less public spaces later, for SwarmFS/HyperBrowser); online only
+   while the program runs (a background service later, likely in SwarmFS); friends send their delivery log at the
+   end (it mostly catches replication bugs like H17 and measures delays: a post is lost for good only if its
+   author never reconnects); names in a `profile` record in the forum (a name in the core maybe later, F1).
+8. Later: hyperDNS onto the new core or frozen, then v1 removed.
+9. HyperBrowser milestone 0: the storage study is research, so it can start now; the "one engine for many sites"
+   spec (015) is merged (2026-11-02, see 10b).
+10. Scale audit merged (`specs/research/scale-audit.md`, 2026-11-01; targets: forum 1M accounts ever / 10M posts,
+    chat 100k members, SwarmFS 10M files / 1,000 people, 500 sites on a phone, one 100 GB file). Silent members cost
+    everyone forever: each join re-reads the whole decision state (25 s per member at 100k members, breaks at ~10k-30k),
+    every full member keeps every log open (18 KB each). Order, before any forum grows past it:
+    (a) spec **"open spaces at scale"** (016): **merged 2026-11-03** (cf99bd8; a private space can't be made
+    public): public spaces (`makePublic()`, one link for everyone, one-way; joining is no decision), known
+    members, no log before a first record, log lists settled by key ranges (`hypergraph/space/2`); apply-time + wire,
+    everyone updates together. Its "logs open only while used" became spec **017**: **merged 2026-11-06**
+    (3347788; lengths in the summaries, `hypergraph/space/3`, helpers handed each log then closed). Left from it:
+    bounding opens while catching up, one index row per held log at start. Still left out of 016: helpers'
+    `listed:` entries (its Story 6, research R8: needs a list a blind peer can serve), a helpers follow-up.
+    (b) the "one engine for many sites" spec (lazy spaces, types per space): **merged 2026-11-02** (topic queue, spaces open while used, types in the space (apply-time), migration, a site's
+    handle with the main identity, suspend/resume); its "logs open only while used" (US4) left to (a), then to a spec of
+    its own; per-site keys a spec of their own. (c) SwarmFS: `held`/`has` as summaries,
+    the tree read folder by folder, with its milestone-1 work. (d) swarmwire: hashes kept on disk, then profile small
+    files (~33 ms each) and why more seeders are slower. Private keys per member wait for the chat spec.
+    Perf suites (`npm run perf`, three repos, Node and Bare) merged after their noise fix (0 false flags).
+
+## Follow-ups (not built yet)
+
+- From the audit (`specs/011-spaces-core/audit.md`): request floods, fake-key floods delaying newcomers, decisions
+  re-read in full.
+- SwarmFS's later requests (`SwarmFS/specs/requests-to-hypergraph.md`), for its later stories:
+  - **H5** read-only members: does a member whose role lacks `post` keep receiving a private space's key? If not, a
+    `read` role.
+  - **H6** concurrent versions of a record (conflict copies): SwarmFS can do it alone with a `base` field; decide
+    whether hypergraph exposes "versions that lost to a concurrent edit".
+  - ~~**H7** a public test helper for apps~~: done, `hypergraph/testing` (spec 018).

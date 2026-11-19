@@ -160,7 +160,7 @@ silent rather than loud.
 The through-line: **a serverless web stack.** Naming (hyperDNS) + data and permissions
 (hypergraph) + documents (HyperMD) + files (SwarmFS), browsed through **HyperBrowser** (own repo,
 not started; a web UI on Pear) — with no servers anywhere, only peers. HyperBBS, the terminal
-client, is paused. The final app's design: `ROADMAP.md`, "The final app: HyperBrowser".
+client, is paused. The final app's design: `docs/decisions.md`, "The final app: HyperBrowser".
 
 Per-project direction, and how firm it is:
 
