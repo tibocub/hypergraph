@@ -1,7 +1,6 @@
-# Hypergraph's new core: concepts
+# Concepts
 
-`require('hypergraph/next')`: the redesigned core (spec 011, `specs/011-spaces-core/`). ALPHA: it grows
-story by story; this page covers what exists (stories 1 to 9). The API is in [api.md](api.md); what
+`require('hypergraph/next')`, the current core. ALPHA: breaking changes are expected. The API is in [api.md](api.md); what
 "deleted" and "incomplete" mean for your users is in [deleting-and-incomplete.md](deleting-and-incomplete.md);
 the worked example is the forum in `test/next/forum/forum.js`.
 
@@ -17,7 +16,7 @@ You create a space with `hg.createSpace({ name })` and let people in with an inv
 space's key can connect to it: the topic members meet on, which anyone watching the DHT sees, isn't enough
 to read it.
 
-A **public space** (`space.makePublic()`, spec 016) is open to everyone, like a public Discord server: one
+A **public space** (`space.makePublic()`) is open to everyone, like a public Discord server: one
 link (`space.publicLink()`, the space's key in link form), the same for everyone. Joining with it is no
 decision: in a public space, anyone the decision log doesn't name counts as a member unless banned, and the
 proof every device log starts with ("this identity writes this log in this space") is all a reader checks.
@@ -38,13 +37,13 @@ narrowed until the differing keys are found, so one new log costs about 1-2 KB w
 017), so the same exchange finds a log a peer holds more of. The space channel is `hypergraph/space/3`; a
 peer of an older version opens an old channel, never syncs, and shows as `OTHER_VERSION` in `status()`.
 
-A member keeps other authors' logs **open only while it uses them** (spec 017): to read their blocks, to
+A member keeps other authors' logs **open only while it uses them**: to read their blocks, to
 download what a peer holds more of, to hand them to helpers. About 30 s unused, a log closes; its length
 and size stay in the index, and peers still get its blocks (the storage opens it to serve them). Opening a
 space opens none of them. A closed log counts as complete only once every connected peer's latest summary
 agreed with this member's, so `complete` stays honest. A peer claiming more of a log than anyone serves
 within a minute stops counting and shows as `UNSERVED_LENGTH` in `status()`. A newcomer reading a big
-space by activity lists (story 9) keeps the few logs it reads open.
+space by activity lists keeps the few logs it reads open.
 
 An instance is an **engine**: one identity, one storage folder and one set of connections, for one app
 or many (a browser running many sites holds every space of every site). Spaces it holds are open only
@@ -164,7 +163,7 @@ Each device keeps what the decisions say in memory and applies each new decision
 decision costs what it changed, not the number of members (about a millisecond at 1,000 or 10,000
 members). It reads the whole log again only when it opens the space and when decisions made at the same
 time on different devices are put in order after the fact. In memory, a member costs about 0.2 KB, 0.3 KB
-in a space with helpers (2026-11-02); on disk, each join still adds about 2 KB to the decision log, and a
+in a space with helpers; on disk, each join still adds about 2 KB to the decision log, and a
 newcomer downloads about 0.8 KB per member to join.
 
 ## Helpers
@@ -196,8 +195,8 @@ someone loses access, the key changes: they keep reading what came before, not w
 unlocks the ones before it, so newcomers read the history, unless the space hides it (newcomers then read
 from their join on). A
 member without a key holds the blocks it relays and reads nothing. A private top space is also encrypted on
-disk (spec 022): its members, record types and timing too are hidden from whoever stores it without being let
-in. Design and limits: `specs/011-spaces-core/research.md` A13, `specs/022-sealed-places/`.
+disk: its members, record types and timing too are hidden from whoever stores it without being let
+in. Limits: [api.md](api.md#sub-spaces-and-private-spaces).
 
 ## Roles and moderation
 
@@ -233,7 +232,7 @@ and for good; anything past it is ignored by everyone, even by members who had a
 
 Each member answers queries from its own local index of what it holds. Every read **answers at once**
 from what is held and returns `{ items, complete }`; given its own `timeout`, it waits up to that while
-something known to exist isn't held yet (spec 012). What it needs still starts (an older part of a big
+something known to exist isn't held yet. What it needs still starts (an older part of a big
 space, content dropped here), and `change` names the records when they arrive.
 
 `complete: false` means: some record this member knows exists isn't held yet (its log is longer than

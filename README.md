@@ -1,25 +1,46 @@
-# ! Software still in ALPHA - breaking changes expected !
-
 # Hypergraph
 
-A minimal graph database optimized for P2P social apps on the Holepunch ecosystem.
+> **Alpha.** Breaking changes are expected.
 
-Hypergraph provides a local graph API for building decentralized applications with:
-- **Graph operations**: Entities, relations, tags, content, and queries
-- **Identity system**: Mnemonic recovery, device attestation, multi-device support
-- **Collaborative contexts**: Multi-writer CRDTs for relations, tags, and moderation — confirmed
-  by the context's creator, joined by fast-forward, guarded by app rules
-- **Role-based permissions**: Per-role access control and moderation
-- **Built for scale**: bulk writes, batched indexing, and data on relations, so a member can
-  browse a million-entry space a second after joining (see [Scale](#scale))
+Hypergraph is a JavaScript library for building social apps with no server: forums, chats, wikis,
+shared folders, sites. You describe your data, then write and read it. Members, roles, moderation,
+invites, several devices per person, private spaces and storage limits come with it, and you don't
+need to know replication, cryptography or networking.
 
-## The new core: `hypergraph/next`
+Everything lives on the users' own devices and syncs peer to peer, over the
+[Holepunch](https://holepunch.to) stack (Hypercore, Autobase, Hyperswarm, HyperDB). It runs on Node
+and on Bare (Pear).
 
-A redesigned core (spec 011, [`specs/011-spaces-core/`](specs/011-spaces-core/)) lives beside the API
-below, which stays as it is until hyperDNS moves. It is the easiest way to build a forum, a chat, a wiki or
-a shared folder with no server: describe your data, write and read it; members, roles, moderation,
-invites, several devices per person, private sub-spaces, storage budgets and big spaces come with it.
-It runs on Node and on Bare (Pear).
+## Core ideas
+
+- **Space**: one forum, chat, wiki or folder. It has members, their roles, its rules and its
+  content. Its key is its address; members find each other on the network by it.
+- **Record**: a piece of content (a post, a comment, a vote, a page) of a type your app declares.
+  Each member's device writes its records into a log of its own; edits and deletes are new
+  entries, and the latest allowed one wins on every device.
+- **Members and roles**: `owner`, `admin`, `moderator`, `member`, `guest`, plus roles your app
+  defines. Roles, bans and moderation are decisions in the space's decision log, applied in the
+  same order by everyone. **Readers enforce**: every device checks every record against the
+  space's rules, so a modified app can't post where it may not.
+- **Private spaces**: readable only by their members. Content is encrypted with a key that
+  changes when someone leaves, so removed people can't read what comes next. A private top space
+  is also encrypted on disk.
+- **Circles**: small groups of invited people whose devices keep each other's spaces online
+  while their owners are offline. **Helpers** (always-on blind peers) can do the same for a space.
+
+```mermaid
+flowchart LR
+  subgraph Space["a space (one forum)"]
+    D[decision log<br/>members, roles, moderation]
+    A[Alice's log<br/>her records]
+    B[Bob's log<br/>his records]
+  end
+  A -->|checked against| D
+  B -->|checked against| D
+  Space --> I[local index on each device<br/>queries, counts, live views]
+```
+
+## Example
 
 ```js
 const { Hypergraph } = require('hypergraph/next')
@@ -32,194 +53,61 @@ const hg = await Hypergraph.open('./data', {
   }
 })
 await hg.connectToSwarm()
+
 const forum = await hg.createSpace({ name: 'My forum' })      // or: await hg.redeemInvite(link)
 const post = await forum.put('post', { title: 'Hello', text: 'First!' })
 await forum.put('comment', { on: post, text: 'Welcome' })
-const { items, complete } = await forum.query('post').latest(20)
-const link = await forum.createInvite({ role: 'member' })
+
+const { items, complete } = await forum.query('post').latest(20)   // reads answer at once
+forum.on('change', () => { /* read again */ })
+
+const link = await forum.createInvite({ role: 'member' })    // send it any way you like
 ```
 
-- [Concepts](docs/next/concepts.md): spaces, records, edits, decisions, devices, budgets, big spaces
-- [API](docs/next/api.md): every call
-- ["Deleted" and "incomplete", plainly](docs/next/deleting-and-incomplete.md): what to tell your users
-- The worked example: a whole forum in under 400 lines, played by tests:
-  [`test/next/forum/forum.js`](test/next/forum/forum.js)
-- **The inspector**, a read-only web page showing what a running instance holds:
-  `node tools/inspector/demo.js` plays a three-member forum at http://127.0.0.1:4401 to 4403
-  ([tools/inspector/README.md](tools/inspector/README.md))
+A whole forum in under 400 lines, played by tests: [`test/next/forum/forum.js`](test/next/forum/forum.js).
 
-## Under the Hood
+## Quick start
 
-Hypergraph is a thin composition over lower-level Holepunch libraries:
-
-**Dependencies:**
-- [Hypercore](https://github.com/holepunchto/hypercore): Append-only logs for data storage
-- [Corestore](https://github.com/holepunchto/corestore): Hypercore management and namespace isolation
-- [Autobase](https://github.com/holepunchto/autobase): Multi-writer CRDT for collaborative contexts
-- [Hyperbee](https://github.com/holepunchto/hyperbee): Materialized view and key-value indexes
-- [index-encoder](https://github.com/holepunchto/index-encoder): Compact, sortable binary index keys
-- [Keet-identity-key](https://github.com/holepunchto/keet-identity-key): Multi-device user ID management with mnemonic recovery
-
-## Quickstart
-
-```js
-const Corestore = require('corestore')
-const { Hypergraph } = require('hypergraph')
-
-const store = new Corestore('./data')
-const graph = new Hypergraph(store)
-await graph.ready()
-
-// Create an entity (author derived from identity.deviceKeyPair)
-const post = await graph.put({ type: 'post' })
-await graph.putContent(post.id, 'Hello world', 'text')
-
-// Create a context for relations
-const commentsContext = await graph.createContext()
-
-// `from` and `to` must be REAL entity ids returned by put() — an id like
-// 'comment/1' is not well-formed, and an edge from it is silently dropped on
-// read (the author can't be recovered from the id, so the edge can't be
-// verified as genuine). relate() will happily append it; edges() will never
-// return it.
-const comment = await graph.put({ type: 'comment' })
-await graph.relate({
-  from: comment.id,
-  to: post.id,
-  type: 'reply',
-  context: commentsContext
-})
-
-// Query entities
-for await (const node of graph.query().type('post')) {
-  console.log(node.id)
-}
-
-await graph.close()
-await store.close()
-```
-
-## Key Concepts
-
-### Entities
-Nodes in your graph (posts, users, comments). Each entity has a unique ID, type, and author. Stored in the author's personal UserCore.
-
-### Relations
-Directed edges connecting entities (reply-to, likes, follows). Stored in collaborative contexts (Autobase) where multiple peers can contribute. A relation can carry an optional numeric `value` and an optional signed `data` string (≤ 4 KB) returned with the edge — put what a listing needs there and nobody has to download authors' logs to browse.
-
-### Contexts
-Collaborative workspaces for relations, tags, and moderation. Each context is an isolated Autobase instance with two write modes: `open` (anyone can write) and `closed` (role-based). Each context keeps its own **role table**; the owner and trusted members (admins) **index** it, i.e. confirm everyone's writes; a member who joins far behind **fast-forwards** to that confirmed state instead of replaying history; apps can attach **rules** that reject events before they are indexed. See [Contexts and Roles](docs/contexts-and-roles.md).
-
-### Roles
-Role-based access control for contexts and moderation. RoleBase stores role registry with member→role mappings and role→permission mappings.
-
-## Scale
-
-Measured with [`bench/scale.js`](bench/README.md) (one Windows 10 machine, 16 GB RAM), a context
-holding 1,000,000 file entries (one entity, one content reference and one relation each):
-
-| | before (2026-10-04) | now |
-|---|---|---|
-| writing them (`graph.batch()`) | ~1.5 h projected | ~9 min, 3.3 GB on disk |
-| a new member can list a folder | joining crashed (out of memory) | **1.2 s** after joining, with names and sizes from relation data |
-| new member's disk | — | 60 MB (context only) / 1.5 GB (full replica of the author's log) |
-| new member's peak memory | > 8 GB | 329 MB (context only) / 855 MB (full) |
-
-How: bulk writes, batched indexing and compact index keys ([spec 002](specs/002-scale-indexing/)), confirmation and
-fast-forward joins ([spec 003](specs/003-fast-forward-contexts/)), data on relations
-([spec 004](specs/004-relation-data/)). What is left and why:
-[scaling study](specs/research/scaling-study.md).
-
-## Learn More
-
-- [Storage Model](docs/storage-model.md) - How data is distributed across UserCores, ContextBases, and RoleBases
-- [Local Data Distribution](docs/local%20data%20distribution.md) - Detailed analysis of storage efficiency and data duplication
-- [Identity System](docs/identity-system.md) - Multi-device support, mnemonic recovery, identity vs device keys
-- [Contexts and Roles](docs/contexts-and-roles.md) - Collaborative contexts, write modes, role-based access control
-- [Networking](docs/networking.md) - Replication patterns, Hyperswarm integration, what joining downloads
-- [Querying](docs/querying.md) - Query API, edges and their data, indexes
-- [v2 prototype](docs/v2-prototype.md) - Unstable `hypergraph/v2`: communities whose cost follows what a member reads and holds, with measurements
-- [Benchmarks](bench/README.md) - How to measure, and every result so far
-- [Scaling study](specs/research/scaling-study.md) - Where the bytes and time go, what is left to do
-- [Glossary](docs/glossary.md) - P2P/Holepunch terminology explained
-
-## Installation
-
-**Not published to npm yet.** Clone it next to your project and depend on it by folder path:
+Not published to npm yet. Clone it next to your project and depend on it by path:
 
 ```json
-"dependencies": {
-  "hypergraph": "file:../hypergraph"
-}
+"dependencies": { "hypergraph": "file:../hypergraph" }
 ```
 
-`npm install` then creates a real link to the checkout, so edits to hypergraph are live in your
-project with no reinstall. This is how the sibling projects consume it — see
-[ECOSYSTEM.md](ECOSYSTEM.md).
+`npm install` links your project to the checkout, so changes to hypergraph are live without a
+reinstall. (npm 12 refuses `github:` dependencies unless its `allow-git` setting allows them.)
 
-Installing straight from GitHub (`npm install github:tibocub/hypergraph`) is refused by npm 12 by
-default, which blocks git dependencies unless its `allow-git` setting is changed.
+To work on hypergraph itself:
 
-## Bulk writes
-
-Anything bigger than a handful of writes — importing a folder, say — belongs in one batch:
-
-```js
-const batch = graph.batch()
-const dir = batch.put({ type: 'dir' })
-for (const f of files) {
-  const file = batch.put({ type: 'file' })
-  batch.putContentRef(file, { src: [`swarmwire://${f.root}`], size: f.size, type: f.mime, mutable: false })
-  // data on the relation: a listing needs nothing else (spec 004)
-  batch.relate({ from: file, to: dir, type: 'in', context: ctx, data: JSON.stringify({ name: f.name, size: f.size }) })
-}
-const { entities } = await batch.flush()   // two log appends, however many files
+```bash
+npm install
 ```
 
-It is much faster for you, and for everyone else too: other peers replay a context one write
-call at a time, so the same import written item by item would stay slow for every future member.
-Contract: [`specs/002-scale-indexing/contracts/bulk-write.md`](specs/002-scale-indexing/contracts/bulk-write.md).
-
-## Contexts: confirmation, fast joins and app rules
-
-A context's creator confirms everyone's writes; newcomers far behind fast-forward to that signed
-state instead of replaying history; apps can attach deterministic rules that reject events before
-they are indexed:
-
-```js
-const rules = { id: 'myapp/v1', validate: (event, reader) => event.type !== 'message' || event.text.length < 1000 }
-const ctx = await graph.createContext({ rules })
-await graph.openContext(ctx, { rules })
-await (await graph.openContext(ctx, { rules })).status() // { version: 3, rules: 'myapp/v1', layout: 2, confirmedLength, ... }
+```bash
+npm run test:next
 ```
 
-Invite someone with a link that grants a role, redeemable while you're offline:
-
-```js
-const link = await context.createInvite({ role: 'admin', keyPair: graph.identity.deviceKeyPair })
-// on their device, connected through graph.replicate():
-await graph.redeemInvite(link)
+```bash
+npm run test:next:bare
 ```
 
-Add `scope: scopeId` and the link also asks for read access to encrypted content: the role
-arrives right away, the key as soon as a member who holds it is online
-([Read Permission](docs/read-permission.md#invites-that-give-read-access)).
+`test:next` runs the core's tests on Node, `test:next:bare` on Bare. More in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-See [Contexts and Roles](docs/contexts-and-roles.md) for the trust model.
+## Documentation
 
-## API Reference
+- [Concepts](docs/next/concepts.md): how spaces, records, decisions, devices and storage work.
+- [API](docs/next/api.md): every call, with examples.
+- **API reference**: `npm run docs` generates it into `out/api/` from the JSDoc in `lib/`.
+- [All docs](docs/README.md), [roadmap](ROADMAP.md).
+- **The inspector**: `node tools/inspector/demo.js` plays a three-member forum, each member with a
+  read-only web page of what it holds ([tools/inspector/README.md](tools/inspector/README.md)).
 
-See the JSDoc-generated API documentation in [`docs/api/`](docs/api/) (open `index.html` in a
-browser) for detailed method documentation.
+## The old version
 
-## Examples
-
-- [hypergraph-forum-example](https://github.com/tibocub/hypergraph-forum-example) - Complete forum application with networking
-- [cli-chat-pattern](examples/cli-chat-pattern) - Simple chat example
-
-## Contributing
-
-See [docs/contributors/](docs/contributors/) for architecture details and contribution guidelines.
+`src/` is v1 (`require('hypergraph')`), a graph store with contexts. It is frozen, kept only until
+its last user moves to the new core, and will be removed. Don't start anything new on it; its docs
+are in [docs/v1/](docs/v1/).
 
 ## License
 

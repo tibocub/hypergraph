@@ -93,7 +93,7 @@ test('forum-flow: two peers over a real Hyperswarm connection each post and repl
   // Real apps learn the peer's usercore key out-of-band (forum-web does it
   // via a writer-request control message carrying the peer's graph.key)
   // and call openUserCore() explicitly — hypergraph does not do this
-  // automatically, by design (see docs/networking.md).
+  // automatically, by design (see docs/v1/networking.md).
   await a.graph.openUserCore(b.graph.key)
   await a.graph.update()
   await aCtx.addWriter(bCtx.localKey)
