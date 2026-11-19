@@ -1,7 +1,4 @@
 // v2 prototype: what a member keeps (spec 007, US4, FR-011..FR-013, SC-008).
-// replicate: 'all' holds every segment of every channel; 'sparse' only what
-// was read; 'auto' (default) holds the newest segments that fit the budget,
-// all of it when the community fits.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -16,9 +13,6 @@ const SEG = 60000
 const PER = 20 // messages per author per segment
 const now = () => segmentOf(Date.now(), SEG)
 
-// A channel whose history spans `segments` (oldest first), written straight
-// into the owner's store: each author's log and the roster entries, signed
-// by the authors (as bench/v2-chat.js does).
 async function channelWithHistory (owner, name, authors, segments, logStore = owner.store) {
   const id = b4a.toString(hcrypto.randomBytes(16), 'hex')
   await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id, name, segmentMs: SEG, timestamp: segmentStart(segments[0], SEG) })
@@ -75,7 +69,6 @@ test('v2 replication: all holds every segment of every channel, and keeps up liv
   t.is(st.mode, 'all')
   t.ok(st.heldBytes > 0, `held bytes counted (${st.heldBytes})`)
 
-  // New content in the current segment arrives without being read.
   const log = a.logs[0]
   const seq = (await log.appendRaw({ t: Date.now(), text: 'live' })).seq
   t.ok(await until(() => peer.community.holds(b4a.toString(log.key, 'hex'), seq, seq + 1), 10000), 'a new message is held too')
@@ -116,8 +109,6 @@ test('v2 replication: auto over budget holds the newest segments that fit, and m
   const owner = await member(t, 'rep-auto-over-owner')
   const c = now()
   const a = await channelWithHistory(owner, 'a', authors(2), [c - 6, c - 5, c - 4, c - 3])
-  // Each segment is 2 authors x 20 blocks, each counted with what storing it
-  // costs: a budget of 2.5 segments holds two.
   const segBytes = 2 * PER * ((await blockBytes(owner, a)) + STORED_OVERHEAD)
   const budget = Math.floor(segBytes * 2.5)
   const peer = await member(t, 'rep-auto-over-peer', { key: owner.community.key, budget })
@@ -131,8 +122,6 @@ test('v2 replication: auto over budget holds the newest segments that fit, and m
   t.is(st.holding, 'window', 'auto says it holds a window')
   t.ok(st.heldBytes <= budget, `held ${st.heldBytes} <= budget ${budget}`)
 
-  // The community grows: two newer segments. The window moves; what fell
-  // out of it is dropped.
   await addSegments(owner, a, [c - 2, c - 1])
   t.ok(await until(async () => (await holdsSegment(peer, a.segments[5])) && (await holdsSegment(peer, a.segments[4])), 20000), 'the new segments are held')
   t.ok(await until(async () => (await holdsNothingOf(peer, a.segments[3])) && (await holdsNothingOf(peer, a.segments[2])), 10000), 'the ones that fell out are dropped')
@@ -141,8 +130,6 @@ test('v2 replication: auto over budget holds the newest segments that fit, and m
 })
 
 test('v2 replication: auto counts what was read beyond its window; the window makes room', async (t) => {
-  // Scrollback past the window downloaded blocks no one counted: holdings
-  // could grow past the budget for good.
   const owner = await member(t, 'rep-read-owner')
   const c = now()
   const a = await channelWithHistory(owner, 'a', authors(2), [c - 6, c - 5, c - 4, c - 3])
@@ -152,7 +139,6 @@ test('v2 replication: auto counts what was read beyond its window; the window ma
   t.teardown(link(owner, peer))
   t.ok(await until(async () => (await holdsSegment(peer, a.segments[3])) && (await holdsSegment(peer, a.segments[2])), 20000), 'the window: the two newest segments')
 
-  // Read the oldest segment in full.
   const oldest = a.segments[0]
   const page = await peer.community.before(a.id, { t: segmentStart(oldest.segment + 1, SEG), limit: 2 * PER })
   t.is(page.length, 2 * PER, 'read the oldest segment')
@@ -202,13 +188,10 @@ test('v2 replication: a helper holding everything serves old segments to a spars
 })
 
 test('v2 replication: logs unreachable at first are fetched once their holder connects', async (t) => {
-  // A closed segment planned while its logs were out of reach came out
-  // empty (length 0) and that plan was kept: never fetched afterwards.
   t.timeout(60000) // retries back off: 2 s, 5 s, 10 s...
   const owner = await member(t, 'rep-late-owner')
   const holder = await member(t, 'rep-late-holder', { key: owner.community.key, replicate: 'sparse' })
   const c = now()
-  // The roster is the owner's; the authors' logs exist only in holder's store.
   const a = await channelWithHistory(owner, 'a', authors(2), [c - 3, c - 2], holder.store)
   const peer = await member(t, 'rep-late-peer', { key: owner.community.key, replicate: 'all' })
   t.teardown(link(owner, peer))
@@ -220,11 +203,6 @@ test('v2 replication: logs unreachable at first are fetched once their holder co
 })
 
 test('v2 replication: a pass over what a holder already holds opens no active session', async (t) => {
-  // Each pass opened an active session on every log it checked. Opening and
-  // closing one makes Hypercore signal every peer of that log when its "in
-  // use" state flips: a host on the default (auto) cost each member 350 KB
-  // and 0.5 s of CPU per 10 idle seconds (bench/v2-community.js; 15 KB and
-  // 32 ms with inactive sessions for planning and checking).
   const owner = await member(t, 'rep-quiet-owner') // auto: holds its own history
   const c = now()
   await channelWithHistory(owner, 'a', authors(10), [c - 3, c - 2])
@@ -233,7 +211,6 @@ test('v2 replication: a pass over what a holder already holds opens no active se
   t.is(st0.holding, 'all')
   t.is(st0.replicationActiveOpens, 0, 'none for logs it wrote and holds')
 
-  // Restarted, it checks everything again: still none.
   await owner.community.close()
   const { Community } = require('../../../src/v2')
   const again = new Community(owner.store, { identity: owner.identity, key: owner.community.key })

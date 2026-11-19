@@ -17,7 +17,6 @@ const opened = (hg, key, ms = 10000) => eventually(() => { try { return hg.space
 const titles = async (f) => (await forum.latest(f)).map((p) => p.title)
 const shows = async (f, id) => (await forum.latest(f)).some((p) => p.id === id)
 
-// A private sub-forum of `fa`, with b as an admin of the forum (so in it).
 async function staffRoom (t) {
   const m = await threeMembers(t)
   await forum.giveRole(m.fa, m.b.identity.publicKey, 'admin')
@@ -35,21 +34,18 @@ test('a private sub-forum: its members read it; a plain member doesn\'t have it;
   t.alike(forum.subforums(fc), [{ key: staff.key, name: 'Staff', private: true }], 'a plain member sees it exists')
   t.is(await codeOf((async () => c.space(staff.key))()), 'NOT_FOUND', 'but doesn\'t have it')
 
-  // c opens it anyway (a relay, a storer): it gets the blocks, not the content.
   const rc = await testing.openSpace(c, staff.key, { root: fa.key })
   t.ok(await eventually(() => testing.holdsBlock(rc, p.id), 10000), 'it holds the block')
   const raw = await testing.rawBlock(rc, p.id)
   t.absent(b4a.includes(raw, b4a.from('secret plan')) || b4a.includes(raw, b4a.from('meet at noon')), 'no plaintext in it')
   t.alike(await titles(rc), [], 'nothing readable')
   t.is((await rc.get(p.id, { timeout: 0 })).record, null)
-  // Not for me: it answers at once, and says so.
   t.is(rc.status().access, 'none')
   const t0 = Date.now()
   const page = await rc.query('post').latest(20)
   t.ok(Date.now() - t0 < 500 && !page.complete && page.access === 'none', 'a read answers at once: complete false, access none')
   t.is(staff.status().access, 'full', 'a member reads it')
 
-  // Keys live in memory only: after a restart they come back from the grants.
   await b.close()
   const b2 = await account(t, 'b2', { dir: b.dir })
   const again = await opened(b2, staff.key)
@@ -130,17 +126,13 @@ test('a private forum: its members read it; nothing of it is in the clear on dis
   t.ok(await eventually(() => shows(fb, p.id), 10000), 'a member reads it')
   const q = await forum.post(fb, 'hello', '')
   t.ok(await eventually(() => shows(club, q.id), 10000), 'and writes')
-  // A copied disk, a relay, a helper: blocks without the forum's keys.
   const held = await testing.rawBlocks(b.store, await testing.coreKeys(fb))
   for (const text of ['members only', 'hello', 'Club-3391', 'post']) t.absent(testing.inClear(held, text), `"${text}" isn't in the clear`)
-  // A leak suspected: the owner changes the key, the members read on.
   await forum.changeKey(club)
   const r = await forum.post(club, 'after the change', '')
   t.ok(await eventually(() => shows(fb, r.id), 10000), 'members read with the new key')
 })
 
-// An invite to the forum that also gives its role in listed
-// sub-forums (a private one included).
 test('an invite to the forum and to its private sub-forum', async (t) => {
   const { c, fa, fc, staff } = await staffRoom(t)
   const p = await forum.post(staff, 'welcome to staff', '')

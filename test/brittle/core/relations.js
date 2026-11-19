@@ -19,8 +19,6 @@ test('relations: a validly-signed relation event cannot be replayed into a diffe
   const signedEvent = await graph.relate({ from: comment.id, to: post.id, type: 'reply', context: contextA })
   t.ok(signedEvent && signedEvent.signature, 'relate() returns the signed event')
 
-  // Replay the exact same signed event into a different, unrelated context
-  // the caller also happens to have writer access to.
   await ctxB.append({ ...signedEvent })
 
   await graph.update()
@@ -303,17 +301,10 @@ test('relations: a validly-signed edge whose author does not actually own `from`
   for await (const e of victim.graph.edges(victimPost.id, { direction: 'out', type: 'endorses' })) forgedEdges.push(e)
   t.is(forgedEdges.length, 0, "the forged edge (claiming to originate FROM the victim's post) does not appear, even though it replicated and is validly signed")
 
-  // Same check from the other side (incoming, queried on the `to` node)
-  // to confirm both directions are protected, not just outgoing.
   const forgedIncoming = []
   for await (const e of attacker.graph.edges(attackerOwn.id, { direction: 'in', type: 'endorses' })) forgedIncoming.push(e)
   t.is(forgedIncoming.length, 0, 'the same forged edge is also rejected when queried from the incoming side')
 
-  // countEdgesIn/Out() read a separate maintained counter, not edges()'s
-  // own query path — so this only stays correct if the forged event was
-  // rejected at apply time (context-base.js), not merely filtered when
-  // edges() happens to be called. This is the actual point of enforcing
-  // this at apply time rather than only as a read-side filter.
   const outCount = await victim.graph.countEdgesOut(victimPost.id, 'endorses')
   t.is(outCount, 0, 'countEdgesOut agrees with edges() — the forged edge was never counted, not just filtered on read')
 
@@ -342,15 +333,12 @@ test('relations: latestPerAuthor reduces multiple edges from the same author to 
   for (let i = 0; i < 20 && !bCtx.writable; i++) { await sleep(200); await bCtx.update() }
   t.ok(bCtx.writable, 'voterB is confirmed writable before voting')
 
-  // voterA votes, then changes their mind and votes again — same author,
-  // two different nodes (no built-in uniqueness constraint stops this).
   const vote1 = await voterA.graph.put({ type: 'vote' })
   await voterA.graph.relate({ from: vote1.id, to: post.id, type: 'vote', value: 1, context: ctx })
   await sleep(10)
   const vote2 = await voterA.graph.put({ type: 'vote' })
   await voterA.graph.relate({ from: vote2.id, to: post.id, type: 'vote', value: -1, context: ctx })
 
-  // voterB casts a single, separate vote.
   const vote3 = await voterB.graph.put({ type: 'vote' })
   await voterB.graph.relate({ from: vote3.id, to: post.id, type: 'vote', value: 1, context: ctx })
 
@@ -652,7 +640,6 @@ test('relations: an unrelate() propagates correctly to other peers over real rep
 })
 
 
-// ── Data on relations (spec 004) ────────────────────────────────────────────
 
 const hypercoreCrypto = require('hypercore-crypto')
 const { stableRelationHash } = require('../../../src/utils')
@@ -660,7 +647,6 @@ const { stableRelationHash } = require('../../../src/utils')
 test('relations: signatures of relations without data are unchanged by spec 004', async (t) => {
   const a = 'a'.repeat(64)
   const ev = { type: 'relation/create', from: `file/${a}/1`, to: `dir/${a}/0`, relationType: 'in', author: a, timestamp: 1791000000000 }
-  // Digests computed with the code from before spec 004.
   t.is(stableRelationHash(ev, 'b'.repeat(64)).toString('hex'), '9f3ac4368485e535d10cce742ecbb48a33ea36f06703834ec1a19bf0fa67c588', 'no value, no data')
   t.is(stableRelationHash({ ...ev, value: 1 }, 'b'.repeat(64)).toString('hex'), '1b5f57312c2e0117ba4bede19fed31708a1c62c3ae2f0424490e3959373dc9de', 'with value')
   t.not(stableRelationHash({ ...ev, data: 'x' }, 'b'.repeat(64)).toString('hex'), '9f3ac4368485e535d10cce742ecbb48a33ea36f06703834ec1a19bf0fa67c588', 'data is signed')
@@ -686,7 +672,6 @@ test('relations: relate() stores data on the edge; edges() returns it in both di
   for await (const e of graph.edges(file.id, { direction: 'out', context: ctx })) out.push(e)
   t.is(out[0].data, data, 'outgoing edge carries it too')
 
-  // Renaming: remove and relate again, in one bulk call.
   const renamed = JSON.stringify({ name: 'renamed.mp3', root: 'ab'.repeat(32), size: 4096 })
   await graph.unrelate({ from: file.id, to: dir.id, type: 'in', context: ctx })
   const b = graph.batch()

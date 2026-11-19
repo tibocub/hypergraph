@@ -33,7 +33,6 @@ const file = path.join(here, 'history.jsonl')
 const rows = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
 const pct = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(0)}%`
 
-// 'worse', 'better' or null (within noise)
 function judge (p, r) {
   const change = (r.median - p.median) / p.median
   const minChange = p.min ? (r.min - p.min) / p.min : change

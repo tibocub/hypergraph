@@ -3,7 +3,6 @@ const { assertConverged } = require('../harness')
 module.exports = async function lateJoiner (t, h) {
   const p1 = await h.createPeer('late-p1')
 
-  // Create contexts on p1 and rebind storage to them.
   const commentsContext = await p1.graph.createContext({ roles: 'rolebase' })
   const moderationContext = await p1.graph.createContext({ roles: 'rolebase' })
   p1.storage.commentsContext = commentsContext
@@ -12,7 +11,6 @@ module.exports = async function lateJoiner (t, h) {
   const post = await p1.storage.createPost('seed')
   await p1.storage.reply(post.id, 'r1')
 
-  // Late joiner opens from scratch and must converge.
   const p2 = await h.createPeer('late-p2')
   await p2.graph.openUserCore(p1.graph.key)
   await p2.graph.openContext(commentsContext)

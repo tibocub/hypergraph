@@ -1,8 +1,4 @@
 // This test exercises a realistic app flow end-to-end in a single process:
-// identity -> entities -> content -> relations -> tags -> roles ->
-// moderation -> query -> export/join. It does not require real network
-// access (no Hyperswarm/DHT); cross-peer replication over the DHT is
-// covered separately in test/brittle/replication/*.js.
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')

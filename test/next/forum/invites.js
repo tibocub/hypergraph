@@ -12,14 +12,12 @@ const { eventually, codeOf, open } = require('../helpers.js')
 
 const BOUND = 5000 // the forum's read bound (the default)
 
-// How long `promise` takes to settle, and its error code (null if it resolves).
 async function timed (promise) {
   const started = Date.now()
   const code = await codeOf(promise)
   return { code, ms: Date.now() - started }
 }
 
-// a owns the forum; b is an admin.
 async function forumWithAdmin (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

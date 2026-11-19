@@ -1,10 +1,4 @@
 // Holding part of a space, within budgets.
-// A reader gives the app a small budget and one forum its own; both forums
-// grow past them. The reader keeps the newest posts and drops the oldest
-// posts' content first, stays within each limit (disk measured, +10%), and
-// shows the same lists, counts and scores as a member holding everything:
-// dropped content is fetched again when read (and kept), never otherwise.
-// Its own records, decision logs and the personal space are never dropped.
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -32,7 +26,6 @@ async function grown (t) {
     posts.own.push(await forum.post(own, `own ${i}`, text(i)))
     posts.shared.push(await forum.post(shared, `shared ${i}`, text(i)))
   }
-  // Old posts with a few comments and votes (small records, never dropped).
   await forum.comment(own, posts.own[0], 'first!')
   await forum.vote(own, posts.own[0], 1)
   await forum.comment(shared, posts.shared[1], 'first!')
@@ -49,8 +42,6 @@ async function grown (t) {
 
 test('a forum with its own budget keeps within it; the other within the rest; disk within the app budget', { timeout: 120000 }, async (t) => {
   const { b, bOwn, bShared } = await grown(t)
-  // Blocks still arriving (comments, votes) can push a space past its share
-  // until the next budget pass: wait for both within their limits.
   await eventually(() => bOwn.status().stored <= 1.1 * MB && bShared.status().stored <= bShared.status().share * 1.1, 20000)
   const s1 = bOwn.status()
   const s2 = bShared.status()
@@ -62,9 +53,6 @@ test('a forum with its own budget keeps within it; the other within the rest; di
   t.is(budget, 3 * MB)
   t.ok(used <= 3.3 * MB, `the app's estimate: ${used} B`)
 
-  // Compacting is what the app does by itself after dropping a tenth of its
-  // budget (at most every 10 min). RocksDB's write-ahead log holds the
-  // latest downloads and drops until it flushes: measured once it has.
   let disk = 0
   const within = await eventually(async () => {
     await testing.compact(b)
@@ -79,8 +67,6 @@ test('a forum with its own budget keeps within it; the other within the rest; di
 
 test('the newest part is held, the oldest content dropped first; the reader shows what a full member shows', { timeout: 120000 }, async (t) => {
   const { own, shared, bOwn, bShared, posts } = await grown(t)
-  // "Settled" allows 10% over the share: the drop that brings it under may
-  // still be on its way (a budget pass runs shortly after the last change).
   t.ok(await eventually(async () => !(await testing.holdsBlock(bShared, posts.shared[0].id)), 15000), 'the oldest post\'s content is dropped')
   t.ok(await testing.holdsBlock(bShared, posts.shared.at(-1).id), 'the newest is held')
 
@@ -90,7 +76,6 @@ test('the newest part is held, the oldest content dropped first; the reader show
   t.ok(page.items.every((p) => p.text.length > 7000), 'with its content')
 
   for (const [full, reader, p] of [[own, bOwn, posts.own[0]], [shared, bShared, posts.shared[1]]]) {
-    // The vote and the comment are small records sent after the posts.
     t.ok(await eventually(async () => (await forum.score(reader, p)) === (await forum.score(full, p)) && (await reader.count('comment', { on: p })).value === 1, 20000), 'the same score as a full member')
     const n = await reader.count('comment', { on: p })
     t.is(n.value, 1, 'the same count of comments')
@@ -104,8 +89,6 @@ test('dropped content is fetched when read, and kept; never fetched otherwise', 
   await sleep(2000)
   t.absent(await testing.holdsBlock(bShared, oldest.id), 'not fetched again while nobody reads it')
 
-  // Paging back to the oldest posts: an app showing that page asks to wait
-  // for it (reads answer at once otherwise): fetched within it.
   const last = posts.shared[20]
   const page = await bShared.query('post').latest(20, { after: last, timeout: 5000 })
   t.ok(page.complete, 'the old page is complete: fetched within the bound')
@@ -125,13 +108,11 @@ test('the author keeps all its own records over its budget, and is told', { time
   for (const p of [posts.own[0], posts.own.at(-1)]) t.ok(await testing.holdsBlock(own, p.id), 'its own posts stay')
   t.ok(own.status().held === 'all')
 
-  // The reader's decision log and personal space are never dropped.
   t.is(await forum.setting(b, 'theme'), 'dark', 'the reader\'s settings')
   t.is(await forum.roleOf(bOwn, b.identity.publicKey), 'member', 'and the decisions')
 })
 
 test('a forum indexing several fields stays within its budget on disk (core follow-ups: index entries count)', { timeout: 120000 }, async (t) => {
-  // The app's next version indexes items by three fields.
   const types = { ...forum.types, item: { fields: { kind: 'string', owner: 'string', place: 'string', text: 'text' }, index: [['kind', 'stamp'], ['owner', 'stamp'], ['place', 'stamp']] } }
   const a = await account(t, 'author', { types })
   const b = await account(t, 'reader', { types })
@@ -145,9 +126,6 @@ test('a forum indexing several fields stays within its budget on disk (core foll
     const s = fb.status()
     return (await fb.get(last.id, { timeout: 0 })).record && s.held === 'part' && s.stored <= s.share * 1.1
   }, 60000), 'the reader holds part of it, within its share')
-  // The reader downloaded everything once, then dropped the oldest content:
-  // RocksDB's write-ahead log holds that churn until it
-  // flushes, so disk is measured once it has (compacting after each look).
   let disk = 0
   const within = await eventually(async () => {
     await testing.compact(b)

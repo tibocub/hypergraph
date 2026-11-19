@@ -7,7 +7,6 @@ const crypto = require('hypercore-crypto')
 const { COPIES, UNSEEN_MS, split, holdersOf, extraFor, rarest, unseen, markHour, onlineShare, packHours, unpackHours } = require('../../../lib/circles.js')
 
 const key = () => crypto.randomBytes(32).toString('hex')
-// `n` people, `per` devices each: [{ device, identity }]
 const people = (n, per = 1) => Array.from({ length: n }, () => key()).flatMap((identity) => Array.from({ length: per }, () => ({ device: key(), identity })))
 
 test('the split: 5 copies across the member\'s circles, at least 1 each', (t) => {
@@ -36,13 +35,11 @@ test('holders: ranked by hash, stable, one device per person, at most its part p
   t.is(holdersOf(space, [{ key: c.key, devices: devices.slice(0, 3) }]).length, 2, 'fewer holders than the part: all of them (2 people)')
   t.not(holdersOf(key(), [c]).join(), holders.join(), 'another space, other holders')
 
-  // a holder leaving: the others stay, the next takes over
   const gone = holders[0]
   const after = holdersOf(space, [{ key: c.key, devices: devices.filter((d) => d.identity !== devices.find((x) => x.device === gone).identity) }])
   t.is(after.length, 5)
   t.ok(holders.slice(1).every((d) => after.includes(d)), 'only the one who left is replaced')
 
-  // two circles: 3 + 2, never one person twice
   const shared = people(1)[0]
   const c1 = { key: key(), devices: [shared, ...people(4)] }
   const c2 = { key: key(), devices: [shared, ...people(4)] }
@@ -65,7 +62,6 @@ test('a circle short of its part: the missing copies from the other circles', (t
     t.ok(two.includes(c2.devices[0].device), 'the second circle\'s one device')
     t.alike(holdersOf(space, [c2, c1]), two, 'the same whatever the order given')
   }
-  // stale ones still last in the top-up
   const space = key()
   const c1 = { key: key(), devices: people(5) }
   const c2 = { key: key(), devices: people(1) }
@@ -80,7 +76,6 @@ test('a circle short of its part: the missing copies from the other circles', (t
 
 test('stale devices after every fresh one of every circle: within a part, and in the top-up', (t) => {
   for (let i = 0; i < 20; i++) {
-    // a 3 + 2 split: the 3-circle has 2 fresh and 1 stale, the other a spare fresh one
     const space = key()
     const keys = [key(), key()]
     const three = split(space, keys).indexOf(3)
@@ -93,7 +88,6 @@ test('stale devices after every fresh one of every circle: within a part, and in
     t.absent(out.includes(big.devices[0].device), 'the stale one left out: the other circle\'s spare instead')
   }
   for (let i = 0; i < 20; i++) {
-    // three circles, the third empty: the top-up takes the fresh spares, whichever circle comes first
     const space = key()
     const keys = [key(), key(), key()]
     const parts = split(space, keys)

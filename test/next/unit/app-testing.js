@@ -19,7 +19,6 @@ test('a two-member test in a few lines', { timeout: 60000 }, async (t) => {
   t.not(ann.dir, bob.dir, 'each in its own folder')
 })
 
-// A runner's test object, its end played by hand.
 function fakeTest (kind = 'teardown') {
   const ends = []
   return { [kind]: (fn) => ends.push(fn), end: async () => { for (const fn of ends) await fn() }, ends }

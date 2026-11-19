@@ -22,7 +22,6 @@ test('a partition healed after both sides wrote: every member shows the same', {
   const mine = await forum.post(fc, 'By c', 'v1')
   t.ok(await eventually(async () => (await view(fa, p, note)) === (await view(fc, p, note)), 10000), 'together first')
 
-  // c drops off the network and goes on writing on its own
   await c.close()
   const c2 = await open(t, { dir: c.dir, types: forum.types, rules: forum.rules })
   const gc = c2.space(fc.key)
@@ -32,14 +31,12 @@ test('a partition healed after both sides wrote: every member shows the same', {
   await forum.edit(gc, mine, { text: 'v2, offline' })
   await forum.edit(gc, note, { text: 'the board, by c offline' })
 
-  // meanwhile, the other side
   await forum.post(fb, 'Online post', 'by b')
   await forum.comment(fa, p, 'a, online')
   await forum.vote(fa, p, 1)
   await forum.vote(fb, p, 1)
   await forum.edit(fb, note, { text: 'the board, by b online' })
 
-  // the partition heals
   await c2.connectToSwarm()
   const all = [fa, fb, gc]
   const agreed = await eventually(async () => {

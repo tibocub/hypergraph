@@ -1,7 +1,4 @@
 // A phone app goes to the background and comes back.
-// suspend(): topics paused, connections suspended, spaces not in use closed;
-// a call on a closed space fails with SUSPENDED. resume(): the space in use
-// is still there, the seeded set opens again. On Node and Bare.
 
 const test = require('brittle')
 const { Hypergraph } = require('../../../lib/index.js')

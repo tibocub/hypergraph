@@ -7,7 +7,6 @@
 // member and a removed device keep writing. Every member, and a newcomer, shows
 // only what counts. (Throwaway-key activity spam: test/next/net/activity.js;
 // a non-member's log and someone writing into a personal space:
-// test/next/forum/inspect.js and personal.js.)
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -60,7 +59,6 @@ test('junk in a member\'s log: no crash, nothing shown that doesn\'t count, the 
     record(fc, { type: 'hg/relation', raw: b4a.alloc(0) }), // a relation with nothing in it
     record(fc, { type: 'comment', fields: { text: 'on nothing', on: enc.idToString({ log: crypto.randomBytes(32), seq: 7 }) } })
   ]
-  // a stamp past what a JavaScript number holds exactly (uint64 all ones): written raw
   const huge = record(fc, { fields: { title: 'a stamp too big', text: '' }, stamp: Number.MAX_SAFE_INTEGER })
   huge.fill(0xff, 7, 15) // kind (1), type 'post' (5), then the stamp: 0xff and 8 bytes
   junk.push(huge)
@@ -79,7 +77,6 @@ test('junk in a member\'s log: no crash, nothing shown that doesn\'t count, the 
     t.alike(await forum.tagsOf(f, mine), [], 'no empty tag')
   }
 
-  // A reply to a record stamped far ahead isn't dragged into the future.
   const future = (await forum.latest(fa, 50)).find((x) => x.title === 'from the end of time')
   const reply = await forum.comment(fa, future, 'replying to the future')
   t.ok(reply.stamp < Date.now() + 60000, 'a reply to it keeps a stamp near the writer\'s clock')
@@ -90,8 +87,6 @@ test('junk in a member\'s log: no crash, nothing shown that doesn\'t count, the 
   t.ok(await fd.inspect(), 'inspect() works over the junk')
 })
 
-// Sends `bytes` as message `i` on a channel, whatever the message's encoding
-// (the receiver decodes it with its own): a peer sending malformed messages.
 function sendRaw (ch, i, bytes) {
   const m = ch.messages[i]
   const e = m.encoding
@@ -120,7 +115,6 @@ test('malformed and odd messages from a stranger: no crash, nothing kept, the me
   const big = 2 ** 52
   const decision = c.encode(enc.decision, { type: 'writer/add', stamp: Date.now(), key: random(), proof: crypto.randomBytes(100) })
   for (const ch of [...fe.directory.channels]) {
-    // well-formed but odd
     ch.messages[0].send({ count: big, digest: random(), records: big }) // summary
     ch.messages[2].send({ prefix: Buffer.alloc(0), bits: 0, kind: 2, keys: Array.from({ length: 1000 }, random), lengths: Array(1000).fill(1) }) // keys of logs nobody has
     ch.messages[1].send({ prefix: Buffer.alloc(0), bits: 0, parts: Array.from({ length: 16 }, () => ({ count: big, digest: random() })) }) // ranges claiming huge counts
@@ -137,7 +131,6 @@ test('malformed and odd messages from a stranger: no crash, nothing kept, the me
   }
   await sleep(1000)
   for (const ch of [...fe.directory.channels]) {
-    // malformed: each makes the member close that connection
     for (let i = 0; i <= 10; i++) sendRaw(ch, i, b4a.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]))
   }
   await sleep(2000)
@@ -212,7 +205,6 @@ test('a removed device keeps writing: nothing after its removal counts', { timeo
 })
 
 test('activity entries with odd numbers are refused without a crash', async (t) => {
-  // (no network) the check itself, with values a peer can send
   const ok = (e, at) => activity.checkEntry(e, at)
   t.is(ok({ period: 2 ** 52, start: 2 ** 52 }, { before: null, at: null, limit: Infinity }), 'wait')
   t.is(ok({ period: 1, start: 0 }, { before: null, at: null, limit: Infinity }), 'false')

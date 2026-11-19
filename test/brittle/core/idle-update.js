@@ -6,7 +6,6 @@ const test = require('brittle')
 const crypto = require('hypercore-crypto')
 const { createGraph } = require('../helpers')
 
-// Count calls to a method, keeping its behavior.
 function spy (obj, name) {
   const counter = { calls: 0 }
   const original = obj[name].bind(obj)

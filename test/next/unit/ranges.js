@@ -49,8 +49,6 @@ test('range digests and counts match a brute-force computation', (t) => {
   t.ok(set.has(list[1]))
 })
 
-// Two peers exchanging messages in rounds until both are quiet; what each
-// learns is added at once (as the gate would accept it).
 function settle (a, b, { lie = null, onLearn = () => {} } = {}) {
   const sa = new Session(a)
   const sb = new Session(b)
@@ -108,7 +106,6 @@ test('a peer whose keys don\'t match the counts it gave is ignored for that roun
   const a = setOf(common)
   const b = setOf([...common, ...extra])
   const junk = keysOf(3)
-  // a's peer (b) answers a's request for its keys with made-up ones
   const out = settle(a, b, {
     lie: (m) => (m.keys && m.kind === 0 ? { ...m, keys: [...m.keys, ...junk.map((k) => { const x = b4a.from(k); x.set(m.prefix.subarray(0, m.prefix.byteLength)); return x })], lengths: [...m.lengths, 0, 0, 0] } : m)
   })

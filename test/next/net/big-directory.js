@@ -24,7 +24,6 @@ test('a newcomer to a space with many logs opens only those active in the period
   }
   const [old1, old2, new1, new2] = members
   const ago = (hours) => Date.now() - hours * PERIOD_MS
-  // two members wrote long ago only; two others and a write now
   await testing.writeRaw(old1, { kind: 'put', type: 'post', stamp: ago(100), fields: { title: 'old one', text: '' } })
   await testing.writeRaw(old2, { kind: 'put', type: 'post', stamp: ago(90), fields: { title: 'old two', text: '' } })
   for (const f of [new1, new2, fa]) {

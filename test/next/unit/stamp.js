@@ -50,12 +50,9 @@ test('a stamp far ahead of the reader\'s clock is flagged, never reordered', (t)
 test('a version stamped a day ahead loses to an edit made after seeing it, on every member', (t) => {
   const day = 24 * 3600 * 1000
   const realNow = 1_700_000_000_000
-  // A device whose clock is a day ahead writes a version.
   const ahead = { stamp: realNow + day, device: low }
-  // An allowed member's device, clock right, sees it and edits.
   const editor = new Stamper({ now: () => realNow + 60000 })
   const edit = { stamp: editor.next({ replaces: ahead.stamp }), device: high }
-  // Members compare at different times of their own clocks: same winner.
   for (const readerNow of [realNow, realNow + 3600e3, realNow + 2 * day]) {
     t.is(latest([ahead, edit]), edit, `reader at +${(readerNow - realNow) / 3600e3} h`)
     t.is(latest([edit, ahead]), edit)

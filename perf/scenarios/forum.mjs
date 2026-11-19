@@ -37,7 +37,6 @@ for (const n of sizes([2500, 6000])) {
     testing.setClock(a, 0, { decisions: true })
     const fb = await forum.join(b, await forum.invite(fa))
 
-    // the owner fills the forum, in chunks (one rate per chunk)
     const posts = []
     const targets = []
     const rates = []
@@ -65,13 +64,11 @@ for (const n of sizes([2500, 6000])) {
     testing.setClock(a, 0)
     record('forum.write', n, 'records/s', rates, { better: 'higher', flat })
 
-    // the member holds the latest page
     const newest = posts[posts.length - 1].id
     if (!await eventually(async () => (await forum.latest(fb, 1))[0]?.id === newest, 60000)) throw new Error('the member never saw the newest post')
 
     await sleep(2000) // the fill's background work (budget passes, compactions) out of the timings
     const top = posts[posts.length - 1]
-    // sub-ms reads and ~1 ms writes: each sample is a batch, per call
     record('forum.post', n, 'ms', await time((j) => forum.post(fb, 'Mine ' + j, 'text', 'topic1'), 10, { batch: 5, warmup: 5 }), { flat })
     record('forum.comment', n, 'ms', await time((j) => forum.comment(fb, top, 'reply ' + j), 10, { batch: 5, warmup: 5 }), { flat })
     record('forum.vote', n, 'ms', await time((j) => forum.vote(fb, posts[posts.length - 1 - j], 1), 10, { batch: 5, warmup: 5 }), { flat })
@@ -99,8 +96,6 @@ for (const n of sizes([2500, 6000])) {
     stop()
     record('forum.live-update', n, 'ms', live, { flat })
 
-    // newcomers, one after another, each a fresh account (closed after; on the same DHT, so
-    // on the same t)
     const opens = []
     const pages = []
     for (let j = 0; j < 3; j++) {

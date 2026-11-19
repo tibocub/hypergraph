@@ -43,7 +43,6 @@ module.exports = async function idempotency (t, h) {
 
   const post = await p1.storage.createPost('seed')
 
-  // Same logical vote multiple times.
   await p1.storage.moderate(post.id, 'content.flag', '1')
   await p1.storage.moderate(post.id, 'content.flag', '2')
   await p1.storage.moderate(post.id, 'content.flag', '3')

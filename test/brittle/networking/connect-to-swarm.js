@@ -1,25 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY:
-// The full connect() flow needs real DHT access to verify `connected` end
-// to end and cannot be verified in this sandbox. It does have an internal
-// ~20s timeout rather than hanging forever, so it fails safely offline.
-//
-// BUG FOUND & FIXED (arg shape): connectToSwarm() built the HypergraphNetwork
-// call with `new HypergraphNetworking(this, this.#store, { dataSwarm: opts.swarm, topic, ... })`
-// — stuffing the options into the 3rd positional constructor argument
-// (`swarm`) instead of passing the swarm and options separately. Since
-// HypergraphNetwork's real constructor is `(graph, store, swarm, opts)`,
-// this made `swarm` become the options object and `opts.topic` become
-// undefined, so every call threw "Topic is required" immediately. It also
-// never auto-created a Hyperswarm when `opts.swarm` was omitted, despite the
-// docstring promising it would. Both are fixed in src/hypergraph.js.
-//
-// BUG FOUND & FIXED (teardown ordering): brittle's t.teardown() runs LIFO.
-// Destroying a swarm before the graph/store that used it are closed tears
-// the raw socket out from under an in-flight replication stream, and
-// store.close() then hangs forever waiting for a clean close event that
-// never comes. Every test below now lets the connectToSwarm() call settle
-// (or times out deliberately) and closes graph/store *before* destroying
-// the swarm.
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
@@ -51,8 +30,6 @@ test('connect-to-swarm: connectToSwarm no longer throws "Topic is required" (no 
 
   console.log('  Step 2: let the background connect attempt settle, then close everything in the safe order')
   t.teardown(async () => {
-    // close() destroys the networks connectToSwarm() created, including
-    // one still trying to connect, so the attempt settles right away.
     await peer.close()
     await connectPromise
     await destroySwarm(swarm)

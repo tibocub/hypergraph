@@ -28,7 +28,6 @@ test('v2 control: roles follow the rules; an appointment without the right is ig
   await owner.community.setRole(hex(admin), 'admin')
   t.is(owner.community.role(hex(admin)), 'admin', 'owner appoints an admin')
 
-  // An admin may appoint a mod but not another admin; a mod may appoint nobody.
   await owner.community.appendAs(admin, { type: 'role', member: hex(mod), role: 'mod' })
   await owner.community.appendAs(admin, { type: 'role', member: hex(crypto.keyPair()), role: 'admin' })
   await owner.community.appendAs(mod, { type: 'role', member: hex(crypto.keyPair()), role: 'keeper' })
@@ -51,7 +50,6 @@ test('v2 control: bans, unbans and hides; a forged signature changes nothing', a
   await owner.community.unban(target)
   t.absent(owner.community.banned(target), 'unbanned')
 
-  // An event claiming the owner as author but signed by someone else.
   await owner.community.appendForged({ type: 'ban', member: target, reason: 'forged' }, owner.pub, crypto.keyPair())
   t.absent(owner.community.banned(target), 'a forged ban is ignored')
   t.ok(await until(async () => { await other.community.update(); return other.community.hidden(target, 'ab'.repeat(32), 3) }), 'the hide reaches the other peer')
@@ -69,9 +67,6 @@ test('v2 control: only keepers register rosters', async (t) => {
 })
 
 test('v2 control: a channel created to be kept by its creator is one event, not two', async (t) => {
-  // Two control events per channel (the channel, then its keeper): a member
-  // of a 500-channel community applied 2,003 events, and its memory with the
-  // same 5 channels open was ~20-40 MB higher than with half of them.
   const { owner, other } = await community(t)
   const length = async () => (await owner.community.stats()).controlLength
   let before = await length()
@@ -126,7 +121,6 @@ test('v2 control: concurrent rotations by two admins converge on the same epoch 
   await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id, name: 'secret', private: true, commit: commit(0) })
   await owner.community.setRole(other.pub, 'admin', { writer: other.community.localKey })
   await until(async () => { await other.community.update(); return other.community.role(other.pub) === 'admin' && other.community.control.writable && other.community.epoch(id) === 0 })
-  // Both rotate to epoch 1 at once, each with its own key.
   await Promise.all([
     owner.community.appendAs(owner.identity.keyPair, { type: 'rotate', channel: id, epoch: 1, commit: commit(11) }),
     other.community.appendAs(other.identity.keyPair, { type: 'rotate', channel: id, epoch: 1, commit: commit(22) })

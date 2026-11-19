@@ -1,9 +1,7 @@
 // Shared helpers for the new core's tests, on Node and Bare.
-// Built-ins come through the package's imports map (fs, path → bare-* under Bare).
 
 const fs = require('fs')
 const path = require('path')
-// The local DHT, temp folders and waits are the public test helper's.
 const { within, eventually, codeOf, tmpDir, bootstrap: testBootstrap, sleep } = require('hypergraph/testing')
 
 async function removeDir (dir) {
@@ -24,7 +22,6 @@ async function bounded (promise, ms, label) {
   return result
 }
 
-// Opens a Hypergraph in a temp dir on the test's local DHT; closed after the test.
 async function open (t, opts = {}) {
   const { Hypergraph } = require('../../lib/index.js')
   const dir = opts.dir || tmpDir(t, opts.label)
@@ -35,14 +32,12 @@ async function open (t, opts = {}) {
   return hg
 }
 
-// N instances at once.
 async function openMany (t, n, opts = {}) {
   const out = []
   for (let i = 0; i < n; i++) out.push(await open(t, { label: `m${i}`, ...opts }))
   return out
 }
 
-// Bytes the files under a folder take (what the app uses on disk).
 function diskUse (dir) {
   let n = 0
   for (const name of fs.readdirSync(dir)) {

@@ -24,7 +24,6 @@ test('a deleted record stays wiped after reconnecting and restarting', async (t)
   await forum.remove(fa, gone)
   t.ok(await eventually(() => holdsNone(all, gone.id), 3000), 'wiped everywhere')
 
-  // b and c go away and come back (new connections, new downloads); a writes meanwhile.
   await b.close()
   await c.close()
   const later = await forum.post(fa, 'while they were away', '')

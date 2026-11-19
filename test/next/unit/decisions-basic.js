@@ -16,7 +16,6 @@ const { tmpDir, eventually } = require('../helpers.js')
 
 const hex = (b) => b4a.toString(b, 'hex')
 
-// A Hyperbee-like view in memory.
 function memoryView () {
   const map = new Map()
   return {
@@ -84,7 +83,6 @@ test('decisions whose author may not make them are ignored', async (t) => {
   await applyNodes([node(other, { type: 'member/add', identity: x })], view, null, { space })
   t.absent(State.from(view.map).isMember(x), 'an unknown writer adds no one')
 
-  // A writer whose identity is only a member may not add members.
   const m = crypto.randomBytes(32)
   await view.put(`writer:${hex(other)}`, { identity: hex(m) })
   await view.put(`member:${hex(m)}`, { role: 'member', by: '', stamp: 0 })
@@ -103,7 +101,6 @@ test('the same decisions give the same state; adds commute', async (t) => {
   const addX = node(space, { type: 'member/add', identity: crypto.randomBytes(32) })
   const addY = node(space, { type: 'member/add', identity: crypto.randomBytes(32) })
 
-  // The state; the decision list (~log:) follows the order applied.
   const run = async (nodes) => { const v = memoryView(); await applyNodes(nodes, v, null, { space }); return JSON.stringify([...v.map].filter(([k]) => !k.startsWith('~')).sort()) }
   t.is(await run([first, addX, addY]), await run([first, addX, addY]), 'replaying gives the same state')
   t.is(await run([first, addX, addY]), await run([first, addY, addX]), 'two orders of concurrent adds converge')
@@ -111,7 +108,6 @@ test('the same decisions give the same state; adds commute', async (t) => {
   t.is(await run([first, garbage, addX]), await run([first, addX]), 'a malformed decision is skipped, not thrown')
 })
 
-// The space's storage policy, changed by who may decide.
 test('settings/set changes the policy; only who may decide; only auto or everything', async (t) => {
   const owner = await Identity.create({ device: crypto.keyPair() })
   const space = crypto.randomBytes(32)
@@ -142,7 +138,6 @@ test('settings/set records the app rules a space runs (core follow-ups); only wh
   t.alike(state.rules, ['b', 'title-length'], 'recorded, sorted')
   t.is(state.policy, 'auto', 'the policy unchanged')
 
-  // An entry written before rules existed (no trailing field) still decodes.
   const old = { type: 'settings/set', stamp: 1, policy: 'everything', writeLimit: null }
   const body = c.encode(enc.decision, { ...old, rules: null })
   t.alike(c.decode(enc.decision, body).rules, null)
@@ -159,8 +154,6 @@ test('settings/set records the app rules a space runs (core follow-ups); only wh
   t.alike(State.from(view.map).rules, ['b', 'title-length'], 'a moderator may not change them')
 })
 
-// Who reads a private space's history, by who may decide; entries from
-// before the setting existed decode without it.
 test('settings/set records the history setting; only visible or hidden; old entries decode', async (t) => {
   const owner = await Identity.create({ device: crypto.keyPair() })
   const space = crypto.randomBytes(32)

@@ -1,8 +1,4 @@
 // Invite links that carry a role (spec 006).
-//
-// Peers are linked with graph.replicate(), which carries Autobase's writer
-// discovery: that is what lets a redeemer that isn't a writer yet be seen.
-// In-memory streams, so it is deterministic.
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
@@ -82,20 +78,17 @@ test('invites: a member invite makes a writer that doesn\'t index', { timeout: 1
 test('invites: limits hold — single use, revocation, unauthorized minting, wrong secret, stray blocks', { timeout: 180000 }, async (t) => {
   const { owner, ctx } = await ownerWithContext(t, 'inv-limits')
 
-  // Single use: the second holder gets nothing.
   const once = await owner.ctx.createInvite({ role: 'member', uses: 1, keyPair: owner.kp })
   const first = await peer(t, 'inv-limits-first', owner)
   await first.graph.redeemInvite(once, { timeout: 20000 })
   const second = await peer(t, 'inv-limits-second', owner)
   await t.exception(second.graph.redeemInvite(once, { timeout: 4000 }), /not granted|timed out/i, 'a used-up invite grants nothing')
 
-  // Revoked.
   const revoked = await owner.ctx.createInvite({ role: 'member', keyPair: owner.kp })
   await owner.ctx.revokeInvite(revoked, { keyPair: owner.kp })
   const r = await peer(t, 'inv-limits-revoked', owner)
   await t.exception(r.graph.redeemInvite(revoked, { timeout: 4000 }), /not granted|timed out/i, 'a revoked invite grants nothing')
 
-  // A plain member can't mint an admin invite.
   const memberKp = first.graph.identity.deviceKeyPair
   const firstCtx = await first.graph.openContext(ctx)
   const forbidden = await firstCtx.createInvite({ role: 'admin', keyPair: memberKp })
@@ -103,12 +96,10 @@ test('invites: limits hold — single use, revocation, unauthorized minting, wro
   t.teardown(link(first, x))
   await t.exception(x.graph.redeemInvite(forbidden, { timeout: 4000 }), /not granted|timed out/i, 'an invite minted without the right to grant is worthless')
 
-  // Wrong secret: a well-formed link for an invite that doesn't exist.
   const fake = `hypergraph://invite/${ctx}/${crypto.randomBytes(32).toString('hex')}`
   const y = await peer(t, 'inv-limits-y', owner)
   await t.exception(y.graph.redeemInvite(fake, { timeout: 4000 }), /not granted|timed out/i, 'a wrong secret grants nothing')
 
-  // A non-writer's ordinary block is ignored.
   const yCtx = await y.graph.openContext(ctx)
   const p = await y.graph.put({ type: 'post' })
   await y.graph.relate({ from: p.id, to: p.id, type: 'stray', context: ctx })

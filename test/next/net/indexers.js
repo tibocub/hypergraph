@@ -9,7 +9,6 @@ const testing = require('../../../lib/testing.js')
 const { account } = require('../forum/_setup.js')
 const { eventually } = require('../helpers.js')
 
-// a owns the forum; b and c are admins; m is a member.
 async function admins (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

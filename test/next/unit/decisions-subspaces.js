@@ -2,8 +2,6 @@
 // decisions live in its parent's decision log, marked with the sub-space
 // (`scoped`), so a parent ban and a sub-space decision are always in one
 // order. Its effective state: the parent's members and roles (a private one:
-// the parent's owner and admins only), then its own (guests, role overrides);
-// nobody banned above; cuts are the union.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -46,7 +44,6 @@ async function forum () {
     await apply(key, { type: 'role/set', identity: who.publicKey, role, cut: [] })
     await claim(who)
   }
-  // A decision in sub-space `sub` (a key), by `writer`.
   const inSub = (writer, sub, d, at = stamp++) => apply(writer, { type: 'scoped', space: sub, decision: c.encode(enc.decision, { stamp: at, ...d }) }, at)
   const create = (writer, opts = {}, parent = null) => {
     const sub = crypto.randomBytes(32)
@@ -103,7 +100,6 @@ test('effective state: parent members and roles, own guests and overrides, write
   t.ok(st.sub(sub).canWrite(b.publicKey))
   t.is(st.roleOf(b.publicKey), 'member', 'unchanged in the parent')
   t.ok(st.writesDecisions(b.publicKey), 'a sub-space moderator records decisions (in the parent\'s log)')
-  // A sub-space moderator moderates there, not in the parent.
   await f.claim(b)
   const rec = c.encode(enc.recordId, { log: crypto.randomBytes(32), seq: 3 })
   st = await f.inSub(b.writer, sub, { type: 'moderate', action: 'hide', target: rec, reason: '', cut: [] })
@@ -130,7 +126,6 @@ test('a private sub-space: its own members and the parent\'s owner and admins on
 })
 
 test('a parent ban applies below, whichever came first; a parent removal takes sub-space roles away', async (t) => {
-  // Invited in the sub-space, then banned in the parent.
   const f = await forum()
   const [g, h, x] = [await f.person(), await f.person(), await f.person()]
   const { sub } = await f.create(f.key, { name: 'Guests' })
@@ -144,20 +139,17 @@ test('a parent ban applies below, whichever came first; a parent removal takes s
   t.is(st.sub(sub).limitOf(g.publicKey, log), 4, 'their sub-space log counts up to the cut the ban carried')
   t.is(st.sub(sub).limitOf(g.publicKey, crypto.randomBytes(32)), 0, 'a log the ban didn\'t name: nothing')
 
-  // Banned first, invited after: refused.
   await f.apply(f.key, { type: 'moderate', action: 'ban', target: h.publicKey, reason: '', cut: [] })
   st = await f.redeemIn(f.key, sub, f.invite(f.owner, sub, { role: 'guest' }), h)
   t.is(st.sub(sub).roleOf(h.publicKey), null, 'a banned person can\'t be let into a sub-space')
   st = await f.inSub(f.key, sub, { type: 'role/set', identity: h.publicKey, role: 'member', cut: [] })
   t.is(st.sub(sub).roleOf(h.publicKey), null, 'nor given a role there')
 
-  // Cuts: the union, lowest per log.
   await f.inSub(f.key, sub, { type: 'role/set', identity: x.publicKey, role: 'member', cut: [] })
   await f.inSub(f.key, sub, { type: 'moderate', action: 'ban', target: x.publicKey, reason: '', cut: [{ log, length: 9 }] })
   st = await f.apply(f.key, { type: 'moderate', action: 'ban', target: x.publicKey, reason: '', cut: [{ log, length: 6 }, { log: parentLog, length: 2 }] })
   t.is(st.sub(sub).limitOf(x.publicKey, log), 6, 'the lower of the two cuts')
 
-  // A removal from the parent: the member's own roles below go.
   const [mm] = [await f.person()]
   await f.apply(f.key, { type: 'role/set', identity: mm.publicKey, role: 'member', cut: [] })
   await f.inSub(f.key, sub, { type: 'role/set', identity: mm.publicKey, role: 'moderator', cut: [] })

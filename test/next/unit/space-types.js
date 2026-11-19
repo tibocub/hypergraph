@@ -118,7 +118,6 @@ test('a space whose types gained an index is indexed again; another space is not
   t.is(testing.indexedBlocks(wk), 0, 'the wiki was not indexed again')
 })
 
-// Two deciders of one space: a owns it, b is an admin; both closed after.
 async function twoDeciders (t) {
   const { testBootstrap, eventually } = require('../helpers.js')
   const bootstrap = await testBootstrap(t)
@@ -134,7 +133,6 @@ async function twoDeciders (t) {
   const key = sa.key
   await a.close()
   await b.close()
-  // reopens device i (0: a, 1: b) with this app's types, connected or not
   const reopenOne = async (i, types, { connect = true } = {}) => {
     const hg = await Hypergraph.open(dirs[i], { types, bootstrap })
     t.teardown(() => hg.close(), { order: 0 })
@@ -192,7 +190,6 @@ test('two deciders record the next version at once: the one refused records agai
   t.ok(sets.filter((d) => d.counted).length >= 4, 'and a loser recorded again (the space\'s first, then 2 or 3 per round)')
 })
 
-// --- space.declareTypes() ---
 
 const site = { post: { fields: { title: 'string', file: 'link' }, links: { file: ['file'] } }, vote: { fields: { on: 'link', value: 'int' }, links: { on: ['post'] }, onePerMember: true } }
 const engine = { file: { fields: { path: 'string' } } } // an engine's own types, none of the site's

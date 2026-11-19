@@ -10,7 +10,6 @@ module.exports = async function outOfOrderReplication (t, h) {
   await owner.graph.openContext(commentsContextKey)
   await owner.graph.openContext(moderationContextKey)
 
-  // Peer opens only contexts first (no owner user core yet)
   await peer.graph.openUserCore(owner.graph.key)
   await peer.graph.openContext(commentsContextKey)
   await peer.graph.openContext(moderationContextKey)
@@ -44,16 +43,12 @@ module.exports = async function outOfOrderReplication (t, h) {
 
   const post = await owner.storage.createPost('seed')
 
-  // Wait until peer has the post id in its list (user core replication should bring it)
   await pumpUntil(async () => {
     await peer.graph.update()
     const posts = await peer.storage.listPosts()
     if (posts.length !== 1) throw new Error('post not yet replicated')
   }, 30000)
 
-  // Now simulate out-of-order: create moderation on peer while it does NOT have the post node.
-  // Force this by creating a fresh peer that opens moderation context but not the user core,
-  // then writing moderation targeting a known id.
   const peer2 = await h.createPeer('ooo-peer2')
   await peer2.graph.openRoleBase(roleKeyHex)
   const ownerModeration = await owner.graph.openContext(moderationContextKey)
@@ -77,14 +72,12 @@ module.exports = async function outOfOrderReplication (t, h) {
   t.ok(ev && typeof ev.timestamp === 'number')
   t.ok(ev && ev.signature)
 
-  // Peer2 should be able to query moderation even if it cannot resolve the node/content.
   await pumpUntil(async () => {
     const snap = await snapshotCanonical(peer2, { postIds: [], targetIds: [post.id] })
     const events = snap.moderation[post.id] || []
     t.ok(events.length >= 1)
   }, 30000)
 
-  // Once peer2 opens the owner user core, the global snapshot should converge.
   await peer2.graph.openUserCore(owner.graph.key)
 
   await assertConverged(t, [owner, peer2], { snapshotOpts: { postIds: [post.id], targetIds: [post.id] } })

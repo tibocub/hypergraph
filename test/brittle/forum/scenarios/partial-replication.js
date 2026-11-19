@@ -22,7 +22,6 @@ module.exports = async function partialReplication (t, h) {
     timestamp: Date.now()
   })
 
-  // A peer that only opens contexts initially.
   const peer = await h.createPeer('pr-peer')
   await peer.graph.openRoleBase(roleKeyHex)
   await peer.graph.openContext(commentsKey)
@@ -40,7 +39,6 @@ module.exports = async function partialReplication (t, h) {
     await h.cleanupPeer(peer)
   })
 
-  // Peer can write and/or receive context events even without the entity.
   await ownerModeration.addWriter(peerModeration.localKey)
   await pumpUntil(async () => {
     await peer.graph.update()
@@ -55,7 +53,6 @@ module.exports = async function partialReplication (t, h) {
     t.is(Boolean(snap.entities[post.id]), false)
   }, 30000)
 
-  // Later, open the owner user core and converge.
   await peer.graph.openUserCore(owner.graph.key)
 
   await assertConverged(t, [owner, peer], { snapshotOpts: { postIds: [post.id], targetIds: [post.id] }, minDurationMs: 100 })

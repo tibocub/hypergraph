@@ -26,7 +26,6 @@ test('reopening the same folder keeps the identity and its phrase', async (t) =>
   t.is(await forum.recoveryPhrase(again), phrase)
 })
 
-// Every readable file under `dir`, as one string per file (to look for the phrase on disk).
 function filesUnder (dir) {
   const fs = require('fs')
   const path = require('path')
@@ -74,7 +73,6 @@ test('the person may protect the phrase with a password', async (t) => {
   t.is(await forum.recoveryPhrase(again, 'correct horse'), null, 'a protected phrase can be forgotten too')
 })
 
-// The phrase protected from the first moment.
 test('opened with a password, the phrase is never in the folder in plain text', async (t) => {
   const first = await account(t, 'sealed', { password: 'correct horse' })
   const phrase = await forum.recoveryPhrase(first, 'correct horse')

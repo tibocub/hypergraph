@@ -1,32 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
-// Cannot be verified without real network access.
-//
-// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
-// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
-// Hyperswarm's graceful discovery-session cleanup, which is what would
-// otherwise call discX.destroy() internally anyway — and that path can
-// invoke an unannounce() network call with no visible internal timeout.
-// See test/brittle/networking/peer-connection.js for the fuller
-// investigation.
-//
-// TEARDOWN ORDERING BUG FOUND & FIXED: see late-joiner.js for the full
-// explanation. Destroying a swarm before its peer's graph/store are closed
-// hangs store.close() forever waiting for a clean stream-close event that
-// never comes, since the socket underneath it was already killed. Fixed by
-// consolidating teardown to always close graph/store before the swarms.
-// (The mid-test `swarmB.destroy()` below is an intentional simulated
-// disconnect, not teardown, and is unaffected by this fix.)
-//
-// BUG FIX: watched the remote user core via a raw `store.get()`, which only
-// creates a Hypercore reference for replication — it never registers the
-// core with the graph's view, so graph.get()/getContent() could never see
-// peer A's data. Switched to openUserCore() so exact content of both
-// messages can actually be verified, not just raw core length (which only
-// proves *some* bytes arrived, not the *right* ones). Also added the
-// explicit swarm.flush() call used elsewhere in this suite — this test's
-// generous sleep() buffers appear to have made it work without it, but
-// there's no reason to rely on that incidental margin instead of doing it
-// properly to begin with.
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
@@ -51,9 +23,6 @@ test('peer-reconnection: a disconnected peer catches up on data created while it
   const discA = swarmA.join(topic, { server: true, client: true })
   const discB = swarmB.join(topic, { server: true, client: true })
   await Promise.race([Promise.all([discA.flushed(), discB.flushed()]), sleep(5000)])
-  // discovery.flushed() only confirms the DHT announce/lookup round
-  // finished — swarm.flush() is what actually drains the connection queue
-  // and waits for the resulting connection attempts to complete.
   await Promise.race([Promise.all([swarmA.flush(), swarmB.flush()]), sleep(5000)])
 
   console.log('  Step 2: peer A writes a first message while B is connected')

@@ -24,7 +24,6 @@ async function pair (t, opts) {
   return { a, b, fa, fb }
 }
 
-// Member b standing after a first post of a: { p, cursor }.
 async function standing (fa, fb) {
   const p = await forum.post(fa, 'first', '')
   if (!await has(fb, p.id)) throw new Error('the first post never arrived')

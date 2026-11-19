@@ -100,7 +100,6 @@ try {
     record('members.private-join', n, 'ms', privateJoins)
   }
 
-  // public spaces
   const pub = await owner.createSpace({ name: 'Open' })
   await pub.makePublic()
   const plink = pub.publicLink()
@@ -142,7 +141,6 @@ try {
     record('members.public-join-kb', n, 'KB', kbs, { flat: true })
     record('members.public-cost', n, 'KB', costs, { flat: true })
 
-    // one new log at the owner, never announced: settled with the reader by ranges
     const toward = (s, peer) => [...s.directory.channels].find((ch) => ch.peer && ch.peer.equals(peer))
     const settle = []
     for (let r = 0; r < 3; r++) {
@@ -173,7 +171,6 @@ try {
     record('logs.settle-kb', n, 'KB', settle, { flat: true })
   }
 
-  // reactions, on a space of its own
   const club = await owner.createSpace({ name: 'Likes' })
   const post = await club.put('post', { title: 'hot' })
   let likes = 0

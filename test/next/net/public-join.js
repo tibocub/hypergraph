@@ -11,7 +11,6 @@ const { eventually, codeOf, within } = require('../helpers.js')
 const count = async (f) => (await f.decisions({ limit: 1000 })).items.length
 const has = (f, title) => async () => (await forum.latest(f)).some((p) => p.title === title)
 
-// a owns a public forum, b is a member (invited before it went public).
 async function publicForum (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

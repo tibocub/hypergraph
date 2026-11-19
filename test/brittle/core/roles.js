@@ -134,12 +134,6 @@ test('roles: closing a RoleBase does NOT take down the shared Corestore session 
   const post1 = await graph.put({ type: 'post' })
 
   console.log('  Step: close the RoleBase directly, nothing else')
-  // Previously, RoleBase constructed its Autobase directly on the raw,
-  // shared Corestore session it was given (not a namespaced session, like
-  // ContextBase/ScopeBase already use) — confirmed directly this meant
-  // Autobase's own close() closed that exact, shared session object out
-  // from under every other consumer of it. Closing JUST the RoleBase used
-  // to throw "Corestore is closed" on the very next unrelated operation.
   await graph.roleBase.close()
 
   console.log('  Step: confirm the rest of the graph is completely unaffected')

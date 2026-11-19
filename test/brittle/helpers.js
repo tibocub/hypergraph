@@ -53,7 +53,6 @@ async function removeDirWithRetry (dir, closeFn) {
     try {
       await closeFn()
     } catch (err) {
-      // Resources may already be closed; ignore.
     }
   }
 
@@ -119,13 +118,6 @@ async function within (promise, ms, fallback = null) {
  */
 async function waitForConnections (swarms, timeoutMs = 60000, opts = {}) {
   const { topic = null, joinOpts = { server: true, client: true } } = opts
-  // Measured: when every peer joins at once, the first lookup usually runs
-  // before the others have announced, finds nobody, and Hyperswarm only
-  // looks again ~10 minutes later. A rejoin connects in ~2 s. So wait short
-  // and rejoin (one peer after another), doubling the wait each time (1, 2,
-  // 4 ... 32 s), within
-  // about the same total budget, instead of waiting out timeoutMs first
-  // (multi-peer.js spent 60 s per test in the first wait).
   const retries = topic ? Math.max(opts.retries || 1, 6) : (opts.retries || 1)
 
   for (let attempt = 0; ; attempt++) {

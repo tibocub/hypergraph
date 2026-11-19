@@ -31,7 +31,6 @@ test('leave a forum: its data goes from this device; joining again brings it bac
 
   t.ok((await fa.get(mine.id)).record, 'a still has b\'s post')
 
-  // reopened: not opened again from the personal space's list
   const dir = b.dir
   await bounded(b.close(), 10000, 'b.close()')
   const b2 = await account(t, 'b again', { dir })

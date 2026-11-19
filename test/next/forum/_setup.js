@@ -16,7 +16,6 @@ async function account (t, label, opts = {}) {
   return hg
 }
 
-// Another device of an account, joined with a code from addDevice.
 async function device (t, label, code, opts = {}) {
   const dir = opts.dir || tmpDir(t, label)
   const bootstrap = await testBootstrap(t)
@@ -26,7 +25,6 @@ async function device (t, label, code, opts = {}) {
   return hg
 }
 
-// Three members of one forum: a created it and invited b and c.
 async function threeMembers (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

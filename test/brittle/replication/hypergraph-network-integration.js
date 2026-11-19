@@ -1,33 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
-// Cannot be verified without real network access.
-//
-// BUG FIX (argument shape): the original version of this test (in the old
-// ad-hoc replication-scenarios.js script) imported `HypergraphNetworking`,
-// which does not exist in index.js (the real export is `HypergraphNetwork`),
-// and constructed it as `new HypergraphNetworking(graph, store, { topic })`
-// — missing the required `swarm` argument entirely. This means the test
-// never actually ran; `HypergraphNetworking` was `undefined` and the
-// constructor call would throw immediately. Rewritten here against the real
-// `HypergraphNetwork(graph, store, swarm, opts)` API.
-//
-// BUG FIX (teardown ordering): see late-joiner.js for the full explanation.
-// Destroying a swarm before its peer's graph/store are closed hangs
-// store.close() forever. Fixed by closing graph/store before the swarms.
-//
-// BUG FIX (sequential connect): `networkingA.connect()` and
-// `networkingB.connect()` were awaited one after another. A single
-// connect() can internally take up to ~20s (two sequential 10s flush
-// timeouts inside HypergraphNetwork), so awaiting two sequentially could
-// approach 40s before either side finishes. Fixed to Promise.all(), the
-// same fix already applied to hypergraph-network.js and connect-to-swarm.js
-// in an earlier round — this file was missed at the time.
-//
-// BUG FIX (content verification): watched the remote user core via a raw
-// `store.get()`, which only creates a Hypercore reference for replication —
-// it never registers the core with the graph's view, so graph.get()/
-// getContent() could never see peer A's data. Switched to openUserCore()
-// so the exact content can be verified, not just raw core length (which
-// only proves *some* bytes arrived, not the *right* ones).
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')

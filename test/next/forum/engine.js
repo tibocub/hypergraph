@@ -13,7 +13,6 @@ const { eventually, codeOf } = require('../helpers.js')
 
 const wikiTypes = { article: { fields: { title: 'string', body: 'text' }, editable: 'members' } }
 const wikiV2 = { article: { fields: { title: 'string', body: 'text' }, editable: 'members', index: [['title', 'stamp']] } }
-// SwarmFS-like: its own types, prefixed where they meet others
 const fileTypes = { 'swarmfs/file': { fields: { name: 'string', size: 'uint' } } }
 
 test('one engine, no types of its own: a forum, a wiki and a file share, each with its types', async (t) => {
@@ -41,7 +40,6 @@ test('one engine, no types of its own: a forum, a wiki and a file share, each wi
   const q = await forum.post(sub, 'In General', '', 'meta')
   t.is(q.topic, 'meta', 'a sub-forum has its forum\'s types')
 
-  // The wiki's app is updated (an index): opened by its owner, recorded in the wiki only.
   const wiki = wa.key
   const files = sa.key
   await a.close()

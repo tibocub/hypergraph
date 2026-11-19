@@ -1,7 +1,6 @@
 // A member polling graph.update() in a tight loop still receives live
 // messages. update() with nothing new does no I/O since the idle-update fix,
 // so without yielding to the event loop such a loop starved replication:
-// the second message never arrived until a third pushed it through.
 
 const test = require('brittle')
 const { createGraph } = require('../helpers')

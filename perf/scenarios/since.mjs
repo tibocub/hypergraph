@@ -67,7 +67,6 @@ for (const n of sizes([2000, 8000])) {
   }
 }
 
-// Many authors: the check looks at each held log's numbers, opening none.
 const t = context()
 try {
   const types = { post: { fields: { title: 'string' } } }

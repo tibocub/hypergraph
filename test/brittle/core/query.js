@@ -15,9 +15,6 @@ test('query: default order is chronological even across multiple authors', async
   const os = require('os')
   const { Hypergraph } = require('../../../index.js')
 
-  // Two separate identities sharing one Corestore — no network
-  // replication needed, since both cores physically live in the same
-  // store, so opening the other's user core is immediate.
   const dir = path.join(os.tmpdir(), `hypergraph-query-order-${process.pid}-${Date.now()}`)
   const store = new Corestore(dir)
   const graphA = new Hypergraph(store)
@@ -32,8 +29,6 @@ test('query: default order is chronological even across multiple authors', async
 
   await graphA.openUserCore(graphB.key)
 
-  // Create posts in a specific, known chronological order, alternating
-  // authors, regardless of how their core keys happen to sort.
   const first = await graphA.put({ type: 'post' })
   await sleep(10)
   const second = await graphB.put({ type: 'post' })
@@ -67,10 +62,6 @@ test('query: sortBy() sorts by an arbitrary field, including derived ones not st
   const postC = await graph.put({ type: 'post' })
   const ctx = await graph.createContext()
 
-  // Simulate a derived "vote count" via relations, exactly like
-  // p2p-reddit-clone does — this field never exists on the stored entity
-  // itself, so sortBy() has to work from a value attached at query time,
-  // not an index.
   const voteCounts = { [postA.id]: 5, [postB.id]: 1, [postC.id]: 10 }
   for (const p of [postA, postB, postC]) {
     for (let i = 0; i < voteCounts[p.id]; i++) {
@@ -79,9 +70,6 @@ test('query: sortBy() sorts by an arbitrary field, including derived ones not st
     }
   }
 
-  // .filter() as an enrichment step: attach the derived voteCount onto
-  // each node (always returning true, so nothing is actually excluded)
-  // before sortBy() sorts on it.
   const results = await graph.query()
     .type('post')
     .filter(async (node) => {
@@ -333,8 +321,6 @@ test('query: live() debounces a burst of changes into a single re-run', async (t
   await graph.put({ type: 'post' })
   await graph.put({ type: 'post' })
 
-  // Wait well past the debounce window, then check nothing further has
-  // fired beyond one coalesced re-run.
   await sleep(400)
   t.is(calls.length, 2, 'three rapid changes coalesced into exactly one re-run, not three')
   t.is(calls[1], 3, 'and that one re-run reflects all three writes')
@@ -411,8 +397,6 @@ test('query: live() re-runs when data arrives via REPLICATION, not just local wr
     fs.rmSync(dirB, { recursive: true, force: true })
   })
 
-  // B watches for posts, but never writes any itself — every post B sees
-  // must have arrived via replication from A.
   const calls = []
   const unsubscribe = graphB.query().type('post').live((results) => {
     calls.push(results.map(r => r.id))
@@ -435,10 +419,6 @@ test('query: live() re-runs when data arrives via REPLICATION, not just local wr
   console.log('  A creates a post; B should see its live query re-fire from replicated data alone')
   const post = await graphA.put({ type: 'post' })
 
-  // B's own update() loop needs to actually run for replicated data to be
-  // processed and the 'change' event to fire — a real app would be
-  // calling update() periodically (e.g. an SSE poll loop); simulate that
-  // here rather than relying on any automatic background sync.
   let sawIt = false
   for (let i = 0; i < 40; i++) {
     await sleep(200)

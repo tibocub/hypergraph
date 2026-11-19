@@ -1,7 +1,4 @@
 // Private spaces' cryptography:
-// epoch keys sealed to a device's box key (its device key pair converted),
-// grants that count only with the epoch's commitment, records sealed with
-// the space, log, position and epoch as additional data.
 
 const test = require('brittle')
 const b4a = require('b4a')

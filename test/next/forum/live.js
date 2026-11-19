@@ -34,7 +34,6 @@ test('a live latest-posts list follows posts, not comments or votes', async (t) 
   await forum.vote(fc, p, 1)
   await forum.vote(fb, p, 1)
   t.ok(await eventually(async () => (await fa.count('comment', { on: p })).value === 1 && (await forum.score(fa, p)) === 2, 3000), 'a indexed the comment and votes')
-  // only `complete` turning true may call it meanwhile
   t.is(changes, before, 'the posts list did not change')
   t.is(repeats, 0, 'never called back with the same answer')
 

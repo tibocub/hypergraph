@@ -60,7 +60,6 @@ module.exports = async function moderationPropagation (t, h) {
     if (posts.length !== 1) throw new Error('post not yet replicated')
   }, 30000)
 
-  // Grant p2 write access to moderation context.
   await p1Moderation.addWriter(p2Moderation.localKey)
   await pumpUntil(async () => {
     await p2.graph.update()

@@ -14,7 +14,6 @@ const { holdsAll, heldBy } = require('./_circles.js')
 
 const DAY = 24 * 3600 * 1000
 
-// a and `n` others in a new circle, the others holding.
 async function circleOf (t, n, { name = 'C', a = null, prefix = 'h' } = {}) {
   a = a || await account(t, 'a')
   const circle = await a.createCircle({ name })
@@ -28,7 +27,6 @@ async function circleOf (t, n, { name = 'C', a = null, prefix = 'h' } = {}) {
   return { a, circle, holders }
 }
 
-// Exactly `n` of `hgs` hold `space`, and still after a while (nobody else fetches it).
 async function keptByExactly (hgs, space, n, ms = 60000) {
   if (!await eventually(async () => (await heldBy(hgs, space)).length === n, ms)) return false
   await sleep(3000)
@@ -76,7 +74,6 @@ test('no copy online: one extra copy at once, dropped once 2 are back; a delete 
   const regular = await heldBy(holders, s)
   const spare = holders.find((h) => !regular.includes(h))
 
-  // another member can't make a holder delete what a handed
   const key = (await testing.coreKeys(s)).values().next().value
   t.is(await testing.askDelete(spare, regular[0], key), false, 'refused')
   t.ok(await holdsAll(regular[0], s), 'still held')

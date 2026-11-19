@@ -70,7 +70,6 @@ test('only the owner lists helpers', { timeout: 60000 }, async (t) => {
   t.is(await codeOf(fb.setHelpers([z32.encode(crypto.randomBytes(32))])), 'NOT_ALLOWED', 'the API refuses')
   t.ok(await codeOf(fa.setHelpers(['not a key'])), 'a bad key is refused')
 
-  // b writes the decision by hand: nobody counts it
   t.ok(await eventually(() => fb.decisionLog.writable, 10000), 'b records decisions')
   const before = (await fa.decisions()).items.length
   await fb.decisionLog.append({ type: 'settings/set', policy: null, writeLimit: null, rules: null, history: null, helpers: [b4a.toString(crypto.randomBytes(32), 'hex')] })

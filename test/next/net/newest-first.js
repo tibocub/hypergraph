@@ -2,9 +2,6 @@
 // complete after downloading only the
 // newest periods; a page further back widens what it reads; in the background
 // the rest arrives while the space fits its share, and never beyond it.
-// Principle I: what it shows once complete is what a member holding
-// everything shows. The newcomer's reads ask to wait (reads answer at once
-// otherwise; test/next/net/honest-reads.js plays the live page).
 
 const test = require('brittle')
 const forum = require('../forum/forum.js')
@@ -17,8 +14,6 @@ const HOURS = 150
 const PER_HOUR = 4
 const N = HOURS * PER_HOUR
 
-// A forum created HOURS ago by a, with N posts spread over those hours (the
-// newest now), then today's activity on the newest posts.
 async function archive (t) {
   t.teardown(testing.bigSpaces({ records: 200 })) // a "big" space for this test: more than 200 records
   const a = await account(t, 'a')
@@ -58,7 +53,6 @@ test('a newcomer\'s first page is complete after the newest periods only; it equ
   const comments = await fd.linked(target, 'comment', { timeout: 10000 })
   t.ok(comments.complete && comments.items.length === 1, 'its comment, complete')
 
-  // further back: a page 60 hours old
   let after = first.items.at(-1)
   let page = null
   let theirs = null

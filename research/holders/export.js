@@ -18,7 +18,6 @@ const b4a = require('b4a')
 const def = require('../../lib/index/spec/hyperdb')
 const { unpackHours } = require('../../lib/circles.js')
 
-// seen: the saved row ({ at: { device: ms }, hours: { device: { hour, bits } } }) -> the file's content
 function anonymise (seen, random = Math.random) {
   const keys = Object.keys(seen.hours || {})
   const own = keys.filter((k) => !(k in (seen.at || {}))) // holders are in `at` (last seen); this device isn't

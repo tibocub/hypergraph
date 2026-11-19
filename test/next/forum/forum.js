@@ -28,7 +28,6 @@ const rules = [
   { id: 'title-length', validate: (record) => record.type !== 'post' || (record.title || '').length <= 300 }
 ]
 
-// --- accounts ---
 
 // A new account in this folder, online. `{ password }` keeps the recovery
 // phrase sealed by it from the first moment (show it with recoveryPhrase()).
@@ -60,7 +59,6 @@ function forgetPhrase (hg) {
   return hg.forgetRecoveryPhrase()
 }
 
-// --- devices ---
 
 // On a device already in: a code for the new one (show it as text or a QR).
 // `password`: the one protecting the recovery phrase on this device.
@@ -95,7 +93,6 @@ async function setting (hg, name) {
   return (await hg.settings())[name]
 }
 
-// --- forums ---
 
 // The forums this person is in (on any of their devices).
 function forums (hg) {
@@ -119,7 +116,6 @@ function keepEverything (forum) {
   return forum.setPolicy('everything')
 }
 
-// --- storage (this device's disk) ---
 
 // The room the app may use on this device (null: the default).
 function setAppBudget (hg, bytes) {
@@ -136,7 +132,6 @@ function storage (hg) {
   return hg.storage()
 }
 
-// --- sub-forums ---
 
 // Seen by every member of the forum, no joining. `onlyRoles`: only these
 // roles post (the owner and admins always may); `private`: read only by who
@@ -201,7 +196,6 @@ function join (hg, link, opts) {
   return hg.redeemInvite(link, opts)
 }
 
-// --- helpers ---
 
 // The forum's helpers: always-on servers (a VPS running blind-peer-cli) that
 // keep its posts available while everyone is offline. Owner only; never
@@ -215,7 +209,6 @@ function helpers (forum) {
   return forum.helpers
 }
 
-// --- roles and moderation ---
 
 // 'moderator', 'admin', 'member', or a role the forum defined (addRole).
 function giveRole (forum, who, role) {
@@ -315,7 +308,6 @@ async function theme (forum) {
   return (await forum.query('theme').latest(1)).items[0] || null
 }
 
-// --- posting ---
 
 function post (forum, title, text, topic) {
   return forum.put('post', { title, text, topic })
@@ -339,7 +331,6 @@ function remove (forum, record) {
   return forum.del(record.id)
 }
 
-// --- reading ---
 
 async function latest (forum, n = 20) {
   return (await forum.query('post').latest(n)).items
@@ -391,7 +382,6 @@ async function postsPage (forum, n, after) {
   return (await forum.query('post').latest(n, { after })).items
 }
 
-// --- shipped with the app: a public forum's data, packed by the app's build ---
 
 // What a visitor would download of these public forums, into a folder.
 function packForums (hg, forums, folder) {
@@ -403,7 +393,6 @@ async function unpackForums (hg, folder) {
   return (await hg.importSpaces(folder)).map((key) => hg.space(key))
 }
 
-// --- what's new: where this person stands, kept in their settings ---
 
 const standing = async (hg, forum) => (await hg.settings())['last-visit:' + forum.key] ?? null
 const news = (forum, cursor) => forum.since(cursor, { types: ['post', 'comment'] })
@@ -420,7 +409,6 @@ async function visit (hg, forum) {
   return { posts: records.filter((r) => r.type === 'post'), comments: records.filter((r) => r.type === 'comment') }
 }
 
-// --- tags and links between posts ---
 
 // Tags are the post's: its author (or an editor, for pages) tags it.
 function tag (forum, record, name) {
@@ -455,7 +443,6 @@ async function referencedBy (forum, record) {
   return { from: items.map((e) => e.from), count }
 }
 
-// --- the wiki ---
 
 // Editors: members who may edit any page (and post). The role is defined the
 // first time someone is made an editor.
@@ -496,7 +483,6 @@ async function polls (forum, on) {
   return (await forum.linked(on, 'poll')).items
 }
 
-// --- live screens ---
 // Reads answer at once with what this device holds; `complete` false means
 // more is on its way: show the list with a quiet "still syncing" hint, and
 // the screen updates itself. Each returns stop().

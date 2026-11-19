@@ -26,7 +26,6 @@ test('a log handed to a helper and closed at once is mirrored; grown, handed aga
   const store = new Corestore(tmpDir(t, 'member'))
   t.teardown(async () => { await peering.close(); await store.close(); await dht.destroy() }, { order: 0 })
   const peering = new BlindPeering(dht, store, { keys: [server.publicKey] })
-  // what keeps the helper's connection referenced in a space: its decision log
   const anchor = store.get({ name: 'anchor' })
   await anchor.append('x')
   peering.addCoreBackground(anchor)

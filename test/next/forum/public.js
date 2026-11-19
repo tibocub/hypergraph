@@ -12,7 +12,6 @@ const { eventually, codeOf } = require('../helpers.js')
 const listed = async (f, hg) => (await forum.people(f)).some((p) => p.identity === hg.identity.publicKey)
 const sees = (f, title) => async () => (await forum.latest(f)).some((p) => p.title === title)
 
-// a owns it and opened it; b was invited before and stays online.
 async function openForum (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

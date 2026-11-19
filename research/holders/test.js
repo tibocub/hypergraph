@@ -33,7 +33,6 @@ test('replay: a copy online when the owner is off counts every offline hour', (t
   const owner = dev(pattern((h) => h % 24 < 12)) // days (UTC)
   const night = dev(pattern((h) => h % 24 >= 10)) // 2 hours with the owner: enough to be handed
   const r = simulate({ devices: [owner, night], H, M0 }, 'hash', { copies: 1 })
-  // the night holder's space: owner `night` offline in the day, `owner` holds it then
   t.is(r.avail, 1)
   t.is(r.uploads, 0, 'handed before the measured weeks, never again')
 })

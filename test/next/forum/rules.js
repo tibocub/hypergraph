@@ -24,7 +24,6 @@ test('an app rule rejects a record everywhere, before it is kept', async (t) => 
     t.ok(/title-length/.test(err.message), 'naming the rule')
   }
 
-  // b writes it anyway, then a post everyone must see.
   const bad = await testing.writeRaw(fb, { kind: 'put', type: 'post', fields: { title: long, text: 'spam' } })
   const marker = await forum.post(fb, 'fine', '')
   t.ok(await shownEverywhere(all, marker.id), 'b\'s later post arrived everywhere')
@@ -35,7 +34,6 @@ test('an app rule rejects a record everywhere, before it is kept', async (t) => 
   for (const f of [fa, fc]) t.ok(await eventually(async () => !(await testing.holdsBlock(f, bad)), 10000), 'nor kept by the others (so not passed on)') // 10 s: under a full suite's load the clearing took over 3 s
   t.ok(await testing.holdsBlock(fb, bad), 'its author keeps its own log whole (FR-027)')
 
-  // A newcomer fetches it from its author, checks it, drops it, and is complete.
   const d = await account(t, 'newcomer')
   const fd = await forum.join(d, await forum.invite(fa))
   t.ok(await shownEverywhere([fd], marker.id))
@@ -44,7 +42,6 @@ test('an app rule rejects a record everywhere, before it is kept', async (t) => 
   t.ok(complete, 'nor waits for it')
   t.ok(await eventually(async () => !(await testing.holdsBlock(fd, bad)), 3000), 'nor keeps it')
 
-  // An edit breaking the rule is ignored too.
   await testing.writeRaw(fb, { kind: 'edit', type: 'post', target: marker.id, fields: { title: long, text: '' } })
   const later = await forum.post(fb, 'later', '')
   t.ok(await shownEverywhere(all, later.id))
@@ -67,7 +64,6 @@ test('a non-member\'s records are never kept', async (t) => {
 })
 
 test('app rules are code: the space records which are active, and members on other rules are warned', async (t) => {
-  // b runs a newer app with one more rule; c an older one with none.
   const noEmpty = { id: 'no-empty-text', validate: (r) => r.type !== 'post' || !!r.text }
   const a = await account(t, 'a')
   const b = await account(t, 'b', { rules: [...forum.rules, noEmpty] })
@@ -82,7 +78,6 @@ test('app rules are code: the space records which are active, and members on oth
   t.ok(/no-empty-text/.test(warning(fb).message), 'naming the rule the space doesn\'t have')
   t.ok(/title-length/.test(warning(fc).message), 'naming the rule this app doesn\'t have')
 
-  // b's app is the forum's next version: an admin records its rules.
   await forum.giveRole(fa, b.identity.publicKey, 'admin')
   const told = new Promise((resolve) => fa.on('status', (s) => { if (s.warnings.some((w) => w.code === 'RULES_DIFFER')) resolve() }))
   await eventually(async () => {

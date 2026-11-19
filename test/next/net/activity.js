@@ -88,7 +88,6 @@ test('10,000 throwaway-key entries add nothing to a member\'s lists or index, an
   for (const heard of listeners) {
     t.absent(heard.some((x) => keys.has(x.log) && x.peer !== e.device.publicKey), 'no member passed any on')
   }
-  // the space still works
   const p = await forum.post(fc, 'after the spam', '')
   t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === p.id), 3000), 'a still gets c\'s new post')
 })

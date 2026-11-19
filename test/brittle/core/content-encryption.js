@@ -256,9 +256,6 @@ test('content-ref-encryption: a non-member learns nothing about the address', as
     mutable: false
   }, { scope: scopeId })
 
-  // Rotate the scope key away from this reader, so it no longer holds the key
-  // for the epoch the reference was written under — the same shape as never
-  // having been a member.
   await graph.scopeBase.rotateKey(scopeId)
   await graph.update()
 
@@ -270,13 +267,9 @@ test('content-ref-encryption: a non-member learns nothing about the address', as
     t.ok(stored.encrypted, 'but the reader can still tell referenced content exists')
     t.is(stored.contentType, CONTENT_LINK_TYPE, 'and that it is a link, not inline content')
   } else {
-    // Still holding a usable key (rotation kept this member current) — then
-    // the address must NOT have leaked in any other form.
     t.ok(stored.reference && stored.reference.valid, 'member still resolves it')
   }
 
-  // Whichever branch applied, the plaintext address must never appear in the
-  // stored record's raw body.
   const raw = JSON.stringify(stored)
   const leaked = raw.includes('this-address-must-stay-secret') && stored.body === null
   t.absent(leaked, 'the address never leaks to a reader without the key')
@@ -298,7 +291,6 @@ test('content-ref-encryption: references behave exactly as scoped inline content
   const refRecord = await graph.getContent(withRef.id)
   const inlineRecord = await graph.getContent(withInline.id)
 
-  // The point: no reference-specific divergence in the encryption path.
   t.is(refRecord.encrypted, inlineRecord.encrypted, 'same encrypted flag')
   t.is(refRecord.scope, inlineRecord.scope, 'same scope')
   t.is(refRecord.epoch, inlineRecord.epoch, 'same epoch')

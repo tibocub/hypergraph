@@ -7,7 +7,6 @@ const c = require('compact-encoding')
 const { threeMembers } = require('../forum/_setup.js')
 const { eventually } = require('../helpers.js')
 
-// Adds 'test/hello' to `space`: says hello on open, keeps what it hears.
 function hello (space, label) {
   const heard = []
   const closed = []
@@ -36,8 +35,6 @@ test('an app protocol is opened with every peer of the space, both ways', async 
   t.ok(await eventually(() => hb.closed.length > 0, 10000), 'onclose when the peer leaves')
 })
 
-// A private space's protocol reaches the person's newly paired
-// device, which adds it as soon as the space appears ('spaces').
 test('an app protocol on a private space opens with a newly paired device', async (t) => {
   const forum = require('../forum/forum.js')
   const { account, device } = require('../forum/_setup.js')

@@ -16,10 +16,6 @@ const { PROTOCOL } = require('../../../lib/directory.js')
 const { threeMembers } = require('../forum/_setup.js')
 const { eventually, testBootstrap } = require('../helpers.js')
 
-// A spy on the topic: opens the space channel (with `guess` as its handshake,
-// or none, as an honest peer of the old protocol) and asks for every log key.
-// Returns what it got: { got (kinds of messages carrying log keys: 2 list,
-// 3 notice, 8 entry, 10 activity list), closed }.
 async function spy (t, space, guess) {
   const swarm = new Hyperswarm({ bootstrap: await testBootstrap(t) })
   const out = { got: [], closed: 0 }

@@ -1,8 +1,5 @@
 // Version 2 contexts: the creator indexes, other writers don't, acks are on —
 // so shared contexts actually reach a confirmed state (spec 003, US1).
-//
-// In-memory replication (store.replicate piped to store.replicate): what is
-// under test is confirmation and convergence, not the network.
 
 const test = require('brittle')
 const { createGraph, sleep } = require('../helpers')
@@ -23,7 +20,6 @@ async function until (fn, ms) {
   return false
 }
 
-// Creator + two writers, fully linked; returns the peers with their contexts.
 async function setup (t, label) {
   const peers = []
   for (const name of ['creator', 'w1', 'w2']) peers.push({ name, ...(await createGraph(t, `${label}-${name}`)) })
@@ -64,7 +60,6 @@ test('indexers: three writers write concurrently; within 10 s of stopping, every
 
   const dirs = await Promise.all(peers.map(p => writeFiles(p, ctx, 1000)))
 
-  // Everyone has everything (applied)...
   t.ok(await until(async () => {
     for (const p of peers) await p.graph.update()
     for (const p of peers) {
@@ -74,7 +69,6 @@ test('indexers: three writers write concurrently; within 10 s of stopping, every
   }, 60000), 'all 3,000 relations applied on every peer')
   const applied = Date.now()
 
-  // ...and it becomes confirmed, within 10 s (SC-003).
   const confirmed = await until(() => confirmedEverywhere(peers), 10000)
   t.ok(confirmed, `everything is confirmed on every peer, ${Date.now() - applied} ms after it was all applied`)
 
@@ -86,7 +80,6 @@ test('indexers: with the creator offline, writers keep writing and see each othe
   const { peers, ctx, links } = await setup(t, 'idx-offline')
   const [creator, w1, w2] = peers
 
-  // Take the creator offline.
   for (const l of links.filter(l => l.i === 0 || l.j === 0)) l.close()
 
   const d1 = await writeFiles(w1, ctx, 100)
@@ -100,18 +93,15 @@ test('indexers: with the creator offline, writers keep writing and see each othe
   const before = await w1.ctx.status()
   t.ok(before.confirmedLength < before.length, 'not confirmed while the only indexer is away')
 
-  // Creator comes back.
   t.teardown(link(creator, w1))
   t.teardown(link(creator, w2))
   t.ok(await until(() => confirmedEverywhere(peers), 30000), 'confirmed once the creator is back')
   t.is(await creator.graph.countEdgesIn(d1, 'in', { context: ctx }), 100, 'the creator has w1\'s relations')
 })
 
-// ── Several indexers (spec 005) ─────────────────────────────────────────────
 
 const hexKey = (kp) => kp.publicKey.toString('hex')
 
-// Owner + two members, each member's writer linked to the member, fully linked.
 async function setupMembers (t, label) {
   const peers = []
   for (const name of ['owner', 'b', 'c']) peers.push({ name, ...(await createGraph(t, `${label}-${name}`)) })
@@ -148,11 +138,8 @@ test('indexers: admins appointed by the owner index, and confirm while the owner
   await owner.ctx.setRole(hexKey(c.graph.identity.deviceKeyPair), 'admin', { keyPair: ownerKp })
   const all = [owner.ctx.localKey, b.ctx.localKey, c.ctx.localKey].map(k => k.toString('hex'))
   t.ok(await until(() => indexersEverywhere(peers, all), 20000), 'owner and both admins index, on every peer')
-  // A change of indexers takes effect once the current indexers (here the
-  // owner alone) have confirmed it: only then do the admins act as indexers.
   t.ok(await until(async () => { for (const p of peers) await p.graph.update(); return b.ctx.base.isIndexer && c.ctx.base.isIndexer }, 20000), 'the admins act as indexers once the owner confirmed the change')
 
-  // Owner goes offline; the admins keep writing and confirming.
   for (const l of links.filter(l => l.i === 0 || l.j === 0)) l.close()
   const dir = await writeFiles(b, ctx, 200)
   const applied = await until(async () => {
@@ -160,9 +147,6 @@ test('indexers: admins appointed by the owner index, and confirm while the owner
     return (await c.graph.countEdgesIn(dir, 'in', { context: ctx })) === 200
   }, 30000)
   t.ok(applied, 'the admins apply each other\'s writes')
-  // With several indexers the newest acknowledgements are always awaiting
-  // the next round, so "confirmed === length" never holds; what matters is
-  // that everything that existed when the writes were applied gets confirmed.
   const written = Math.max(b.ctx.base.length, c.ctx.base.length)
   const t0 = Date.now()
   t.ok(await until(async () => {
@@ -181,7 +165,6 @@ test('indexers: revoking a role demotes the member\'s writer, which keeps writin
   const withB = [owner.ctx.localKey, b.ctx.localKey].map(k => k.toString('hex'))
   t.ok(await until(() => indexersEverywhere(peers, withB), 20000), 'b indexes')
 
-  // b's "second device": c's writer re-linked to b by a new context/writer.
   await owner.ctx.addWriter(c.ctx.localKey, { keyPair: ownerKp, member: hexKey(bKp) })
   const withBoth = [...withB, c.ctx.localKey.toString('hex')]
   t.ok(await until(() => indexersEverywhere(peers, withBoth), 20000), 'a device added later for b indexes too')
@@ -210,7 +193,6 @@ test('indexers: concurrent role and writer changes from different members conver
   await owner.ctx.setRole(hexKey(bKp), 'admin', { keyPair: ownerKp })
   await until(async () => { for (const p of peers) await p.graph.update(); return (await c.ctx.roles()).members[hexKey(bKp)] === 'admin' }, 20000)
 
-  // At the same time: the owner revokes b, b makes c a mod, and c writes.
   const cKp = c.graph.identity.deviceKeyPair
   await Promise.all([
     owner.ctx.removeRole(hexKey(bKp), { keyPair: ownerKp }),

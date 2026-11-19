@@ -22,7 +22,6 @@ function filesIn (dir) {
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name)
     if (fs.statSync(full).isDirectory()) {
-      // a nested project (e.g. a git-ignored clone inside lib/) isn't ours
       if (!fs.existsSync(path.join(full, 'package.json'))) out.push(...filesIn(full))
     }
     else if (name.endsWith('.js')) out.push(full)
@@ -30,8 +29,6 @@ function filesIn (dir) {
   return out
 }
 
-// Code without comments and string contents' words, roughly: enough to not
-// flag "Buffer" in a comment.
 function code (src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((line) => line.replace(/(^|[^:'"`])\/\/.*$/, '$1')).join('\n')
 }

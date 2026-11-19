@@ -1,25 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY:
-// The first test spins up real Hyperswarm instances and joins the public
-// DHT — it can't be verified without real network access. The second test
-// is a local regression guard and needs no network.
-//
-// The old "peer discovery API" test (announce()/discoverPeers()/listPeers())
-// was removed here: those methods were dead no-ops kept only for backward
-// compatibility, which this project has dropped entirely.
-//
-// A second, related bug was found and fixed while writing these tests:
-// Hypergraph.on('peer-join'/'peer-leave', ...) used to silently register a
-// listener that could never fire (nothing in hypergraph.js emitted those
-// events — only HypergraphNetwork does). See the second test below and the
-// on()/off() fix in src/hypergraph.js.
-//
-// A third bug (in this test file, not the product): cleanup() used to
-// destroy the swarm BEFORE closing graph/store. Since brittle's teardown
-// runs LIFO and cleanup() ran after the swarm was already registered, this
-// tore the raw socket out from under an in-flight replication stream mid-
-// shutdown, and store.close() then hung forever waiting for a clean
-// close event that would never come — deterministically, every run. Fixed
-// by always closing graph, then store, then destroying the swarm last.
 
 const test = require('brittle')
 const Corestore = require('corestore')
@@ -61,13 +40,6 @@ async function cleanup (peers) {
   for (const p of peers) {
     await withTeardownTimeout(p.graph.close().catch((err) => { /* already closed */ }), 10000, `${p.name}.graph.close()`)
     await withTeardownTimeout(p.store.close().catch((err) => { /* already closed */ }), 10000, `${p.name}.store.close()`)
-    // destroySwarm() explicitly destroys every active connection first —
-    // Hyperswarm.destroy() never does this on its own (confirmed by
-    // reading its source: this.connections is only ever tracked, never
-    // iterated or destroyed inside destroy()) — then destroys the swarm
-    // with force:true, which skips Hyperswarm's graceful discovery-session
-    // cleanup (clear(), which can call unannounce() — a network operation
-    // with no visible internal timeout).
     await withTeardownTimeout(destroySwarm(p.swarm), 10000, `${p.name}.swarm destroy`)
     try { fs.rmSync(p.dir, { recursive: true, force: true }) } catch (err) { /* already removed */ }
   }

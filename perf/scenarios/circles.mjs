@@ -58,7 +58,6 @@ try {
     await b.setHolding({ on: true })
     if (!await eventually(() => holdsAll(b, a, spaces), 120000)) throw new Error('never held')
     record('circles.hand', n, 'ms', now() - start)
-    // the holder's own hg/holder records (share and use), flat: not one per space held
     const records = (await circle.query('hg/holder').latest(1000)).items.filter((r) => r.device === b.device.publicKey).length
     record('circles.records', n, 'records', records, { flat: true })
     await a.close()
@@ -91,7 +90,6 @@ try {
     await a.close()
   }
 
-  // what the member's device sent: its swarm connections and its blind-peering ones
   const sent = (hg) => {
     let n = 0
     for (const conn of hg._network.connections) n += conn.rawBytesWritten || 0

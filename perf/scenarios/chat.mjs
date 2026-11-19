@@ -36,7 +36,6 @@ for (const n of sizes([3, 9])) {
     }
     for (const a of authors) await a.line('ready')
 
-    // everyone writes at once, round by round (one rate per round)
     const rates = []
     // done when the owner indexed the others' records (a counter: polling a query of
     // hundreds of items would load the owner's thread, and so the measure)
@@ -51,7 +50,6 @@ for (const n of sizes([3, 9])) {
     }
     record('chat.write', n, 'messages/s', rates, { better: 'higher' })
 
-    // fan-out: the owner pings, every author's live list shows it
     const fan = []
     for (let j = 0; j < 5; j++) {
       const sent = Date.now()
@@ -62,7 +60,6 @@ for (const n of sizes([3, 9])) {
     }
     record('chat.fan-out', n, 'ms', fan)
 
-    // newcomers, each fresh, with a small budget
     const pages = []
     const scrolls = []
     for (let j = 0; j < 5; j++) {

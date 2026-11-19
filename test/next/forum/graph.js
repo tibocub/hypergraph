@@ -15,7 +15,6 @@ const agree = (spaces, fn, expected, ms = 10000) => eventually(async () => {
   return true
 }, ms)
 
-// The edges of `record` as one string: "from>to:type=value", sorted.
 const edgesOf = (record, opts) => async (f) => {
   const { items, count } = await f.edges(record, opts)
   return { count, edges: items.map((e) => `${e.from}>${e.to}:${e.type}=${e.value}`).sort() }

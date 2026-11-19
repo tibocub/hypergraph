@@ -72,8 +72,6 @@ test('votes: one per member, the latest counts, the same everywhere', async (t) 
 test('a field passed as undefined counts as absent: old and new helpers share code; typos still throw', async (t) => {
   const { a } = await threeMembers(t)
   const f = a.spaces().length ? a.space(a.spaces()[0].key) : null
-  // An older version's helper passing a field this version dropped from its
-  // call, and a newer one passing a field this version doesn't have yet.
   const p = await f.put('post', { title: 'Hi', text: 'one', topic: 'rust', mood: undefined })
   t.is(p.topic, 'rust')
   const e = await f.edit(p.id, { text: 'two', topic: undefined, mood: undefined })
@@ -110,8 +108,6 @@ test('a block announced again while the indexer reads it is indexed once (the so
   const key = fb.own.key
   const seq = fb.own.core.length // b's next record
   const log = fa.directory.logs.get(b4a.toString(key, 'hex'))
-  // On a: the block isn't held at first (a hole), and it is announced again
-  // while the indexer reads it, as a member coming back online can.
   const get = Hypercore.prototype.get
   let calls = 0
   Hypercore.prototype.get = async function (i, opts) {

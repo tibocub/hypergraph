@@ -1,8 +1,4 @@
 // Invites that also give read access to encrypted content (spec 006, US3).
-//
-// The link only asks for the scope's key; a member who holds it, online,
-// seals it to the redeemer on update(). In-memory streams through
-// graph.replicate(), so it is deterministic.
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
@@ -28,8 +24,6 @@ async function until (fn, ms = 20000) {
 
 const pub = (p) => p.graph.identity.deviceKeyPair.publicKey.toString('hex')
 
-// An owner with a RoleBase (all permissions), a ScopeBase with one scope, a
-// version 3 context, and a post whose content is encrypted under the scope.
 async function setup (t, label) {
   const owner = await createGraph(t, `${label}-owner`)
   const me = pub(owner)
@@ -83,7 +77,6 @@ test('scope-invites: redeemInvite({ scopeTimeout }) also waits for the key', { t
   const { owner, scopeId, post } = await setup(t, 'si-wait')
   const invite = await owner.ctx.createInvite({ scope: scopeId, keyPair: owner.graph.identity.deviceKeyPair })
   const b = await peer(t, 'si-wait-b', owner)
-  // The owner keeps updating in the background, as an app would.
   let running = true
   const loop = (async () => { while (running) { await owner.graph.update().catch(() => {}); await sleep(100) } })()
   t.teardown(async () => { running = false; await loop })
@@ -103,8 +96,6 @@ test('scope-invites: a plain invite gives no key; a minter without the key canno
   t.absent((await owner.graph.scopeBase.getRegistry())[scopeId].grants[`${pub(b)}:0`], 'no grant for a plain invite')
   t.absent(await readsSecret(b, owner, post).catch(() => false), 'and nothing readable')
 
-  // b is now a member of the context, with the same RoleBase and ScopeBase
-  // open, but holds no key: it can't ask for the scope by link.
   await b.graph.openRoleBase(owner.graph.roleBase.key)
   await b.graph.openScopeBase(owner.graph.scopeBase.key)
   await until(async () => { await pump([owner, b]); return !!(await b.graph.scopeBase.getRegistry())?.[scopeId] })
@@ -122,12 +113,10 @@ test('scope-invites: a scoped invite from a minter who could not grant the scope
   const { owner, ctx, scopeId, post } = await setup(t, 'si-forged')
   const ownerKp = owner.graph.identity.deviceKeyPair
 
-  // An admin of the context (may mint member invites) who has no scope key.
   const adminInvite = await owner.ctx.createInvite({ role: 'admin', keyPair: ownerKp })
   const admin = await peer(t, 'si-forged-admin', owner)
   const adminCtx = await admin.graph.redeemInvite(adminInvite, { timeout: 20000 })
 
-  // It appends a scoped invite by hand (createInvite would refuse).
   const seed = crypto.randomBytes(32)
   const inviteKey = b4a.toString(crypto.keyPair(seed).publicKey, 'hex')
   const event = {

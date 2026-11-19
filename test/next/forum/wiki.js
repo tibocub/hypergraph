@@ -11,7 +11,6 @@ const testing = require('../../../lib/testing.js')
 const { account } = require('./_setup.js')
 const { eventually, codeOf, open, sleep } = require('../helpers.js')
 
-// a owns the forum (and moderates); b and c are editors; d is a member.
 async function wiki (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
@@ -49,7 +48,6 @@ test('three editors edit one page: every member shows the latest', async (t) => 
   t.is(shown.author, fb.hg.identity.publicKey, 'the author stays the page\'s')
   t.ok(shown.edited)
 
-  // Two editors at once: one wins, the same everywhere.
   await Promise.all([forum.edit(fb, page, { body: 'b at once' }), forum.edit(fc, page, { body: 'c at once' })])
   t.ok(await eventually(async () => {
     const bodies = await Promise.all(all.map((f) => bodyOf(page.id)(f)))
@@ -92,13 +90,11 @@ test('an editor who loses the permission: before the cut stays, after counts for
   await forum.edit(fc, page, { body: 'welcome, by c' })
   t.ok(await agree([fa, fb, fc, fd], bodyOf(page.id), 'welcome, by c'), 'c\'s edit, everywhere')
 
-  // a goes offline; c edits again; b and d show it.
   await a.close()
   await sleep(20)
   await forum.edit(fc, page, { body: 'late, by c' })
   t.ok(await agree([fb, fd], bodyOf(page.id), 'late, by c'), 'b and d show c\'s late edit')
 
-  // a, offline, takes the permission away: the cut is where a holds c's log.
   const a2 = await open(t, { dir: a.dir, types: forum.types, rules: forum.rules })
   const fa2 = a2.space(fa.key)
   await forum.giveRole(fa2, c.identity.publicKey, 'member')
@@ -113,7 +109,6 @@ test('an editor who loses the permission: before the cut stays, after counts for
   await sleep(500)
   for (const f of [fa2, fb, fd, fn]) t.is(await bodyOf(page.id)(f), 'welcome, by c', 'and it stays')
 
-  // Given it back, c edits again (in a new log).
   await forum.makeEditor(fa2, c.identity.publicKey)
   t.ok(await forum.edit(fc, page, { body: 'back, by c' }), 'c edits again at once (its app catches up with the decision first)')
   t.ok(await agree([fa2, fb, fd, fn], bodyOf(page.id), 'back, by c'), 'and everyone shows it')
@@ -128,8 +123,6 @@ test('a type any member edits', async (t) => {
   t.is(await codeOf(forum.remove(fd, note)), 'NOT_ALLOWED', 'but only the author deletes it')
 })
 
-// Moving an entry is an edit of an indexed field by any member;
-// listing a folder is where() on it.
 test('a note any member moves between columns leaves the old one everywhere', async (t) => {
   const { fb, fd, all } = await wiki(t)
   const note = await forum.pin(fb, 'ship it')

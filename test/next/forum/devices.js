@@ -12,8 +12,6 @@ const testing = require('../../../lib/testing.js')
 const { account, device } = require('./_setup.js')
 const { eventually, open, codeOf } = require('../helpers.js')
 
-// The laptop owns a forum with another member, c; the phone joins with the
-// laptop's code and, once it shows the forum, writes in it.
 async function twoDevices (t) {
   const laptop = await account(t, 'laptop')
   const c = await account(t, 'c')
@@ -82,8 +80,6 @@ test('latest wins across devices, even with the laptop\'s clock an hour ahead', 
   await forum.edit(fp, mine, { text: 'v3 (phone)' })
   t.ok(await agree([fl, fp, fc], text, 'v3 (phone)'), 'the phone\'s later edit wins everywhere')
 
-  // The laptop's clock is put right; after a restart its next vote still
-  // comes after everything this person wrote with the clock ahead.
   await laptop.close()
   const again = await account(t, 'laptop-again', { dir: laptop.dir })
   const fl2 = again.space(fl.key)
@@ -122,12 +118,10 @@ test('a lost device: removed with the recovery phrase; what it wrote before stay
   const before = await forum.post(fp, 'before', '')
   t.ok(await agree([fl, fc], titles, ['before', 'phone is in'].join()))
 
-  // Whoever holds the phone without its password can't remove the laptop.
   t.is(await codeOf(forum.removeDevice(phone, laptop.device.publicKey)), 'NOT_ALLOWED', 'no removal without the recovery phrase')
   t.is(await codeOf(forum.removeDevice(laptop, phone.device.publicKey, 'wrong')), 'NOT_ALLOWED', 'nor with a wrong password')
   await forum.removeDevice(laptop, phone.device.publicKey, 'laptop password')
 
-  // The lost phone writes on (its own app would refuse once it learns).
   await testing.writeRaw(fp, { kind: 'put', type: 'post', fields: { title: 'after', text: '' } })
   await testing.writeRaw(fp, { kind: 'edit', type: 'post', target: before.id, fields: { title: 'before, edited after', text: '' } })
   const expected = ['before', 'phone is in'].join()
@@ -152,7 +146,6 @@ test('someone else can\'t remove your device, even with their own recovery phras
   t.is((await forum.devices(laptop)).length, 2)
 })
 
-// Decision rights follow devices.
 
 test('the owner\'s phone moderates and lets people in, with the laptop offline, no extra step', async (t) => {
   const { laptop, fp, fc } = await twoDevices(t)
@@ -184,7 +177,6 @@ test('an admin\'s phone moderates', async (t) => {
 
 test('a removed device\'s decisions afterwards are ignored by everyone, a newcomer included', async (t) => {
   const { laptop, phone, c, fl, fp, fc } = await twoDevices(t)
-  // The phone records decisions (it claimed its writer key).
   await forum.flag(fp, (await forum.latest(fp))[0], 'check') // the phone records decisions, no retry
   await forum.protectPhrase(laptop, 'pw')
   const phoneDir = phone.dir

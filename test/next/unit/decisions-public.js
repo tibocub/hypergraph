@@ -21,7 +21,6 @@ async function setup ({ private: priv = false } = {}) {
   const space = crypto.randomBytes(32)
   const apply = (writer, d) => applyNodes([{ from: { key: writer }, value: c.encode(enc.decision, { stamp: stamp++, ...d }) }], view, null, { space })
   await apply(space, { type: 'space/init', name: 'Open', parent: null, private: priv, policy: 'auto', version: 1, proof: initProof(owner, space, space) })
-  // a writer key speaking for an identity with `role`
   const writerOf = async (role) => {
     const w = crypto.randomBytes(32)
     const id = crypto.randomBytes(32)

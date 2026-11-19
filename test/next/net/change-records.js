@@ -8,7 +8,6 @@ const testing = require('../../../lib/testing.js')
 const { account, device } = require('../forum/_setup.js')
 const { eventually } = require('../helpers.js')
 
-// Every change entry a space reports, from now on.
 function watch (space) {
   const seen = []
   space.on('change', ({ types, records }) => {
@@ -20,7 +19,6 @@ function watch (space) {
 
 const entry = (seen, id) => seen.filter((e) => e.id === id).at(-1)
 
-// One person, a laptop and a phone, in one forum.
 async function twoDevices (t) {
   const laptop = await account(t, 'laptop')
   const fl = await forum.createForum(laptop, 'Files')

@@ -9,7 +9,6 @@ const forum = require('./forum.js')
 const { account, threeMembers } = require('./_setup.js')
 const { eventually } = require('../helpers.js')
 
-// What a screen showed last, and whether it ever showed "still syncing".
 function screen () {
   const s = { items: null, complete: null, syncing: false, updates: 0 }
   s.show = (items, complete) => {

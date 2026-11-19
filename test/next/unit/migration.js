@@ -17,7 +17,6 @@ const types = {
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } }
 }
 
-// Forum-like types, 3 spaces (one a sub-space), 20 posts, as before.
 async function folderFromBefore (t) {
   const dir = tmpDir(t, 'migration')
   const hg = await Hypergraph.open(dir, { types, bootstrap: null })

@@ -53,8 +53,6 @@ test('sizes stay near experiment 6 (post 113 B, comment 116 B, vote 40 B, ±10%)
   const post = fields.codec([{ name: 'title', kind: 'string' }, { name: 'text', kind: 'text' }])
   const comment = fields.codec([{ name: 'text', kind: 'text' }, { name: 'on', kind: 'link' }])
   const vote = fields.codec([{ name: 'value', kind: 'int' }, { name: 'on', kind: 'link' }])
-  // Links live in the record's link list (a 1-byte index in the fields), so
-  // count them as the measurement did: the id's bytes (35 B) once per record.
   const size = (codec, v) => { const links = []; const n = codec.encode(v, links).byteLength; return n + links.reduce((s, l) => s + l.byteLength, 0) }
   const near = (got, want, name) => t.ok(Math.abs(got - want) <= want * 0.1, `${name}: ${got} B (experiment: ${want} B)`)
   near(size(post, { title: 'Hello everyone, a typical title', text }), 113, 'post')
@@ -74,14 +72,12 @@ test('an edit by an older app keeps the fields it does not know (story 7)', (t) 
   const links = []
   const put = newer.encode({ text: 'v1', on: linkId, topic: 'rust', also: other }, links)
 
-  // The older app edits the text, keeping the current version's fields and links.
   const current = older.decode(put, links)
   const editLinks = []
   const edit = older.encode({ ...current, text: 'v2' }, editLinks, { fields: put, links })
   t.alike(newer.decode(edit, editLinks), { text: 'v2', on: linkId, topic: 'rust', also: other }, 'the newer app sees the edit and its own fields')
   t.alike(older.decode(edit, editLinks), { text: 'v2', on: linkId })
 
-  // Without fields it doesn't know, nothing is kept from before.
   const plain = older.encode({ text: 'v1', on: linkId }, [])
   const relinked = []
   older.encode({ text: 'v2', on: other }, relinked, { fields: plain, links: [idFromString(linkId)] })

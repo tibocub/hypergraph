@@ -46,10 +46,6 @@ test('the only holder offline: incomplete within the bound; back online: complet
   t.alike(back.items.map((x) => x.id), [p2.id, p1.id], 'with what b wrote while a was away')
 })
 
-// "Complete" = everything this member knows of is held, and it reached at
-// least one other member since starting. A member nobody has
-// heard from (here: let in while away, never online since) doesn't make
-// answers incomplete forever.
 test('a member whose log nobody holds does not make answers incomplete', async (t) => {
   const crypto = require('hypercore-crypto')
   const a = await account(t, 'a')
@@ -66,9 +62,6 @@ test('a member whose log nobody holds does not make answers incomplete', async (
   t.ok(r && r.complete, 'complete: everything a knows of is held, and a reached b')
 })
 
-// Content this member dropped, its only other holder
-// offline. The read returns within its bound, without it, incomplete; with the
-// holder back, the same read is complete and shows it.
 test('dropped content, its holder offline: incomplete within the bound; back: complete', async (t) => {
   const testing = require('../../../lib/testing.js')
   const a = await account(t, 'a')

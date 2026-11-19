@@ -104,9 +104,6 @@ test('identity-manager: encryptionKeyPair works with hypercore-crypto\'s encrypt
   const hypercoreCrypto = require('hypercore-crypto')
   const mnemonic = IdentityManager.generateMnemonic()
 
-  // Two devices of the same identity — simulating a real multi-device
-  // scenario: one device seals a secret to the identity's public
-  // encryption key, a DIFFERENT device (same identity) opens it.
   const deviceA = IdentityManager.fromMnemonic(mnemonic)
   await deviceA.init()
   const deviceB = IdentityManager.fromMnemonic(mnemonic)

@@ -17,7 +17,6 @@ test('a space lists its built-in roles and its own, with their permissions, on e
   t.alike(builtIn.find((r) => r.name === 'moderator').permissions, ['moderate', 'post'])
   t.ok(builtIn.every((r) => r.custom === false))
 
-  // makeEditor defines 'editor' the first time only.
   let defined = 0
   const define = fa.defineRole.bind(fa)
   fa.defineRole = (...args) => { defined++; return define(...args) }

@@ -126,10 +126,6 @@ test('user-core: openUserCore() rejects an invalid key', async (t) => {
 })
 
 test('user-core: concurrent append()/appendBatch() each return the seq their own events landed at', async (t) => {
-  // A returned seq is how put() derives an entity id, so a wrong one names
-  // someone else's block. Appends that overlap in time must still each get
-  // back the position of their own events, not of whichever append finished
-  // last. (spec 002, R6)
   const userCore = await createUserCore(t, 'concurrent')
   const author = 'a'.repeat(64)
   const ev = (label) => ({ type: 'entity/create', id: label, entityType: 'post', author })

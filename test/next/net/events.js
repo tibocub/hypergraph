@@ -7,7 +7,6 @@ const forum = require('../forum/forum.js')
 const { account, device } = require('../forum/_setup.js')
 const { eventually } = require('../helpers.js')
 
-// Counts an emitter's events of `name`, keeping their payloads.
 function count (emitter, name) {
   const seen = []
   emitter.on(name, (payload) => seen.push(payload))

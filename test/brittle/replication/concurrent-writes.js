@@ -1,28 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
-// Cannot be verified without real network access.
-//
-// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
-// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
-// Hyperswarm's graceful discovery-session cleanup, which is what would
-// otherwise call discX.destroy() internally anyway — and that path can
-// invoke an unannounce() network call with no visible internal timeout.
-// See test/brittle/networking/peer-connection.js for the fuller
-// investigation.
-//
-// TEARDOWN ORDERING BUG FOUND & FIXED: see late-joiner.js for the full
-// explanation. Destroying a swarm before its peer's graph/store are closed
-// hangs store.close() forever waiting for a clean stream-close event that
-// never comes, since the socket underneath it was already killed. Fixed by
-// consolidating teardown to always close graph/store before the swarms.
-//
-// BUG FIX: this used to watch remote user cores via a raw `store.get()`,
-// which only creates a Hypercore reference for replication — it never
-// registers the core with the graph's view, so graph.get()/getContent()
-// could never see the remote peer's data (confirmed: openUserCore()
-// explicitly calls view.addUserCore(); a raw store.get() never does).
-// This only mattered once we started checking actual content instead of
-// just raw core length — length alone doesn't prove the *right* data
-// replicated, only that *some* bytes did.
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')

@@ -9,8 +9,6 @@ const Corestore = require('corestore')
 const createTestnet = require('hyperdht/testnet')
 const { open, within, testBootstrap } = require('../helpers.js')
 
-// Drops the downloaded blocks of `key` past the first in `dir`, as a process
-// killed while fetching them leaves it: the length known, the blocks not held.
 async function dropBlocks (dir, key) {
   const store = new Corestore(path.join(dir, 'cores'))
   const core = store.get({ key })
@@ -45,8 +43,6 @@ test('a space whose decisions are partly held: open and close return, it opens o
   started = Date.now()
   t.is(await within(b.close().then(() => 'closed'), 10000, 'hung'), 'closed', `close() returns while the space waits for peers (${Date.now() - started} ms)`)
 
-  // A new DHT that never heard of b, and a peer that never met it: b finds
-  // it on the space's topic, joined while the space opens.
   await a.close()
   const testnet = await createTestnet(3)
   t.teardown(() => testnet.destroy(), { order: 1 })

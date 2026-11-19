@@ -42,10 +42,6 @@ test('scope-base: grantKey lets a second peer resolve the same key, sealed to th
   const { Hypergraph } = require('../../../index.js')
   const IdentityManager = require('../../../src/identity-manager.js')
 
-  // Two separate identities sharing one Corestore — no network
-  // replication needed, since both cores physically live in the same
-  // store (same pattern used elsewhere in this suite for multi-author
-  // scenarios, e.g. the query() chronological-order test).
   const dir = path.join(os.tmpdir(), `hypergraph-scope-cross-${process.pid}-${Date.now()}`)
   const store = new Corestore(dir)
   const graphA = new Hypergraph(store)
@@ -232,12 +228,6 @@ test('scope-base: revoke is informational only — a previously granted key rema
 })
 
 test('scope-base: a keyGrant event that arrives before its granter\'s RoleBase permissions have synced still resolves correctly, without needing repeated update() calls', async (t) => {
-  // Mirrors the equivalent test for moderation events (round 38):
-  // RoleBase and ScopeBase are two independent Autobase structures that
-  // replicate concurrently — a receiving peer's own apply function only
-  // evaluates a given event once, at the moment it first arrives, so if
-  // the RoleBase data hasn't caught up yet at that exact moment, the
-  // scope.grant permission check has nothing to evaluate against.
   console.log('TEST: scope RoleBase-sync race - starting')
   const Corestore = require('corestore')
   const path = require('path')
@@ -302,9 +292,6 @@ test('scope-base: a keyGrant event that arrives before its granter\'s RoleBase p
     try { s2.destroy() } catch (err) { /* already closed */ }
   })
 
-  // A single settle-then-check, not a long polling loop — the point is
-  // that the bounded retry inside the permission check itself does the
-  // waiting, not repeated calls from here.
   for (let i = 0; i < 20; i++) {
     await sleep(200)
     await graphB.update()
@@ -431,10 +418,6 @@ test('scopes-registry: applyScopeEvent gates concurrent rotations of the same ep
 
   let registries = applyScopeEvent(null, { type: 'scope/create', scopeId: 'dm', creator: ownerHex, timestamp: 1 })
 
-  // Two competing rotations (X and Y) both targeting epoch 1, interleaved so
-  // that WITHOUT gating, the owner's last-applied grant would be from X
-  // while B's last-applied grant would be from Y — two different peers'
-  // views of "the epoch 1 key" silently diverging.
   const interleaved = [
     { type: 'scope/keyGrant', scopeId: 'dm', recipient: ownerHex, epoch: 1, sealedKey: 'Y-owner-key', recipientEncryptionPublicKey: 'epk-owner', granter: ownerHex, timestamp: 2, rotationId: 'rotation-Y' },
     { type: 'scope/keyGrant', scopeId: 'dm', recipient: bHex, epoch: 1, sealedKey: 'X-b-key', recipientEncryptionPublicKey: 'epk-b', granter: ownerHex, timestamp: 3, rotationId: 'rotation-X' },

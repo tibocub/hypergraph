@@ -1,6 +1,5 @@
 // A site's handle reaches its space and that space's
 // sub-spaces only. The default (a key of the site's own) is not built yet:
-// NOT_SUPPORTED, never the main identity silently.
 
 const test = require('brittle')
 const { Hypergraph } = require('../../../lib/index.js')

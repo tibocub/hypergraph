@@ -1,41 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
-// Cannot be verified without real network access.
-//
-// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
-// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
-// Hyperswarm's graceful discovery-session cleanup, which is what would
-// otherwise call discX.destroy() internally anyway — and that path can
-// invoke an unannounce() network call with no visible internal timeout.
-// See test/brittle/networking/peer-connection.js for the fuller
-// investigation.
-//
-// WHAT "PARTIAL REPLICATION" ACTUALLY MEANS HERE (verified against source,
-// not assumed):
-//
-// There is no way to replicate only *some* entities out of a user core, or
-// only *some* events out of a context — Hypercore/Autobase replication is
-// all-or-nothing per core. What IS "partial" is which cores/contexts a peer
-// chooses to open and track at all:
-//   - A peer that never calls openUserCore(X) or openContext(Y) has zero
-//     knowledge of X or Y's data, ever.
-//   - A peer that opens one but not the other only receives that one.
-// This test verifies exactly that: the peer opens contextA but not
-// contextB, and only ever receives contextA's data.
-//
-// BUG FOUND & FIXED: the previous version of this test used a raw
-// `peer.store.get({ key: owner.graph.key })` to watch the owner's user
-// core. That only creates a Hypercore reference for replication — it does
-// NOT register the core with the graph's view (confirmed by reading
-// `getByTag()`'s source: it cross-references each tagged entity via
-// `this.getNode(entityId)`, which only reads from the graph's own view,
-// which is only populated by cores opened via `openUserCore()`). So the
-// peer's raw bytes for the owner's entities were replicating fine, but
-// `getByTag()` could never resolve them, and the test waited forever for
-// something that could never happen — nothing to do with the network or
-// with addWriter(). Verified with a local (non-DHT) probe: a peer that
-// opens a context WITHOUT ever being added as a writer, but DOES use
-// `openUserCore()` for the referenced entity's core, sees tagged data
-// correctly. Fixed by using `openUserCore()` here too.
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
@@ -63,9 +26,6 @@ test('partial-replication: a peer only receives data for contexts it has opened 
   await peer.graph.openContext(contextA, { writeMode: 'open' })
   // Deliberately NOT opening contextB yet.
 
-  // openUserCore() (not a raw store.get()) is what actually registers the
-  // owner's core with the peer's graph view — required for graph.get()/
-  // getByTag()'s entity cross-reference to ever resolve. See file header.
   const ownerUserCore = await peer.graph.openUserCore(owner.graph.key)
 
   const topic = owner.graph.discoveryKey
@@ -97,9 +57,6 @@ test('partial-replication: a peer only receives data for contexts it has opened 
   t.ok(hasConnection, 'both peers have at least one live connection')
 
   if (!hasConnection) {
-    // No point burning the rest of the time budget on three more pump loops
-    // that have no path to converge — this is a real connectivity failure
-    // (DHT/NAT), not something a longer wait would fix.
     console.log('TEST: partial replication over real network - skipped remaining steps (no connection)')
     return
   }

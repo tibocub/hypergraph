@@ -87,7 +87,6 @@ test('only public forums are packed; no secret is', { timeout: 60000 }, async (t
   const meta = JSON.parse(fs.readFileSync(path.join(folder, 'spaces.json'), 'utf-8'))
   t.alike(meta.spaces.map((s) => s.key), [open.key], 'the forum asked for, nothing else')
   t.absent(fs.existsSync(path.join(folder, 'instance.json')), 'no identity')
-  // white-box: the device's secret key, the recovery phrase
   const secrets = [a._identity.device.secretKey.subarray(0, 32), Buffer.from([].concat(await a.recoveryPhrase()).join(' '))].filter(Boolean)
   t.is(secrets.length, 2, 'secrets to look for')
   for (const f of fs.readdirSync(folder, { recursive: true })) {

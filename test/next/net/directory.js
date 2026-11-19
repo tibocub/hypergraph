@@ -44,10 +44,6 @@ test('a non-member\'s log is neither kept nor passed on', async (t) => {
 })
 
 test('a second space joined over a connection already open: its channel opens too', async (t) => {
-  // Protomux turns down a channel the
-  // other side opens before this side has one, so a space opened later on a
-  // connection already up never got its channel, and its invite was never
-  // heard.
   const { a, b, fa } = await threeMembers(t)
   const p = await forum.post(fa, 'connected', '')
   t.ok(await eventually(async () => (await forum.latest(b.space(fa.key))).some((x) => x.id === p.id), 5000), 'a and b are connected')
@@ -70,10 +66,6 @@ test('two members started at the same moment still meet', async (t) => {
   t.ok(await eventually(async () => (await forum.latest(b2.space(fa.key))).some((x) => x.id === p.id), 20000), 'b sees a\'s new post')
 })
 
-// Routed from the core follow-ups' review: a log whose single announcement
-// was missed (a notice lost, a header fetch that timed out) stayed unknown
-// until a reconnect. Members now send their summary again when their
-// directory changes and every little while.
 test('a log whose announcement was missed still arrives: the summary after a change', async (t) => {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
@@ -99,9 +91,6 @@ test('a log whose announcement was missed still arrives: the summaries settle it
   await forum.post(fa, 'from a', '') // a log exists from its first record
   await forum.post(fb, 'from b', '')
   await eventually(async () => testing.logs(fa).length === 2, 5000)
-  // a hears no notices and no summaries while c joins and posts: the
-  // summary a sends still differs from b's and c's, and they settle the
-  // difference with it by ranges (either side's summary starts it)
   const restore = testing.deafen(fa, { notices: true, summaries: true })
   t.teardown(restore)
   const c = await account(t, 'c')
@@ -153,8 +142,6 @@ test('a read is not complete while what was looked at is still being committed',
   t.ok(seen, 'it becomes complete')
 })
 
-// A difference in the log lists is settled by
-// key ranges, so one new log costs about a key, not the whole list.
 test('2,000 logs each, one new log: settled by ranges in under 3 KB', { timeout: 90000 }, async (t) => {
   const crypto = require('hypercore-crypto')
   const c = require('compact-encoding')
@@ -164,14 +151,12 @@ test('2,000 logs each, one new log: settled by ranges in under 3 KB', { timeout:
   const fa = await forum.createForum(a, 'Big')
   const link = await forum.openLink(fa)
   const fb = await forum.join(b, link)
-  // 2,000 logs both hold (scripted: keys in both directories, no content)
   const who = { identity: crypto.randomBytes(32), device: crypto.randomBytes(32) }
   for (let i = 0; i < 2000; i++) {
     const key = crypto.randomBytes(32)
     for (const f of [fa, fb]) await f.directory.accept(key, f.store.get({ key }), who, { announce: false })
   }
   t.ok(await eventually(() => testing.digestOf(fa) === testing.digestOf(fb), 10000), 'the same lists')
-  // count what a and b send each other on their space channel from now on
   let bytes = 0
   const codecs = [enc.summary, enc.ranges, enc.keys]
   const toward = (f, peer) => [...f.directory.channels].find((ch) => ch.peer && ch.peer.equals(peer))

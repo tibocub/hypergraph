@@ -18,7 +18,6 @@ import testing from '../../lib/testing.js'
 const types = { post: { fields: { title: 'string' } } }
 const rowsOf = async (s) => (await s.db.find('@hg/logs', { gte: { space: s.keyBytes }, lte: { space: s.keyBytes } }).toArray()).length
 
-// A member's logs, written here (two blocks each: a header and a record), held as accepted.
 async function script (space, author, from, to, blocks = ['header', 'x']) {
   const out = []
   for (let i = from; i < to; i++) {
@@ -33,7 +32,6 @@ async function script (space, author, from, to, blocks = ['header', 'x']) {
 
 const t = context()
 try {
-  // held-start
   const dir = helpers.tmpDir(t, 'held')
   let hg = await helpers.open(t, { types, label: 'held', dir, bootstrap: null })
   let space = await hg.createSpace({ name: 'Held' })
@@ -65,7 +63,6 @@ try {
   }
   await hg.close()
 
-  // length-settle-kb
   const owner = await helpers.open(t, { types, label: 'owner' })
   const reader = await helpers.open(t, { types, label: 'reader' })
   testing.idleLogs(owner, 200)

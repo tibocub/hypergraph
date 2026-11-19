@@ -18,9 +18,6 @@ function replicatePair (peerA, peerB) {
   }
 }
 
-// Uses the real stableTagHash (rather than a hand-rolled reimplementation)
-// so this test can never silently drift out of sync with what
-// context-base.js's #verifyTagSignature actually checks.
 function signTagEvent (event, keyPair, contextKeyHex) {
   const digest = stableTagHash(event, contextKeyHex)
   return crypto.sign(digest, keyPair.secretKey).toString('hex')
@@ -232,11 +229,6 @@ test('contexts: a legitimate but unprivileged writer cannot bypass addWriter() v
   s1.pipe(s2).pipe(s1)
   t.teardown(async () => { try { s1.destroy() } catch {}; try { s2.destroy() } catch {} })
 
-  // Fully sync the RoleBase data BEFORE any context/writer-change events
-  // exist. A peer's context apply function only evaluates each
-  // writer-change event once, at the point it first arrives — if the
-  // RoleBase hasn't synced by then the event is queued (not lost), but
-  // ensuring the RoleBase syncs first avoids depending on that at all.
   for (let i = 0; i < 20 && !(await attacker.graph.roleBase.getRegistry()); i++) {
     await sleep(200)
     await attacker.graph.roleBase.update()
@@ -419,9 +411,6 @@ test('contexts: removeWriter in closed mode — member (no context.write) cannot
 })
 
 test('contexts: appendBatch() writes many events as ONE Autobase batch, and every event applies', async (t) => {
-  // Autobase replays a context one writer batch at a time on every peer,
-  // forever, so how a writer groups its appends sets everyone's replay cost
-  // (spec 002, research R2). 100 events in one call must land as one batch.
   const { graph } = await createGraph(t, 'ctx-append-batch')
   const ctx = await graph.createContext()
   const context = await graph.openContext(ctx)
@@ -467,7 +456,6 @@ test('contexts: one Autobase batch larger than the index batch builds the same i
   const author = graph.key.toString('hex')
   const secretKey = graph.identity.deviceKeyPair.secretKey
 
-  // 3 dirs + 300 files, straight into the user core, then indexed.
   let seq = graph.core.length
   const blocks = []
   const dirs = []
@@ -536,7 +524,6 @@ test('contexts: counters are written once per apply chunk, not once per relation
   t.is(await graph.countEdgesIn(dir, 'in', { context: ctx }), 300, 'in-count is right')
   t.is(await graph.countEdgesOut(files[7], 'in', { context: ctx }), 1, 'out-count is right')
 
-  // Creates and deletes mixed in one batch still count correctly.
   const removals = files.slice(0, 50).map((f, i) => signed({ type: 'relation/delete', from: f, to: dir, relationType: 'in', author, createdAt: 1791000000000 + i, timestamp: 1792000000000 + i, signature: null }))
   const readd = files.slice(0, 10).map((f, i) => signed({ type: 'relation/create', from: f, to: dir, relationType: 'in', author, timestamp: 1793000000000 + i, signature: null }))
   await context.appendBatch([...removals, ...readd])
@@ -545,7 +532,6 @@ test('contexts: counters are written once per apply chunk, not once per relation
   t.is(await graph.countEdgesOut(files[20], 'in', { context: ctx }), 0, 'removed: 0')
 })
 
-// ── Context record and topology (spec 003) ──────────────────────────────────
 
 test('contexts: a new context records its version and rules id; status() reports it', async (t) => {
   const { graph } = await createGraph(t, 'ctx-record')
@@ -647,7 +633,6 @@ test('contexts: a version 1 context (created before spec 003) still makes added 
   const repl = replicatePair(a, b)
   t.teardown(async () => repl.close())
 
-  // Built the way createContext() did before spec 003: no context/init.
   const legacy = new ContextBase(a.store, null, {})
   await legacy.ready()
   t.teardown(() => legacy.close(), { order: -1 }) // before the store: Autobase 7.28.2 opens a store session while closing
