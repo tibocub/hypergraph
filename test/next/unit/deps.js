@@ -9,7 +9,9 @@ const pkg = require('../../../package.json')
 const LIB = path.join(__dirname, '../../../lib')
 const BUILTIN = new Set(['fs', 'path', 'os', 'events', 'process', 'hypergraph']) // mapped in "imports", or this package
 
+// A folder with its own package.json is another package (a local checkout, its node_modules), not lib/'s code.
 function files (dir) {
+  if (dir !== LIB && fs.existsSync(path.join(dir, 'package.json'))) return []
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? files(path.join(dir, e.name)) : e.name.endsWith('.js') ? [path.join(dir, e.name)] : [])
 }
 
