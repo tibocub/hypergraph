@@ -1,22 +1,12 @@
 {
   "source": {
-    "include": [
-      "src",
-      "docs"
-    ],
-    "includePattern": ".+\\.js(doc)?$",
-    "exclude": [
-      "node_modules",
-      "docs/api",
-      "docs/contributors"
-    ]
+    "include": ["lib/index.js", "lib/space.js", "lib/scope.js", "lib/index/query.js", "lib/errors.js", "lib/app-testing.js"]
   },
   "opts": {
-    "destination": "./docs/api",
-    "recurse": true
+    "destination": "./out/api",
+    "readme": "./README.md"
   },
   "templates": {
-    "cleverLinks": false,
-    "monospaceLinks": false
+    "cleverLinks": true
   }
 }
