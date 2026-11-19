@@ -9,6 +9,8 @@ For building an app on `require('hypergraph/next')`:
 - [Testing your app](next/testing.md): `hypergraph/testing`, a local DHT and temp folders per test.
 - **API reference**: `npm run docs` generates it from the JSDoc in `lib/` into `out/api/` (open
   `out/api/index.html`). It lists every parameter, default, return value, error code and event.
+- **Types**: the same JSDoc is checked by TypeScript (`npm run typecheck`, strict, `jsconfig.json`), so
+  editors show the types; `npm run types` writes `.d.ts` files for TypeScript users into `dist/types/`.
 - [The inspector](../tools/inspector/README.md): a read-only web page showing what a running instance
   holds.
 

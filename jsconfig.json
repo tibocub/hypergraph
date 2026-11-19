@@ -1,16 +1,19 @@
 {
   "compilerOptions": {
-		"allowJs": true,
+    "allowJs": true,
     "checkJs": true,
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "noEmit": true,
+    "maxNodeModuleJsDepth": 0,
+    "skipLibCheck": true,
     "target": "ES2022",
+    "lib": ["ES2022"],
     "module": "commonjs",
     "moduleResolution": "node",
-    "strict": true
+    "types": ["node"],
+    "typeRoots": ["./types", "./node_modules/@types"]
   },
-  "include": [
-    "src/**/*.js",
-    "test/**/*.js",
-		"examples/**/*.js"
-  ],
-	"exclude": ["node_modules"]
+  "include": ["lib/**/*.js", "types/**/*.d.ts"],
+  "exclude": ["node_modules", "lib/index/spec/**", "lib/symbols.js", "src", "examples", "test"]
 }

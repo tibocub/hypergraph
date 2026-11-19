@@ -1,6 +1,13 @@
 {
   "source": {
-    "include": ["lib/index.js", "lib/space.js", "lib/scope.js", "lib/index/query.js", "lib/errors.js", "lib/app-testing.js"]
+    "include": [
+      "lib/index.js",
+      "lib/space.js",
+      "lib/scope.js",
+      "lib/index/query.js",
+      "lib/errors.js",
+      "lib/app-testing.js"
+    ]
   },
   "opts": {
     "destination": "./out/api",
@@ -8,5 +15,8 @@
   },
   "templates": {
     "cleverLinks": true
-  }
+  },
+  "plugins": [
+    "./scripts/jsdoc-ts-types.js"
+  ]
 }
