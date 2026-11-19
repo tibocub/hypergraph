@@ -49,7 +49,6 @@ test('v2 grants: only admins grant; forged and mismatched grants are ignored', a
   // A stranger's grant, even written straight into the keeper's bee: ignored.
   const stranger = { keyPair: hcrypto.keyPair() }
   await owner.community.writeGrantUnchecked(channel, { recipient: b.community.encryptionKey, identity: b.pub, epoch: 0, sealed: seal(newEpochKey(), b4a.from(b.community.encryptionKey, 'hex')), granterKeyPair: stranger.keyPair })
-  // An admin's grant with the wrong key for the epoch: ignored too.
   await owner.community.writeGrantUnchecked(channel, { recipient: a.community.encryptionKey, identity: a.pub, epoch: 0, sealed: seal(newEpochKey(), b4a.from(a.community.encryptionKey, 'hex')), granterKeyPair: owner.identity.keyPair })
   await new Promise(resolve => setTimeout(resolve, 500))
   t.alike((await b.community.access(channel)).epochs, [], 'a stranger’s grant gives nothing')

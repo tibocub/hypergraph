@@ -23,8 +23,6 @@ test('dynamic-context: a context created mid-session (after the initial connecti
   const owner = await createGraph(t, 'dynctx-basic-owner')
   const peer = await createGraph(t, 'dynctx-basic-peer')
 
-  // Start with just one, bootstrap-time context — mirroring a real app's
-  // initial connection, before anything dynamic happens.
   const ctx1Key = await owner.graph.createContext({ writeMode: 'open' })
   await owner.graph.openContext(ctx1Key, { writeMode: 'open' })
   await peer.graph.openContext(ctx1Key, { writeMode: 'open' })
@@ -133,11 +131,6 @@ test('dynamic-context: a closed-mode context added dynamically still enforces th
   const owner = await createGraph(t, 'dynctx-closed-owner')
   const peer = await createGraph(t, 'dynctx-closed-peer')
 
-  // Matches writer-authorization.js's own pattern exactly: the permission
-  // check that gates a grant is about the RESPONDING peer's (the owner's,
-  // here) own authority to grant — not the requester's role. So to test
-  // a denial, the owner's own identity needs to lack context.write, via
-  // an unrelated 'owner' role going to a different keypair.
   const memberKeyPair = crypto.keyPair()
   const memberPubkey = memberKeyPair.publicKey.toString('hex')
   await owner.graph.createRoleBase()
@@ -203,7 +196,6 @@ test('dynamic-context: a peer connecting with NO prior knowledge of any context 
 
   const topic = crypto.randomBytes(32)
   const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { domains: ctxKey } })
-  // The peer connects knowing about NO contexts at all.
   const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: {} })
   await networkingOwner._openContexts()
   await networkingPeer._openContexts()
@@ -224,17 +216,11 @@ test('dynamic-context: a peer connecting with NO prior knowledge of any context 
   t.is(announced.name, 'domains', 'with the correct name')
   t.is(announced.contextKey, ctxKey.toString('hex'), 'and the correct key')
 
-  // Confirm the peer can actually use it, not just receive the message.
   const peerCtx = await peer.graph.openContext(ctxKey, { writeMode: 'open' })
   t.ok(peerCtx, 'the peer can now open the discovered context locally')
 })
 
 test('dynamic-context: a CLOSED context is discovered on connect too, same as an open one — writeMode never gated read/discoverability, only who can become a writer', async (t) => {
-  // 'closed' has always meant "writer-requests are gated", never "hide
-  // this from readers" - a closed context's replicated data has always
-  // been available to anyone who obtains its key through any channel.
-  // Confirms this holds for the on-connect auto-announce too, not just the
-  // existing addContext()/constructor-time paths.
   console.log('TEST: closed context is announced too - starting')
   const owner = await createGraph(t, 'dynctx-closed-announce-owner')
   const peer = await createGraph(t, 'dynctx-closed-announce-peer')

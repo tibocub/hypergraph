@@ -2,13 +2,13 @@
 
 **Status: prototype, unstable, and not a graph store.** It has channels of messages only: no
 entities, relations, tags or queries. It proved an architecture; the graph is being rebuilt on it
-(spec 010). What it taught us: [`specs/research/v2-prototype-lessons.md`](../specs/research/v2-prototype-lessons.md).
+(spec 010). What it taught us: [`specs/research/v2-prototype-lessons.md`](../../specs/research/v2-prototype-lessons.md).
 This version is preserved at tag `v2-chat-prototype`.
 
 **Status: prototype, unstable.** `require('hypergraph/v2')` exposes it alongside the v1 API, which
 is unchanged. Names and shapes may change; nothing migrates between v1 and v2. Design, decisions
-and measurements: [`specs/007-scaling-v2-prototype/`](../specs/007-scaling-v2-prototype/) and
-[`specs/research/scaling-v2.md`](../specs/research/scaling-v2.md).
+and measurements: [`specs/007-scaling-v2-prototype/`](../../specs/007-scaling-v2-prototype/) and
+[`specs/research/scaling-v2.md`](../../specs/research/scaling-v2.md).
 
 ## Why
 
@@ -65,11 +65,11 @@ const stop = community.follow(channel, (message) => {})
 await community.closeChannel(channel)                             // release what reading opened
 ```
 
-Full surface: [`contracts/api.md`](../specs/007-scaling-v2-prototype/contracts/api.md).
+Full surface: [`contracts/api.md`](../../specs/007-scaling-v2-prototype/contracts/api.md).
 
 ## Private channels and invites (spec 008)
 
-Design and measurements: [`specs/008-v2-private-channels/`](../specs/008-v2-private-channels/).
+Design and measurements: [`specs/008-v2-private-channels/`](../../specs/008-v2-private-channels/).
 
 - **Private channels**: messages are sealed in the authors' logs with the channel's current key
   epoch (XChaCha20-Poly1305, bound to community, channel, log, epoch and time). Who posted, when and
@@ -110,7 +110,7 @@ await joined.redeem(link)
 | offline restart, page shown again | 121 ms (after a fix) | 3 ms – 0.7 s |
 
 Benchmarks: `bench/v2-chat.js` (channel size, throughput, replication), `bench/v2-community.js`
-(member and channel counts). Commands and results: [`bench/README.md`](../bench/README.md).
+(member and channel counts). Commands and results: [`bench/README.md`](../../bench/README.md).
 
 ## Known gaps
 

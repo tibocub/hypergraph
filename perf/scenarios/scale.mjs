@@ -1,11 +1,11 @@
-// The scale audit's cores (specs/research/scale-audit.md, "Perf scenarios"), measured on the
+// The scale audit's cores ("Perf scenarios"), measured on the
 // code that pays them, at small sizes that show the curve. From bench/scale-audit/:
 //   decisions.reload  (#1) what one decision costs every member: the changed entries of the
 //                     decision view read and applied to the state in place (lib/decisions/log.js
 //                     readChanges), with N members (N member:, redeemed: and listed: entries).
 //                     flat: must not grow with members (the audit's top risk)
 //   decisions.rebuild the whole view read and the state rebuilt (State.from): on open, and when
-//                     Autobase reorders the view (before 2026-11-02, at every decision)
+//                    Autobase reorders the view
 //   logs.open         (#2) a full member's start with N held logs: each opened with a live
 //                     download range and listeners (lib/replication.js hold); ms per log
 //                     (memory per log is not measured here: after the first round the

@@ -1,4 +1,4 @@
-// The inspector tool (tools/inspector, ROADMAP 2026-10-09): a smoke test that
+// The inspector tool (tools/inspector): a smoke test that
 // keeps it alive next to the core. One instance with a space and a few
 // records; the page and every JSON view answer with the expected shape; the
 // server refuses anything but GET (read-only). Node only: the tool uses
@@ -93,7 +93,6 @@ if (typeof Bare !== 'undefined') {
     t.alike(one.tags, ['rust'], 'its tags (space.tags())')
     t.alike(one.history.versions.map((v) => [v.kind, v.text]), [['put', 'world'], ['edit', 'world (edited)']], 'its history (inspect({ record }))')
 
-    // Hidden and deleted records: rows and history.
     const gone = await forum.post(f, 'Gone', '')
     await forum.remove(f, gone)
     await forum.hide(f, c, 'spam')
@@ -108,7 +107,6 @@ if (typeof Bare !== 'undefined') {
     t.is((await json(`api/record?key=${f.key}&id=nope`)).status, 404, 'a bad id')
     t.is((await json('api/space?key=nope')).status, 404, 'a bad space')
 
-    // Read-only: nothing but GET.
     for (const method of ['POST', 'PUT', 'DELETE']) {
       t.is((await fetch(url + 'api/records?key=' + f.key + '&type=post', { method })).status, 405, method + ' refused')
     }

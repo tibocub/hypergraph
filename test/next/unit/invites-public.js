@@ -1,4 +1,4 @@
-// The public link (spec 016, research R5): `hg:` + z32(space key [+ root]),
+// The public link: `hg:` + z32(space key [+ root]),
 // the same for everyone, told apart from an invite link by its length.
 
 const test = require('brittle')

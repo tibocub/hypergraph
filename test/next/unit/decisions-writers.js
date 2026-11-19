@@ -1,10 +1,5 @@
-// Decision rights follow devices (story 4, research.md A8). Writers of the
+// Decision rights follow devices. Writers of the
 // decision log are devices of members whose role has `decide` or `moderate`:
-// a device claims its writer key (`writer/add`, signed on its identity's
-// behalf); a device removal signed by the identity key (`device/remove`)
-// takes its keys away. Settlers (Autobase indexers) are one device per member
-// with `decide`. Applied to an in-memory view, the way every member applies
-// them.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -29,8 +24,6 @@ function memoryView () {
   }
 }
 
-// Autobase's side, as far as apply sees it: writers, which of them settle,
-// and its refusal to remove the last settler.
 function memoryHost (first) {
   const writers = new Map([[hex(first), true]])
   return {
@@ -45,7 +38,6 @@ function memoryHost (first) {
   }
 }
 
-// One person: an identity and its devices, each with a writer key of its own.
 async function person () {
   const first = await Identity.create({ device: crypto.keyPair() })
   const phrase = first.recoveryPhrase
@@ -75,7 +67,6 @@ async function space () {
     const bytes = c.encode(cutList, cut)
     return { type: 'device/remove', device: device.device.publicKey, cut: bytes, proof: Identity.attestAsIdentity(removalSignable(key, device.device.publicKey, bytes), who.secrets.keyPair) }
   }
-  // Someone let in by the owner (a member until given another role).
   const join = async (p) => {
     await apply(key, { type: 'member/add', identity: p.identity })
     return p
@@ -195,7 +186,6 @@ test('the last settler stays one for Autobase, but its decisions no longer count
   const { writer, decision } = s.claim(phone)
   await s.apply(s.key, decision)
   const m = await s.join(await person())
-  // The owner's first device (the space's first writer and only settler) is lost.
   let st = await s.apply(writer, s.removal(s.owner, s.owner.first))
   t.alike(s.host.settlers(), [hex(writer)], 'the phone takes over settling')
   t.absent(s.host.writers.has(hex(s.key)))
@@ -222,7 +212,6 @@ test('a claim and a removal of the same device converge in either order', async 
   await a.s.apply(a.s.key, claim.decision)
   await a.s.apply(a.s.key, removal)
 
-  // The same decisions applied the other way round, on another member.
   const view = memoryView()
   const host = memoryHost(a.s.key)
   let stamp = 1

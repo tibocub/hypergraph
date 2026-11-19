@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec 025 D2/D4: runs the simulator and prints markdown tables.
+// Runs the simulator and prints markdown tables.
 //   node research/holders/run.js                       made-up mixes, sizes 2 5 15 50, with and without a helper
 //   node research/holders/run.js --sizes 5,15 --seeds 3 --mix global
 //   node research/holders/run.js --repair              RQ2: the 7-day rule and the extra copy, on and off

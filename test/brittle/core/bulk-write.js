@@ -1,5 +1,4 @@
 // graph.batch(): many entities, contents and relations in one call.
-// Contract: specs/002-scale-indexing/contracts/bulk-write.md
 
 const test = require('brittle')
 const { createGraph } = require('../helpers')
@@ -23,8 +22,6 @@ async function setupScopedGraph (t, label) {
   return { graph, scopeId }
 }
 
-// Everything observable about a set of entities, minus timestamps (which
-// necessarily differ between two writes).
 async function snapshot (graph, ctx, dirId, fileIds) {
   const files = []
   for (const id of fileIds) {
@@ -53,7 +50,6 @@ test('bulk-write: a batch reads back exactly like the same writes made one at a 
   const single = await graph.createContext()
   const bulk = await graph.createContext()
 
-  // One at a time.
   const sDir = await graph.put({ type: 'dir' })
   const sFiles = []
   for (let i = 0; i < 50; i++) {
@@ -65,7 +61,6 @@ test('bulk-write: a batch reads back exactly like the same writes made one at a 
     sFiles.push(f.id)
   }
 
-  // The same, in one batch.
   const b = graph.batch()
   const bDir = b.put({ type: 'dir' })
   const bRefs = []

@@ -1,8 +1,8 @@
-// Story 3 #1, #3-6: one person, two devices. A phone joins with the laptop's
+// One person, two devices. A phone joins with the laptop's
 // code and shows the same forums and settings; both write as the same person;
 // a change made after seeing an earlier one wins whatever the clocks say;
 // simultaneous offline edits settle the same everywhere; a lost device is
-// removed with the recovery phrase (research.md A7), keeping what it wrote
+// removed with the recovery phrase, keeping what it wrote
 // before and nothing after.
 
 const test = require('brittle')
@@ -12,8 +12,6 @@ const testing = require('../../../lib/testing.js')
 const { account, device } = require('./_setup.js')
 const { eventually, open, codeOf } = require('../helpers.js')
 
-// The laptop owns a forum with another member, c; the phone joins with the
-// laptop's code and, once it shows the forum, writes in it.
 async function twoDevices (t) {
   const laptop = await account(t, 'laptop')
   const c = await account(t, 'c')
@@ -82,8 +80,6 @@ test('latest wins across devices, even with the laptop\'s clock an hour ahead', 
   await forum.edit(fp, mine, { text: 'v3 (phone)' })
   t.ok(await agree([fl, fp, fc], text, 'v3 (phone)'), 'the phone\'s later edit wins everywhere')
 
-  // The laptop's clock is put right; after a restart its next vote still
-  // comes after everything this person wrote with the clock ahead.
   await laptop.close()
   const again = await account(t, 'laptop-again', { dir: laptop.dir })
   const fl2 = again.space(fl.key)
@@ -122,12 +118,10 @@ test('a lost device: removed with the recovery phrase; what it wrote before stay
   const before = await forum.post(fp, 'before', '')
   t.ok(await agree([fl, fc], titles, ['before', 'phone is in'].join()))
 
-  // Whoever holds the phone without its password can't remove the laptop.
   t.is(await codeOf(forum.removeDevice(phone, laptop.device.publicKey)), 'NOT_ALLOWED', 'no removal without the recovery phrase')
   t.is(await codeOf(forum.removeDevice(laptop, phone.device.publicKey, 'wrong')), 'NOT_ALLOWED', 'nor with a wrong password')
   await forum.removeDevice(laptop, phone.device.publicKey, 'laptop password')
 
-  // The lost phone writes on (its own app would refuse once it learns).
   await testing.writeRaw(fp, { kind: 'put', type: 'post', fields: { title: 'after', text: '' } })
   await testing.writeRaw(fp, { kind: 'edit', type: 'post', target: before.id, fields: { title: 'before, edited after', text: '' } })
   const expected = ['before', 'phone is in'].join()
@@ -152,13 +146,12 @@ test('someone else can\'t remove your device, even with their own recovery phras
   t.is((await forum.devices(laptop)).length, 2)
 })
 
-// Story 4 (research.md A8): decision rights follow devices.
 
 test('the owner\'s phone moderates and lets people in, with the laptop offline, no extra step', async (t) => {
   const { laptop, fp, fc } = await twoDevices(t)
   const rude = await forum.post(fc, 'rude', '')
   t.ok(await eventually(async () => (await fp.get(rude.id)).record, 10000))
-  await forum.hide(fp, rude, 'rude') // no retry: the phone waits to record decisions (story 6)
+  await forum.hide(fp, rude, 'rude') // no retry: the phone waits to record decisions
   t.ok(await agree([fc], (f) => forum.latest(f).then((xs) => xs.some((x) => x.id === rude.id)), false), 'everyone applies its hide')
 
   await laptop.close()
@@ -184,7 +177,6 @@ test('an admin\'s phone moderates', async (t) => {
 
 test('a removed device\'s decisions afterwards are ignored by everyone, a newcomer included', async (t) => {
   const { laptop, phone, c, fl, fp, fc } = await twoDevices(t)
-  // The phone records decisions (it claimed its writer key).
   await forum.flag(fp, (await forum.latest(fp))[0], 'check') // the phone records decisions, no retry
   await forum.protectPhrase(laptop, 'pw')
   const phoneDir = phone.dir
@@ -238,7 +230,7 @@ test('once the phrase is forgotten on a device, it is typed to add or remove a d
   t.ok(await eventually(async () => (await forum.devices(laptop)).length === 1, 10000))
 })
 
-// Found in story 6: asking for a second code while the first was still open
+// Asking for a second code while the first was still open
 // (unused, or used a moment ago) crashed the process (blind-pairing allows
 // one listener per account). A new code now replaces the previous one.
 test('a new device code replaces the previous one: two devices added one after the other', async (t) => {

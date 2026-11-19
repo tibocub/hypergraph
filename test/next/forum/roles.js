@@ -1,4 +1,4 @@
-// Follow-ups of story 5's review (ROADMAP 2026-10-09): a space lists its roles
+// A space lists its roles
 // with their permissions (`space.roles()`), so an app defines its own role
 // once instead of every time it gives it; a member just promoted to record
 // decisions does so at once (its device waits, within the bound, to become a
@@ -17,7 +17,6 @@ test('a space lists its built-in roles and its own, with their permissions, on e
   t.alike(builtIn.find((r) => r.name === 'moderator').permissions, ['moderate', 'post'])
   t.ok(builtIn.every((r) => r.custom === false))
 
-  // makeEditor defines 'editor' the first time only.
   let defined = 0
   const define = fa.defineRole.bind(fa)
   fa.defineRole = (...args) => { defined++; return define(...args) }

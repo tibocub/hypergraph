@@ -3,17 +3,6 @@
 // connection (not a local store.replicate() pipe), each creating a post and
 // a reply/comment on the OTHER peer's post — and both must converge to see
 // everything from both sides.
-//
-// This exists because a manual test session against examples/forum-web
-// found what looked like two serious bugs (owner couldn't see peer's posts
-// one way, and comments weren't visible/creatable at all) that turned out,
-// after investigation, to be caused entirely by stale local example-app
-// storage (a bootstrap.json frozen with an old, no-longer-matching owner
-// device key from many prior ad hoc test sessions) — not a real bug in
-// hypergraph. Confirming that took spinning up the actual example app by
-// hand and cross-checking persisted key files. An automated test exercising
-// this same shape, over real networking, would have shown "library is
-// fine" immediately instead.
 
 const test = require('brittle')
 const Corestore = require('corestore')
@@ -93,7 +82,7 @@ test('forum-flow: two peers over a real Hyperswarm connection each post and repl
   // Real apps learn the peer's usercore key out-of-band (forum-web does it
   // via a writer-request control message carrying the peer's graph.key)
   // and call openUserCore() explicitly — hypergraph does not do this
-  // automatically, by design (see docs/networking.md).
+  // automatically, by design (see docs/v1/networking.md).
   await a.graph.openUserCore(b.graph.key)
   await a.graph.update()
   await aCtx.addWriter(bCtx.localKey)

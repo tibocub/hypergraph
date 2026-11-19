@@ -1,8 +1,4 @@
-// Spec 023: circles. People in a circle keep each other's places online:
-// devices with holding on hold the members' spaces (5 copies of each, spec
-// 024; encrypted ones stay unreadable to them) and serve them to anyone in those spaces, a
-// member's offline or not; leaving or removal deletes it at once, unless
-// another shared circle covers it.
+// Circles. People in a circle keep each other's places online:
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
@@ -14,8 +10,6 @@ const { holdsAll, heldBy } = require('./_circles.js')
 
 const titles = async (f) => (await forum.latest(f)).map((p) => p.title).sort().join()
 
-// a and b in a circle, b holding; `opts` for setHolding.
-// `n` posts of 50 KB (a record is 64 KB at most)
 async function fill (f, n, ch) {
   for (let i = 0; i < n; i++) await forum.post(f, ch + i, ch.repeat(50000))
 }
@@ -138,12 +132,10 @@ test('removal and leaving delete at once, unless another shared circle covers it
   }, 30000), 'status: 3 members, 1 holding; kept by 1 copy')
   t.is(cd.status().members, 3)
 
-  // d is removed: b deletes d's at once
   await forum.removeMember(circle, d.identity.publicKey)
   t.ok(await eventually(async () => !(await holdsAll(b, da)), 20000), 'd\'s data gone from b')
   t.ok(await holdsAll(b, aa), 'a\'s stays')
 
-  // a and b share a second circle: b leaving the first keeps a's
   const second = await a.createCircle({ name: 'Second' })
   await forum.join(b, await second.createInvite())
   await b.leaveSpace(circle.key)
@@ -178,7 +170,6 @@ test('leaving: from one device the person leaves; only their own records count; 
   const b2 = await device(t, 'b2', code)
   t.ok(await eventually(() => b2.spaces().some((s) => s.key === circle.key), 20000), 'b2 has the circle')
   await b2.setHolding({ on: true })
-  // a ranks the holding devices it knows: knowing both first, its first pick is the final one (else it may move the copy)
   const devs = [b, b2].map((x) => x._identity.device.publicKey.toString('hex'))
   t.ok(await eventually(() => devs.every((d) => a._circles.holders.has(d)), 20000), 'a knows both of b\'s devices holding')
   const talk = await forum.createForum(a, 'Talk', { private: true })
@@ -186,7 +177,6 @@ test('leaving: from one device the person leaves; only their own records count; 
   t.ok(await eventually(async () => (await heldBy([b, b2], talk)).length === 1, 30000), "one of b's devices holds a's (one per person, spec 024)")
   const bh = (await heldBy([b, b2], talk))[0]
 
-  // c writes `left` in its own name: only c counts as gone
   const c = await account(t, 'c')
   const cc = await forum.join(c, await circle.createInvite())
   t.ok(await eventually(() => circle.status().members === 3, 20000))
@@ -270,7 +260,6 @@ test('storage numbers (spec 026): members see each holder\'s share and use, a sh
   await new Promise((resolve) => setTimeout(resolve, 2000))
   t.is(await records(), before, 'nothing moved: no new record')
 
-  // an old record (before 026: no share, no use) reads unknown
   const c = await account(t, 'c')
   const cc = await forum.join(c, await circle.createInvite())
   await cc._put('hg/holder', { client: crypto.randomBytes(32), on: true, left: false }) // as a device before 026 writes it

@@ -1,18 +1,12 @@
-// Spec 017's assumption (a): a log closed here is still served. Corestore
+// A log closed here is still served. Corestore
 // opens a core that isn't open when a peer asks for its discovery key
 // (`_attachMaybe`), as lib/network.js replicates the whole store.
-// Found here: closing our session frees the core only once it is idle, i.e.
-// no peer channel is open for it. A channel stays while either side
-// downloads (an active session, a live range) and closes 20-40 s after both
-// stopped (hypercore's NOT_DOWNLOADING_SLACK); corestore then closes the core
-// ~8 s later. So a log closed here stays in memory while a peer still wants it.
 
 const test = require('brittle')
 const Corestore = require('corestore')
 const b4a = require('b4a')
 const { tmpDir, eventually } = require('../helpers.js')
 
-// Corestore closes a core with no session left once it is idle (~8 s).
 const closedIn = (store, core) => eventually(() => !store.cores.opened(b4a.toString(core.discoveryKey, 'hex')), 15000, 200)
 
 async function pair (t) {

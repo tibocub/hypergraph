@@ -1,4 +1,4 @@
-// Story 6 (FR-027, research.md A10): the app budget, how it is shared between
+// The app budget, how it is shared between
 // spaces, and how much storing records costs. Pure functions, no network.
 
 const test = require('brittle')

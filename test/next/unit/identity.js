@@ -25,8 +25,8 @@ test('a device proof verifies to its identity and device', async (t) => {
   t.alike(info.device, a.device.publicKey)
 })
 
-// Every device proves itself straight from the identity key (research.md A7,
-// A8): a device attesting another one would let a stolen device mint devices
+// Every device proves itself straight from the identity key: a device
+// attesting another one would let a stolen device mint devices
 // that no removal names, so such a chain never verifies.
 test('a device attested by another device does not verify', async (t) => {
   const a = await Identity.create({ device: crypto.keyPair() })

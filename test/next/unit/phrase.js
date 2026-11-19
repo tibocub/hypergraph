@@ -1,6 +1,6 @@
 // The recovery phrase on this device (lib/phrase.js) and the logs file
-// (lib/instance.js): readable only by the folder's owner (audit 2), and a crash
-// never leaves them broken (audits 6, 7). File modes are checked on Linux and
+// (lib/instance.js): readable only by the folder's owner, and a crash
+// never leaves them broken. File modes are checked on Linux and
 // macOS; Windows ignores them (the folder's permissions apply).
 
 const test = require('brittle')

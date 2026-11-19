@@ -1,7 +1,4 @@
 // v2 prototype: the rest of the community stays out of the way (spec 007, US5, SC-005).
-// A member holds open only what it reads: the logs and rosters of the
-// channels it has open, whatever the community's channel count, and closing
-// a channel releases them.
 
 const test = require('brittle')
 const { member, link, until, sleep } = require('./_helpers')
@@ -53,9 +50,6 @@ test('v2 idle: closing a channel a member keeps leaves its own roster and log al
 })
 
 test('v2 idle: an idle follow does not re-read rosters', async (t) => {
-  // It polled every 500 ms: bench/v2-community.js, 5 channels followed,
-  // nothing posted: 734 ms of CPU per 10 s and +35 MB, against 31 ms and
-  // nothing with the poll out of reach.
   const owner = await member(t, 'idle-follow-owner')
   const channels = []
   for (let i = 0; i < 3; i++) {

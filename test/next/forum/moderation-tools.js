@@ -1,4 +1,4 @@
-// Spec 014 (the forum's requests F10-F13): a theme only the owner and admins
+// A theme only the owner and admins
 // set; members report to the moderators, privately; moderators list what
 // they hid or flagged however old; a ban that drops everything the person
 // wrote, every device, every sub-forum, in one decision.
@@ -15,8 +15,6 @@ const agree = (spaces, fn, expected, ms = 10000) => eventually(async () => {
 }, ms)
 const themes = (f) => f.query('theme').latest(10).then(({ items }) => items.map((x) => x.css).sort().join())
 const opened = (hg, key, ms = 10000) => eventually(() => { try { return hg.space(key) } catch { return null } }, ms)
-// Does this member know `who` as a moderator (reports are sealed to the
-// moderators' devices it knows)?
 const knows = (f, who) => eventually(async () => (await forum.roleOf(f, who)) === 'moderator', 10000)
 
 test('F13: only the owner and admins set the theme; a forced one counts for nobody', async (t) => {
@@ -30,7 +28,6 @@ test('F13: only the owner and admins set the theme; a forced one counts for nobo
   t.ok(await agree(all, themes, 'blue,green'), 'everyone shows the owner\'s and the admin\'s, not the forced one')
   t.is((await fa.get(forced)).record, null, 'get() gives nothing for it')
 
-  // Made a member again: what b set as admin stays; what b forces after doesn't.
   await forum.giveRole(fa, b.identity.publicKey, 'member')
   t.ok(await eventually(async () => (await forum.roleOf(fb, b.identity.publicKey)) === 'member', 5000))
   t.is(await codeOf(forum.setTheme(fb, 'again')), 'NOT_ALLOWED')

@@ -144,9 +144,6 @@ test('entities: getByAuthor correctly finds a REMOTE author\'s entities once the
   const os = require('os')
   const { Hypergraph } = require('../../../index.js')
 
-  // Two identities sharing one Corestore — no replication needed, since
-  // both cores physically live in the same store (same pattern used
-  // elsewhere in this suite for multi-author scenarios).
   const dir = path.join(os.tmpdir(), `hypergraph-getbyauthor-${process.pid}-${Date.now()}`)
   const store = new Corestore(dir)
   const graphA = new Hypergraph(store)

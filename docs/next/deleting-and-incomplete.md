@@ -1,6 +1,6 @@
 # "Deleted" and "incomplete", plainly
 
-`require('hypergraph/next')` (spec 011). Two words your app will show people, and what they really mean
+`require('hypergraph/next')`. Two words your app will show people, and what they really mean
 on a network with no server. The worked example is the forum in `test/next/forum/forum.js`; the API is in
 [api.md](api.md), the reasons in [concepts.md](concepts.md).
 

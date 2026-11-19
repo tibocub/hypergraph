@@ -34,7 +34,6 @@ test('v2 private: the creator reads its posts; everyone else sees them as unread
   t.is(theirs[0].author, owner.pub, 'but with its author')
   t.is(theirs[0].t, posted.t, 'and its time')
 
-  // Nothing readable in the raw block either.
   const core = outsider.store.get({ key: b4a.from(posted.log, 'hex') })
   await core.ready()
   const block = await core.get(posted.seq)
@@ -43,8 +42,6 @@ test('v2 private: the creator reads its posts; everyone else sees them as unread
 })
 
 test('v2 private: plain text posted into a private channel is never shown', async (t) => {
-  // Anyone can append to their own log and get listed by a keeper; in a
-  // private channel only messages sealed with one of its keys count.
   const { owner, outsider, channel } = await setup(t, 'priv-plain')
   await outsider.community.postRaw(channel, { t: Date.now(), text: 'look at me' })
   let page = []
@@ -57,6 +54,5 @@ test('v2 private: a member without the key can’t post; a keeper lists posts it
   const { owner, outsider, channel } = await setup(t, 'priv-post')
   await t.exception(outsider.community.post(channel, 'let me in'), /key/, 'posting without the key throws')
   const posted = await owner.community.post(channel, 'hello')
-  // The owner is the keeper here; a member following sees the listing arrive.
   t.ok(await until(async () => (await outsider.community.rosterEntries(channel, Math.floor(posted.t / 60000))).length === 1), 'the post is listed')
 })

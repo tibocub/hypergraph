@@ -1,4 +1,4 @@
-// The write limit of an open space (story 9, T071a; research.md A14): a log
+// The write limit of an open space: a log
 // counts at most `records` records within any `periodMs`, judged the same by
 // every member although deletes wipe earlier records.
 
@@ -22,7 +22,6 @@ test('at most `records` records within any period', async (t) => {
 })
 
 test('a wiped block takes the stamp of the next readable one: deleting never frees room', async (t) => {
-  // block 2 was deleted by its author: its stamp (100) is gone for whoever comes later
   const before = log([null, 0, 100, 900, 950, 1150])
   const after = log([null, 0, WIPED, 900, 950, 1150])
   t.is(await judge(5, 1150, limit, before), 'ok', 'while block 2 is readable: 1150 - 100')
@@ -48,8 +47,6 @@ test('a limit is whole numbers', (t) => {
   t.absent(validLimit(null))
 })
 
-// The decision (settings/set { writeLimit }): by who may decide; records 0
-// lifts it; a sub-space has its own.
 test('settings/set records the write limit; only who may decide; records 0 lifts it', async (t) => {
   const b4a = require('b4a')
   const c = require('compact-encoding')

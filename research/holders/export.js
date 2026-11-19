@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec 025 D3: writes the online hours a device recorded (lib/holding.js
+// Writes the online hours a device recorded (lib/holding.js
 // `hours`, saved as @hg/meta 'seen') to a file the simulator reads
 // (run.js --real), every device key replaced by a random label.
 //   node research/holders/export.js <engine or hypergraph folder> [--out hours.json]
@@ -18,7 +18,6 @@ const b4a = require('b4a')
 const def = require('../../lib/index/spec/hyperdb')
 const { unpackHours } = require('../../lib/circles.js')
 
-// seen: the saved row ({ at: { device: ms }, hours: { device: { hour, bits } } }) -> the file's content
 function anonymise (seen, random = Math.random) {
   const keys = Object.keys(seen.hours || {})
   const own = keys.filter((k) => !(k in (seen.at || {}))) // holders are in `at` (last seen); this device isn't

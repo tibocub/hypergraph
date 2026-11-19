@@ -1,4 +1,4 @@
-// Spec 021 (CLAUDE.md rule 3): "what's new since my last visit". The forum keeps
+// "What's new since my last visit". The forum keeps
 // where a person stands in their settings (the same call for a board's unread dot
 // and a notification), and a member back from days away finds what others wrote
 // meanwhile, posts written offline and clocks gone wrong included.

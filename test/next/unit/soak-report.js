@@ -25,7 +25,6 @@ test('soak report: lost, stale, delays', (t) => {
       { ev: 'put', id: 'c1', type: 'comment', at: 5000, v: 'yes' },
       { ev: 'warning', code: 'SINGLE_SETTLER' },
       { ev: 'warning', code: 'SINGLE_SETTLER' },
-      // never got p2; holds p1 unedited; p3's delete didn't arrive
       held({ id: 'p1', v: 'hi' }, { id: 'p3', v: 'gone' }, { id: 'c1', v: 'yes' })
     ]
   }

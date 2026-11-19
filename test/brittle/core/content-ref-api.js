@@ -32,7 +32,6 @@ function dirSize (dir) {
   return total
 }
 
-// ── US1: store and read back ─────────────────────────────────────────────────
 
 test('content-ref-api: putContentRef stores a reference readable by getContent', async t => {
   const { graph } = await createGraph(t, 'cra-basic')
@@ -70,7 +69,6 @@ test('content-ref-api: inline content is untouched and gets no reference field',
   t.absent(record.reference, 'no reference field on inline content')
 })
 
-// ── US1 / SC-001: a reference costs the graph almost nothing ─────────────────
 
 test('content-ref-api: storage cost is independent of referenced content size', async t => {
   const { graph, dir } = await createGraph(t, 'cra-size')
@@ -81,12 +79,10 @@ test('content-ref-api: storage cost is independent of referenced content size', 
 
   const before = dirSize(dir)
 
-  // 2 GB
   await graph.putContentRef(a.id, { ...REF, size: 2147483648 })
   await graph.update()
   const afterSmallClaim = dirSize(dir)
 
-  // 20 GB — ten times the declared content, same shape of address
   await graph.putContentRef(b.id, { ...REF, size: 21474836480 })
   await graph.update()
   const afterLargeClaim = dirSize(dir)
@@ -102,7 +98,6 @@ test('content-ref-api: storage cost is independent of referenced content size', 
   )
 })
 
-// ── US1: write-time validation ───────────────────────────────────────────────
 
 test('content-ref-api: putContentRef rejects a malformed reference and writes nothing', async t => {
   const { graph } = await createGraph(t, 'cra-reject')
@@ -130,7 +125,6 @@ test('content-ref-api: putContentRef rejects a malformed reference and writes no
   t.is(record, null, 'nothing was appended by any rejected write')
 })
 
-// ── US1: read-time tolerance ─────────────────────────────────────────────────
 
 test('content-ref-api: a malformed payload reads back invalid, never throws', async t => {
   const { graph } = await createGraph(t, 'cra-malformed')
@@ -152,7 +146,6 @@ test('content-ref-api: a malformed payload reads back invalid, never throws', as
   t.ok(Array.isArray(record.reference.src), 'src is still iterable')
 })
 
-// ── US2: uniform addressing across backends ──────────────────────────────────
 
 test('content-ref-api: one code path resolves every backend, branching only on scheme', async t => {
   const { graph } = await createGraph(t, 'cra-uniform')
@@ -171,7 +164,6 @@ test('content-ref-api: one code path resolves every backend, branching only on s
     ids.push(entity.id)
   }
 
-  // A consumer's loop: switch on scheme, nothing else.
   const seen = []
   for (const id of ids) {
     const record = await graph.getContent(id)
@@ -214,7 +206,6 @@ test('content-ref-api: preference order is preserved so a consumer can fall back
   t.is(chosen.address, 'swarmfs://9f2ca1b3', 'a consumer skips to the entry it supports')
 })
 
-// ── US3: stable address while content changes ────────────────────────────────
 
 test('content-ref-api: replacing a reference keeps the entity id, relations and tags', async t => {
   const { graph } = await createGraph(t, 'cra-stable')
@@ -227,7 +218,6 @@ test('content-ref-api: replacing a reference keeps the entity id, relations and 
   await graph.tag(video.id, 'sub:films', { context: ctx })
   await graph.relate({ from: video.id, to: post.id, type: 'attachment', context: ctx })
 
-  // The file is edited, so its hash changes — a whole new address.
   await graph.putContentRef(video.id, { ...REF, src: ['swarmfs://edited'] })
 
   const record = await graph.getContent(video.id)
@@ -268,13 +258,10 @@ test('content-ref-api: an entity can switch between reference and inline content
   t.is(record.reference.src[0].address, 'swarmfs://big-again')
 })
 
-// ── SC-003: no backend-specific code ─────────────────────────────────────────
 
 test('content-ref-api: hypergraph gained no backend-specific behavior', async t => {
   const { graph } = await createGraph(t, 'cra-agnostic')
 
-  // A scheme invented in this test must behave identically to swarmfs://.
-  // If hypergraph ever special-cases a backend, this diverges.
   const a = await graph.put({ type: 'media' })
   const b = await graph.put({ type: 'media' })
 

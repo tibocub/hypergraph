@@ -1,8 +1,8 @@
-// Sub-forums (story 8, US8 #1, #3–5): seen inside their forum without joining;
+// Sub-forums: seen inside their forum without joining;
 // write-restricted; guests of a sub-forum only; a ban in the forum applies in
 // its sub-forums, whatever arrived first; a removal takes sub-forum roles
 // away; shortcuts to other forums. Sub-forum decisions live in the forum's
-// decision log (research.md A13).
+// decision log.
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -10,8 +10,6 @@ const testing = require('../../../lib/testing.js')
 const { account, threeMembers } = require('./_setup.js')
 const { eventually, codeOf } = require('../helpers.js')
 
-// The sub-forum `key` on `hg`, once its device opened it (members of the
-// forum open it by themselves).
 const opened = (hg, key, ms = 10000) => eventually(() => { try { return hg.space(key) } catch { return null } }, ms)
 const shows = async (f, id) => (await forum.latest(f)).some((p) => p.id === id)
 
@@ -148,7 +146,6 @@ test('a member clicks a board the moment it is listed: it opens (F7)', async (t)
   const { b, fa, fb } = await threeMembers(t)
   const unopenable = []
   const listed = new Set()
-  // checked the moment b's forum hears of a decision, and when b's spaces change
   const check = () => {
     for (const s of forum.subforums(fb)) {
       try { b.space(s.key); listed.add(s.key) } catch { unopenable.push(s.name) }

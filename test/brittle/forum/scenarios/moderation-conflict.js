@@ -50,7 +50,6 @@ module.exports = async function moderationConflict (t, h) {
     if (!p2Moderation.writable) throw new Error('p2 moderation context not writable yet')
   }, 30000)
 
-  // Conflicting facts from different peers.
   await Promise.all([
     p1.storage.moderate(post.id, 'content.flag', 'f'),
     p2.storage.moderate(post.id, 'content.remove', 'r')

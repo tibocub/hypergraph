@@ -1,4 +1,4 @@
-// Spec 012 US1 (FR-001-FR-005): reads answer at once from what this device
+// Reads answer at once from what this device
 // holds, with `complete`; a read waits only when given { timeout }. What a
 // read needs (dropped content, a big space's older part) still starts, and
 // `change` says when it is here. bounded.js covers reads given a timeout.
@@ -9,8 +9,6 @@ const testing = require('../../../lib/testing.js')
 const { account } = require('../forum/_setup.js')
 const { eventually } = require('../helpers.js')
 
-// a holds 1,000 of its own posts and b's post p; b is offline and wrote
-// more meanwhile. Returns a reopened, before it reached b.
 async function holderOffline (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
@@ -18,9 +16,6 @@ async function holderOffline (t) {
   const fb = await forum.join(b, await forum.invite(fa))
   const p = await forum.post(fb, 'from b', '')
   await forum.tag(fb, p, 'news')
-  // Stamped in the past: a's stamper gives each fast write "newest + 1", so
-  // 1,000 of them ran up to a second ahead of the clock, and what b wrote
-  // next sorted below them (that, not replication, was research R13).
   const past = Date.now() - 2000
   for (let i = 0; i < 1000; i++) await testing.writeRaw(fa, { kind: 'put', type: 'post', fields: { title: `a${i}`, text: '' }, stamp: past + i })
   t.ok(await eventually(async () => (await fa.get(p.id)).record, 10000), 'a holds b\'s post')
@@ -85,7 +80,6 @@ test('dropped content read at once: left out, fetched, and change names it once 
 
   await account(t, 'a2', { dir: a.dir })
   const back = new Promise((resolve) => fb.on('change', ({ records }) => { if (records.some((r) => r.id === posts[0].id)) resolve() }))
-  // An app re-reads (here: until a is reachable); each read starts the fetch.
   t.ok(await eventually(async () => { await fb.get(posts[0].id); return testing.holdsBlock(fb, posts[0].id) }, 20000), 'fetched in the background')
   await back
   t.pass('change named it once back')

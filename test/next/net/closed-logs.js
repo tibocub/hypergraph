@@ -1,8 +1,8 @@
-// Spec 017: a member keeps a held log's core open only while it uses it
+// A member keeps a held log's core open only while it uses it
 // (reads, downloads, a hand-off to helpers), and closes it after an idle
 // delay (lowered here: testing.idleLogs). Its length is in the summaries, so
 // a peer with more of a closed log is found by the range exchange, and
-// "complete" never holds while such a difference is unsettled (FR-005).
+// "complete" never holds while such a difference is unsettled.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -16,11 +16,6 @@ const { eventually } = require('../helpers.js')
 
 const IDLE = 300
 
-// `n` made-up logs of two blocks, written at `from` and held by every
-// space in `to` (scripted, past the gate, as perf/scenarios/members.mjs
-// does): those get them by replication, a length claim each (spec 017).
-// Their author: a member `from` adds (not `from`'s own identity: the logs of
-// its own devices are read at start, lib/space.js #seenOwn).
 async function script (from, to, n) {
   const someone = await member(from, to)
   for (let i = 0; i < n; i++) {
@@ -31,7 +26,6 @@ async function script (from, to, n) {
   }
 }
 
-// A made-up member of `space`, known to `others` too: { identity, device }.
 async function member (space, others = []) {
   const identity = hc.randomBytes(32)
   await testing.decide(space, { type: 'member/add', identity })
@@ -39,7 +33,6 @@ async function member (space, others = []) {
   return { identity, device: hc.randomBytes(32) }
 }
 
-// Has `space` heard the summary `other` sends now?
 const heard = (space, other) => [...space.directory.channels].some((ch) => ch.theirs === testing.digestOf(other))
 
 async function pair (t) {
@@ -52,7 +45,6 @@ async function pair (t) {
   return { a, b, fa, fb }
 }
 
-// Watches `space` until `stop()`: did it ever say complete while `present()` was false?
 function watch (space, present) {
   let lied = false
   let stopped = false
@@ -87,7 +79,6 @@ test('2,000 held logs: few open once idle, none at reopen, reads still work', { 
   t.is(testing.openLogs(fb2).length, 0, 'reopened: no held log open')
   t.ok(testing.logs(fb2).length >= 2000, `and every log held (${testing.logs(fb2).length})`)
 
-  // a's logs never changed after it accepted them (open): still saved, so closed at reopen
   await a.close()
   const a2 = await account(t, 'a2', { dir: a.dir })
   const fa2 = a2.space(fa.key)
@@ -104,7 +95,6 @@ test('a record in a log closed at the reader: never complete before it arrives',
   t.ok(await eventually(() => !testing.openLogs(fb).includes(alog), 30000, 100), 'a\'s log closed at b')
   t.ok(await eventually(() => fb.isComplete() && testing.openLogs(fb).length <= 20, 120000, 100), 'b complete with the logs closed')
 
-  // from the moment b heard of it (a's summary) until it is in: never complete
   const has = (title) => async () => (await forum.latest(fb, 50)).some((p) => p.title === title)
   testing.slowLists(b, 1500) // the exchange that tells b which log grew takes a while
   const t0 = Date.now()
@@ -118,7 +108,6 @@ test('a record in a log closed at the reader: never complete before it arrives',
   t.absent(await stop(), 'never complete before it arrived')
   t.ok(await eventually(() => !testing.openLogs(fb).includes(alog), 30000, 100), 'closed again')
 
-  // written while b is away, met later
   await b.close()
   await forum.post(fa, 'offline', '')
   const b2 = await account(t, 'b2', { dir: b.dir })
@@ -187,8 +176,6 @@ test('closed logs are handed to the helper, and again when they grow', { timeout
   t.ok(await eventually(() => holds(server, { key: made[3].key, length: 3 }), 30000, 250), 'and the new block of the one that grew')
 })
 
-// Lead review: a start handed every held log to the helpers again (one open
-// per log at each start). What was handed, and to which list, is saved.
 test('restarted, a space with helpers hands nothing again, unless the list changed', { timeout: 180000 }, async (t) => {
   const server = await helper(t)
   const { a, fa } = await pair(t)

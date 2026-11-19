@@ -1,4 +1,4 @@
-// A closed forum stays closed (audit 1): the topic members meet on (the
+// A closed forum stays closed: the topic members meet on (the
 // space's discovery key) is seen by DHT nodes, and must not be enough to read
 // the space. A peer that knows only the topic opens the space channel and asks
 // for the log list and activity lists: it gets no log key, and its channel is
@@ -16,10 +16,6 @@ const { PROTOCOL } = require('../../../lib/directory.js')
 const { threeMembers } = require('../forum/_setup.js')
 const { eventually, testBootstrap } = require('../helpers.js')
 
-// A spy on the topic: opens the space channel (with `guess` as its handshake,
-// or none, as an honest peer of the old protocol) and asks for every log key.
-// Returns what it got: { got (kinds of messages carrying log keys: 2 list,
-// 3 notice, 8 entry, 10 activity list), closed }.
 async function spy (t, space, guess) {
   const swarm = new Hyperswarm({ bootstrap: await testBootstrap(t) })
   const out = { got: [], closed: 0 }
@@ -31,7 +27,7 @@ async function spy (t, space, guess) {
       id: space.discoveryKey,
       handshake: guess ? c.fixed32 : null,
       onopen () {
-        ch.messages[1].send({ prefix: Buffer.alloc(0), bits: 0, parts: Array.from({ length: 16 }, () => ({ count: 0, digest: Buffer.alloc(32) })) }) // ranges: "I hold none", asking for every key (spec 016)
+        ch.messages[1].send({ prefix: Buffer.alloc(0), bits: 0, parts: Array.from({ length: 16 }, () => ({ count: 0, digest: Buffer.alloc(32) })) }) // ranges: "I hold none", asking for every key
         ch.messages[9].send({ from: 0 }) // the activity lists from the start
       },
       onclose () { out.closed++ }

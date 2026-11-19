@@ -1,4 +1,4 @@
-// Spec 027 (build.md FR-001, FR-002, FR-005): renewing a private space. A new
+// Renewing a private space. A new
 // decision log, new logs and a new disk key; the old logs are the new space's
 // history (same record ids), read with the old key; the "moved to" pointer is
 // sealed to current devices only; removed people are left behind; sub-spaces

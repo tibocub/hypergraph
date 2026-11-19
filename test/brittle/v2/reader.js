@@ -22,7 +22,6 @@ async function setup (t, label, authors = 2) {
 
 const texts = (page) => page.map(m => m.text)
 
-// Wait until the keeper lists everyone who posted in these segments.
 async function settled (reader, channel, segments, count) {
   return until(async () => {
     let n = 0
@@ -57,7 +56,6 @@ test('v2 reader: a page spans into the previous segment; scrollback reads before
   const [a] = peers
   const early = []
   for (let i = 0; i < 3; i++) early.push(await a.community.post(channel, `old${i}`))
-  // Into the next segment.
   const wait = SEG - (Date.now() % SEG) + 50
   await sleep(wait)
   const late = await a.community.post(channel, 'new0')
@@ -79,7 +77,6 @@ test('v2 reader: a message claiming the future is held back; an unreachable auth
   t.ok(await until(async () => (await owner.community.latest(channel)).some(m => m.text === 'a1')))
   t.absent((await owner.community.latest(channel)).some(m => m.text === 'from the future'), 'held back')
 
-  // b posts while connected only to... nobody the owner can reach: close b first.
   const bPost = await b.community.post(channel, 'b1')
   t.ok(await until(async () => (await owner.community.rosterEntries(channel, segmentOf(bPost.t, SEG))).some(e => e.author === b.pub)), 'b is listed')
   await b.community.close()
@@ -89,9 +86,6 @@ test('v2 reader: a message claiming the future is held back; an unreachable auth
 })
 
 test('v2 reader: a page fetches about what it shows, not every author’s newest page', async (t) => {
-  // The reader took each author's newest `limit` messages, then kept `limit`:
-  // 2,500 blocks for a 50-message page from 50 authors (bench/v2-chat.js,
-  // about half the newcomer's bytes).
   const b4a = require('b4a')
   const hcrypto = require('hypercore-crypto')
   const { AuthorLog } = require('../../../src/v2/author-log')
@@ -109,7 +103,6 @@ test('v2 reader: a page fetches about what it shows, not every author’s newest
     const log = new AuthorLog(owner.store, { keyPair: AuthorLog.keyPairFor(a, owner.community.key, channel) })
     await log.ready()
     const messages = []
-    // Interleaved in time: the newest 10 are one message each from 10 authors.
     for (let i = 0; i < PER; i++) messages.push({ t: now - (PER - i) * 100 + k, text: `a${k} m${i}` })
     const first = await log.appendMany(messages)
     await owner.community.writeRosterEntryUnchecked(channel, seg, { author: a.keyPair.publicKey, log: log.key, start: first, sig: signEntry(owner.community.key, channel, seg, log.key, first, a.keyPair) })

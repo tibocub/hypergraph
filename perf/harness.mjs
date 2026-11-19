@@ -21,12 +21,10 @@ console.log('PERF-RUNTIME ' + JSON.stringify(runtime))
 
 export const isBare = runtime.runtime === 'bare'
 
-// Milliseconds, as a float.
 export const now = () => Number(process.hrtime.bigint()) / 1e6
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// Polls `fn` until it returns something truthy, up to `ms`; that value, or null.
 export async function eventually (fn, ms = 30000, every = 10) {
   const until = Date.now() + ms
   for (;;) {
@@ -71,17 +69,12 @@ export function record (scenario, size, unit, samples, { better = 'lower', flat 
   console.log('PERF ' + JSON.stringify({ scenario, size, unit, better, ...(flat ? { flat } : {}), samples: samples.map((s) => Math.round(s * 1000) / 1000) }))
 }
 
-// This process's memory after a full GC (run.mjs passes --expose-gc): { heap, rss } in bytes.
 export function mem () {
   if (globalThis.gc) { globalThis.gc(); globalThis.gc() }
   const m = process.memoryUsage()
   return { heap: m.heapUsed + m.external, rss: m.rss }
 }
 
-// Another process of this runtime running `script` (a peer on another machine, in effect:
-// in one process every peer shares one thread). Its stdout lines go to line(prefix). The
-// parent steers it with files in `dir`: signal('go'), and stop() writes 'stop' and waits for
-// it to exit (the child closes what it opened; killed after 15 s).
 export function child (t, script, args, dir) {
   fs.mkdirSync(dir, { recursive: true })
   const p = spawn(process.execPath, [script, dir, ...args], { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -104,7 +97,6 @@ export function child (t, script, args, dir) {
   const exit = new Promise((resolve) => p.on('exit', () => { exited = true; resolve() }))
   exit.then(() => { for (const w of waiting.splice(0)) w.fail(new Error('child exited: ' + err.slice(-500))) })
   const c = {
-    // the rest of the first line starting with `prefix`
     line (prefix, ms = 60000) {
       return new Promise((resolve, reject) => {
         let timer = null
@@ -135,7 +127,6 @@ export function child (t, script, args, dir) {
   return c
 }
 
-// In a child: resolves once the parent's signal(name) file exists in `dir`.
 export async function signalled (dir, name) {
   while (!fs.existsSync(path.join(dir, name))) await sleep(5)
 }
@@ -158,7 +149,6 @@ export function context () {
   return { teardown, close, comment: () => {} }
 }
 
-// Sizes from the command line (`--sizes 100,1000`) or the scenario's defaults.
 export function sizes (defaults) {
   const i = process.argv.indexOf('--sizes')
   return i === -1 ? defaults : process.argv[i + 1].split(',').map(Number)

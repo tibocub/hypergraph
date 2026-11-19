@@ -1,8 +1,8 @@
-// Story 4 #1-4: invites and joining. A link works while its maker is
+// Invites and joining. A link works while its maker is
 // offline, as long as someone able to let people in is online; a link that
 // is expired, used up, revoked, or made by someone who can't give its role is
 // refused with that reason, within the read bound; a public forum's link
-// lets anyone in with no admin online, for good (spec 016).
+// lets anyone in with no admin online, for good.
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -12,14 +12,12 @@ const { eventually, codeOf, open } = require('../helpers.js')
 
 const BOUND = 5000 // the forum's read bound (the default)
 
-// How long `promise` takes to settle, and its error code (null if it resolves).
 async function timed (promise) {
   const started = Date.now()
   const code = await codeOf(promise)
   return { code, ms: Date.now() - started }
 }
 
-// a owns the forum; b is an admin.
 async function forumWithAdmin (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

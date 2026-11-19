@@ -1,4 +1,4 @@
-// Spec 021: space.since(cursor, { types, limit }): the records created past a
+// Space.since(cursor, { types, limit }): the records created past a
 // cursor of a seq per log, no clock involved. One device here; what needs two
 // (late arrivals, new authors, keys, bans): test/next/net/since.js.
 

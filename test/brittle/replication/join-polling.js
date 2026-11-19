@@ -1,11 +1,5 @@
 // A newcomer that starts reading the instant it opens a context still ends
 // up reading it right.
-//
-// The context's index layout is remembered locally once known. A first
-// version also concluded "layout 1" when the view was non-empty but held no
-// record yet; a joining peer can see exactly that for a moment (the view's
-// first block is a header), remembered the wrong layout for good, and read
-// nothing ever after (bench/chat.js: 3 newcomers in 5 hung at 0 messages).
 
 const test = require('brittle')
 const { createGraph, sleep } = require('../helpers')

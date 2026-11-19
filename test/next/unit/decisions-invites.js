@@ -1,7 +1,4 @@
-// Invites in the decision log (spec 008's design, research R16, story 4):
-// revocation, uses per distinct person, expiry against the recorder's stamp,
-// who may invite to what, roles never lowered, and the reason a newcomer is
-// refused (State.inviteRefusal), the same checks apply makes.
+// Invites in the decision log:
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -37,12 +34,10 @@ async function space () {
     return State.from(view.map)
   }
   await apply(key, { type: 'space/init', name: 'F', parent: null, private: false, policy: 'auto', version: 1, proof: initProof(owner, key, key) })
-  // Someone new, and their device's key in the decision log.
   const person = async () => {
     const identity = await Identity.create({ device: crypto.keyPair() })
     return { identity, writer: crypto.randomBytes(32), publicKey: identity.publicKey }
   }
-  // `who` gets `role` from the owner and, if it records decisions, claims its key.
   const promote = async (who, role) => {
     await apply(key, { type: 'role/set', identity: who.publicKey, role, cut: [] })
     await apply(key, { type: 'writer/add', key: who.writer, proof: initProof(who.identity, who.writer, key) })

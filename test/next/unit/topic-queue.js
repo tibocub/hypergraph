@@ -1,4 +1,4 @@
-// Spec 015 (US3, research.md R1): topic joins go through one queue, paced
+// Topic joins go through one queue, paced
 // under the DHT node's request window: one background join at a time, a
 // space in use at once, at most `maxAnnounced` topics announced, a left
 // space's topic kept for a grace period. Against a fake swarm: what is asked

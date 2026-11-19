@@ -7,7 +7,7 @@
 //   npm run perf:compare -- --node          # one runtime (--bare)
 //
 // A change is flagged only when it is beyond this machine's run-to-run noise (two runs of one
-// commit must flag nothing; measured 2026-11-01: half the scenarios move under ~10%, one in ten
+// commit must flag nothing; measured: half the scenarios move under ~10%, one in ten
 // over 20-45%, more than their samples' spread shows):
 //   - the median moved over max(25%, 3 × the larger half-range (max - min) / 2 / median),
 //   - the minimum moved over 25% the same way (a few slow samples move a median, not a min),
@@ -33,7 +33,6 @@ const file = path.join(here, 'history.jsonl')
 const rows = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
 const pct = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(0)}%`
 
-// 'worse', 'better' or null (within noise)
 function judge (p, r) {
   const change = (r.median - p.median) / p.median
   const minChange = p.min ? (r.min - p.min) / p.min : change

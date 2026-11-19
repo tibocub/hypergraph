@@ -1,6 +1,4 @@
 // v2 prototype: offline (spec 007, FR-014, SC-007).
-// What a member has shown stays readable after a restart with no peer; what
-// it never fetched is reported unavailable, without waiting forever.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -13,7 +11,6 @@ const { segmentOf, segmentStart } = require('../../../src/v2/segments')
 
 const SEG = 60000
 
-// A channel with 2 authors posting 30 messages in each of these segments.
 async function history (owner, segments) {
   const id = b4a.toString(hcrypto.randomBytes(16), 'hex')
   await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id, name: 'general', segmentMs: SEG, timestamp: segmentStart(segments[0], SEG) })

@@ -1,4 +1,4 @@
-// Spec 012 US5 (CLAUDE.md rule 3): the forum's screens show what this device
+// The forum's screens show what this device
 // holds at once, say when more is on its way (`complete`), and update
 // themselves: a newcomer, members offline, a thread edited elsewhere, the
 // members list, the forums list. No polling in the app: `eventually` here
@@ -9,7 +9,6 @@ const forum = require('./forum.js')
 const { account, threeMembers } = require('./_setup.js')
 const { eventually } = require('../helpers.js')
 
-// What a screen showed last, and whether it ever showed "still syncing".
 function screen () {
   const s = { items: null, complete: null, syncing: false, updates: 0 }
   s.show = (items, complete) => {

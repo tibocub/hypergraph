@@ -1,16 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY:
-// "swarm parameter required" and "bootstrap generation" run entirely
-// locally. "two peers connect", "multi-context support", "writer
-// authorization handshake", and "peer discovery" all need a real
-// Hyperswarm/DHT connection.
-//
-// REDESIGN: HypergraphNetwork no longer creates a second, internally-owned
-// Hyperswarm swarm for a separate "control" topic. Writer-authorization
-// messages are now a protomux channel multiplexed onto the same connection
-// the (single, caller-owned) swarm already establishes for replication —
-// see src/networking.js's class doc comment for the full rationale. This
-// means there's no longer a separate control-channel connection to wait
-// for or diagnose separately from the main connection.
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
@@ -54,14 +42,6 @@ test('hypergraph-network: generateBootstrap produces a joinable descriptor', asy
 })
 
 test('hypergraph-network: connectFromBootstrap actually consumes a bootstrap to join a peer (no network needed)', async (t) => {
-  // Unlike the test above, which only checks the shape of generateBootstrap()'s
-  // output, this verifies the OTHER half actually works: a second peer
-  // consuming that descriptor via connectFromBootstrap(), connecting, and
-  // receiving the owner's data — mirroring the coverage
-  // Hypergraph.export()/join() already has, which generateBootstrap() never
-  // had until now. Uses a local NoiseSecretStream pair instead of a real
-  // DHT connection, since this is testing bootstrap consumption, not
-  // connectivity.
   console.log('TEST: connectFromBootstrap - starting (no network needed)')
   const NoiseSecretStream = require('@hyperswarm/secret-stream')
   const owner = await createGraph(t, 'hn-bootstrap-consume-owner')
@@ -112,10 +92,6 @@ test('hypergraph-network: connectFromBootstrap actually consumes a bootstrap to 
 })
 
 test('hypergraph-network: connectFromBootstrap rejects a bootstrap version mismatch (no network needed)', async (t) => {
-  // No version migration logic exists yet — a mismatch should fail loudly
-  // and immediately rather than silently misinterpreting an incompatible
-  // descriptor (e.g. a future shape change adding/renaming fields this
-  // version of the code doesn't know about).
   const owner = await createGraph(t, 'hn-bootstrap-version-owner')
   const peer = await createGraph(t, 'hn-bootstrap-version-peer')
 
@@ -179,10 +155,6 @@ test('hypergraph-network: connectFromBootstrap rejects a corrupted (wrong-shaped
 })
 
 test('hypergraph-network: connectFromBootstrap works with an empty contexts map', async (t) => {
-  // generateBootstrap() requires opts.contexts to be present, but an empty
-  // object passes that check (truthy) — this confirms the resulting
-  // bootstrap (an owner sharing only its user core, no contexts/relations
-  // at all) is consumed without error.
   const owner = await createGraph(t, 'hn-bootstrap-empty-owner')
   const peer = await createGraph(t, 'hn-bootstrap-empty-peer')
 
@@ -279,11 +251,6 @@ test('hypergraph-network: a single connection carries multiple contexts (needs r
 })
 
 test('hypergraph-network: peer role receives a writer grant from owner (needs real network)', { timeout: 180000 }, async (t) => {
-  // Simplified by the protomux redesign: writer-auth now rides the same
-  // connection as replication, so there's no separate control-channel
-  // connection to wait for — once `connected` is backed by a real peer
-  // (confirmed via waitForPeer(), not just the optimistic `connected`
-  // flag), the writer-grant handshake should follow shortly after.
   const peer1 = await createGraph(t, 'hn-handshake-1')
   const peer2 = await createGraph(t, 'hn-handshake-2')
 

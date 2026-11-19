@@ -1,4 +1,4 @@
-// Story 1 #5-6: the author edits (everyone shows the latest version) and
+// The author edits (everyone shows the latest version) and
 // deletes (everyone stops showing it, and clears its blocks); an edit or a
 // delete by someone else is refused locally and, written anyway through a
 // raw log, ignored by every member.
@@ -43,7 +43,6 @@ test('the author deletes: every member stops showing it and clears its blocks', 
   for (const f of all) {
     t.ok(await eventually(async () => !(await testing.holdsBlock(f, p.id)), 2000), 'the post\'s block is cleared')
   }
-  // Live downloads must not fetch it again, even as the logs grow.
   const later = await forum.post(fa, 'later', '')
   await shownEverywhere(all, async (f) => (await forum.latest(f)).length === 1)
   t.ok(later)

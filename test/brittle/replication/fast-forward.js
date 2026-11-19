@@ -1,7 +1,5 @@
 // Joining a context by fast-forward: adopt the indexers' signed state
 // instead of replaying history (spec 003, US2).
-//
-// In-memory replication, so it is deterministic.
 
 const test = require('brittle')
 const { createGraph, sleep } = require('../helpers')
@@ -28,11 +26,6 @@ async function listing (graph, dirId, ctx) {
   return out
 }
 
-// A writer with `calls` bulk calls of `per` files each, spread over `dirs`
-// folders. Many bulk calls = many Autobase nodes, so a newcomer is far enough
-// behind for Autobase to fast-forward it (it does at >= 16 nodes). The
-// number of calls is what matters, not their size: 40 x 100 checks the same
-// as 40 x 500 did, in a fraction of the time.
 async function bigContext (t, label, { calls = 40, per = 100, dirs = 4 } = {}) {
   const writer = await createGraph(t, `${label}-writer`)
   const ctx = await writer.graph.createContext()
@@ -43,7 +36,6 @@ async function bigContext (t, label, { calls = 40, per = 100, dirs = 4 } = {}) {
     for (let i = 0; i < per; i++) batch.relate({ from: batch.put({ type: 'file' }), to: dirIds[(c * per + i) % dirs], type: 'in', context: ctx })
     await batch.flush()
   }
-  // Let the creator's acks confirm everything before anyone joins.
   const context = await writer.graph.openContext(ctx)
   await until(async () => { await writer.graph.update(); const s = await context.status(); return s.confirmedLength === s.length }, 20000)
   return { writer, ctx, dirIds, total: calls * per }
@@ -73,7 +65,6 @@ test('fast-forward: a fresh peer adopts the signed state instead of replaying, a
   for (let i = 0; i < view.length; i++) if (await view.has(i)) held++
   t.ok(held < view.length / 2, `holds ${held} of ${view.length} index blocks after reading one folder`)
 
-  // It keeps up with what happens after it joined.
   const late = await writer.graph.put({ type: 'file' })
   await writer.graph.relate({ from: late.id, to: dirIds[1], type: 'in', context: ctx })
   t.ok(await until(async () => {
@@ -110,8 +101,6 @@ test('fast-forward: events breaking the context\'s rules are absent on replaying
   const author = writer.graph.key.toString('hex')
   const secretKey = writer.graph.identity.deviceKeyPair.secretKey
 
-  // Enough separate writes for a newcomer to be fast-forwarded, each mixing
-  // accepted relations with raw ones a modified client would send.
   for (let c = 0; c < 30; c++) {
     const batch = writer.graph.batch()
     const files = []

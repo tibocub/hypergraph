@@ -1,4 +1,4 @@
-// Spec 015 (US2): a member in many forums. Only some stay open (bookmarked,
+// A member in many forums. Only some stay open (bookmarked,
 // own, recently visited); visiting another opens it, leaving it idle closes
 // it again, and what was posted meanwhile shows at the next visit. The app
 // does nothing for this: a forum opens when it is read or written.

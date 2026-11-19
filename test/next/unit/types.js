@@ -1,4 +1,4 @@
-// Type declarations (research R6): fields with kinds, links with allowed
+// Type declarations: fields with kinds, links with allowed
 // targets, one per member, who may edit, app-declared indexes; validation
 // errors name the type and the field; between app versions only appending
 // fields and adding types is allowed.
@@ -41,7 +41,6 @@ test('bad declarations name the type and the field', (t) => {
   code(t, () => new Types({ p: { fields: { a: 'string' }, editable: 'everyone' } }), 'INVALID_TYPE', 'p')
   code(t, () => new Types({ p: { fields: { a: 'string' }, index: [['b', 'stamp']] } }), 'INVALID_TYPE', 'p', 'b')
   code(t, () => new Types({ 'hg/x': { fields: {} } }), 'INVALID_TYPE', 'hg/x')
-  // Records carry these next to their fields.
   for (const name of ['id', 'type', 'author', 'device', 'stamp', 'edited', 'futureStamp']) {
     code(t, () => new Types({ p: { fields: { [name]: 'string' } } }), 'INVALID_TYPE', 'p', name)
   }
@@ -126,8 +125,6 @@ test('compatibility (story 7): indexes and link fields', (t) => {
 })
 
 test('stale (story 7): what the index derived from the declaration may be out of date', (t) => {
-  // A link field with allowed targets derives nothing: links are judged when
-  // read (research.md A12), so it needs no rebuild.
   const before = new Types(forum).describe()
   const after = new Types({
     ...forum,

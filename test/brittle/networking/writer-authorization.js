@@ -3,16 +3,6 @@
 // verify the protomux writer-auth channel redesign) — no DHT/real network
 // needed, since these are testing the permission-checking logic itself, not
 // connectivity.
-//
-// GAP FOUND & FIXED: HypergraphNetwork._handleWriterRequest() previously had
-// no permission checking at all — any connected peer's writer-request was
-// granted unconditionally (see the TODO that used to be at this line in
-// src/networking.js). ContextBase.addWriter()'s own JSDoc already documented
-// the intended design (closed-mode requires the 'context.write' privilege
-// from the attached RoleBase) but never actually implemented it. Both are
-// now fixed: addWriter() performs the check, and _handleWriterRequest()
-// passes this peer's own identity as the author (checking whether the peer
-// receiving the request has authority to grant it).
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
@@ -40,11 +30,6 @@ test('writer-authorization: closed context grants a writer when the responding p
   await owner.graph.update()
   t.ok(await owner.graph.can(ownerPubkey, 'context.write'), 'owner has context.write via the owner role wildcard')
 
-  // The peer's own graph must open the SAME RoleBase — each peer's own
-  // apply function evaluates the closed-mode permission check
-  // independently, so without this the peer's own side has nothing to
-  // check against and would never agree the grant is valid on its own
-  // copy of the context, even though the owner's side already does.
   await peer.graph.openRoleBase(owner.graph.roleBase.key)
 
   const contextKey = await owner.graph.createContext({ writeMode: 'closed', roles: 'rolebase' }) // permissions from the RoleBase set up above (spec 005)
@@ -73,11 +58,6 @@ test('writer-authorization: closed context grants a writer when the responding p
   t.is(writerGranted.contexts.chat, true, 'the chat context was actually granted (owner has context.write)')
 
   const peerCtx = await peer.graph.openContext(contextKey, { writeMode: 'closed' })
-  // writer-granted (a control message) and the context actually replicating
-  // and applying the underlying roles/addWriter event are separate,
-  // asynchronous processes — wait for the latter too, syncing the RoleBase
-  // alongside it in case the apply-layer permission check runs before the
-  // RoleBase data itself has arrived.
   for (let i = 0; i < 20 && !peerCtx.writable; i++) {
     await sleep(200)
     await peer.graph.roleBase.update()
@@ -92,10 +72,6 @@ test('writer-authorization: closed context denies a writer when the responding p
   const owner = await createGraph(t, 'writer-auth-unauthorized-owner')
   const peer = await createGraph(t, 'writer-auth-unauthorized-peer')
 
-  // The peer RECEIVING the writer-request is set up with only 'member'
-  // role (no permissions) via its own RoleBase — the point is that THIS
-  // peer's own lack of authority should block the grant, regardless of
-  // who is asking.
   const memberKeyPair = crypto.keyPair()
   const memberPubkey = memberKeyPair.publicKey.toString('hex')
   await owner.graph.createRoleBase()
@@ -156,12 +132,6 @@ test('writer-authorization: an unexpected failure produces a writer-error messag
   const link = connectPair(networkingOwner, networkingPeer)
   t.teardown(() => link.close())
 
-  // Force a genuinely unexpected failure: send a writer-request with a
-  // malformed userCore key that openUserCore() can't handle, rather than
-  // going through the normal _sendWriterRequest() path. Sent from the
-  // owner's side of the channel, so networkingPeer processes it (via its
-  // own _handleWriterRequest) and the resulting writer-error is sent back
-  // over the same channel to the owner.
   await sleep(300)
   const rawMsg = { type: 'writer-request', userCore: 'not-valid-hex-!!', contexts: { chat: peer.graph.key.toString('hex') } }
   networkingOwner._sendControlMessage(link.connOwner, 'writerRequestMsg', rawMsg)
@@ -178,11 +148,6 @@ test('writer-authorization: an unexpected failure produces a writer-error messag
 })
 
 test('writer-authorization: 3 peers all get writer-granted for a shared context (star topology via owner)', async (t) => {
-  // Addresses gap #4: all prior writer-authorization tests use exactly 2
-  // peers. This connects owner-peer1 and owner-peer2 (owner is the hub;
-  // peer1 and peer2 are not directly connected to each other), verifying
-  // the writer-auth handshake works correctly for multiple simultaneous
-  // peer connections on the same HypergraphNetwork instance, not just one.
   console.log('TEST: 3-peer writer authorization - starting (no network needed)')
   const owner = await createGraph(t, 'writer-auth-multi-owner')
   const peer1 = await createGraph(t, 'writer-auth-multi-peer1')
@@ -228,12 +193,6 @@ test('writer-authorization: 3 peers all get writer-granted for a shared context 
 })
 
 test('writer-authorization: writer-grant handshake repeats correctly after a disconnect/reconnect cycle', async (t) => {
-  // Addresses gap #5: verifies that (a) the writer-auth handshake fires
-  // again automatically on a fresh connection after a disconnect (since
-  // channel wiring is entirely event-driven per-connection, not a one-time
-  // setup — see _handleDataConnection), and (b) write access, once
-  // granted, persists across the disconnect (it's a permanent Autobase-
-  // level grant, not tied to any specific connection).
   console.log('TEST: writer-grant repeats after reconnect - starting (no network needed)')
   const owner = await createGraph(t, 'writer-auth-reconnect-owner')
   const peer = await createGraph(t, 'writer-auth-reconnect-peer')
@@ -287,16 +246,6 @@ test('writer-authorization: writer-grant handshake repeats correctly after a dis
 })
 
 test('writer-authorization: a single request can grant some contexts while denying others', async (t) => {
-  // Addresses the remaining gap: every other test in this file requests
-  // exactly one context, which can't distinguish "grants are evaluated
-  // per-context" from "grants are all-or-nothing for the whole request".
-  // This sends ONE writer-request spanning two contexts with different
-  // writeModes — 'open' (always granted, no permission needed) and
-  // 'closed' (requires context.write, which the responder here lacks) —
-  // and verifies the response and actual writability differ per-context
-  // within that single request, exercising the per-context error isolation
-  // in _handleWriterRequest's loop (a denial for one context must not
-  // block a grant for another in the same request).
   console.log('TEST: selective per-context authorization - starting (no network needed)')
   const owner = await createGraph(t, 'writer-auth-selective-owner')
   const peer = await createGraph(t, 'writer-auth-selective-peer')
@@ -304,9 +253,6 @@ test('writer-authorization: a single request can grant some contexts while denyi
   const ownGraphPubkey = owner.graph.identity.deviceKeyPair.publicKey.toString('hex')
   const someoneElseKeyPair = crypto.keyPair()
   await owner.graph.createRoleBase()
-  // Owner role goes to a key other than this graph's own identity, so the
-  // responding peer (owner.graph itself) ends up with no privileges of its
-  // own — matching the "unauthorized responder" test's approach.
   await owner.graph.roleBase.init(someoneElseKeyPair.publicKey.toString('hex'))
   await owner.graph.setRole(ownGraphPubkey, 'member', { keyPair: someoneElseKeyPair })
   await owner.graph.update()
@@ -367,13 +313,10 @@ test('writer-authorization: emits writer-request-timeout if the owner never resp
 
   const topic = crypto.randomBytes(32)
   const networkingOwner = new HypergraphNetwork(owner.graph, owner.store, {}, { topic, role: 'owner', contexts: { chat: contextKey } })
-  // Short timeout for a fast test; the default (30000ms) is for production use.
   const networkingPeer = new HypergraphNetwork(peer.graph, peer.store, {}, { topic, role: 'peer', contexts: { chat: contextKey }, writerRequestTimeoutMs: 500 })
   await networkingOwner._openContexts()
   await networkingPeer._openContexts()
 
-  // Simulate a hung/buggy owner: the channel opens and the request
-  // arrives, but nothing is ever sent back.
   networkingOwner._handleWriterRequest = async () => {}
 
   let timeoutInfo = null
@@ -449,11 +392,6 @@ test('writer-authorization: waitForWriterGrant() resolves on a real grant and re
 })
 
 test('writer-authorization: autoReplicate:false actually skips Corestore replication', async (t) => {
-  // The option existed but was never verified to actually do anything.
-  // Also confirms autoReplicate only affects store.replicate(conn) — the
-  // writer-auth channel is wired unconditionally in _handleDataConnection,
-  // so the handshake should still work normally even with replication
-  // disabled.
   console.log('TEST: autoReplicate:false - starting (no network needed)')
   const owner = await createGraph(t, 'writer-auth-noreplicate-owner')
   const peer = await createGraph(t, 'writer-auth-noreplicate-peer')
@@ -485,8 +423,6 @@ test('writer-authorization: autoReplicate:false actually skips Corestore replica
   }
   t.ok(grantOk, 'writer-auth channel still works normally with autoReplicate:false (it is unaffected by this option)')
 
-  // Give replication every chance it would normally have to happen, then
-  // confirm it genuinely did not.
   for (let i = 0; i < 10; i++) {
     await sleep(200)
     await ownerUserCoreOnPeer.update({ wait: false })

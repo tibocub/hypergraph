@@ -41,7 +41,6 @@ test('v2 invites: a link joins a community; a forged one gives nothing', async (
   t.ok(result.recorded, 'recorded')
   t.ok(await until(async () => (await n.latest(general)).some(m => m.text === 'welcome')), 'reads the public channel')
 
-  // An invite signed by someone who isn't staff, claiming admin.
   const stranger = hcrypto.keyPair()
   const forged = encodeLink(makeInvite({ community: owner.community.key, role: 'admin' }, stranger))
   const x = await member(t, 'inv-join-x', { key: owner.community.key })
@@ -110,7 +109,6 @@ test('v2 invites: use limits, the same person twice, expiry, revocation, a demot
   await owner.community.revokeInvite(revoked)
   t.absent((await d.community.redeem(revoked, { timeout: 3000 })).recorded, 'a revoked link gives nothing')
 
-  // An admin's link, then the admin is demoted before anyone redeems it.
   await owner.community.setRole(other.pub, 'admin', { writer: other.community.localKey })
   await until(async () => { await other.community.update(); return other.community.role(other.pub) === 'admin' && other.community.control.writable })
   const fromAdmin = await other.community.createInvite({ role: 'mod' })

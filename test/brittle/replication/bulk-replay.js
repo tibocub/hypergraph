@@ -1,8 +1,4 @@
 // How other peers replay bulk writes (spec 002, US2).
-//
-// In-memory replication (store.replicate piped to store.replicate), not the
-// DHT: what is under test is replay and convergence, not the network, and
-// this keeps it deterministic.
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
@@ -57,8 +53,6 @@ test('bulk-replay: another peer replays a bulk-written context in one step per b
 
   t.alike(await edgesInto(b.graph, dir.id, ctx), await edgesInto(a.graph, dir.id, ctx), 'B has exactly A\'s edges')
 
-  // The grouping travels with the oplog: B's copy of A's writer core holds
-  // three batches of 1,000, which is what Autobase replays one apply call per.
   const batchStarts = []
   const { OplogMessage } = require('autobase/lib/messages.js')
   const oplog = b.store.get({ key: aContext.base.local.key, valueEncoding: OplogMessage })
@@ -107,7 +101,6 @@ test('bulk-replay: a hostile writer\'s huge batch of forged, foreign and malform
     }
   }
 
-  // Straight into Autobase as one batch, the way a modified client could.
   await context.base.append(blocks)
   await context.base.update()
   await graph.update()
@@ -130,7 +123,6 @@ test('bulk-replay: two writers flushing bulk batches concurrently converge to th
   await a.graph.openUserCore(b.graph.key)
   await b.graph.openUserCore(a.graph.key)
 
-  // A shared target that neither owns.
   const target = 'dir/shared'
   const fill = (graph) => {
     const batch = graph.batch()

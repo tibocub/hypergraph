@@ -1,5 +1,5 @@
-// Activity lists between members (story 9, US9 #2 and #3, SC-006; research.md
-// A14): an author's first record in a period gives an entry every member keeps
+// Activity lists between members: an author's first record in a period gives
+// an entry every member keeps
 // and passes on (the ~40-byte entry is the notice); false entries and entries
 // for logs that may not write here are neither kept nor passed on, and
 // throwaway keys cost nothing lasting.
@@ -88,7 +88,6 @@ test('10,000 throwaway-key entries add nothing to a member\'s lists or index, an
   for (const heard of listeners) {
     t.absent(heard.some((x) => keys.has(x.log) && x.peer !== e.device.publicKey), 'no member passed any on')
   }
-  // the space still works
   const p = await forum.post(fc, 'after the spam', '')
   t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === p.id), 3000), 'a still gets c\'s new post')
 })

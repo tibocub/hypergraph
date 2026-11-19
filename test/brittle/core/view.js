@@ -81,11 +81,6 @@ test('view: getContent() still returns the true latest version past 10 revisions
 
 test('view: getContent() rejects content forged by a peer who does not own the entity — regression for a missing apply-time ownership check', async (t) => {
   console.log('TEST: content forgery rejection - starting')
-  // content/append previously had no ownership check at apply time (unlike
-  // entity/create and entity/tombstone, both of which already required
-  // event.author === coreKeyHex). Any peer whose UserCore is opened by the
-  // victim (a normal, expected situation) could forge content for any
-  // entityId once the victim's own view processed their UserCore.
   const victim = await createGraph(t, 'content-forgery-victim')
   const attacker = await createGraph(t, 'content-forgery-attacker')
 
@@ -214,14 +209,10 @@ test('view: getIdentity() returns a profile by public key, or null', async (t) =
   console.log('TEST: view getIdentity - passed')
 })
 
-// ── Batched indexing (spec 002, US1) ────────────────────────────────────────
 
 const { encodeEvent } = require('../../../src/encodings/event')
 const tuning = require('../../../src/tuning')
 
-// Append n entities (each with one content version) straight to a graph's own
-// user core, without indexing them — the same bytes put()/putContent() write,
-// so the next update() has a long backlog to index in one pass.
 async function appendBacklog (graph, n, type = 'file') {
   const author = graph.key.toString('hex')
   let seq = graph.core.length
@@ -264,7 +255,6 @@ test('view: an indexing pass interrupted mid-way resumes to exactly the same ind
   const deviceKeyPair = hypercoreCrypto.keyPair()
   t.teardown(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10 }))
 
-  // First run: index fails after 450 events (4 committed chunks + half a chunk).
   let store = new Corestore(dir)
   let indexed = 0
   let graph = new Hypergraph(store, {
@@ -277,7 +267,6 @@ test('view: an indexing pass interrupted mid-way resumes to exactly the same ind
   await graph.close()
   await store.close()
 
-  // Second run: same store, no failure.
   store = new Corestore(dir)
   graph = new Hypergraph(store, { deviceKeyPair })
   await graph.ready()
@@ -323,9 +312,6 @@ test('view: a peer missing part of another user\'s log indexes what it has, then
   const ids = await appendBacklog(a.graph, 300)
   await a.graph.update()
 
-  // B ends up holding only the first 200 blocks (100 entities) while
-  // knowing the log is 600 long, with A gone. (openUserCore() downloads in
-  // the background, so get there by syncing, disconnecting, then clearing.)
   let s1 = a.store.replicate(true)
   let s2 = b.store.replicate(false)
   s1.pipe(s2).pipe(s1)
@@ -341,7 +327,6 @@ test('view: a peer missing part of another user\'s log indexes what it has, then
   t.ok(await b.graph.get(ids[99]), 'the last entity it holds is indexed')
   t.is(await b.graph.get(ids[100]), null, 'nothing past what it holds')
 
-  // A comes back.
   s1 = a.store.replicate(true)
   s2 = b.store.replicate(false)
   s1.pipe(s2).pipe(s1)
@@ -377,9 +362,6 @@ test('view: closing a graph right after opening a context or user core never cra
 })
 
 test('view: opening another user\'s core starts downloading it right away, without waiting for an update() (spec 002)', { timeout: 120000 }, async (t) => {
-  // A joining peer's update() spends a long time replaying contexts; the
-  // users' logs should be arriving in the background meanwhile, not only
-  // once a later update() reaches them.
   const a = await createGraph(t, 'view-follow-a')
   const b = await createGraph(t, 'view-follow-b')
   await appendBacklog(a.graph, 2000)
@@ -397,7 +379,6 @@ test('view: opening another user\'s core starts downloading it right away, witho
   }
   t.is(held, 4000, 'every block arrived with no update() call')
 
-  // ...and keeps following: blocks appended later arrive too.
   await appendBacklog(a.graph, 10)
   for (let i = 0; i < 200 && remote.core.contiguousLength < 4020; i++) await sleep(50)
   t.is(remote.core.contiguousLength, 4020, 'later appends follow')

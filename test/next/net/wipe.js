@@ -1,4 +1,4 @@
-// A deleted record stays wiped (FR-028): after members disconnect, reconnect
+// A deleted record stays wiped: after members disconnect, reconnect
 // and restart, no member holds its block again, so nobody can serve it; a
 // newcomer never gets it, and the hole it leaves doesn't stop the newcomer
 // from indexing what comes after, nor its answers from being complete.
@@ -24,7 +24,6 @@ test('a deleted record stays wiped after reconnecting and restarting', async (t)
   await forum.remove(fa, gone)
   t.ok(await eventually(() => holdsNone(all, gone.id), 3000), 'wiped everywhere')
 
-  // b and c go away and come back (new connections, new downloads); a writes meanwhile.
   await b.close()
   await c.close()
   const later = await forum.post(fa, 'while they were away', '')

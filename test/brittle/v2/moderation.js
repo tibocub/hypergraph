@@ -1,15 +1,10 @@
 // v2 prototype: moderation on partial data (spec 007, US3, FR-016, FR-017, SC-006).
-// Hides and bans live in the control log, which every member holds in full;
-// they must apply the same way to a member holding everything, one holding
-// only what it read, and one who joined after the decision.
 
 const test = require('brittle')
 const { member, link, until, sleep } = require('./_helpers')
 
 const SEG = 60000
 
-// owner (mod, keeper), author `a`, early reader `b`; `late()` adds a reader
-// who joins later.
 async function setup (t, label) {
   const owner = await member(t, `${label}-owner`)
   const channel = await owner.community.createChannel({ name: 'general', segmentMs: SEG })
@@ -26,7 +21,6 @@ async function setup (t, label) {
   return { owner, a, b, channel, join }
 }
 
-// The page as `peer` sees it once the control log has caught up with the owner.
 async function pageOf (peer, owner, channel, expectCount) {
   let page = []
   await until(async () => {
@@ -66,8 +60,6 @@ test('v2 moderation: a ban leaves out posts after it, including ones dated befor
   await pageOf(owner, owner, channel, 1)
 
   await owner.community.ban(a.identity.keyPair.publicKey, { reason: 'spam' })
-  // The author keeps posting: once with the honest time, once dated like
-  // its last post (before the ban), which a rule on claimed times lets through.
   await sleep(10)
   await a.community.postRaw(channel, { t: Date.now(), text: 'after' })
   await a.community.postRaw(channel, { t: before.t, text: 'backdated' })
@@ -75,8 +67,6 @@ test('v2 moderation: a ban leaves out posts after it, including ones dated befor
   const c = await join('c')
   t.teardown(link(a, c))
   for (const [name, peer] of [['the mod', owner], ['an early reader', b], ['a late joiner', c]]) {
-    // Holding all three of the author's messages, so "not shown" means
-    // filtered, not "not arrived yet".
     t.ok(await until(async () => (await peer.community.logLength(before.log)) >= before.seq + 3), `${name} holds the three posts`)
     t.alike(summary(await pageOf(peer, owner, channel, 1)), ['before'], `${name}: only the post before the ban`)
   }
@@ -86,9 +76,6 @@ test('v2 moderation: a ban leaves out posts after it, including ones dated befor
 })
 
 for (const byKeeper of [true, false]) test(`v2 moderation: a ban also cuts a log last listed in an older segment (mod ${byKeeper ? 'is' : 'is not'} the keeper)`, async (t) => {
-  // The ban's cut covered logs listed in the current or previous segment only:
-  // an author whose last post was older could append posts dated back into
-  // that segment, and scrollback showed them.
   const b4a = require('b4a')
   const hcrypto = require('hypercore-crypto')
   const { AuthorLog } = require('../../../src/v2/author-log')
@@ -100,7 +87,6 @@ for (const byKeeper of [true, false]) test(`v2 moderation: a ban also cuts a log
   const channel = b4a.toString(hcrypto.randomBytes(16), 'hex')
   await owner.community.appendAs(owner.identity.keyPair, { type: 'channel', id: channel, name: 'general', segmentMs: SEG, timestamp: segmentStart(old, SEG) })
   await owner.community.keep(channel)
-  // The author's log (in the owner's store here, appended to as the author would).
   const author = { keyPair: hcrypto.keyPair(), seed: hcrypto.randomBytes(32) }
   const log = new AuthorLog(owner.store, { keyPair: AuthorLog.keyPairFor(author, owner.community.key, channel) })
   await log.ready()

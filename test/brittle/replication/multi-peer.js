@@ -1,43 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
-// Cannot be verified without real network access.
-//
-// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
-// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
-// Hyperswarm's graceful discovery-session cleanup, which is what would
-// otherwise call discX.destroy() internally anyway — and that path can
-// invoke an unannounce() network call with no visible internal timeout.
-// See test/brittle/networking/peer-connection.js for the fuller
-// investigation.
-//
-// Teardown always closes graph/store before destroying swarms (see
-// late-joiner.js for the full explanation of why order matters here).
-//
-// CONNECTION VERIFICATION: `discovery.flushed()` only proves the local
-// side's own DHT announce/lookup round finished — it does NOT prove an
-// actual peer-to-peer connection exists yet (this is the same lesson
-// learned the hard way with HypergraphNetwork's `connected` flag and fixed
-// via `waitForPeer()`). These tests use raw Hyperswarm directly, so there's
-// no equivalent helper — instead we explicitly wait on `swarm.connections`
-// (a real Set of live connections) before assuming any peer is reachable.
-//
-// This matters especially for peer C here: if C's swarm never gets a real
-// connection to *anyone* (A or B), no amount of Corestore-level relay logic
-// will help, because Corestore's replicate() only serves/receives data over
-// connections that actually exist. Corestore is, by design, already able to
-// relay a core it holds to any peer connected to it (a normal, non-weak
-// session defaults to `active`, which is what makes it eligible for
-// auto-attachment on any stream) — so if a genuine A-B and B-C connection
-// both exist, C should receive A's data via B without any special "manually
-// replicate this specific remote core" handling. The waitForConnections()
-// helper below exists to confirm that baseline (a live connection) is
-// actually met before blaming replication logic for a connectivity problem.
-//
-// BUG FIX: watched remote user cores via raw `store.get()`, which only
-// creates a Hypercore reference for replication — it never registers the
-// core with the graph's view, so graph.get()/getContent() could never see
-// remote peers' data. Switched to openUserCore() so exact content can
-// actually be verified on every peer, not just raw core length (which only
-// proves *some* bytes arrived, not the *right* ones).
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
@@ -91,8 +52,6 @@ test('multi-peer: data written by one peer replicates to two others, with conten
   t.ok(hasAllConnections, 'every peer has at least one live connection before data is written')
 
   if (!hasAllConnections) {
-    // A real connectivity failure (DHT/NAT) — no point burning the pump
-    // budget waiting for data that has no path to arrive.
     console.log('TEST: 3-peer replication - skipped remaining steps (missing connection)')
     return
   }

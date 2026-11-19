@@ -1,5 +1,4 @@
 // The local index's definition (lib/index/spec, built by lib/index/build.js):
-// every collection and index works, and every key starts with the space.
 
 const test = require('brittle')
 const b4a = require('b4a')

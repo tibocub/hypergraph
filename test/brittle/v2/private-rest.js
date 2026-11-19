@@ -56,7 +56,6 @@ test('v2 private-rest: a helper holding everything serves encrypted messages and
   await owner.community.post(channel, 'kept by the helper')
   const m = await member(t, 'pr-helper-m', { key: owner.community.key, replicate: 'sparse' })
   await owner.community.grant(channel, who(m))
-  // The helper holds the log, the roster and the grants (it can't read any of it).
   t.ok(await until(async () => {
     const [grants] = await helper.community.grantsCores(channel)
     if (!grants) return false

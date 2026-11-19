@@ -1,10 +1,8 @@
-// A private forum's history (research.md A16): its key changes whenever
+// A private forum's history: its key changes whenever
 // someone loses access, and each new key unlocks the ones before it (a key
 // chain), so a newcomer reads everything written before it joined — unless
 // the forum hides its history (`setHistory('hidden')`): then a newcomer reads
 // from its join on, and what came before doesn't count as missing for it.
-// Removed members never read what is written after their removal, and two
-// key changes at once (a partition) leave every post readable.
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -15,9 +13,6 @@ const { eventually, codeOf, open } = require('../helpers.js')
 const titles = async (f) => (await forum.latest(f, 50)).map((p) => p.title).sort()
 const shows = async (f, id) => (await forum.latest(f, 50)).some((p) => p.id === id)
 
-// A private forum by a with b as a member; three times someone joins (and
-// reads a welcome written once a knows of its device) and is removed (each
-// removal changes the key), with a post after each removal.
 async function rotated (t, { history } = {}) {
   const a = await account(t, 'a')
   const club = await forum.createForum(a, 'Club', { private: true })
@@ -39,8 +34,6 @@ async function rotated (t, { history } = {}) {
   return { club, removed, count: posts.length }
 }
 
-// Joins `club` and waits until its owner knows of the newcomer's device (the
-// moment from which a hidden history is readable).
 async function join (club, hg) {
   const f = await forum.join(hg, await forum.invite(club))
   await eventually(() => testing.logs(club).includes(testing.ownLog(f)), 10000)
@@ -99,7 +92,6 @@ test('two key changes at once (a partition): every post stays readable, for memb
   const p0 = await forum.post(club, 'together', '')
   for (const f of [fb, ...xs.map((m) => m.fx)]) t.ok(await eventually(() => shows(f, p0.id), 10000), 'everyone reads it')
 
-  // b goes offline and removes x; a, online, removes y: both change the key from the same epoch
   await b.close()
   const b2 = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules })
   const gb = b2.space(club.key)

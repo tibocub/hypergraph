@@ -1,4 +1,4 @@
-// Spec 027 (build.md FR-007): renewing a private space and trimming a forum.
+// Renewing a private space and trimming a forum.
 //   renew.time   a renew with N member devices (each a member with a log: the
 //                history, and a box of the "moved to" pointer), until it resolves (ms)
 //   renew.kb     what the renew wrote: the old space's move plus the new space's

@@ -26,7 +26,6 @@ async function bee (t) {
 
 const collect = async (it) => { const out = []; for await (const x of it) out.push(x); return out }
 
-// The same operations through one layout; everything they can be asked.
 async function run (layout, db) {
   const post = `post/${A}/3`
   const post2 = `post/${A}/4` // seq order and text order agree; see the numeric-order test
@@ -43,7 +42,6 @@ async function run (layout, db) {
   await layout.addTag(w, { tag: 'featured', entityId: post, author: A, createdAt: 5 })
   await layout.addTag(w, { tag: 'featured', entityId: post2, author: B, createdAt: 4 })
   await layout.addTag(w, { tag: 'feat', entityId: odd, author: 'not hex', createdAt: 6 })
-  // Reads inside the batch see its own writes.
   const inBatch = await layout.activeEdge(w, reply, 'reply', post)
   await w.flush()
 
@@ -82,7 +80,6 @@ test('index-layout: layout 2 answers every index query exactly like layout 1', a
   const r2 = await run(layout2, await bee(t))
   t.alike(r2, r1, 'identical results')
 
-  // And the results are the right ones, not just equal.
   t.is(r1.before.out.length, 2, 'two outgoing edges')
   t.is(r1.before.out[1].value, 0.5, 'edge value kept')
   t.is(r1.before.outTyped[0].data, '{"size":12}', 'edge data kept')
@@ -144,7 +141,6 @@ test('index-layout: new contexts use layout 2; a context without a layout record
   const rolebase = await a.graph.openContext(await a.graph.createContext({ roles: 'rolebase' }))
   t.is((await rolebase.status()).layout, 2, 'a new RoleBase context: layout 2')
 
-  // A context created before layouts existed: no context/init at all.
   const legacy = new ContextBase(a.store, null, {})
   await legacy.ready()
   t.teardown(() => legacy.close(), { order: -1 }) // before the store: Autobase 7.28.2 opens a store session while closing
@@ -155,7 +151,6 @@ test('index-layout: new contexts use layout 2; a context without a layout record
   t.ok(bLegacy.writable, 'b writes in the legacy context')
   t.is((await bLegacy.status()).layout, 1, 'legacy context: layout 1')
 
-  // The same writes in both kinds of context read back the same way.
   const bFresh = await b.graph.createContext()
   const answers = []
   for (const ctx of [legacyKey, bFresh]) {

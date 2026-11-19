@@ -1,4 +1,4 @@
-// Spec 026: each holder's share and use (lib/circles.js): when a device
+// Each holder's share and use (lib/circles.js): when a device
 // rewrites its hg/holder record, and the sums members see.
 
 const test = require('brittle')

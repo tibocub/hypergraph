@@ -1,4 +1,4 @@
-// Cuts (research R8, R11, amended in research.md A4): when someone loses the
+// Cuts: when someone loses the
 // right to write — removed, banned — the decision records their device logs'
 // lengths as the decider held them. Records below the cut stay for everyone,
 // records past it are ignored by everyone: members who indexed them remove
@@ -10,7 +10,6 @@ const testing = require('../../../lib/testing.js')
 const { account, threeMembers } = require('../forum/_setup.js')
 const { eventually, sleep, open } = require('../helpers.js')
 
-// What a member shows: posts (ids, texts), and the comments and score of `on`.
 async function view (f, on) {
   const posts = (await forum.latest(f)).map((p) => `${p.id}:${p.text}`).sort()
   const comments = (await forum.comments(f, on)).map((c) => c.id).sort()
@@ -34,8 +33,6 @@ test('a removed member: what they wrote before stays for everyone, nothing after
   t.ok(await eventually(async () => (await fb.getRole(b.identity.publicKey)) === null, 5000), 'b learns it was removed')
   await t.exception(forum.post(fb, 'refused', ''), /NOT_ALLOWED|member/, 'b\'s app refuses to write')
 
-  // A misbehaving b writes anyway: a post, a vote replacing its earlier one,
-  // an edit of its earlier post, a comment.
   const after = await testing.writeRaw(fb, { kind: 'put', type: 'post', fields: { title: 'after', text: 'after' } })
   await testing.writeRaw(fb, { kind: 'put', type: 'vote', fields: { on: p.id, value: -1 } })
   await testing.writeRaw(fb, { kind: 'edit', type: 'post', target: before.id, fields: { title: 'by b', text: 'edited after' } })
@@ -77,7 +74,6 @@ test('members who already showed records past the cut take them back', async (t)
   await forum.vote(fb, p, 1)
   t.ok(await agree([fa, fc], p, JSON.stringify({ posts: [`${old.id}:old`, `${p.id}:a`].sort(), comments: [], score: 1 })), "a and c hold b's first records")
 
-  // a goes away; b goes on writing, and c shows it all.
   await a.close()
   const newer = await forum.post(fb, 'newer', 'newer')
   await forum.vote(fb, p, -1)
@@ -86,7 +82,6 @@ test('members who already showed records past the cut take them back', async (t)
   const later = JSON.stringify({ posts: [`${old.id}:old, edited`, `${newer.id}:newer`, `${p.id}:a`].sort(), comments: [reply.id], score: -1 })
   t.ok(await agree([fc], p, later), "c shows b's newer records")
 
-  // a, offline, removes b where a holds b's log: before the newer records.
   const a2 = await open(t, { dir: a.dir, types: forum.types })
   await forum.removeMember(a2.space(fa.key), b.identity.publicKey)
   await a2.connectToSwarm()
@@ -106,13 +101,11 @@ test('a ban\'s cut is the moderator\'s held lengths, wherever the others are', a
   await forum.vote(fc, p, 1)
   t.ok(await eventually(async () => (await forum.score(fb, p)) === 1 && (await forum.latest(fb)).some((x) => x.id === early.id), 5000), "b holds c's early records")
 
-  // b (the moderator) goes away; c writes on, and a shows it.
   await b.close()
   const late = await forum.post(fc, 'late', 'late')
   await forum.vote(fc, p, -1)
   t.ok(await eventually(async () => (await forum.latest(fa)).some((x) => x.id === late.id), 5000), 'a shows c\'s late post')
 
-  // b, offline, bans c where b holds c's log: before the late records.
   const b2 = await open(t, { dir: b.dir, types: forum.types })
   await forum.ban(b2.space(fb.key), c.identity.publicKey, { reason: 'spam' })
   await b2.connectToSwarm()

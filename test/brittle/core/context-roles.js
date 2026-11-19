@@ -57,7 +57,6 @@ test('context-roles: who may change roles is decided from the context\'s own tab
   await context.removeRole(hex(alice), { keyPair: mallory })
   t.is((await context.roles()).members[hex(alice)], 'admin', 'a stranger cannot remove an admin')
 
-  // A grant whose signature doesn't match its author.
   const forged = { type: 'context/role', member: hex(mallory), role: 'admin', author: hex(owner), timestamp: Date.now(), signature: 'ab'.repeat(64) }
   await context.append(forged)
   t.absent((await context.roles()).members[hex(mallory)], 'a forged grant is ignored')
@@ -68,14 +67,12 @@ test('context-roles: closed-mode writers and moderation are checked against the 
   const contextAdmin = crypto.keyPair()
   const roleBaseOnly = crypto.keyPair()
 
-  // A RoleBase that says roleBaseOnly is an admin and a mod...
   await graph.createRoleBase()
   await graph.roleBase.init(hex(owner))
   await graph.setRole(hex(roleBaseOnly), 'admin', { keyPair: owner })
   await graph.update()
   t.ok(await graph.can(hex(roleBaseOnly), 'context.write'), 'the RoleBase grants it context.write')
 
-  // ...but only contextAdmin has a role in this context.
   await context.setRole(hex(contextAdmin), 'admin', { keyPair: owner })
 
   const w1 = crypto.keyPair().publicKey
@@ -112,7 +109,6 @@ test('context-roles: the creator converts a version 1 context — only it indexe
   await legacy.addWriter(bCtx.localKey)
   t.ok(await until(async () => { await legacy.update(); await b.graph.update(); return (await legacy.status()).indexers.length === 2 }), 'version 1: both index')
 
-  // A non-creator cannot convert.
   await bCtx.upgrade({ keyPair: b.graph.identity.deviceKeyPair })
   await until(async () => { await legacy.update(); await b.graph.update(); return legacy.base.length === bCtx.base.length })
   t.is((await legacy.status()).version, 1, 'conversion by a non-creator ignored')

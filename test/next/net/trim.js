@@ -1,4 +1,4 @@
-// Spec 027 (build.md FR-003, FR-006; design changes 4, 5): trimming a
+// Trimming a
 // space's history. A signed decision every member's device follows (index
 // rows and blocks go, kept records keep their ids), and every holder too, by
 // a `clear-core` request only a member who handed the core may send. A
@@ -16,7 +16,6 @@ const { holdsAll } = require('./_circles.js')
 const DAY = 24 * 3600 * 1000
 const titles = async (f) => (await forum.latest(f, 50)).map((p) => p.title)
 
-// What `hg` holds of blocks [start, end) of core `key`.
 async function holds (hg, key, start, end) {
   const core = hg.store.get({ key })
   await core.ready()
@@ -51,7 +50,6 @@ test('trim: every member\'s device drops what came before, the rest keeps its id
   t.ok(await eventually(async () => (await titles(fa)).includes('new-2'), 20000), 'and the space goes on')
 })
 
-// a and one holder `h` in a circle, plus `m`, a member who doesn't hold.
 async function circle (t) {
   const a = await account(t, 'a')
   const c = await a.createCircle({ name: 'C' })

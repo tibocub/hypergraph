@@ -1,4 +1,4 @@
-// A silent member costs nothing (spec 016, US3, research R4): no log of a
+// A silent member costs nothing: no log of a
 // member is announced before its first record, invited or public; then it is,
 // and the record arrives. A private space still accepts it at join (key
 // holders grant the devices they see).

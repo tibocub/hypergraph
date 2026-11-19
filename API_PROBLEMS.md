@@ -15,7 +15,7 @@ from here — don't leave a stale copy.
 - **Bootstrap/export API surface is split in two**: `Hypergraph.export()`/`Hypergraph.join()`
   (context keys + write mode only, no networking) coexist with
   `HypergraphNetwork.generateBootstrap()`/`connectFromBootstrap()` (full networking). Which one
-  to use is now documented (`docs/networking.md`), but the duplicate shape itself is unresolved.
+  to use is now documented (`docs/v1/networking.md`), but the duplicate shape itself is unresolved.
 - **Inconsistent method placement**: instance vs. static methods, and which class owns which
   concern (`graph.createContext()` vs `Hypergraph.join()` vs `graph.handlePeerConnection()` vs
   `graph.export()`), still isn't unified under one convention (Constitution Principle IV).

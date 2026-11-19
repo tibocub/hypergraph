@@ -1,35 +1,6 @@
 // NOTE ON NETWORK DEPENDENCY: this test joins the real public DHT via
 // Hyperswarm to connect two peers. It cannot be verified without real
 // network access — run it on a machine with internet access.
-//
-// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
-// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
-// Hyperswarm's graceful discovery-session cleanup, which is what would
-// otherwise call discX.destroy() internally anyway — and that path can
-// invoke an unannounce() network call with no visible internal timeout.
-// See test/brittle/networking/peer-connection.js for the fuller
-// investigation.
-//
-// Ported from the old ad-hoc `replication-scenarios.js` script (a custom
-// main()-based runner that never actually integrated with brittle) into a
-// real brittle test.
-//
-// TEARDOWN ORDERING BUG FOUND & FIXED: brittle's t.teardown() runs LIFO.
-// Registering `t.teardown(() => swarmA.destroy())` right after creating the
-// swarm — but *after* createGraph() already registered peer a's own
-// graph/store-close teardown — meant the swarm was destroyed BEFORE the
-// graph/store closed, tearing the raw socket out from under an in-flight
-// replication stream mid-shutdown. store.close() then hung forever waiting
-// for a clean close event that would never come, deterministically, every
-// run. Fixed by consolidating into one teardown per peer that always closes
-// graph/store first and destroys the swarm last.
-//
-// BUG FIX: watched the remote user core via a raw `store.get()`, which only
-// creates a Hypercore reference for replication — it never registers the
-// core with the graph's view, so graph.get()/getContent() could never see
-// peer A's data. Switched to openUserCore() so exact content can actually
-// be verified, not just raw core length (which only proves *some* bytes
-// arrived, not the *right* ones).
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')

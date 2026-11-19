@@ -110,7 +110,7 @@ Writer: 10.8 min, 913 MB peak, 5.5 GB disk (edge data adds ~0.25 GB at 1M).
 ### 2026-10-05 — `specs/002-scale-indexing` US3 (compact index keys)
 
 GraphView in `graph-view/2` with binary keys and content as pointers; new contexts' edges,
-counters and tags in layout 2 (`docs/contributors/index-structure.md`). Disk is measured after
+counters and tags in layout 2 (`docs/v1/contributors/index-structure.md`). Disk is measured after
 `compact()` on each store: uncompacted sizes swing by tens of percent with whatever RocksDB has
 not flushed yet (one joining peer: 50 MB uncompacted, 22 MB compacted).
 

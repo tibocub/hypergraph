@@ -1,4 +1,4 @@
-// Member streams (SwarmFS's request S1): an app's own transfer library gets
+// Member streams: an app's own transfer library gets
 // the connection streams of a space's proven members, as they connect and
 // the current ones, and opens its own Protomux channel on them, next to
 // hypergraph's. A non-member's stream is never handed out, even one that

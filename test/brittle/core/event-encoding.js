@@ -2,11 +2,6 @@ const test = require('brittle')
 const { encodeEvent, decodeEvent } = require('../../../src/encodings/event')
 
 test('event-encoding: encodeEvent throws for an unregistered event type instead of silently dropping the event', async (t) => {
-  // Previously, an unrecognized event.type (a typo, or a new type added
-  // elsewhere without updating EVENT_TYPES here) silently encoded as
-  // typeCode 0 with none of the type's real fields — decode then handed
-  // back only `{ type: undefined, timestamp }`, permanently losing every
-  // other field with no error anywhere to say why.
   console.log('TEST: encodeEvent rejects unknown type - starting')
 
   t.exception(
@@ -48,8 +43,6 @@ test('event-encoding: decodeEvent never throws on malformed/truncated bytes', as
   t.ok(decoded && typeof decoded === 'object', 'a truncated buffer still returns a safe object, not null (null means "no buffer" to callers, not "corrupted")')
   t.absent(decoded.type, 'the safe fallback has no matchable type, so every downstream type-based switch/if-chain skips it exactly like an unrecognized type')
 
-  // Corrupted length prefix: flip a byte partway through so the encoded
-  // varint length no longer matches what's actually in the buffer.
   const corrupted = Buffer.from(good)
   corrupted[Math.floor(corrupted.length / 2)] = 0xff
   t.execution(() => decodeEvent(corrupted), 'decoding a corrupted buffer does not throw')
@@ -62,10 +55,6 @@ test('event-encoding: decodeEvent never throws on malformed/truncated bytes', as
 })
 
 test('event-encoding: a context stores exactly encodeEvent(event) in its oplog, for every event type', async (t) => {
-  // Guards FR-021 of spec 002: hypergraph now hands Autobase pre-encoded
-  // bytes instead of letting Autobase run our codec, so batched appends
-  // work. The bytes in the oplog (what replicates to every peer, including
-  // peers on older versions) must be exactly what they were before.
   const { createGraph } = require('../helpers')
   const { graph } = await createGraph(t, 'oplog-bytes')
   const ctx = await graph.createContext()
@@ -128,17 +117,12 @@ test('event-encoding: invites and redemptions carry an optional scope request; o
   t.alike(decodeEvent(encodeEvent(withKey)), withKey, 'redemption with an encryption key round-trips')
   t.alike(decodeEvent(encodeEvent(plainRedeem)), plainRedeem, 'plain redemption round-trips without one')
 
-  // Signed: changing the requested scope or the encryption key changes the digest,
-  // and plain events hash exactly as before.
   t.unlike(stableContextHash(scoped, a), stableContextHash({ ...scoped, scope: 'other' }, a), 'scope is signed')
   t.unlike(stableContextHash(withKey, a), stableContextHash({ ...withKey, encryptionKey: '0'.repeat(64) }, a), 'encryption key is signed')
   t.alike(stableContextHash(plainRedeem, a), stableContextHash({ ...plainRedeem }, a))
 })
 
 test('event-encoding: an event type this version does not know decodes to { type: undefined } without throwing', async (t) => {
-  // What an older peer does with context/init, and what this peer does with
-  // a type added after it — the reason mixed versions in one context are
-  // unsupported rather than silently wrong (spec 003, research R3).
   const c = require('compact-encoding')
   const state = { start: 0, end: 0, buffer: null }
   c.uint.preencode(state, 200); c.uint.preencode(state, 5); c.string.preencode(state, 'future')
@@ -164,7 +148,6 @@ test('event-encoding: relation/create carries optional data; without it the byte
   t.alike(plainWithUndefined, plain, 'no data: identical bytes')
   t.absent('data' in decodeEvent(plain), 'no data field when there is none')
 
-  // What an older decoder sees: it stops after the value fields.
   const withDataBytes = encodeEvent(withData)
   const old = decodeEvent(withDataBytes.subarray(0, plain.length))
   t.is(old.from, base.from, 'the fields before data still decode')

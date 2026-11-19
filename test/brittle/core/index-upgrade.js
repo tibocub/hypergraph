@@ -31,7 +31,6 @@ test('index-upgrade: a store with an old `graph-view` core rebuilds the new inde
   const dir = tmpDir(t, 'upgrade')
   const deviceKeyPair = hypercoreCrypto.keyPair()
 
-  // A store as an older version left it: an index core named `graph-view`.
   let store = new Corestore(dir)
   const legacy = store.get({ name: 'graph-view' })
   await legacy.ready()
@@ -42,7 +41,7 @@ test('index-upgrade: a store with an old `graph-view` core rebuilds the new inde
 
   let graph = new Hypergraph(store, { deviceKeyPair })
   await graph.ready()
-  await graph.setIdentity({ username: 'tibo', bio: 'hi' })
+  await graph.setIdentity({ username: 'alice', bio: 'hi' })
   const a = await graph.put({ type: 'post' })
   await graph.putContent(a.id, 'first')
   await graph.putContent(a.id, 'second')
@@ -59,7 +58,6 @@ test('index-upgrade: a store with an old `graph-view` core rebuilds the new inde
   t.is(old.length, 0, 'the old index core was emptied')
   await old.close()
 
-  // Wipe the new index too, so this open must rebuild it from the logs.
   const fresh = store.get({ name: 'graph-view/2' })
   await fresh.ready()
   await fresh.truncate(0)
@@ -72,7 +70,7 @@ test('index-upgrade: a store with an old `graph-view` core rebuilds the new inde
   t.alike(after, before, 'every query answers the same after the rebuild')
   t.is(before.nodes.length, 2, 'the deleted entity stays deleted')
   t.is(before.content[0].body, 'second', 'the latest content version wins')
-  t.is(before.identity.username, 'tibo')
+  t.is(before.identity.username, 'alice')
   await graph.close()
   await store.close()
 })

@@ -1,7 +1,7 @@
-// Story 6 (ROADMAP 2026-10-09): space.inspect(), the read-only diagnostics
+// Space.inspect(), the read-only diagnostics
 // snapshot behind the inspector tool — logs, the decision log, records by
-// type, storage, peers, complete. Its shape is documented in contracts/api.md
-// ("Diagnostics"); it writes nothing and fetches nothing.
+// type, storage, peers, complete (docs/next/api.md, "Diagnostics"); it writes
+// nothing and fetches nothing.
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -56,7 +56,6 @@ test('inspect(): logs, decisions, records by type, storage, peers, complete', { 
   t.ok(snap.storage.share === null || snap.storage.share > 0)
   t.ok(Array.isArray(snap.warnings))
 
-  // A snapshot changes nothing.
   const before = testing.logs(fb).length
   await fb.inspect()
   t.is(testing.logs(fb).length, before, 'nothing fetched or written')
@@ -74,7 +73,6 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
     return log && log.cut === 2
   }, 30000), 'c\'s log shows its cut (its header and first post count)')
 
-  // Banned from its very first record: nothing in d's log counts, refused.
   const d = await account(t, 'd')
   const fd = await forum.join(d, await forum.invite(fa))
   const first = await forum.post(fd, 'spam from the start', '')
@@ -89,8 +87,6 @@ test('inspect(): a banned member\'s log shows its cut; a stranger\'s log is list
   const intruder = await testing.openSpace(stranger, fa.key)
   await testing.writeRaw(intruder, { kind: 'put', type: 'post', fields: { title: 'let me in', text: '' } })
   t.ok(await eventually(() => intruder.status().peers > 0, 30000), 'the stranger reached a member')
-  // It keeps pushing its log, as a spammer would (a member that missed one
-  // notice, or whose fetch of the header timed out, hears of it again).
   const waiting = async (f) => (await f.inspect()).logs.some((l) => l.key === testing.ownLog(intruder) && l.waiting && !l.held)
   t.ok(await eventually(async () => {
     testing.announce(intruder)

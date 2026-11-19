@@ -1,8 +1,4 @@
-// Activity entries (story 9, research.md A14; design brief, experiment 1):
-// "block `start` of this log is its first record stamped in `period` or
-// later". No signature: checked against the log itself (the block before is
-// the header or stamped before the period) and against "may this author
-// write here" (by whoever keeps it: lib/directory.js).
+// Activity entries:
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -20,19 +16,16 @@ test('a period is an hour of record stamps', (t) => {
 })
 
 test('an entry for the first record of each period', (t) => {
-  // blocks 1..6: two in period 10, one in 11, three in 13
   const stamps = [null, at(10, 1), at(10, 2), at(11), at(13), at(13, 5), at(13, 9)]
   const got = derive((seq) => stamps[seq], { from: 1, end: 7 })
   t.alike(got.entries, [{ period: 10, start: 1 }, { period: 11, start: 3 }, { period: 13, start: 4 }])
   t.is(got.next, 7, 'every block looked at')
-  // continuing later from where it stopped gives the next ones only
   stamps.push(at(13, 20), at(14))
   const more = derive((seq) => stamps[seq], { from: got.next, end: 9, last: got.last, period: got.period })
   t.alike(more.entries, [{ period: 14, start: 8 }])
 })
 
 test('a wiped block is skipped: the start follows the last readable block', (t) => {
-  // block 3 (period 11) was deleted: nobody can read its stamp
   const stamps = [null, at(10), at(10, 1), WIPED, at(11, 5), at(12)]
   const got = derive((seq) => stamps[seq], { from: 1, end: 6 })
   t.alike(got.entries, [{ period: 10, start: 1 }, { period: 11, start: 3 }, { period: 12, start: 5 }], 'period 11 starts right after block 2, the wiped block included')
@@ -65,7 +58,7 @@ test('an entry is about 40 bytes', (t) => {
   t.alike(c.decode(entry, bytes).start, 123456)
 })
 
-// Audit 3: a newcomer believes the activity lists from a period are whole
+// A newcomer believes the activity lists from a period are whole
 // once a peer's list says `done`. Only a list it asked for, of a member,
 // counts; a stranger's `done` list must not make a page "complete".
 test('only a list asked of a member makes the lists whole', async (t) => {

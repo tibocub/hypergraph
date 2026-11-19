@@ -10,7 +10,6 @@ module.exports = async function concurrentWrites (t, h) {
   const commentsContextKey = await p1.graph.createContext({ roles: 'rolebase' })
   const moderationContextKey = await p1.graph.createContext({ roles: 'rolebase' })
 
-  // Both peers must open the same contexts.
   const p1Comments = await p1.graph.openContext(commentsContextKey)
   const p1Moderation = await p1.graph.openContext(moderationContextKey)
   const p2Comments = await p2.graph.openContext(commentsContextKey)
@@ -31,7 +30,6 @@ module.exports = async function concurrentWrites (t, h) {
 
   const post = await p1.storage.createPost('seed')
 
-  // Grant p2 write access to the shared comments context.
   await p1Comments.addWriter(p2Comments.localKey)
 
   await pumpUntil(async () => {
@@ -39,7 +37,6 @@ module.exports = async function concurrentWrites (t, h) {
     if (!p2Comments.writable) throw new Error('p2 comments context not writable yet')
   }, 30000)
 
-  // Ensure p2 sees the post before replying.
   await pumpUntil(async () => {
     await p2.graph.update()
     const posts = await p2.storage.listPosts()
@@ -47,7 +44,6 @@ module.exports = async function concurrentWrites (t, h) {
     if (posts[0].id !== post.id) throw new Error('unexpected post id')
   }, 30000)
 
-  // Concurrent-ish: fire without awaiting between them.
   await Promise.all([
     p1.storage.reply(post.id, 'p1'),
     p2.storage.reply(post.id, 'p2')

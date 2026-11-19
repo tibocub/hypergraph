@@ -1,8 +1,8 @@
-// Settling log lists by key ranges (spec 016, US5, research R7): counts and
+// Settling log lists by key ranges: counts and
 // XOR digests of 16 sub-ranges per message; equal ones stop, small ones are
 // answered with their keys, the rest recurse. Two sets converge to their
 // union in a few rounds whatever their size; a peer whose keys don't match
-// the counts it gave is ignored for that round. Spec 017: each key comes with
+// the counts it gave is ignored for that round. Each key comes with
 // its log's length, so a longer log at a peer is found the same way.
 
 const test = require('brittle')
@@ -49,8 +49,6 @@ test('range digests and counts match a brute-force computation', (t) => {
   t.ok(set.has(list[1]))
 })
 
-// Two peers exchanging messages in rounds until both are quiet; what each
-// learns is added at once (as the gate would accept it).
 function settle (a, b, { lie = null, onLearn = () => {} } = {}) {
   const sa = new Session(a)
   const sb = new Session(b)
@@ -108,7 +106,6 @@ test('a peer whose keys don\'t match the counts it gave is ignored for that roun
   const a = setOf(common)
   const b = setOf([...common, ...extra])
   const junk = keysOf(3)
-  // a's peer (b) answers a's request for its keys with made-up ones
   const out = settle(a, b, {
     lie: (m) => (m.keys && m.kind === 0 ? { ...m, keys: [...m.keys, ...junk.map((k) => { const x = b4a.from(k); x.set(m.prefix.subarray(0, m.prefix.byteLength)); return x })], lengths: [...m.lengths, 0, 0, 0] } : m)
   })

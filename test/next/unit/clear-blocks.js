@@ -3,8 +3,7 @@
 // per-block bits; a later "dropped block k" sets that length to k, so peers
 // forget the holder still has k+1..n. A peer asks again ("want") only once
 // per 2M blocks, so one that already asked for a block the holder lacked
-// never gets them (specs/research/upstream/hypercore.md; research.md A5).
-// lib/replication.js's clearBlocks() announces them again.
+// never gets them.
 
 const test = require('brittle')
 const Hypercore = require('hypercore')
@@ -29,7 +28,6 @@ async function pair (t) {
   return { writer, reader, peer }
 }
 
-// Does the reader know the writer holds block i?
 const knows = (peer, i) => peer.remoteContiguousLength > i || peer.remoteBitfield.get(i)
 
 test('after clearing a block, peers still know the blocks after it are held', async (t) => {

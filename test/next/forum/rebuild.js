@@ -1,4 +1,4 @@
-// Story 6 #6, FR-012, SC-008: the local index is rebuilt from what the member
+// The local index is rebuilt from what the member
 // holds. Deleted or unreadable, it is rebuilt at the next start, and the
 // member shows the same as before — offline. After a crash in the middle of
 // indexing, only what wasn't saved yet is indexed again.
@@ -13,7 +13,6 @@ const { eventually, open } = require('../helpers.js')
 
 const opts = { types: forum.types, rules: forum.rules }
 
-// What a member shows of the forum and of the person.
 async function view (hg, f) {
   const posts = await forum.latest(f, 50)
   const out = []
@@ -91,7 +90,6 @@ test('a crash in the middle of indexing: only what wasn\'t saved is indexed agai
   await a.close()
   fs.rmSync(path.join(a.dir, 'index'), { recursive: true, force: true })
 
-  // Rebuilding; the process "dies" once a few batches were saved.
   testing.crashAfter(2)
   const crashed = await open(t, { dir: a.dir, ...opts })
   t.ok(await eventually(() => testing.crashed(crashed), 10000), 'it crashed while indexing')

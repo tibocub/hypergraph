@@ -1,8 +1,7 @@
-// Who may change a record (FR-003, story 5, research.md A9): the author
+// Who may change a record: the author
 // always; any member for 'members'; for { permission }, an editor's records
 // below the cut recorded when they lost it count, those past it don't, and a
 // log without a cut counts while they hold it. Deletes only by the author.
-// Relations and tags are said by who may edit what they start from.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -25,8 +24,6 @@ const member = crypto.randomBytes(32)
 const log = crypto.randomBytes(32)
 const at = (seq, l = log) => enc.idBytes({ log: l, seq })
 
-// editor has the role 'editor' (post, edit-pages) unless `demoted`, with a cut
-// of `log` at 5 when demoted.
 function state ({ demoted = false } = {}) {
   const entries = [
     ['meta', { name: 'W', owner: hex(author) }],

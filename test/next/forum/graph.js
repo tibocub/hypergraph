@@ -1,4 +1,4 @@
-// Story 5 #1-3: v1's graph vocabulary on the new core, with v1's meanings
+// The graph vocabulary of v1 on the new core, with the same meanings
 // (test/brittle/core/relations.js, tags.js, query.js): relations with a type,
 // a number and data, edges in and out with counts, tags, queries by type,
 // author, link, tag and time, paging without gaps or repeats. Every member
@@ -15,7 +15,6 @@ const agree = (spaces, fn, expected, ms = 10000) => eventually(async () => {
   return true
 }, ms)
 
-// The edges of `record` as one string: "from>to:type=value", sorted.
 const edgesOf = (record, opts) => async (f) => {
   const { items, count } = await f.edges(record, opts)
   return { count, edges: items.map((e) => `${e.from}>${e.to}:${e.type}=${e.value}`).sort() }

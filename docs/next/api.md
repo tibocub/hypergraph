@@ -1,14 +1,14 @@
-# Hypergraph's new core: API
+# API
 
-`require('hypergraph/next')`, the surface of stories 1 to 9 (spec 011). Concepts: [concepts.md](concepts.md); "deleted" and "incomplete" for your users: [deleting-and-incomplete.md](deleting-and-incomplete.md). The
-full planned surface, with what is built marked ✓: `specs/011-spaces-core/contracts/api.md`. The forum
-in `test/next/forum/forum.js` uses all of it. Testing your app: [testing.md](testing.md) (`hypergraph/testing`).
+`require('hypergraph/next')`. Concepts: [concepts.md](concepts.md); "deleted" and "incomplete" for your users: [deleting-and-incomplete.md](deleting-and-incomplete.md).
+The forum in `test/next/forum/forum.js` uses all of it; the generated reference (`npm run docs`) has every
+parameter, default, return value and error code. Testing your app: [testing.md](testing.md) (`hypergraph/testing`).
 
 Every key the API gives out (record ids, space keys, identity and device keys) is a short string.
 Reads return `{ items, complete }`, `{ record, complete }` or `{ value, complete }` (see
 [concepts.md](concepts.md#complete-answers)). Errors are `HypergraphError` with a `code`.
 
-Two rules (spec 012): **reads answer at once** from what this device holds, `complete` saying whether
+Two rules: **reads answer at once** from what this device holds, `complete` saying whether
 something it knows of is still on its way (a read waits only when you give it `{ timeout }`); and
 **everything a read returns has an event** that says when to read again
 ([Knowing when to read again](#knowing-when-to-read-again)).
@@ -132,7 +132,7 @@ each with its own types. A space opened by key before its types arrived (a visit
 types of its own) reads a type it doesn't know yet as empty and `complete: false`; once the space is
 complete, an unknown type throws `INVALID_TYPE`.
 
-**A space's own types** (spec 019). An engine serving many apps' spaces (a browser of sites) can't declare
+**A space's own types.** An engine serving many apps' spaces (a browser of sites) can't declare
 every site's types when it opens. The owner or an admin adds them to one space:
 
 ```js
@@ -195,7 +195,7 @@ site.query('post').live(render)
 site.on('change', onChange)                   // its own events only
 const sub = site.subspace(subKey)             // one of its sub-spaces; any other: NOT_ALLOWED
 site.identity                                 // { publicKey }
-site.moved; site.movedTo; site.renewal        // spec 027, read only: renew() and trimHistory() are not on a handle
+site.moved; site.movedTo; site.renewal        // read only: renew() and trimHistory() are not on a handle
 await site.close()
 ```
 
@@ -219,7 +219,7 @@ A call on a closed space while suspended throws `SUSPENDED`.
 const forum = await hg.createSpace({ name: 'Hypergraph fans' })
 const link = await forum.createInvite({ role: 'member', uses: 10, expires: Date.now() + 7 * 864e5 })
 const many = await forum.createInvite({ uses: Infinity })   // a link for anyone who gets it, until revoked
-await forum.makePublic()                                   // spec 016: open to everyone, for good (owner, admin)
+await forum.makePublic()                                   // open to everyone, for good (owner, admin)
 forum.isPublic                                             // true once public
 const open = forum.publicLink()                            // the space's one public link, the same on every member
 await forum.setWriteLimit({ records: 20, periodMs: 3600e3 })   // each device posts at most 20 records an hour
@@ -263,7 +263,7 @@ same role in each, a private one included, so one link lets someone into the for
 Its maker must be able to invite to that role there (`NOT_ALLOWED` otherwise, with the reason); a sub-space
 not inside this space is `NOT_FOUND`.
 
-**Public spaces** (spec 016): `makePublic()` (who may decide) opens a space to anyone, **for good**: the
+**Public spaces**: `makePublic()` (who may decide) opens a space to anyone, **for good**: the
 space's public link (`publicLink()`, its key in link form, the same on every member; `NOT_ALLOWED` before
 it is public) lets anyone in with no decision and no admin online, as a public Discord server's link. In a
 public space anyone the decision log doesn't name counts as `member` unless banned; joining writes nothing
@@ -279,7 +279,7 @@ for any role. `redeemInvite(publicLink)` resolves once a peer holding the space 
 is public; `INVITE_INVALID` "This space isn't public" if it isn't, or after the timeout if no one was
 reachable. `redemptions(publicLink)` lists the public joiners this member knows of (`at: null`).
 
-**Packs** (spec 020: an app shipping public spaces with it). `await hg.exportSpaces(keys, folder)` writes what a
+**Packs** (an app shipping public spaces with it). `await hg.exportSpaces(keys, folder)` writes what a
 visitor would download of the public spaces `keys` (held here; a sub-space by its own key): each space's
 decision log and accepted logs, whole and signed by their writers, and `spaces.json` listing them. Nothing
 else leaves: no key pair, identity, personal space or setting. `NOT_ALLOWED` for a space that isn't public.
@@ -358,7 +358,7 @@ listed as `unreadable: true`, never with its content. Keys are never shown: not 
 or moderate (`NOT_ALLOWED` otherwise, and for a space that isn't private); it resolves once the new key is
 recorded, granted to every member's device. Removals already change it by themselves.
 
-**On disk (spec 022).** A private top space created from now on is also encrypted on disk, as the personal
+**On disk.** A private top space is also encrypted on disk, as the personal
 space is: its decision log, every member's log and its sub-spaces' logs. Whoever holds its data without being
 let in (a copied disk, a relay, a helper) sees how many blocks there are and their sizes, nothing else: not the
 members, the record types, the name or when anyone wrote. Its invite links carry a check of that key, never
@@ -369,7 +369,7 @@ decide online, as before; a link that is refused gets its reason as before (`INV
 what is written after the removal). Not covered: a private sub-space of a space that isn't private (its
 decisions are in its parent's log, readable by its parent's members), and private spaces made before.
 
-## Renewing a space and trimming its history (spec 027)
+## Renewing a space and trimming its history
 
 ```js
 const fresh = await club.secure()                  // rotateKey() now, then renew(): owners and admins, private top spaces
@@ -455,7 +455,7 @@ demoted later: what they decided before stays, what they decide after counts for
 `drop: 'all'` drops everything the person wrote instead: on every device, in the space and every
 sub-space below, for everyone, newcomers included, in one decision. It also works on someone banned
 already (ban first, decide later). Lifted (`unban`) and let back in, they write again; what was dropped
-stays dropped. Every member must run a hypergraph with spec 014 (2026-10-30): an older one keeps what
+stays dropped. Every member must run a hypergraph that knows `drop`: an older one keeps what
 newer ones drop.
 
 **Moderated lists.** `query(type).moderated('hidden' | 'flagged')` lists the records moderators hid or
@@ -637,8 +637,7 @@ the posts of people it never met on the helper.
 Never required: with no helper, or with all of them down or a key that is wrong, opening, writing and
 reading work exactly as without, and nothing waits for a helper. Owner only for now (`NOT_ALLOWED`
 otherwise); a sub-space uses its top space's helpers. At most 8; each core goes to 2 of them. A helper is
-a cache, not an archive: a full one drops whole old cores and never fetches them again
-(`specs/research/availability.md`). Joining still needs a member online (invites are answered by members).
+a cache, not an archive: a full one drops whole old cores and never fetches them again. Joining still needs a member online (invites are answered by members).
 
 ## Circles: people keeping each other's spaces online
 
@@ -649,9 +648,9 @@ const link = await family.createInvite()                   // owner and admins o
 ```
 
 A **circle** is a group of invited people (50 at most: a 51st redemption is refused `CIRCLE_FULL`) whose
-devices keep each other's spaces online. It is a private space (encrypted on disk, spec 022) with the
+devices keep each other's spaces online. It is a private space (encrypted on disk) with the
 usual members, roles, `removeMember` and `leaveSpace`; only its owner and admins invite (a custom role
-given `invite` lets nobody in). Spec: `specs/023-circles/`.
+given `invite` lets nobody in).
 
 ```js
 await hg.setHolding({ on: true })            // this device keeps its circles' spaces: off until set
@@ -663,7 +662,7 @@ hg.copiesOf(board.key)                       // { wanted: 5, kept: 4, online: 3 
 ```
 
 **Holding** is per device. Each space in a member's list (joined or created, sub-spaces too, closed ones
-too) is kept in **5 copies in all** (spec 024), split across the member's circles that have someone
+too) is kept in **5 copies in all**, split across the member's circles that have someone
 holding (1 circle: 5; 2: 3 + 2; 3: 2 + 2 + 1; 5 or more: 1 each), on the holders a hash of (space, device)
 ranks first, one device per person; a circle with fewer holders than its part (or whose people already
 hold it through another circle) leaves the rest to the next ranked holders of the member's other circles. Every device
@@ -679,17 +678,17 @@ when nobody else is left). A holder that stops holding a space (replaced, pushed
 ranked above it, an extra copy no longer needed) is told to delete it once its new holders have it all,
 through blind-peer's `delete-core`: a holder accepts that only from the person who handed it that core,
 and only for their part (another member who handed it too keeps it held); never for its own spaces' cores.
-**Online numbers**, recorded for a later spec that picks the holders online most (nothing uses them
+**Online numbers**, recorded for a later version that picks the holders online most (nothing uses them
 yet): each device keeps, for every holding device of its circles, the hours it saw it online over the
 last 30 days (on the device only, dropped with the circle); each holding device writes its own share of
 hours online (a whole percent, last 30 days) in its `hg/holder` record (field `online`), at most once a
 day and only when it moved 5 points or more.
-**Storage numbers** (spec 026): each holding device also writes its `share` (its `bytes`; 0 when holding is
+**Storage numbers**: each holding device also writes its `share` (its `bytes`; 0 when holding is
 off) and `used` (what it holds now, as `holding()` reports) in its `hg/holder` records: at once when its share
 changes, and when what it holds moved 10 % or more since its last record, at most once an hour.
 
 Holders can't read a private space, but they see how many spaces a member hands them, their sizes and
-when they change. Members see each holding device's share and how much it holds (spec 026). It holds them encrypted when they are private: it never
+when they change. Members see each holding device's share and how much it holds. It holds them encrypted when they are private: it never
 has their keys, can't read them, and they are not among its own spaces (`spaces()`), its budget or
 `storage()`. Anyone in a held space finds it there, member of the circle or not, so a conversation
 stays readable while all its members are offline; anyone who knows that space's key sees that some IP
@@ -698,7 +697,7 @@ holding, this device included) and `total`: the circle's room after its copies, 
 approximate (a device's one share also serves its other circles; null while no share is known). A circle's
 `members()` adds, per person, `share` and `used` (bytes): added up over their holding devices' latest records,
 across all their circles (one share per device); null when none of their devices holds, or none reported
-(records from before 026). As of the last update; this device's own numbers live. `hg.copiesOf(key)`, for a space of this person's: `wanted` (5, or one per
+(older records). As of the last update; this device's own numbers live. `hg.copiesOf(key)`, for a space of this person's: `wanted` (5, or one per
 circle past 5 circles; 0 when it isn't handed: no circle with a holder, or past the 200 MB), `kept` (its
 holders with all its latest data, as they acknowledged it to this device) and `online` (of those, connected
 now), for "kept by N of 5 copies" (warn under 2 online). As of the last update; a `'copies'` event on `hg`
@@ -713,7 +712,7 @@ circle they share still covers it. Joining again with a new invite clears it. Kn
 is online when someone leaves, holders keep their data until the record reaches them.
 
 Not covered: helper machines joining a circle (the helper spec, next), picking the holders online most
-(spec 024 records the numbers for it), SwarmFS files. The 200 MB per member is kept by the
+(the online numbers are recorded for it), SwarmFS files. The 200 MB per member is kept by the
 member's own device (a device ignoring it is out of scope while circles are invited people).
 
 ## Roles, listed
@@ -726,8 +725,8 @@ await forum.roles()   // [{ name, permissions, custom }]: owner, admin, moderato
 
 ```js
 await forum.members()       // [{ identity, role, you, banned, removed, devices: [{ device, log }] }]: members
-                            // highest role first, then people banned or removed (role null). Known members
-                            // (spec 016): the people the decision log names, and in a public space everyone
+                            // highest role first, then people banned or removed (role null). Known members:
+                            // the people the decision log names, and in a public space everyone
                             // whose device log this member holds; someone who never wrote has no log and isn't
                             // listed. Two members may list different people; there is no exact member count
 await forum.decisions({ limit: 50, after })   // { items, complete }: newest first, what was decided —
@@ -744,9 +743,9 @@ forum.on('decisions', () => {})    // decisions(), redemptions(), history may ha
 forum.on('logs', () => {})         // a member's log arrived or grew (at most every 100 ms)
 ```
 
-`status().warnings` may include `OTHER_VERSION` (spec 016): a connected peer runs a hypergraph version that
+`status().warnings` may include `OTHER_VERSION`: a connected peer runs a hypergraph version that
 can't sync with this one (its space channel has another name, so the two never half-sync): update every app
-together. And `UNSERVED_LENGTH` (spec 017): a peer said it holds more of a log than anyone served within a
+together. And `UNSERVED_LENGTH`: a peer said it holds more of a log than anyone served within a
 minute; the message names the peer and the log, and those blocks no longer keep the space incomplete.
 
 `decisions()` is a moderation log your app can show ("bob hid this: off topic"): every member lists the
@@ -879,8 +878,7 @@ await forum.inspect({ record: id })   // + record: its versions (the put, every 
 ```
 
 For debugging and for the inspector tool. It writes nothing and fetches nothing, but counts every record
-of the space: don't call it on every render. The shape is in `specs/011-spaces-core/contracts/api.md`
-("Diagnostics").
+of the space: don't call it on every render. The generated reference (`npm run docs`, `Space#inspect`) lists its fields.
 
 **The inspector** shows all of this as a web page, from inside your app (Node only):
 `const { url } = await require('hypergraph/tools/inspector').serveInspector(hg, { port: 4400 })`. Read-only.

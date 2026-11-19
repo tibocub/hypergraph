@@ -59,7 +59,6 @@ function bareBin () {
 const files = fs.readdirSync(path.join(here, 'scenarios')).filter((f) => f.endsWith('.mjs') && !f.startsWith('_'))
   .filter((f) => !only.length || only.includes(f.replace(/\.mjs$/, ''))).sort()
 
-// Quartile-based: half the interquartile range over the median (0.1 = ±10%).
 function summary (samples) {
   const s = [...samples].sort((a, b) => a - b)
   const q = (p) => { const i = (s.length - 1) * p; const lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo) }

@@ -1,4 +1,4 @@
-// Join codes (research R9, A7): a device already in shows a code; a new
+// Join codes: a device already in shows a code; a new
 // device opened with it becomes a device of the same identity, over the
 // local DHT. A code works once; a used code, a wrong one, or a folder that
 // already holds an identity is refused.

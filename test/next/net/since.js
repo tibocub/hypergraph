@@ -1,4 +1,4 @@
-// Spec 021: space.since() between members: a record written earlier and
+// Space.since() between members: a record written earlier and
 // received later, a new author, a record received but not indexed, one whose
 // key hasn't arrived, a ban, a permission given later, content dropped here,
 // and no log's core opened for it.
@@ -24,7 +24,6 @@ async function pair (t, opts) {
   return { a, b, fa, fb }
 }
 
-// Member b standing after a first post of a: { p, cursor }.
 async function standing (fa, fb) {
   const p = await forum.post(fa, 'first', '')
   if (!await has(fb, p.id)) throw new Error('the first post never arrived')

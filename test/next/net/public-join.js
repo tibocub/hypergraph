@@ -1,4 +1,4 @@
-// Public spaces (spec 016, US1-US2): made public once by an owner or admin,
+// Public spaces: made public once by an owner or admin,
 // joined with the space's one link with no decision and no decider online;
 // bans still keep people out; members() lists the joiners met.
 
@@ -11,7 +11,6 @@ const { eventually, codeOf, within } = require('../helpers.js')
 const count = async (f) => (await f.decisions({ limit: 1000 })).items.length
 const has = (f, title) => async () => (await forum.latest(f)).some((p) => p.title === title)
 
-// a owns a public forum, b is a member (invited before it went public).
 async function publicForum (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

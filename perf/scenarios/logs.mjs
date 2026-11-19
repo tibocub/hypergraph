@@ -1,12 +1,12 @@
-// Spec 017: a member holding many authors' logs keeps their cores closed until it uses them.
+// A member holding many authors' logs keeps their cores closed until it uses them.
 //   logs.held-start      reopening an account whose forum holds N other authors' logs (scripted,
 //                        two blocks each, by a member), until the forum's first page (ms). flat
-//                        (SC-002): no core is opened per held log; what grows is one index row read
+//                       no core is opened per held log; what grows is one index row read
 //                        per log
-//   logs.held-open       held logs whose core is open right after that (count). flat (SC-001: none)
+//   logs.held-open       held logs whose core is open right after that (count). flat (none)
 //   logs.length-settle-kb  two members holding the same N logs, all closed; one log grows at one
 //                        of them: bytes of ranges and keys until the other holds the new block
-//                        (KB). flat (SC-004: under 3 KB, as a one-log list difference, spec 016)
+//                        (KB). flat (under 3 KB, as a one-log list difference)
 
 import hc from 'hypercore-crypto'
 import c from 'compact-encoding'
@@ -18,7 +18,6 @@ import testing from '../../lib/testing.js'
 const types = { post: { fields: { title: 'string' } } }
 const rowsOf = async (s) => (await s.db.find('@hg/logs', { gte: { space: s.keyBytes }, lte: { space: s.keyBytes } }).toArray()).length
 
-// A member's logs, written here (two blocks each: a header and a record), held as accepted.
 async function script (space, author, from, to, blocks = ['header', 'x']) {
   const out = []
   for (let i = from; i < to; i++) {
@@ -33,7 +32,6 @@ async function script (space, author, from, to, blocks = ['header', 'x']) {
 
 const t = context()
 try {
-  // held-start
   const dir = helpers.tmpDir(t, 'held')
   let hg = await helpers.open(t, { types, label: 'held', dir, bootstrap: null })
   let space = await hg.createSpace({ name: 'Held' })
@@ -65,7 +63,6 @@ try {
   }
   await hg.close()
 
-  // length-settle-kb
   const owner = await helpers.open(t, { types, label: 'owner' })
   const reader = await helpers.open(t, { types, label: 'reader' })
   testing.idleLogs(owner, 200)

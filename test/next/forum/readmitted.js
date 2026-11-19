@@ -1,7 +1,4 @@
-// Let back in after a ban (story 4's gap, closed in story 9; research.md A14):
-// a modified app could prepare a new log during the ban, which no cut names;
-// it counts for nobody, because a log made after a cut must carry the code of
-// the decision that let its author back in. The app's own new log does.
+// Let back in after a ban:
 
 const test = require('brittle')
 const forum = require('./forum.js')

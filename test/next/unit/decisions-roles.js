@@ -1,7 +1,6 @@
-// Roles and moderation in the decision log (research R8, story 2): built-in
+// Roles and moderation in the decision log: built-in
 // and custom roles, a decision valid only if its author held the permission
 // at that point of the order, bans with cuts, writers of the decision log.
-// Applied to an in-memory view, the way every member applies them.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -25,7 +24,6 @@ function memoryView () {
   }
 }
 
-// A space with an owner, and helpers to apply decisions as someone.
 async function space () {
   const owner = await Identity.create({ device: crypto.keyPair() })
   const key = crypto.randomBytes(32)
@@ -38,7 +36,6 @@ async function space () {
     return State.from(view.map)
   }
   await apply(key, { type: 'space/init', name: 'F', parent: null, private: false, policy: 'auto', version: 1, proof: initProof(owner, key, key) })
-  // A member with a writer key of their own (as a redemption brings it).
   const member = async (role = 'member') => {
     const identity = crypto.randomBytes(32)
     const writer = crypto.randomBytes(32)

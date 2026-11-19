@@ -1,4 +1,4 @@
-// Spec 027 in the forum: after a troll is banned, the owner secures the forum;
+// Renewing, in the forum: after a troll is banned, the owner secures the forum;
 // members carry on where they were (links and bookmarks follow), the troll is
 // left behind; an old forum keeps its last months only.
 

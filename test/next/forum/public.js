@@ -1,4 +1,4 @@
-// A public forum (spec 016): the owner opens it to everyone, for good; people
+// A public forum: the owner opens it to everyone, for good; people
 // sign up with its one link while every admin is offline, post, show in the
 // member list of whoever read them; a banned joiner stays out; a joiner who
 // never wrote isn't listed, until its first post.
@@ -12,7 +12,6 @@ const { eventually, codeOf } = require('../helpers.js')
 const listed = async (f, hg) => (await forum.people(f)).some((p) => p.identity === hg.identity.publicKey)
 const sees = (f, title) => async () => (await forum.latest(f)).some((p) => p.title === title)
 
-// a owns it and opened it; b was invited before and stays online.
 async function openForum (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')

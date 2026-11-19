@@ -1,23 +1,4 @@
 // NOTE ON NETWORK DEPENDENCY: joins the real public DHT via Hyperswarm.
-// Cannot be verified without real network access.
-//
-// TEARDOWN HANG FIX: no longer calls discX.destroy() separately in
-// teardown. destroySwarm() (used below) explicitly destroys active connections, then skips
-// Hyperswarm's graceful discovery-session cleanup, which is what would
-// otherwise call discX.destroy() internally anyway — and that path can
-// invoke an unannounce() network call with no visible internal timeout.
-// See test/brittle/networking/peer-connection.js for the fuller
-// investigation.
-//
-// This complements test/brittle/forum/scenarios/out-of-order-replication.js
-// and reply-before-parent.js, which already cover out-of-order moderation
-// and relation events over *local* (non-network) replication pipes. This
-// test exercises the same "relate before the referenced entity has
-// replicated" pattern, but over a real Hyperswarm/DHT connection, to catch
-// anything that only surfaces with real network timing/latency.
-//
-// Teardown always closes graph/store before destroying swarms (see
-// late-joiner.js for the full explanation of why order matters here).
 
 const test = require('brittle')
 const Hyperswarm = require('hyperswarm')
@@ -41,13 +22,6 @@ test('out-of-order: a relation referencing a not-yet-replicated entity still con
   console.log('  Step 3: peer A opens the same context and both connect over the DHT afterward')
   await a.graph.openContext(context, { writeMode: 'open' })
 
-  // IMPORTANT: use openUserCore(), not a raw store.get(). A raw store.get()
-  // only creates a Hypercore reference for replication — it never registers
-  // the core with the graph's view, so graph.get()/graph.update() would
-  // never see B's comment no matter how long this waited or how good the
-  // connection was. openUserCore() calls view.addUserCore() internally,
-  // which is what actually wires a remote core's events into the
-  // materialized, queryable graph state.
   const remoteBUserCore = await a.graph.openUserCore(b.graph.key)
   const remoteAOnB = b.store.get({ key: a.graph.key })
   await remoteAOnB.ready()
@@ -81,10 +55,6 @@ test('out-of-order: a relation referencing a not-yet-replicated entity still con
   t.ok(hasConnection, 'both peers have at least one live connection')
 
   if (!hasConnection) {
-    // No point burning the rest of the time budget pumping for data that
-    // has no path to arrive on — this is a real connectivity failure
-    // (DHT/NAT), not something a longer wait would fix. Fail fast instead
-    // of also timing out the whole test process.
     console.log('TEST: out-of-order replication over real network - skipped remaining steps (no connection)')
     return
   }

@@ -1,4 +1,4 @@
-// Spec 018: hypergraph/testing, the test helper for apps. Required by its
+// Hypergraph/testing, the test helper for apps. Required by its
 // package name, as an app does.
 
 const test = require('brittle')
@@ -19,7 +19,6 @@ test('a two-member test in a few lines', { timeout: 60000 }, async (t) => {
   t.not(ann.dir, bob.dir, 'each in its own folder')
 })
 
-// A runner's test object, its end played by hand.
 function fakeTest (kind = 'teardown') {
   const ends = []
   return { [kind]: (fn) => ends.push(fn), end: async () => { for (const fn of ends) await fn() }, ends }

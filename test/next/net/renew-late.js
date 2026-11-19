@@ -1,5 +1,5 @@
-// Spec 027 (build.md FR-004): writes landing in the old space's logs after the
-// move (past the cut the renew recorded: design change 2). The author's own
+// Writes landing in the old space's logs after a renew (past the cut the
+// renew recorded). The author's own
 // device re-posts its own records into the renewed space, once (a `from` link
 // to the old id), sealed with the new keys; never anyone else's, never for a
 // removed person; records before the cut are history, not re-posted; readers

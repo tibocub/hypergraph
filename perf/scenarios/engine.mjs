@@ -1,4 +1,4 @@
-// Spec 015 (US2, SC-001–SC-003): one engine holding N spaces (forums, sites), 5 posts each.
+// One engine holding N spaces (forums, sites), 5 posts each.
 // Only the seeded set (maxAnnounced, default 32) opens with the engine; the others open on
 // their first call. Size = spaces held.
 //   engine.open        Hypergraph.open on the folder (ms)
@@ -21,7 +21,7 @@ for (const n of [100, 500]) {
     for (let i = 0; i < n; i++) {
       const s = await hg.createSpace({ name: 'Space ' + i })
       for (let j = 0; j < 5; j++) await s.put('post', { title: 'Hello ' + j, text: 'text' })
-      // what a real engine holding n spaces would have: most of them closed (spec 015)
+      // what a real engine holding n spaces would have: most of them closed
       if (i % 50 === 49) await hg.close().then(async () => { hg = await Hypergraph.open(dir, { types }) })
     }
     await hg.close()

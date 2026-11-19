@@ -1,4 +1,4 @@
-// Spec 027 research (research.md RQ1, RQ4): two claims the recommended design rests on.
+// Two claims the design of space.renew() rests on.
 // 1. A core written with a new disk key is unreadable with the old one (a renew hides new writes).
 // 2. Truncation needs no copy: clearing old blocks keeps the rest readable and verifiable,
 //    and a newcomer fetching from a trimmed peer gets the kept blocks only.
@@ -25,7 +25,6 @@ test('a new disk key: the old one reads nothing of the new core', async (t) => {
   const core = a.get({ name: 'log/renewed', encryption: { key: newKey } })
   await core.append(b4a.from('posted after the renew'))
 
-  // The removed member: knows the core key (say, from the old space) and holds the old disk key only.
   const spy = b.get({ key: core.key, encryption: { key: oldKey } })
   await spy.ready()
   const done = replicate(a, b)
@@ -48,7 +47,6 @@ test('truncation without copying: clear old blocks, the rest still verifies', as
   t.is(await core.get(0, { wait: false }), null, 'cleared here')
   t.is(b4a.toString(await core.get(7)), 'record 7', 'kept block still reads')
 
-  // A newcomer fetching from the trimmed peer: kept blocks come with their proofs, old ones don't come.
   const late = c.get({ key: core.key, encryption: { key } })
   await late.ready()
   const done = replicate(a, c)

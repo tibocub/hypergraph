@@ -1,4 +1,4 @@
-// Spec 023: circles. The decisions a circle adds (marked at creation, 50
+// Circles. The decisions a circle adds (marked at creation, 50
 // members at most, only the owner and admins invite) and the holding logic
 // that needs no network: what a member hands, in which order, within its
 // cap, and what a holder deletes when people leave.
@@ -112,7 +112,6 @@ test('handing order: private first, then the rest, newest activity first; the me
 })
 
 test('leaving: a holder deletes a member\'s cores unless another shared circle covers them', (t) => {
-  // held: core -> who handed it; covered: members still sharing a circle with this holder
   const held = new Map([
     ['x', new Set(['ann'])],
     ['y', new Set(['ann', 'bob'])], // a space both are in

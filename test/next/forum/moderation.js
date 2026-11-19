@@ -1,4 +1,4 @@
-// Story 2 #1-4, #6: a moderator hides, reveals, takes down and bans; every
+// A moderator hides, reveals, takes down and bans; every
 // member applies it the same way, including one who was offline during all
 // of it; a demoted moderator's later decisions are ignored, earlier ones
 // kept; two admins deciding conflicting things at once end the same
@@ -10,7 +10,6 @@ const testing = require('../../../lib/testing.js')
 const { account } = require('./_setup.js')
 const { eventually, sleep, open, codeOf } = require('../helpers.js')
 
-// a owns the forum, b moderates, c writes, d is a member who goes offline.
 async function community (t) {
   const a = await account(t, 'a')
   const b = await account(t, 'b')
@@ -31,7 +30,6 @@ const agree = (spaces, fn, expected, ms = 10000) => eventually(async () => {
   return true
 }, ms)
 
-// d comes back, in its own folder, and must show what the others show.
 async function back (t, d, fd) {
   const d2 = await account(t, 'd-back', { dir: d.dir })
   return d2.space(fd.key)
@@ -66,7 +64,6 @@ test('a hide that arrives before the record: it never shows', async (t) => {
   const p = await forum.post(fa, 'Welcome', '')
   await eventually(async () => (await forum.latest(fc)).length === 1, 5000)
   await c.close()
-  // c writes while away; b hides that comment by its id before anyone holds it.
   const c2 = await open(t, { dir: c.dir, types: forum.types, rules: forum.rules })
   const late = await forum.comment(c2.space(fc.key), p, 'written offline')
   await forum.hide(fb, late, 'pre-emptive')
@@ -135,8 +132,6 @@ test('unban: let back in, they write again; what they wrote during the ban stays
   t.is(await codeOf(forum.giveRole(fa, who, 'member')), 'NOT_ALLOWED', 'banned: not let back in')
 
   await forum.unban(fb, who)
-  // No retry: a decision method first catches up with the connected members
-  // who record decisions (ROADMAP 2026-10-09), and so does writing.
   await forum.giveRole(fa, who, 'member')
   t.pass('a, right after the unban by b, lets c back in')
   t.ok(await forum.post(fc, 'after the unban', ''), 'c writes again at once')
@@ -160,9 +155,6 @@ test('a demoted moderator: later decisions ignored, earlier ones kept', async (t
   await forum.giveRole(fa, b.identity.publicKey, 'member')
   t.ok(await eventually(async () => (await forum.roleOf(fb, b.identity.publicKey)) === 'member', 5000))
   try { await forum.hide(fb, two); t.fail('should be refused') } catch (err) { t.is(err.code, 'NOT_ALLOWED', 'b\'s app refuses') }
-  // Written anyway: b's device is no longer a writer of the decision log
-  // (story 4, research.md A8), so it can't even append; if it could, apply
-  // would ignore it (test/next/unit/decisions-writers.js).
   const written = await codeOf(testing.decide(fb, { type: 'moderate', action: 'hide', target: two.id, reason: '', cut: [] }))
   t.ok(written === null || written === 'NOT_ALLOWED')
   await sleep(1000)
@@ -176,7 +168,6 @@ test('two admins deciding conflicting things at once end the same everywhere', a
   await forum.addRole(fb, 'helper', ['post'])
   t.pass('b records decisions at once')
 
-  // b, offline, takes c out; a, meanwhile, makes c a moderator.
   await b.close()
   const b2 = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules })
   const fb2 = b2.space(fb.key)

@@ -1,7 +1,4 @@
-// An open forum with a write limit (story 9, T071a, FR-023; research.md A14):
-// a public link lets anyone in, and each device posts at most so much per
-// hour. Records beyond it count for nobody — the same for a member who was
-// there and a newcomer — and deleting never frees room.
+// An open forum with a write limit:
 
 const test = require('brittle')
 const forum = require('./forum.js')

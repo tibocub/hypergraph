@@ -1,7 +1,4 @@
-// Private spaces' cryptography (story 8, research.md A13; spec 008's design):
-// epoch keys sealed to a device's box key (its device key pair converted),
-// grants that count only with the epoch's commitment, records sealed with
-// the space, log, position and epoch as additional data.
+// Private spaces' cryptography:
 
 const test = require('brittle')
 const b4a = require('b4a')

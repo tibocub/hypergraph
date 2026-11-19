@@ -33,7 +33,6 @@ async function createPeer (name, opts = {}) {
 }
 
 function replicatePair (peerA, peerB) {
-  // Corestore.replicate returns a protocol stream; wire the two ends together.
   const s1 = peerA.store.replicate(true, { live: true })
   const s2 = peerB.store.replicate(false, { live: true })
   s1.pipe(s2).pipe(s1)
@@ -158,7 +157,6 @@ async function snapshotCanonical (peer, { postIds = null, targetIds = null } = {
     }
   }
 
-  // Minimal referenced entities map, inserted in sorted id order.
   const referenced = new Set()
   for (const postId of posts) referenced.add(postId)
   for (const postId of Object.keys(replies)) {
@@ -191,7 +189,6 @@ async function getWriters (peer, { contexts = [] } = {}) {
     out.contexts[keyHex] = keys
   }
 
-  // Insert contexts deterministically.
   out.contexts = Object.fromEntries(Object.keys(out.contexts).sort().map(k => [k, out.contexts[k]]))
   out.userCores = Array.from(new Set(out.userCores)).sort()
 
@@ -237,7 +234,6 @@ async function settle (peers, opts = {}) {
       }
     }
 
-    // Convergence: all peers identical.
     let equal = true
     for (let i = 1; i < snaps.length; i++) {
       if (!isDeepStrictEqual(snaps[0], snaps[i])) {

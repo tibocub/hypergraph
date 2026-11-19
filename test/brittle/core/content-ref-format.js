@@ -30,7 +30,6 @@ const VALID = {
   mutable: false
 }
 
-// ── The marker ───────────────────────────────────────────────────────────────
 
 test('content-ref: the marker is the plain string "link"', t => {
   t.is(CONTENT_LINK_TYPE, 'link', 'marker is "link", not a long media type')
@@ -41,7 +40,6 @@ test('content-ref: the marker is the plain string "link"', t => {
   t.absent(isReferenceType(null), 'tolerates null')
 })
 
-// ── formatReference / parseReference round-trip ──────────────────────────────
 
 test('content-ref: round-trips a single address', t => {
   const parsed = parseReference(formatReference(VALID))
@@ -95,7 +93,6 @@ test('content-ref: size 0 is valid', t => {
   t.is(parsed.size, 0)
 })
 
-// ── formatReference rejects bad input ────────────────────────────────────────
 
 test('content-ref: formatReference throws on malformed input', t => {
   const bad = [
@@ -126,7 +123,6 @@ test('content-ref: formatReference throws on malformed input', t => {
   }
 })
 
-// ── parseReference never throws ──────────────────────────────────────────────
 
 test('content-ref: parseReference never throws, however hostile the input', t => {
   const hostile = [
@@ -173,7 +169,6 @@ test('content-ref: an invalid parse still reports a usable shape', t => {
   t.is(parsed.src.length, 0, 'and it is empty')
 })
 
-// ── Addresses hypergraph must accept without understanding ───────────────────
 
 test('content-ref: accepts every registered scheme, and unknown ones too', t => {
   const addresses = [
@@ -196,8 +191,6 @@ test('content-ref: accepts every registered scheme, and unknown ones too', t => 
 })
 
 test('content-ref: hypergraph never interprets a scheme, only records it', t => {
-  // A scheme invented right here must work exactly as well as a known one.
-  // This is what lets new backends arrive with no hypergraph change.
   const parsed = parseReference(formatReference({
     ...VALID,
     src: ['zzz-invented-backend://xyz']

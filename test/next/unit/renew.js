@@ -1,4 +1,4 @@
-// Spec 027: the decisions of a renew (space/renewed, space/moved) and of a
+// The decisions of a renew (space/renewed, space/moved) and of a
 // trim (history/trim), applied deterministically; a re-posted record's `from`.
 
 const test = require('brittle')

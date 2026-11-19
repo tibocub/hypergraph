@@ -19,7 +19,6 @@ function tmpStore (t, label) {
   return { store, dir }
 }
 
-// A member: its own store and identity, and a Community opened on it.
 async function member (t, label, opts = {}) {
   const { store, dir } = tmpStore(t, label)
   const identity = opts.identity || { keyPair: crypto.keyPair() }

@@ -1,6 +1,6 @@
 # Testing your app
 
-`require('hypergraph/testing')` (spec 018) gives your tests what hypergraph's own use: a small DHT on your
+`require('hypergraph/testing')` gives your tests what hypergraph's own use: a small DHT on your
 machine for each test, temp folders, instances closed after the test, and waits that leave no timer behind.
 Your tests need no internet, and they test with the hyperdht version hypergraph tests with.
 

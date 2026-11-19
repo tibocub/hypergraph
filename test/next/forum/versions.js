@@ -1,12 +1,6 @@
-// Story 7, FR-004, research R6: the app changes, old and new versions keep
+// The app changes, old and new versions keep
 // talking. The forum's second version added post topics (indexed) and polls;
-// members still on the first one share the forum with the others. Spec 015:
-// the forum records its types; every member reads, checks and indexes with
-// the forum's, whatever their app declares, so an old app reads the fields
-// and types it doesn't know. A new type or field is used once the owner's
-// (or an admin's) updated app has opened the forum and recorded it. Any
-// other change to the types is refused by the forum, naming the type and
-// field; the app and its other forums keep working.
+// members still on the first one share the forum with the others:
 
 const test = require('brittle')
 const forum = require('./forum.js')
@@ -15,15 +9,12 @@ const { Hypergraph } = require('../../../lib/index.js')
 const { account, device } = require('./_setup.js')
 const { eventually, open, tmpDir, codeOf } = require('../helpers.js')
 
-// The forum's first version: posts without topics, no polls.
 const { poll, ...firstTypes } = forum.types
 const v1 = { ...firstTypes, post: { fields: { title: 'string', text: 'text' } } }
-// What the first version's app wrote (its own forum.js had no topic).
 const oldPost = (f, title, text) => f.put('post', { title, text })
 
 const ids = (xs) => xs.map((x) => x.id).sort().join()
 
-// What a member shows of the forum, the same on both versions (topics aside).
 async function view (f) {
   const out = []
   for (const p of (await forum.latest(f, 50)).sort((x, y) => (x.id < y.id ? -1 : 1))) {
@@ -59,8 +50,6 @@ test('two versions in one forum read each other\'s records', async (t) => {
   t.is(onNew.text, 'from the old app')
   t.is(onNew.topic, null, 'the new app sees it empty on an old post')
   t.is(ids(await forum.byTopic(fa, 'rust')), fresh.id, 'topics work on the new version')
-  // Records without a topic (all the old app's) aren't in the topic index:
-  // asking for them is an error, not an answer that differs between members.
   await t.exception(forum.byTopic(fa, null), /no value/)
 })
 
@@ -103,7 +92,6 @@ test('a type the forum doesn\'t have yet: refused until the owner\'s updated app
   t.is(await codeOf(forum.post(fc, 'Topical', '', 'meta')), 'INCOMPATIBLE_TYPES', 'nor post topics')
   t.ok((await forum.post(fc, 'No topic', '')).id, 'the new app writes what the forum has')
 
-  // a's app is updated: opening the forum, it records the new types.
   await a.close()
   const updated = await open(t, { dir: a.dir, types: forum.types, rules: forum.rules })
   await updated.connectToSwarm()
@@ -153,7 +141,6 @@ test('any other change to the types is refused by the forum, naming the type and
     t.is(err && err.code, 'INCOMPATIBLE_TYPES', `${what}: ${err && err.message}`)
     t.ok(err && named.every((n) => err.message.includes(n)), `${what}: the message names ${named.join(' and ')}`)
   }
-  // An older app (a field or a type fewer) is not a change: it reads the forum.
   for (const [what, types] of [['a field fewer', v1], ['a type fewer', firstTypes]]) {
     const hg = await Hypergraph.open(dir, { types, bootstrap: null })
     t.is((await forum.latest(hg.space(f.key))).length, 1, `${what}: the forum opens`)

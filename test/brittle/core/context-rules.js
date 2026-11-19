@@ -1,6 +1,5 @@
 // App rules: deterministic checks an app attaches to a context, run in apply,
 // rejecting events before they are indexed (spec 003, US3).
-// Contract: specs/003-fast-forward-contexts/contracts/api.md
 
 const test = require('brittle')
 const crypto = require('hypercore-crypto')
@@ -27,12 +26,10 @@ test('context-rules: a rejected event is not indexed, whichever way it was writt
   const ctx = await graph.createContext({ rules })
   const context = await graph.openContext(ctx, { rules })
 
-  // Through relate().
   const f1 = await graph.put({ type: 'file' })
   await graph.relate({ from: f1.id, to: locked.id, type: 'in', context: ctx })
   await graph.relate({ from: f1.id, to: open.id, type: 'in', context: ctx })
 
-  // Through graph.batch().
   const b = graph.batch()
   for (let i = 0; i < 5; i++) {
     const f = b.put({ type: 'file' })
@@ -41,7 +38,6 @@ test('context-rules: a rejected event is not indexed, whichever way it was writt
   }
   await b.flush()
 
-  // Straight into the context, as a modified client could.
   const author = graph.key.toString('hex')
   const f2 = await graph.put({ type: 'file' })
   const raw = { type: 'relation/create', from: f2.id, to: locked.id, relationType: 'in', author, timestamp: Date.now(), signature: null }
@@ -60,7 +56,6 @@ test('context-rules: a rejected event is not indexed, whichever way it was writt
 
 test('context-rules: a rule can read the index as it was just before the event, including earlier events of the same batch', async (t) => {
   const { graph } = await createGraph(t, 'rules-reader')
-  // "A file is in at most one folder."
   const rules = {
     id: 'one-folder/v1',
     async validate (event, reader) {

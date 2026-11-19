@@ -1,4 +1,4 @@
-# Holder picking: simulator and online-hour export (spec 025)
+# Holder picking: simulator and online-hour export
 
 - `sim.js`: the simulator (made-up patterns, strategies, the replay). `run.js`: prints the tables in
   `specs/025-holder-picking/research.md`. `export.js`: a device's recorded online hours, keys replaced by labels.
@@ -26,7 +26,7 @@ The export opens the index **read only**: the app or helper can keep running (ch
 read-only open takes no lock on Linux either). Hours are saved every 5 minutes, so the last few minutes may be
 missing. The script needs this branch merged into the hypergraph checkout it runs from.
 
-### Tibo's Windows PC (HyperBrowser app, engine folder `%APPDATA%\HyperBrowser\engine`)
+### A Windows PC (HyperBrowser app, engine folder `%APPDATA%\HyperBrowser\engine`)
 
 ```powershell
 cd E:\Code\P2P\hypergraph

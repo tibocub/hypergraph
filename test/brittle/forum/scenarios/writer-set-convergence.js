@@ -5,14 +5,12 @@ module.exports = async function writerSetConvergence (t, h) {
   const peer1 = await h.createPeer('writers-peer1')
   const peer2 = await h.createPeer('writers-peer2')
 
-  // createContext returns a context key (hex).
   const commentsKey = await owner.graph.createContext({ roles: 'rolebase' })
   const moderationKey = await owner.graph.createContext({ roles: 'rolebase' })
 
   const ownerComments = await owner.graph.openContext(commentsKey)
   const ownerModeration = await owner.graph.openContext(moderationKey)
 
-  // Everyone opens the same contexts.
   const peer1Comments = await peer1.graph.openContext(commentsKey)
   const peer1Moderation = await peer1.graph.openContext(moderationKey)
   const peer2Comments = await peer2.graph.openContext(commentsKey)
@@ -38,7 +36,6 @@ module.exports = async function writerSetConvergence (t, h) {
     await h.cleanupPeer(peer2)
   })
 
-  // Ensure owner has opened peer user cores so it can add them as writers.
   await peer1.graph.update()
   await peer2.graph.update()
 
@@ -50,10 +47,8 @@ module.exports = async function writerSetConvergence (t, h) {
   await pumpUntil(async () => peer1.graph.openUserCore(peer2.graph.key), 30000)
   await pumpUntil(async () => peer2.graph.openUserCore(peer1.graph.key), 30000)
 
-  // Evolve writer set.
   await ownerComments.addWriter(peer1Comments.localKey)
   await ownerComments.addWriter(peer2Comments.localKey)
-  // Adversarial: duplicate writer addition.
   await ownerComments.addWriter(peer1Comments.localKey)
 
   await ownerModeration.addWriter(peer1Moderation.localKey)
@@ -70,7 +65,6 @@ module.exports = async function writerSetConvergence (t, h) {
   t.alike(w1, wOwner)
   t.alike(w2, wOwner)
 
-  // No duplicates inside each writer list.
   for (const ctxKey of Object.keys(wOwner.contexts)) {
     const list = wOwner.contexts[ctxKey] || []
     t.is(list.length, new Set(list).size)

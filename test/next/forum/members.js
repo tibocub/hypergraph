@@ -17,7 +17,6 @@ test('members(): roles, you, devices; banned and removed people with their state
   await forum.post(fc, 'hi', '')
   await forum.post(fd, 'hi', '')
   await forum.giveRole(fa, b.identity.publicKey, 'moderator')
-  // spec 016: a log exists from its first record: c's and d's, not a's and b's
   t.ok(await eventually(async () => (await fa.inspect()).logs.filter((l) => !l.refused).length >= 2, 10000), 'a holds the logs of everyone who wrote')
   await forum.ban(fa, c.identity.publicKey, { reason: 'spam' })
   await forum.removeMember(fa, d.identity.publicKey)
@@ -51,7 +50,6 @@ test('decisions(): who decided what, when and why, and whether it counted; newes
   await eventually(async () => { try { await forum.hide(fb, p, 'off topic'); return true } catch { return false } }, 10000)
   t.ok(await eventually(async () => (await fa.get(p.id)).record?.hidden, 10000), 'a applied the hide')
   await forum.giveRole(fa, b.identity.publicKey, 'member')
-  // b, demoted, records a ban anyway (a modified app): it doesn't count.
   await eventually(async () => (await fb.getRole(b.identity.publicKey)) === 'member', 10000)
   await testing.decide(fb, { type: 'moderate', action: 'ban', target: require('z32').decode(c.identity.publicKey), reason: 'nope', cut: [] }).catch(() => {})
 

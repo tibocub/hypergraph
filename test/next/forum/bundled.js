@@ -1,4 +1,4 @@
-// A forum shipped with its app (spec 020, HyperBrowser 015): the owner's build
+// A forum shipped with its app (HyperBrowser 015): the owner's build
 // packs what a visitor would download of a public forum; a new install unpacks
 // it with nobody online, reads it, and later gets new posts from peers as any
 // visitor. A changed pack, or a forum that isn't public, is refused.
@@ -87,7 +87,6 @@ test('only public forums are packed; no secret is', { timeout: 60000 }, async (t
   const meta = JSON.parse(fs.readFileSync(path.join(folder, 'spaces.json'), 'utf-8'))
   t.alike(meta.spaces.map((s) => s.key), [open.key], 'the forum asked for, nothing else')
   t.absent(fs.existsSync(path.join(folder, 'instance.json')), 'no identity')
-  // white-box: the device's secret key, the recovery phrase
   const secrets = [a._identity.device.secretKey.subarray(0, 32), Buffer.from([].concat(await a.recoveryPhrase()).join(' '))].filter(Boolean)
   t.is(secrets.length, 2, 'secrets to look for')
   for (const f of fs.readdirSync(folder, { recursive: true })) {

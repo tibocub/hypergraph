@@ -1,5 +1,4 @@
-// Compact encodings of everything that goes on the network (data-model.md):
-// log header, records, decisions, invites, channel messages.
+// Compact encodings of everything that goes on the network:
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -21,7 +20,6 @@ test('record ids: bytes, objects and z32 strings agree', (t) => {
 
 test('log header round trip', (t) => {
   roundTrip(t, enc.header, { version: 1, space: key(), decisions: key(), proof: crypto.randomBytes(180), admitted: null })
-  // story 9: the code of the decision that let its author back in, trailing
   roundTrip(t, enc.header, { version: 1, space: key(), decisions: key(), proof: crypto.randomBytes(180), admitted: key() })
 })
 
@@ -49,14 +47,14 @@ test('every decision of data-model.md round trips', (t) => {
   const id = enc.idFromString(enc.idToString({ log: key(), seq: 1 }))
   const all = [
     { type: 'space/init', stamp: 1, name: 'Forum', parent: null, private: false, policy: 'auto', version: 1, proof: crypto.randomBytes(150), circle: null },
-    { type: 'space/init', stamp: 1, name: 'Sub', parent: key(), private: true, policy: 'everything', version: 1, proof: crypto.randomBytes(150), circle: true }, // spec 023: a circle (trailing)
+    { type: 'space/init', stamp: 1, name: 'Sub', parent: key(), private: true, policy: 'everything', version: 1, proof: crypto.randomBytes(150), circle: true }, // a circle (trailing)
     { type: 'member/add', stamp: 2, identity: key() },
     { type: 'member/remove', stamp: 3, identity: key(), cut: [{ log: key(), length: 4 }] },
     { type: 'role/define', stamp: 4, name: 'editor', permissions: ['post', 'edit-pages'] },
     { type: 'role/set', stamp: 5, identity: key(), role: 'moderator', cut: [] },
     { type: 'moderate', stamp: 7, action: 'hide', target: id, reason: 'spam', cut: [], drop: null },
     { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: 'spam', cut: [{ log: key(), length: 12 }], drop: null },
-    { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: '', cut: [], drop: 'all' }, // spec 014
+    { type: 'moderate', stamp: 8, action: 'ban', target: key(), reason: '', cut: [], drop: 'all' },
     { type: 'invite/create', stamp: 9, invite: crypto.randomBytes(100) },
     { type: 'invite/revoke', stamp: 10, invite: crypto.randomBytes(100) },
     { type: 'invite/redeem', stamp: 11, redemption: crypto.randomBytes(300) },
@@ -64,9 +62,9 @@ test('every decision of data-model.md round trips', (t) => {
     { type: 'subspace/create', stamp: 13, key: key(), name: 'News', private: false, writeRoles: ['moderator'] },
     { type: 'settings/set', stamp: 14, policy: 'everything', writeLimit: null, rules: null, history: null, helpers: null, public: null },
     { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 }, rules: ['title-length'], history: 'hidden', helpers: null, public: null },
-    { type: 'settings/set', stamp: 18, policy: null, writeLimit: null, rules: null, history: null, helpers: [b4a.toString(key(), 'hex')], public: null }, // spec 013
+    { type: 'settings/set', stamp: 18, policy: null, writeLimit: null, rules: null, history: null, helpers: [b4a.toString(key(), 'hex')], public: null },
     { type: 'settings/set', stamp: 19, policy: null, writeLimit: null, rules: null, history: null, helpers: [], public: null }, // cleared
-    { type: 'settings/set', stamp: 20, policy: null, writeLimit: null, rules: null, history: null, helpers: null, public: true }, // spec 016
+    { type: 'settings/set', stamp: 20, policy: null, writeLimit: null, rules: null, history: null, helpers: null, public: true },
     { type: 'logs/list', stamp: 20, logs: [{ space: key(), log: key() }] },
     { type: 'writer/add', stamp: 16, key: crypto.randomBytes(32), proof: crypto.randomBytes(140) },
     { type: 'device/remove', stamp: 17, device: crypto.randomBytes(32), cut: crypto.randomBytes(40), proof: crypto.randomBytes(140) }
@@ -88,10 +86,10 @@ test('invites and redemptions round trip', (t) => {
 })
 
 test('channel messages round trip', (t) => {
-  roundTrip(t, enc.summary, { count: 3, digest: key(), records: 1234 }) // story 9: how many records the sender's logs hold
+  roundTrip(t, enc.summary, { count: 3, digest: key(), records: 1234 }) // how many records the sender's logs hold
   t.is(c.decode(enc.summary, c.encode(enc.struct([['count', c.uint], ['digest', c.fixed32]]), { count: 3, digest: key() })).records, 0, 'from a sender without it: 0')
-  roundTrip(t, enc.ranges, { prefix: Buffer.from([0xa0]), bits: 4, parts: Array.from({ length: 16 }, () => ({ count: 3, digest: key() })) }) // spec 016
-  roundTrip(t, enc.keys, { prefix: Buffer.from([0xab]), bits: 8, kind: 2, keys: [key(), key()], lengths: [0, 7] }) // spec 017: with lengths
+  roundTrip(t, enc.ranges, { prefix: Buffer.from([0xa0]), bits: 4, parts: Array.from({ length: 16 }, () => ({ count: 3, digest: key() })) })
+  roundTrip(t, enc.keys, { prefix: Buffer.from([0xab]), bits: 8, kind: 2, keys: [key(), key()], lengths: [0, 7] }) // with lengths
   roundTrip(t, enc.logKey, key())
   roundTrip(t, enc.redeem, { redemption: crypto.randomBytes(200) })
 })

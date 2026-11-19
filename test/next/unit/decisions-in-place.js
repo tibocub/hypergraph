@@ -2,9 +2,6 @@
 // the view is applied to it, and it is rebuilt from the whole view only on open
 // and when Autobase reorders (truncates) the view. Whatever the decisions and
 // their order, the state kept in place must equal a full rebuild of the view:
-// three deciders on real Autobases make random decisions while cut off from
-// each other (one stays away for several rounds), then meet again, so
-// Autobase reorders what each had applied.
 
 const test = require('brittle')
 const c = require('compact-encoding')
@@ -17,7 +14,6 @@ const { Identity } = require('../../../lib/identity.js')
 const enc = require('../../../lib/encodings.js')
 const { tmpDir, eventually } = require('../helpers.js')
 
-// Every field of a state, sorted, sub-spaces' own states and effective states included.
 function dump (st) {
   const sorted = (m) => [...m].sort((a, b) => (String(a[0]) < String(b[0]) ? -1 : 1))
   const own = (s) => ({
@@ -80,7 +76,6 @@ test('the state kept in place equals a full rebuild, through partitions and reor
   await a.ready()
   await a.init({ name: 'Forum' })
 
-  // Two admins on devices of their own: three deciders.
   const deciders = [a]
   const links = []
   for (const s of stores.slice(1)) {
@@ -128,7 +123,6 @@ test('the state kept in place equals a full rebuild, through partitions and reor
       await d.append(random())
       await same(t, d, `round ${round}: in place = rebuilt, on the decider`)
     }
-    // Meet again (all but the one away): Autobase orders the concurrent decisions.
     for (const s of stores.slice(1)) if (!away || s !== away.base.store) links.push(link(stores[0], s))
     const met = deciders.filter((d) => d !== away)
     t.ok(await eventually(async () => {

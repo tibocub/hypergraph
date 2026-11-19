@@ -1,10 +1,4 @@
 // What a peer has shown stays readable offline after a restart.
-//
-// A newcomer that fast-forwarded holds only the index blocks it read. Before
-// the fix, reading a channel first looked up the context's record (for its
-// index layout) at the latest view version; after the view had grown, that
-// lookup's path was no longer local, so with no peer the read waited forever,
-// although the page itself was held (bench/chat.js at 30k-1M messages).
 
 const test = require('brittle')
 const path = require('path')
@@ -48,8 +42,6 @@ test('offline-reopen: the latest page a newcomer showed loads again offline afte
     return () => { s1.destroy(); s2.destroy() }
   }
   const showLatest = async (last) => {
-    // Up to 60 s: with every test file running in parallel, catching up
-    // can take well over the ~1 s it takes alone.
     let shown = []
     const deadline = Date.now() + 60000
     while (Date.now() < deadline) {
@@ -60,13 +52,10 @@ test('offline-reopen: the latest page a newcomer showed loads again offline afte
     return shown
   }
 
-  // Join and read: the context's record is looked up at this early version.
   let disconnect = connect()
   t.is((await showLatest('m1999')).length, 50, 'the newcomer shows the latest page')
   disconnect()
 
-  // The channel grows a lot while the newcomer is away; back online, it
-  // fast-forwards and shows the new latest page.
   await write(owner.graph, ctx, channel, 2000, 14000, 250)
   await confirmed()
   disconnect = connect()
@@ -76,7 +65,6 @@ test('offline-reopen: the latest page a newcomer showed loads again offline afte
   disconnect()
   await graph.close(); await store.close()
 
-  // Restart with no peer at all.
   store = new Corestore(dir)
   graph = new Hypergraph(store)
   await graph.ready()

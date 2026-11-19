@@ -185,8 +185,6 @@ test('moderation: a moderation event that arrives before its author\'s RoleBase 
     try { s2.destroy() } catch (err) { /* already closed */ }
   })
 
-  // Settle, then check: update() decides queued events once the RoleBase
-  // has arrived.
   for (let i = 0; i < 20; i++) {
     await sleep(200)
     await b.update()
@@ -302,8 +300,6 @@ test('moderation: a validly-signed action with an extreme future timestamp is re
   await graph.roleBase.append({
     type: 'roles/setRolePermissions',
     role: 'member',
-    // Granted BOTH legitimately - this is not testing an unauthorized
-    // actor, it's testing an authorized one abusing timestamp ordering.
     permissions: ['content.hide', 'content.reveal'],
     author: graph.key.toString('hex'),
     timestamp: Date.now()

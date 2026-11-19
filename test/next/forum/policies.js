@@ -1,4 +1,4 @@
-// Story 6 #1, #5, FR-027: storage policies. A small forum is held entirely by
+// Storage policies. A small forum is held entirely by
 // every member without anyone choosing anything ("auto"). A forum whose
 // creator chose "keep everything": a member whose budget is too small is told
 // it is below the forum's policy, and gets everything back once it fits.

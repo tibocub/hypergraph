@@ -1,4 +1,4 @@
-// Spec 015 (US2): an engine holding many spaces keeps only some open. The
+// An engine holding many spaces keeps only some open. The
 // seeded set (own, pinned, then recently used, up to maxAnnounced) opens with
 // the engine and stays open; any other space opens on its first call, closes
 // after idleMs unused, and at most maxOpen are open (the least recently used
@@ -11,8 +11,6 @@ const { tmpDir, eventually, sleep } = require('../helpers.js')
 
 const types = { post: { fields: { title: 'string' } } }
 
-// An engine folder holding `n` spaces with one post each, created in order
-// (the last ones are the most recently used).
 async function folder (t, n) {
   const dir = tmpDir(t, 'lazy')
   const hg = await Hypergraph.open(dir, { types })
@@ -170,8 +168,6 @@ test('a space whose closing failed half-way opens again on its next use (not CLO
   t.ok(s.opened)
 })
 
-// Spec 016 (US3, research R4): a member's log is accepted at its first record,
-// so everything must work before it.
 test('a member with no own log yet: status, inspect, members, budgets, reopening', async (t) => {
   const dir = tmpDir(t, 'silent')
   let hg = await Hypergraph.open(dir, { types })

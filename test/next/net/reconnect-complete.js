@@ -1,4 +1,4 @@
-// Research R13 (spec 012): a reopened member's `complete` must not turn true
+// A reopened member's `complete` must not turn true
 // as it reaches its peer again (the peer's list of logs matches) before it
 // knows that one of those logs grew. It doesn't: a peer opens its logs before
 // joining the space, so Hypercore's length for each comes before the space's
