@@ -103,6 +103,14 @@ npm run test:next:bare
 - **The inspector**: `node tools/inspector/demo.js` plays a three-member forum, each member with a
   read-only web page of what it holds ([tools/inspector/README.md](tools/inspector/README.md)).
 
+## Types
+
+`lib/` is plain JavaScript typed with JSDoc and checked by TypeScript in strict mode (`npm run typecheck`),
+with nothing to compile. Editors (VS Code and others) read those types: completion, hover docs and
+errors as you type, in JavaScript too. TypeScript users get `.d.ts` files for `hypergraph/next` and
+`hypergraph/testing`, built by `npm run types` (into `dist/types/`, on `npm pack`). They need no setup: Node's types
+(`@types/node`) come with them as a dependency.
+
 ## The old version
 
 `src/` is v1 (`require('hypergraph')`), a graph store with contexts. It is frozen, kept only until

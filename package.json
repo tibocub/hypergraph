@@ -5,12 +5,28 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./next": "./lib/index.js",
-    "./testing": "./lib/app-testing.js",
+    "./next": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./testing": {
+      "types": "./dist/types/app-testing.d.ts",
+      "default": "./lib/app-testing.js"
+    },
     "./v2": "./src/v2/index.js",
     "./tools/inspector": "./tools/inspector/index.js",
     "./package.json": "./package.json",
     "./*": "./*"
+  },
+  "typesVersions": {
+    "*": {
+      "next": [
+        "dist/types/index.d.ts"
+      ],
+      "testing": [
+        "dist/types/app-testing.d.ts"
+      ]
+    }
   },
   "bin": {
     "hypergraph-inspect": "bin/hypergraph-inspector.js"
@@ -61,9 +77,13 @@
     "docs": "jsdoc -c jsdoc.json",
     "test:next": "node scripts/test-runner.js next",
     "test:next:bare": "node scripts/test-runner.js --bare next",
-    "docs:check": "node scripts/docs-check.js"
+    "docs:check": "node scripts/docs-check.js",
+    "typecheck": "tsc -p jsconfig.json",
+    "types": "tsc -p jsconfig.json --noEmit false --declaration --emitDeclarationOnly --outDir dist/types && node scripts/types.js",
+    "prepack": "npm run types"
   },
   "dependencies": {
+    "@types/node": "^26.6.6",
     "autobase": "^7.28.2",
     "b4a": "^1.9.0",
     "bare-events": "^2.9.2",
@@ -103,7 +123,8 @@
     "espree": "^11.2.0",
     "globals": "^17.13.0",
     "jsdoc": "^4.0.5",
-    "random-access-memory": "^6.2.1"
+    "random-access-memory": "^6.2.1",
+    "typescript": "~5.9"
   },
   "license": "MIT",
   "imports": {

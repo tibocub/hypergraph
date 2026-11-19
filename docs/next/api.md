@@ -558,7 +558,7 @@ const stop = forum.query('post').live(({ items }) => render(items), { limit: 20 
 await forum.query('comment').on(post).by(someone).latest(20)   // filters combine
 await forum.query('post').tag('rust').since(Date.now() - 864e5).latest(20)   // since: inclusive; until: before
 await forum.linked(post, 'comment')           // what points at the post, oldest first (no type: not relations or tags)
-await forum.count('comment', { on: post })    // { value, complete }
+await forum.count('comment', { on: post })    // { value, complete }; `on` is required (a TypeError without)
 await forum.sum('vote', 'value', { on: post })   // one per member, the latest
 ```
 

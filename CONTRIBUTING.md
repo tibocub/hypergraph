@@ -49,7 +49,7 @@ and after and compare with `npm run perf:compare`.
 2. Fix a bug or change behaviour together with a test that fails before and passes after.
 3. If the public API or its behaviour changes, update the forum scenario tests in
    `test/next/forum/`, the docs in `docs/next/`, and the JSDoc in `lib/`.
-   `npm run docs:check` must pass.
+   `npm run docs:check` and `npm run typecheck` must pass.
 4. Comments say why, not what: no ticket numbers, dates or names.
 5. Breaking changes get an entry in `CHANGELOG.md`: other projects use this working tree directly
    (see `ECOSYSTEM.md`).

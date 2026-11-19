@@ -105,6 +105,14 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-19 (types: lib/ checked by tsc strict)** — JSDoc types instead of TypeScript sources: `jsconfig.json`
+  (strict, `lib/` only; generated `lib/index/spec/` and v1 `src/` left out), `npm run typecheck` guarded by
+  `test/next/unit/typecheck.js`, `.d.ts` files for users from `npm run types` (on prepack, not committed).
+  Real typedefs for what flows through the code (decisions, records, rows, held logs, the space context); the
+  untyped core packages typed by hand in `types/`. Fields set in `_open()` are declared on `Hypergraph` and
+  `Space` (bare class fields), with `strictPropertyInitialization` off: casts can't reach a read that starts a
+  statement. It found two bugs: a peer opening the space protocol without a channel id ended the process,
+  and `count()`/`sum()` without `on` failed deep inside (now a TypeError).
 - **2026-11-17 (hyperDNS on the new core)** — hyperDNS 6a2c563: authorities are spaces with a `dns.publish`
   role, private authorities join by invite, `resolveAddress` takes `name@authority` or `name@hg:link`. The
   library has no dependencies and runs on Node and Bare. v1 is no longer needed by anyone.

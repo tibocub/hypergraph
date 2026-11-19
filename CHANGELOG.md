@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-19: types for editors and TypeScript users; two fixes
+
+`lib/` is checked by TypeScript in strict mode (`npm run typecheck`, `jsconfig.json`); `npm run types` writes
+`.d.ts` files into `dist/types/` (on prepack), and `package.json` points `hypergraph/next` and
+`hypergraph/testing` at them; `@types/node` is now a dependency so they work in a project without it
+(`test/next/unit/types-consumer.js`). Fixed: a peer opening the space protocol (or an older version's) without a
+channel id ended the process (`test/next/net/no-id-channel.js`). `count()` and `sum()` without `on`, which
+failed deep inside, now throw a TypeError saying `on` is required (`test/next/forum/count-needs-on.js`).
+
 ### 2026-11-17: renew a private space, trim any space's history (spec 027)
 
 `space.renew()` / `space.secure({ forget })` (owners and admins of a private top space): a new decision log,

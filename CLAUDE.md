@@ -45,6 +45,10 @@ after a breaking change, add a `CHANGELOG.md` entry. Map: [ECOSYSTEM.md](ECOSYST
 - **JSDoc** on the public API (`Hypergraph`, `Space`, `Query`, `Scope`, `HypergraphError`,
   `hypergraph/testing`) stays complete and true: parameters, options with defaults, returns, error
   codes, events. `npm run docs:check` must pass; `npm run docs` builds the reference into `out/api/`.
+- **Types**: `npm run typecheck` (tsc strict over `lib/`, `jsconfig.json`) must pass with no error. Real
+  types in JSDoc (`@typedef`), not `object` or `any`; a cast `/** @type {T} */ (x)` only where the
+  checker can't see what the code knows, and never at the start of a line (it joins the line above).
+  Packages without types: `types/` (hand-written for the core ones, `modules.d.ts` for the rest).
 - **Docs** move with the code: `docs/next/api.md` (every call), `docs/next/concepts.md` (how it works).
 
 ## Where things are
