@@ -1,4 +1,4 @@
-// Cuts (research R8, R11, amended in research.md A4): when someone loses the
+// Cuts: when someone loses the
 // right to write — removed, banned — the decision records their device logs'
 // lengths as the decider held them. Records below the cut stay for everyone,
 // records past it are ignored by everyone: members who indexed them remove

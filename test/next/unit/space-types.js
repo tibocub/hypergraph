@@ -1,7 +1,7 @@
-// Spec 015 (US1): each space carries its own types. createSpace records them
+// Each space carries its own types. createSpace records them
 // (the app's, or `types`); a decider's app adding to them records the next
-// version when it opens the space, keeping the space's types it lacks (spec
-// 019); a decider adds a space's own with space.declareTypes() (spec 019); an app whose types break a space's gets
+// version when it opens the space, keeping the space's types it lacks; a
+// decider adds a space's own with space.declareTypes(); an app whose types break a space's gets
 // INCOMPATIBLE_TYPES from that space only; a space whose types gained an
 // index is indexed again, the others are not.
 
@@ -192,7 +192,7 @@ test('two deciders record the next version at once: the one refused records agai
   t.ok(sets.filter((d) => d.counted).length >= 4, 'and a loser recorded again (the space\'s first, then 2 or 3 per round)')
 })
 
-// --- spec 019: space.declareTypes() ---
+// --- space.declareTypes() ---
 
 const site = { post: { fields: { title: 'string', file: 'link' }, links: { file: ['file'] } }, vote: { fields: { on: 'link', value: 'int' }, links: { on: ['post'] }, onePerMember: true } }
 const engine = { file: { fields: { path: 'string' } } } // an engine's own types, none of the site's

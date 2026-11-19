@@ -1,4 +1,4 @@
-// Story 2 #1-4, #6: a moderator hides, reveals, takes down and bans; every
+// A moderator hides, reveals, takes down and bans; every
 // member applies it the same way, including one who was offline during all
 // of it; a demoted moderator's later decisions are ignored, earlier ones
 // kept; two admins deciding conflicting things at once end the same
@@ -136,7 +136,7 @@ test('unban: let back in, they write again; what they wrote during the ban stays
 
   await forum.unban(fb, who)
   // No retry: a decision method first catches up with the connected members
-  // who record decisions (ROADMAP 2026-10-09), and so does writing.
+  // who record decisions, and so does writing.
   await forum.giveRole(fa, who, 'member')
   t.pass('a, right after the unban by b, lets c back in')
   t.ok(await forum.post(fc, 'after the unban', ''), 'c writes again at once')
@@ -160,8 +160,8 @@ test('a demoted moderator: later decisions ignored, earlier ones kept', async (t
   await forum.giveRole(fa, b.identity.publicKey, 'member')
   t.ok(await eventually(async () => (await forum.roleOf(fb, b.identity.publicKey)) === 'member', 5000))
   try { await forum.hide(fb, two); t.fail('should be refused') } catch (err) { t.is(err.code, 'NOT_ALLOWED', 'b\'s app refuses') }
-  // Written anyway: b's device is no longer a writer of the decision log
-  // (story 4, research.md A8), so it can't even append; if it could, apply
+  // Written anyway: b's device is no longer a writer of the decision log, so
+  // it can't even append; if it could, apply
   // would ignore it (test/next/unit/decisions-writers.js).
   const written = await codeOf(testing.decide(fb, { type: 'moderate', action: 'hide', target: two.id, reason: '', cut: [] }))
   t.ok(written === null || written === 'NOT_ALLOWED')

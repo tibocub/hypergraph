@@ -1,8 +1,8 @@
-// Spec 015 (US1, US6): one engine for many apps. An engine declaring no types
+// One engine for many apps. An engine declaring no types
 // (a browser, HyperBrowser) holds a forum, a wiki and a file share, each with
 // the types it was created with; another engine reads each with that space's
 // types. A wiki app's update records new types in the wiki only, and only the
-// wiki is indexed again. Spec 019: a forum site published from an engine
+// wiki is indexed again. A forum site published from an engine
 // with types of its own (SwarmFS's) gets the forum's types from its owner.
 
 const test = require('brittle')
@@ -13,7 +13,7 @@ const { eventually, codeOf } = require('../helpers.js')
 
 const wikiTypes = { article: { fields: { title: 'string', body: 'text' }, editable: 'members' } }
 const wikiV2 = { article: { fields: { title: 'string', body: 'text' }, editable: 'members', index: [['title', 'stamp']] } }
-// SwarmFS-like: its own types, prefixed where they meet others (spec 015 FR-062)
+// SwarmFS-like: its own types, prefixed where they meet others
 const fileTypes = { 'swarmfs/file': { fields: { name: 'string', size: 'uint' } } }
 
 test('one engine, no types of its own: a forum, a wiki and a file share, each with its types', async (t) => {

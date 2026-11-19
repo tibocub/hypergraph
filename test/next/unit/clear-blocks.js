@@ -3,7 +3,7 @@
 // per-block bits; a later "dropped block k" sets that length to k, so peers
 // forget the holder still has k+1..n. A peer asks again ("want") only once
 // per 2M blocks, so one that already asked for a block the holder lacked
-// never gets them (specs/research/upstream/hypercore.md; research.md A5).
+// never gets them.
 // lib/replication.js's clearBlocks() announces them again.
 
 const test = require('brittle')

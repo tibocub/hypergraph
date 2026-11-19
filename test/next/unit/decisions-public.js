@@ -1,4 +1,4 @@
-// Public spaces (spec 016, research R2, R3): `settings/set { public: true }`
+// Public spaces: `settings/set { public: true }`
 // by who may decide makes a scope public for good; there an identity the
 // decision log doesn't name counts as `member` unless banned.
 

@@ -1,4 +1,4 @@
-// SwarmFS's H17: a device paired, or a member let in, after a private space
+// A device paired, or a member let in, after a private space
 // got past one index batch (256 blocks) of records it can't open yet reads
 // it: the indexer goes on past them to the grant with their key.
 

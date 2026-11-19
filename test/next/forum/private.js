@@ -1,5 +1,5 @@
-// Private sub-forums (story 8, US8 #2; spec 008's scenarios, research.md
-// A13): read by the people given a role in them plus the forum's owner and
+// Private sub-forums: read by the people given a role in them plus the
+// forum's owner and
 // admins; whoever relays or stores the blocks without a key reads nothing; an
 // invite gives access once a key holder is online; removing someone (or a ban
 // in the forum) changes the key: they read what came before, not after; a
@@ -42,7 +42,7 @@ test('a private sub-forum: its members read it; a plain member doesn\'t have it;
   t.absent(b4a.includes(raw, b4a.from('secret plan')) || b4a.includes(raw, b4a.from('meet at noon')), 'no plaintext in it')
   t.alike(await titles(rc), [], 'nothing readable')
   t.is((await rc.get(p.id, { timeout: 0 })).record, null)
-  // Not for me (story 9): it answers at once, and says so.
+  // Not for me: it answers at once, and says so.
   t.is(rc.status().access, 'none')
   const t0 = Date.now()
   const page = await rc.query('post').latest(20)
@@ -139,7 +139,7 @@ test('a private forum: its members read it; nothing of it is in the clear on dis
   t.ok(await eventually(() => shows(fb, r.id), 10000), 'members read with the new key')
 })
 
-// Routed to story 9: an invite to the forum that also gives its role in listed
+// An invite to the forum that also gives its role in listed
 // sub-forums (a private one included).
 test('an invite to the forum and to its private sub-forum', async (t) => {
   const { c, fa, fc, staff } = await staffRoom(t)

@@ -1,4 +1,4 @@
-// The circle crash (HyperBrowser 018, 2026-11-16): with 3 circles and 7+
+// The circle crash (HyperBrowser 018): with 3 circles and 7+
 // people joining with holding on, Autobase threw Writer._loadNextNode
 // ('node' of null), uncaught, and the process died. A holder's blind peer
 // announced every handed core (message logs too) on the space's Autobase

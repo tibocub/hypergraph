@@ -1,4 +1,4 @@
-// Who may change a record (FR-003, story 5, research.md A9): the author
+// Who may change a record: the author
 // always; any member for 'members'; for { permission }, an editor's records
 // below the cut recorded when they lost it count, those past it don't, and a
 // log without a cut counts while they hold it. Deletes only by the author.

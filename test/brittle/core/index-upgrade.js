@@ -42,7 +42,7 @@ test('index-upgrade: a store with an old `graph-view` core rebuilds the new inde
 
   let graph = new Hypergraph(store, { deviceKeyPair })
   await graph.ready()
-  await graph.setIdentity({ username: 'tibo', bio: 'hi' })
+  await graph.setIdentity({ username: 'alice', bio: 'hi' })
   const a = await graph.put({ type: 'post' })
   await graph.putContent(a.id, 'first')
   await graph.putContent(a.id, 'second')
@@ -72,7 +72,7 @@ test('index-upgrade: a store with an old `graph-view` core rebuilds the new inde
   t.alike(after, before, 'every query answers the same after the rebuild')
   t.is(before.nodes.length, 2, 'the deleted entity stays deleted')
   t.is(before.content[0].body, 'second', 'the latest content version wins')
-  t.is(before.identity.username, 'tibo')
+  t.is(before.identity.username, 'alice')
   await graph.close()
   await store.close()
 })

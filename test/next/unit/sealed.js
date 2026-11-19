@@ -1,4 +1,4 @@
-// Spec 022: a private space is encrypted on disk (its disk key, as the
+// A private space is encrypted on disk (its disk key, as the
 // personal space's): whoever holds its cores without the key sees keys,
 // lengths and sizes only. Closed and public spaces are as before. The key is
 // never in an invite link (a commitment to it is). rotateKey() changes the

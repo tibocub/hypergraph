@@ -1,4 +1,4 @@
-// Story 3 #2, FR-026: the personal space, shared by a person's devices only.
+// The personal space, shared by a person's devices only.
 // An app record kept there ("this device holds X", as SwarmFS will write) is
 // read by the person's other device and by nobody else: it is encrypted, not
 // listed among the spaces, and someone else writing into it is ignored.
@@ -59,7 +59,7 @@ test('each device\'s heads (its log lengths) reach the person\'s other devices',
   }, 10000), 'the laptop knows how far the phone wrote')
 })
 
-// Story 4 (ROADMAP 2026-10-09): what one device wrote, e.g. SwarmFS's "what does this device hold".
+// What one device wrote, e.g. SwarmFS's "what does this device hold".
 test('query(type).fromDevice(key): what one device wrote, page by page', async (t) => {
   const laptop = await open(t, { label: 'laptop', types })
   await laptop.connectToSwarm()
@@ -79,7 +79,7 @@ test('query(type).fromDevice(key): what one device wrote, page by page', async (
   t.is(paths(next), '/a', 'paging, no gaps or repeats')
 })
 
-// SwarmFS's H10: what this device wrote is all here, so reading it doesn't
+// What this device wrote is all here, so reading it doesn't
 // wait for the other device, even offline after a restart.
 test('fromDevice(this device) answers at once, complete, with the other device offline', async (t) => {
   const laptop = await open(t, { label: 'laptop', types })
@@ -102,7 +102,7 @@ test('fromDevice(this device) answers at once, complete, with the other device o
   t.absent((await again.personal.query('held').latest(10, { timeout: 300 })).complete, 'everything: not complete, the phone is offline')
 })
 
-// SwarmFS's H3: "does this device hold X" is an index filter and fromDevice
+// "does this device hold X" is an index filter and fromDevice
 // together (AND).
 test('where() and fromDevice() combine', async (t) => {
   const laptop = await open(t, { label: 'laptop', types })
@@ -122,10 +122,10 @@ test('where() and fromDevice() combine', async (t) => {
   t.is(paths(await holds(laptop, laptop, 'r2')), '/l2')
 })
 
-// Story 6 (ROADMAP 2026-10-09): superseded settings and heads don't pile up.
+// Superseded settings and heads don't pile up.
 // Each device keeps one row per setting and per device's heads; the older
 // versions' blocks are cleared, except in a device's own log, which stays
-// whole so the other devices can always fetch and check it (FR-027).
+// whole so the other devices can always fetch and check it.
 test('settings set many times and heads written many times leave one of each, on every device', async (t) => {
   const laptop = await open(t, { label: 'laptop', types })
   await laptop.connectToSwarm()

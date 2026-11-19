@@ -1,4 +1,4 @@
-// Spec 027 research (research.md RQ1, RQ4): two claims the recommended design rests on.
+// Two claims the design of space.renew() rests on.
 // 1. A core written with a new disk key is unreadable with the old one (a renew hides new writes).
 // 2. Truncation needs no copy: clearing old blocks keeps the rest readable and verifiable,
 //    and a newcomer fetching from a trimmed peer gets the kept blocks only.

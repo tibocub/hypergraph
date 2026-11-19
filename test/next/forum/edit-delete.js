@@ -1,4 +1,4 @@
-// Story 1 #5-6: the author edits (everyone shows the latest version) and
+// The author edits (everyone shows the latest version) and
 // deletes (everyone stops showing it, and clears its blocks); an edit or a
 // delete by someone else is refused locally and, written anyway through a
 // raw log, ignored by every member.

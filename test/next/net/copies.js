@@ -1,4 +1,4 @@
-// Spec 024: a fixed number of copies. A member's space is kept by 5 holders
+// A fixed number of copies. A member's space is kept by 5 holders
 // in all (split across its circles, ranked by a hash, one device per
 // person), the next ranked taking over when one leaves; an extra copy while
 // none is online; a holder unseen 7 days replaced, and told to delete when

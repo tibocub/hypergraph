@@ -1,4 +1,4 @@
-// The write limit of an open space (story 9, T071a; research.md A14): a log
+// The write limit of an open space: a log
 // counts at most `records` records within any `periodMs`, judged the same by
 // every member although deletes wipe earlier records.
 

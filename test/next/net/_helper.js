@@ -1,4 +1,4 @@
-// A helper for the tests of spec 013: a real blind-peer server on the test's
+// A helper for the helpers' tests: a real blind-peer server on the test's
 // local DHT, as `blind-peer-cli` runs it, closed after the test.
 
 const path = require('path')
@@ -28,7 +28,7 @@ async function holds (server, core) {
 }
 
 // Does it hold this member's part of the space: its log and, if it records
-// decisions, its decisions, with its log listed (spec 013)?
+// decisions, its decisions, with its log listed?
 async function heldBy (server, space) {
   if (!(await holds(server, space.own.core))) return false
   if (!space.decisionLog.writable) return true

@@ -1,4 +1,4 @@
-// Spec 015 (US5): a site's handle reaches its space and that space's
+// A site's handle reaches its space and that space's
 // sub-spaces only. The default (a key of the site's own) is not built yet:
 // NOT_SUPPORTED, never the main identity silently.
 

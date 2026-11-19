@@ -1,4 +1,4 @@
-// Tagged field encoding (experiment 6): per present field its number, length
+// Tagged field encoding: per present field its number, length
 // and value; readers skip numbers they don't know, and get null for declared
 // fields a record doesn't have.
 
@@ -54,7 +54,7 @@ test('sizes stay near experiment 6 (post 113 B, comment 116 B, vote 40 B, ±10%)
   const comment = fields.codec([{ name: 'text', kind: 'text' }, { name: 'on', kind: 'link' }])
   const vote = fields.codec([{ name: 'value', kind: 'int' }, { name: 'on', kind: 'link' }])
   // Links live in the record's link list (a 1-byte index in the fields), so
-  // count them as the experiment did: the id's bytes (35 B) once per record.
+  // count them as the measurement did: the id's bytes (35 B) once per record.
   const size = (codec, v) => { const links = []; const n = codec.encode(v, links).byteLength; return n + links.reduce((s, l) => s + l.byteLength, 0) }
   const near = (got, want, name) => t.ok(Math.abs(got - want) <= want * 0.1, `${name}: ${got} B (experiment: ${want} B)`)
   near(size(post, { title: 'Hello everyone, a typical title', text }), 113, 'post')

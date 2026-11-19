@@ -1,8 +1,8 @@
-// Spec 017: a member keeps a held log's core open only while it uses it
+// A member keeps a held log's core open only while it uses it
 // (reads, downloads, a hand-off to helpers), and closes it after an idle
 // delay (lowered here: testing.idleLogs). Its length is in the summaries, so
 // a peer with more of a closed log is found by the range exchange, and
-// "complete" never holds while such a difference is unsettled (FR-005).
+// "complete" never holds while such a difference is unsettled.
 
 const test = require('brittle')
 const b4a = require('b4a')
@@ -18,7 +18,7 @@ const IDLE = 300
 
 // `n` made-up logs of two blocks, written at `from` and held by every
 // space in `to` (scripted, past the gate, as perf/scenarios/members.mjs
-// does): those get them by replication, a length claim each (spec 017).
+// does): those get them by replication, a length claim each.
 // Their author: a member `from` adds (not `from`'s own identity: the logs of
 // its own devices are read at start, lib/space.js #seenOwn).
 async function script (from, to, n) {

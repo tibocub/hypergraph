@@ -1,8 +1,8 @@
-// Sub-forums (story 8, US8 #1, #3–5): seen inside their forum without joining;
+// Sub-forums: seen inside their forum without joining;
 // write-restricted; guests of a sub-forum only; a ban in the forum applies in
 // its sub-forums, whatever arrived first; a removal takes sub-forum roles
 // away; shortcuts to other forums. Sub-forum decisions live in the forum's
-// decision log (research.md A13).
+// decision log.
 
 const test = require('brittle')
 const forum = require('./forum.js')

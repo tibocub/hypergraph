@@ -1,8 +1,8 @@
-// Settling log lists by key ranges (spec 016, US5, research R7): counts and
+// Settling log lists by key ranges: counts and
 // XOR digests of 16 sub-ranges per message; equal ones stop, small ones are
 // answered with their keys, the rest recurse. Two sets converge to their
 // union in a few rounds whatever their size; a peer whose keys don't match
-// the counts it gave is ignored for that round. Spec 017: each key comes with
+// the counts it gave is ignored for that round. Each key comes with
 // its log's length, so a longer log at a peer is found the same way.
 
 const test = require('brittle')

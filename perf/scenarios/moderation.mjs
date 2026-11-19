@@ -1,4 +1,4 @@
-// A spammer banned with everything they wrote dropped (specs/research/scale-audit.md, perf
+// A spammer banned with everything they wrote dropped (perf
 // scenario 9), through the forum app (test/next/forum/forum.js), three members on a local
 // DHT (setup.threeMembers: a owns the forum, c spams, b reads):
 //   mod.ban-drop-all  a spammer wrote N posts; a bans them with dropAll; until b lists none of

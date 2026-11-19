@@ -1,4 +1,4 @@
-// Spec 014 (the forum's requests F10-F13): a theme only the owner and admins
+// A theme only the owner and admins
 // set; members report to the moderators, privately; moderators list what
 // they hid or flagged however old; a ban that drops everything the person
 // wrote, every device, every sub-forum, in one decision.

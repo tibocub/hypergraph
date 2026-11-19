@@ -1,4 +1,4 @@
-// Spec 013: helpers (blind peers) keep a space's data available while its
+// Helpers (blind peers) keep a space's data available while its
 // members are offline, and are never required.
 
 const test = require('brittle')

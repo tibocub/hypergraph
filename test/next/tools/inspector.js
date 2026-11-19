@@ -1,4 +1,4 @@
-// The inspector tool (tools/inspector, ROADMAP 2026-10-09): a smoke test that
+// The inspector tool (tools/inspector): a smoke test that
 // keeps it alive next to the core. One instance with a space and a few
 // records; the page and every JSON view answer with the expected shape; the
 // server refuses anything but GET (read-only). Node only: the tool uses

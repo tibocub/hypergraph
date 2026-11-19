@@ -1,6 +1,6 @@
-// Story 7, FR-004, research R6: the app changes, old and new versions keep
+// The app changes, old and new versions keep
 // talking. The forum's second version added post topics (indexed) and polls;
-// members still on the first one share the forum with the others. Spec 015:
+// members still on the first one share the forum with the others:
 // the forum records its types; every member reads, checks and indexes with
 // the forum's, whatever their app declares, so an old app reads the fields
 // and types it doesn't know. A new type or field is used once the owner's

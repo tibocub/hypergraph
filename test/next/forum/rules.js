@@ -1,4 +1,4 @@
-// Story 2 #5, #7, FR-018: an app rule (a title is at most 300 characters)
+// An app rule (a title is at most 300 characters)
 // rejects a record on every member before it is kept, indexed or passed on;
 // a non-member's records are never kept.
 

@@ -1,4 +1,4 @@
-// Spec 023: circles. The decisions a circle adds (marked at creation, 50
+// Circles. The decisions a circle adds (marked at creation, 50
 // members at most, only the owner and admins invite) and the holding logic
 // that needs no network: what a member hands, in which order, within its
 // cap, and what a holder deletes when people leave.

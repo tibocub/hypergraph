@@ -1,6 +1,6 @@
-// Spec 023: circles. People in a circle keep each other's places online:
-// devices with holding on hold the members' spaces (5 copies of each, spec
-// 024; encrypted ones stay unreadable to them) and serve them to anyone in those spaces, a
+// Circles. People in a circle keep each other's places online:
+// devices with holding on hold the members' spaces (5 copies of each;
+// encrypted ones stay unreadable to them) and serve them to anyone in those spaces, a
 // member's offline or not; leaving or removal deletes it at once, unless
 // another shared circle covers it.
 

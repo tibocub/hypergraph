@@ -1,12 +1,12 @@
-// Spec 017: a member holding many authors' logs keeps their cores closed until it uses them.
+// A member holding many authors' logs keeps their cores closed until it uses them.
 //   logs.held-start      reopening an account whose forum holds N other authors' logs (scripted,
 //                        two blocks each, by a member), until the forum's first page (ms). flat
-//                        (SC-002): no core is opened per held log; what grows is one index row read
+//                       no core is opened per held log; what grows is one index row read
 //                        per log
-//   logs.held-open       held logs whose core is open right after that (count). flat (SC-001: none)
+//   logs.held-open       held logs whose core is open right after that (count). flat (none)
 //   logs.length-settle-kb  two members holding the same N logs, all closed; one log grows at one
 //                        of them: bytes of ranges and keys until the other holds the new block
-//                        (KB). flat (SC-004: under 3 KB, as a one-log list difference, spec 016)
+//                        (KB). flat (under 3 KB, as a one-log list difference)
 
 import hc from 'hypercore-crypto'
 import c from 'compact-encoding'

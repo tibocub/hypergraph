@@ -1,6 +1,6 @@
-// Admins settle the decision order with the owner (story 4, research.md A8;
-// v1 spec 003's lesson: with a sole settler, an unsettled tail grows for
-// good once it is gone). One device per member with `decide` is an Autobase
+// Admins settle the decision order with the owner: with a sole settler, an
+// unsettled tail grows for good once it is gone. One device per member with
+// `decide` is an Autobase
 // indexer; settling needs most of them online.
 
 const test = require('brittle')

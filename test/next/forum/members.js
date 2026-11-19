@@ -17,7 +17,7 @@ test('members(): roles, you, devices; banned and removed people with their state
   await forum.post(fc, 'hi', '')
   await forum.post(fd, 'hi', '')
   await forum.giveRole(fa, b.identity.publicKey, 'moderator')
-  // spec 016: a log exists from its first record: c's and d's, not a's and b's
+  // a log exists from its first record: c's and d's, not a's and b's
   t.ok(await eventually(async () => (await fa.inspect()).logs.filter((l) => !l.refused).length >= 2, 10000), 'a holds the logs of everyone who wrote')
   await forum.ban(fa, c.identity.publicKey, { reason: 'spam' })
   await forum.removeMember(fa, d.identity.publicKey)

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec 025 D3: writes the online hours a device recorded (lib/holding.js
+// Writes the online hours a device recorded (lib/holding.js
 // `hours`, saved as @hg/meta 'seen') to a file the simulator reads
 // (run.js --real), every device key replaced by a random label.
 //   node research/holders/export.js <engine or hypergraph folder> [--out hours.json]

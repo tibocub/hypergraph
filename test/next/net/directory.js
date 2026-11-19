@@ -1,4 +1,4 @@
-// The log directory (research R10, R17): a newcomer learns every member's log
+// The log directory: a newcomer learns every member's log
 // from any one member; a new log is announced and fetched; a non-member's log
 // is neither kept nor passed on; members started at the same moment meet.
 
@@ -44,7 +44,7 @@ test('a non-member\'s log is neither kept nor passed on', async (t) => {
 })
 
 test('a second space joined over a connection already open: its channel opens too', async (t) => {
-  // Found in story 3 (research.md A7): Protomux turns down a channel the
+  // Protomux turns down a channel the
   // other side opens before this side has one, so a space opened later on a
   // connection already up never got its channel, and its invite was never
   // heard.
@@ -79,7 +79,7 @@ test('a log whose announcement was missed still arrives: the summary after a cha
   const b = await account(t, 'b')
   const fa = await forum.createForum(a, 'Missed')
   const fb = await forum.join(b, await forum.invite(fa))
-  await forum.post(fa, 'from a', '') // a log exists from its first record (spec 016)
+  await forum.post(fa, 'from a', '') // a log exists from its first record
   await forum.post(fb, 'from b', '')
   await eventually(async () => testing.logs(fa).length === 2, 5000)
   const restore = testing.deafen(fa, { notices: true }) // a never hears a notice
@@ -96,12 +96,12 @@ test('a log whose announcement was missed still arrives: the summaries settle it
   const b = await account(t, 'b')
   const fa = await forum.createForum(a, 'Missed')
   const fb = await forum.join(b, await forum.invite(fa))
-  await forum.post(fa, 'from a', '') // a log exists from its first record (spec 016)
+  await forum.post(fa, 'from a', '') // a log exists from its first record
   await forum.post(fb, 'from b', '')
   await eventually(async () => testing.logs(fa).length === 2, 5000)
   // a hears no notices and no summaries while c joins and posts: the
   // summary a sends still differs from b's and c's, and they settle the
-  // difference with it by ranges (spec 016: either side's summary starts it)
+  // difference with it by ranges (either side's summary starts it)
   const restore = testing.deafen(fa, { notices: true, summaries: true })
   t.teardown(restore)
   const c = await account(t, 'c')
@@ -112,7 +112,7 @@ test('a log whose announcement was missed still arrives: the summaries settle it
   t.ok(restore.dropped.length > 0, 'a did drop summaries')
 })
 
-// Found by bench/next/first-page.js (story 9): a newcomer said "complete" as
+// Found by bench/next/first-page.js: a newcomer said "complete" as
 // soon as a member's summary arrived, before it had looked at that member's
 // list of logs, so a first page could be complete and wrong.
 test('a newcomer is not complete before it has looked at a member\'s list of logs', async (t) => {
@@ -129,7 +129,7 @@ test('a newcomer is not complete before it has looked at a member\'s list of log
   t.is(later.items.length, 3)
 })
 
-// Found by bench/next/first-page.js (story 9): the indexer counted blocks as
+// Found by bench/next/first-page.js: the indexer counted blocks as
 // looked at before their batch was committed, so a read in between said
 // "complete" without the newest records.
 test('a read is not complete while what was looked at is still being committed', async (t) => {
@@ -153,7 +153,7 @@ test('a read is not complete while what was looked at is still being committed',
   t.ok(seen, 'it becomes complete')
 })
 
-// Spec 016 (US5, research R7): a difference in the log lists is settled by
+// A difference in the log lists is settled by
 // key ranges, so one new log costs about a key, not the whole list.
 test('2,000 logs each, one new log: settled by ranges in under 3 KB', { timeout: 90000 }, async (t) => {
   const crypto = require('hypercore-crypto')

@@ -1,4 +1,4 @@
-// The forum: the reference app for hypergraph's new core (spec 011, SC-002).
+// The forum: the reference app for hypergraph's new core.
 // Everything a forum does with its data, through the public API only: no
 // networking, replication or cryptography code. Keep it under 500 lines; if
 // something here is awkward to write, fix the API, not this file.
@@ -180,7 +180,7 @@ async function inviteFriend (forum) {
   return forum.createInvite({ role: 'friend' })
 }
 
-// An open forum (spec 016): public for good, anyone joins with its one link,
+// An open forum: public for good, anyone joins with its one link,
 // no admin online needed. `perHour`: how much each device may post in an
 // hour (against spam); bans keep people out.
 async function openLink (forum, { perHour } = {}) {
@@ -201,7 +201,7 @@ function join (hg, link, opts) {
   return hg.redeemInvite(link, opts)
 }
 
-// --- helpers (spec 013) ---
+// --- helpers ---
 
 // The forum's helpers: always-on servers (a VPS running blind-peer-cli) that
 // keep its posts available while everyone is offline. Owner only; never
@@ -242,7 +242,7 @@ function changeKey (forum) {
 }
 
 // After a ban or an incident: new keys now, then the forum moves to a new
-// address its members follow by themselves (spec 027); `forgetHistory`:
+// address its members follow by themselves; `forgetHistory`:
 // everything written before now goes. Owners and admins of a private forum.
 function secure (forum, { forgetHistory = false } = {}) {
   return forum.secure({ forget: forgetHistory })
@@ -254,7 +254,7 @@ function trimHistory (forum, days) {
   return forum.trimHistory({ before: Date.now() - days * 24 * 3600 * 1000 })
 }
 
-// Takes someone out of the forum (v1's removeRole): what they wrote so far stays.
+// Takes someone out of the forum: what they wrote so far stays.
 function removeMember (forum, who) {
   return forum.removeRole(who)
 }
@@ -380,7 +380,7 @@ function online (forum) {
   return forum.peers()
 }
 
-// Bookmarks (spec 015): a bookmarked forum stays open and online, on every
+// Bookmarks: a bookmarked forum stays open and online, on every
 // device of the account; the others open when visited, close a while after.
 function bookmark (hg, forum) { return hg.pin(forum.key) }
 function unbookmark (hg, forum) { return hg.unpin(forum.key) }
@@ -391,7 +391,7 @@ async function postsPage (forum, n, after) {
   return (await forum.query('post').latest(n, { after })).items
 }
 
-// --- shipped with the app (spec 020): a public forum's data, packed by the app's build ---
+// --- shipped with the app: a public forum's data, packed by the app's build ---
 
 // What a visitor would download of these public forums, into a folder.
 function packForums (hg, forums, folder) {
@@ -403,7 +403,7 @@ async function unpackForums (hg, folder) {
   return (await hg.importSpaces(folder)).map((key) => hg.space(key))
 }
 
-// --- what's new (spec 021): where this person stands, kept in their settings ---
+// --- what's new: where this person stands, kept in their settings ---
 
 const standing = async (hg, forum) => (await hg.settings())['last-visit:' + forum.key] ?? null
 const news = (forum, cursor) => forum.since(cursor, { types: ['post', 'comment'] })
@@ -511,7 +511,7 @@ function liveThread (forum, on, onUpdate, n = 100) {
   return forum.query('comment').on(on).live(({ items, complete }) => onUpdate(items, complete), { limit: n })
 }
 
-// Spec 023: a circle of friends whose devices keep each other's forums online
+// A circle of friends whose devices keep each other's forums online
 // (private boards included, unreadable to them) while their members are away.
 function createCircle (hg, name) {
   return hg.createCircle({ name })
@@ -522,7 +522,7 @@ function keepOnline (hg, bytes) {
   return hg.setHolding({ on: true, ...(bytes ? { bytes } : {}) })
 }
 
-// "Kept by N of 5 copies" for a forum of this person's (spec 024): `online`
+// "Kept by N of 5 copies" for a forum of this person's: `online`
 // of them reachable now (warn under 2).
 function copies (hg, forum) {
   return hg.copiesOf(forum.key)

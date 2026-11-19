@@ -1,8 +1,8 @@
-// Story 3 #1, #3-6: one person, two devices. A phone joins with the laptop's
+// One person, two devices. A phone joins with the laptop's
 // code and shows the same forums and settings; both write as the same person;
 // a change made after seeing an earlier one wins whatever the clocks say;
 // simultaneous offline edits settle the same everywhere; a lost device is
-// removed with the recovery phrase (research.md A7), keeping what it wrote
+// removed with the recovery phrase, keeping what it wrote
 // before and nothing after.
 
 const test = require('brittle')
@@ -152,13 +152,13 @@ test('someone else can\'t remove your device, even with their own recovery phras
   t.is((await forum.devices(laptop)).length, 2)
 })
 
-// Story 4 (research.md A8): decision rights follow devices.
+// Decision rights follow devices.
 
 test('the owner\'s phone moderates and lets people in, with the laptop offline, no extra step', async (t) => {
   const { laptop, fp, fc } = await twoDevices(t)
   const rude = await forum.post(fc, 'rude', '')
   t.ok(await eventually(async () => (await fp.get(rude.id)).record, 10000))
-  await forum.hide(fp, rude, 'rude') // no retry: the phone waits to record decisions (story 6)
+  await forum.hide(fp, rude, 'rude') // no retry: the phone waits to record decisions
   t.ok(await agree([fc], (f) => forum.latest(f).then((xs) => xs.some((x) => x.id === rude.id)), false), 'everyone applies its hide')
 
   await laptop.close()
@@ -238,7 +238,7 @@ test('once the phrase is forgotten on a device, it is typed to add or remove a d
   t.ok(await eventually(async () => (await forum.devices(laptop)).length === 1, 10000))
 })
 
-// Found in story 6: asking for a second code while the first was still open
+// Asking for a second code while the first was still open
 // (unused, or used a moment ago) crashed the process (blind-pairing allows
 // one listener per account). A new code now replaces the previous one.
 test('a new device code replaces the previous one: two devices added one after the other', async (t) => {

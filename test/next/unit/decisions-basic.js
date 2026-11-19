@@ -1,4 +1,4 @@
-// The decision log (research R8): space/init and member/add|remove applied
+// The decision log: space/init and member/add|remove applied
 // deterministically; a decision whose author may not make it is ignored; the
 // same decisions in the same order give the same state.
 
@@ -111,7 +111,7 @@ test('the same decisions give the same state; adds commute', async (t) => {
   t.is(await run([first, garbage, addX]), await run([first, addX]), 'a malformed decision is skipped, not thrown')
 })
 
-// Story 6 (FR-027): the space's storage policy, changed by who may decide.
+// The space's storage policy, changed by who may decide.
 test('settings/set changes the policy; only who may decide; only auto or everything', async (t) => {
   const owner = await Identity.create({ device: crypto.keyPair() })
   const space = crypto.randomBytes(32)
@@ -159,7 +159,7 @@ test('settings/set records the app rules a space runs (core follow-ups); only wh
   t.alike(State.from(view.map).rules, ['b', 'title-length'], 'a moderator may not change them')
 })
 
-// A16: who reads a private space's history, by who may decide; entries from
+// Who reads a private space's history, by who may decide; entries from
 // before the setting existed decode without it.
 test('settings/set records the history setting; only visible or hidden; old entries decode', async (t) => {
   const owner = await Identity.create({ device: crypto.keyPair() })

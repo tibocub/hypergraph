@@ -1,4 +1,4 @@
-// Sub-spaces in the decision log (story 8, research.md A13): a sub-space's
+// Sub-spaces in the decision log: a sub-space's
 // decisions live in its parent's decision log, marked with the sub-space
 // (`scoped`), so a parent ban and a sub-space decision are always in one
 // order. Its effective state: the parent's members and roles (a private one:

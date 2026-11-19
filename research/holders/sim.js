@@ -1,4 +1,4 @@
-// Spec 025 D2: replays devices' online hours and a strategy's holder picks
+// Replays devices' online hours and a strategy's holder picks
 // (one circle, one space per person, the owner's device hands it), and
 // measures per space the share of the owner's offline hours some copy is
 // online, uploads and moves. Plain JS, no dependencies. Mirrors 024's rules
@@ -98,7 +98,7 @@ const MIXES = {
 }
 
 // A circle of `size` people (one device each) from a mix, + a helper if asked.
-// lateShare of them join during the measured weeks (short history, S3).
+// lateShare of them join during the measured weeks (short history).
 function circle ({ size, mix = 'friends', helper = false, seed = 1, weeks = 8, measureFrom = 4, lateShare = 0.1 }) {
   const r = rng(seed)
   const H = weeks * HOUR_WEEK
@@ -120,7 +120,7 @@ function circle ({ size, mix = 'friends', helper = false, seed = 1, weeks = 8, m
   return { devices, H, M0 }
 }
 
-// --- real patterns (D3 export files): a device's 30 days replayed by hour of week ---
+// --- real patterns (export.js files): a device's 30 days replayed by hour of week ---
 
 // hours: absolute hour numbers (since 1970) it was online in the 30 days
 // up to `end` (the export's hour); replayed over H sim hours, week after
@@ -208,7 +208,7 @@ class View {
 const byU = (ctx) => (a, b) => ctx.u(a) - ctx.u(b)
 const rendezvous = (cands, ctx, weight) => [...cands].sort((a, b) => -Math.log(ctx.u(a)) / weight(a) + Math.log(ctx.u(b)) / weight(b))
 
-// S1: the self-reported share, capped by what the owner observed (both online / owner online) once it watched 24 own hours
+// The self-reported share, capped by what the owner observed (both online / owner online) once it watched 24 own hours
 function s1 (d, ctx) {
   const { view, o, t } = ctx
   const r = view.reported(d, t)
@@ -217,11 +217,11 @@ function s1 (d, ctx) {
   return own >= 24 ? Math.min(r, view.both(o, d, from, t) / own) : r
 }
 
-// S3: Wilson lower bound over the hours since the owner knew it (<= 30 days)
+// Wilson lower bound over the hours since the owner knew it (<= 30 days)
 const s3 = (p, d, ctx) => wilson(p, Math.min(WINDOW, ctx.t - ctx.knownSince[d] + 1))
-const step = (x) => Math.round(x * 10) // S5: 10-point steps
+const step = (x) => Math.round(x * 10) // 10-point steps
 
-// S5: a regular holder stays unless its replacement is 2+ steps better
+// A regular holder stays unless its replacement is 2+ steps better
 function sticky (order, ctx, steps) {
   const top = order.slice(0, ctx.copies)
   const prev = ctx.prev.filter((d) => order.includes(d) && !top.includes(d))
@@ -250,7 +250,7 @@ function parts ({ cap = true, wilson = true, first = true, sticky: stick = true 
 const STRATEGIES = {
   // 024: plain rendezvous hash
   hash: (cands, ctx) => [...cands].sort(byU(ctx)),
-  // S2: weighted rendezvous (Schindelhauer & Schomaker's logarithmic method), weight = reported share
+  // Weighted rendezvous (Schindelhauer & Schomaker's logarithmic method), weight = reported share
   weighted: (cands, ctx) => rendezvous(cands, ctx, (d) => Math.max(0.01, ctx.view.reported(d, ctx.t))),
   // literature's greedy: the most available first (Total Recall-like / selfish placement)
   top: (cands, ctx) => [...cands].sort((a, b) => ctx.view.reported(b, ctx.t) - ctx.view.reported(a, ctx.t) || ctx.u(a) - ctx.u(b)),
@@ -261,7 +261,7 @@ const STRATEGIES = {
   's15-noS3': parts({ wilson: false }),
   's15-noS4': parts({ first: false }),
   's15-noS5': parts({ sticky: false }),
-  // research.md's recommendation: S2-S5, no S1 cap (run it with extra: 'lazy')
+  // the recommended strategy: S2-S5, no S1 cap (run it with extra: 'lazy')
   rec: parts({ cap: false }),
   // S2 with S5's stickiness only (no cap, no Wilson, no S4)
   weightedSticky (cands, ctx) {

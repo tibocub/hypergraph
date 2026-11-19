@@ -1,10 +1,10 @@
-// A newcomer to a big space reads it newest first (story 9, US9 #1, T071b;
-// research.md A14): its first page is complete after downloading only the
+// A newcomer to a big space reads it newest first: its first page is
+// complete after downloading only the
 // newest periods; a page further back widens what it reads; in the background
 // the rest arrives while the space fits its share, and never beyond it.
 // Principle I: what it shows once complete is what a member holding
 // everything shows. The newcomer's reads ask to wait (reads answer at once
-// otherwise, spec 012; test/next/net/honest-reads.js plays the live page).
+// otherwise; test/next/net/honest-reads.js plays the live page).
 
 const test = require('brittle')
 const forum = require('../forum/forum.js')

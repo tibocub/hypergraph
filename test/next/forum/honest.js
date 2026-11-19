@@ -1,4 +1,4 @@
-// Spec 012 US5 (CLAUDE.md rule 3): the forum's screens show what this device
+// The forum's screens show what this device
 // holds at once, say when more is on its way (`complete`), and update
 // themselves: a newcomer, members offline, a thread edited elsewhere, the
 // members list, the forums list. No polling in the app: `eventually` here

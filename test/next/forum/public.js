@@ -1,4 +1,4 @@
-// A public forum (spec 016): the owner opens it to everyone, for good; people
+// A public forum: the owner opens it to everyone, for good; people
 // sign up with its one link while every admin is offline, post, show in the
 // member list of whoever read them; a banned joiner stays out; a joiner who
 // never wrote isn't listed, until its first post.

@@ -1,4 +1,4 @@
-// Spec 022 on the network: a private space's disk key reaches a newcomer's
+// On the network: a private space's disk key reaches a newcomer's
 // device sealed to it, from the decider that records its redemption, never
 // in the link; a refused redemption gets nothing; the person's other devices
 // open it from the personal space; epoch keys and removals work on top of it;

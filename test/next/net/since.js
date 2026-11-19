@@ -1,4 +1,4 @@
-// Spec 021: space.since() between members: a record written earlier and
+// Space.since() between members: a record written earlier and
 // received later, a new author, a record received but not indexed, one whose
 // key hasn't arrived, a ban, a permission given later, content dropped here,
 // and no log's core opened for it.

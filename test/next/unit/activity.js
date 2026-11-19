@@ -1,4 +1,4 @@
-// Activity entries (story 9, research.md A14; design brief, experiment 1):
+// Activity entries:
 // "block `start` of this log is its first record stamped in `period` or
 // later". No signature: checked against the log itself (the block before is
 // the header or stamped before the period) and against "may this author
@@ -65,7 +65,7 @@ test('an entry is about 40 bytes', (t) => {
   t.alike(c.decode(entry, bytes).start, 123456)
 })
 
-// Audit 3: a newcomer believes the activity lists from a period are whole
+// A newcomer believes the activity lists from a period are whole
 // once a peer's list says `done`. Only a list it asked for, of a member,
 // counts; a stranger's `done` list must not make a page "complete".
 test('only a list asked of a member makes the lists whole', async (t) => {

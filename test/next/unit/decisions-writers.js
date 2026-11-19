@@ -1,4 +1,4 @@
-// Decision rights follow devices (story 4, research.md A8). Writers of the
+// Decision rights follow devices. Writers of the
 // decision log are devices of members whose role has `decide` or `moderate`:
 // a device claims its writer key (`writer/add`, signed on its identity's
 // behalf); a device removal signed by the identity key (`device/remove`)

@@ -1,4 +1,4 @@
-// Beyond the switch-over point (FR-029, story 9, research.md A14), a newcomer
+// Beyond the switch-over point, a newcomer
 // doesn't open every member's log: only those in the activity lists of the
 // periods it reads. Its answers, once complete, are a full member's.
 
@@ -35,7 +35,7 @@ test('a newcomer to a space with many logs opens only those active in the period
 
   const d = await account(t, 'd')
   const fd = await forum.join(d, await forum.invite(fa))
-  const first = await fd.query('post').latest(6, { timeout: 10000 }) // the newcomer's read asks to wait (spec 012)
+  const first = await fd.query('post').latest(6, { timeout: 10000 }) // the newcomer's read asks to wait
   t.ok(first.complete, 'the first page is complete')
   t.alike(view(first.items), view((await fa.query('post').latest(6)).items), 'and the same as a\'s')
   t.ok(testing.reading(fd).byActivity, 'd reads by activity lists')

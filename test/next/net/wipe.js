@@ -1,4 +1,4 @@
-// A deleted record stays wiped (FR-028): after members disconnect, reconnect
+// A deleted record stays wiped: after members disconnect, reconnect
 // and restart, no member holds its block again, so nobody can serve it; a
 // newcomer never gets it, and the hole it leaves doesn't stop the newcomer
 // from indexing what comes after, nor its answers from being complete.

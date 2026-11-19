@@ -1,4 +1,4 @@
-// Follow-ups of story 5's review (ROADMAP 2026-10-09): a space lists its roles
+// A space lists its roles
 // with their permissions (`space.roles()`), so an app defines its own role
 // once instead of every time it gives it; a member just promoted to record
 // decisions does so at once (its device waits, within the bound, to become a

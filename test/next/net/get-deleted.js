@@ -1,4 +1,4 @@
-// Spec 012 US3 (FR-015, FR-016; SwarmFS H15): get() tells "deleted" from
+// Get() tells "deleted" from
 // "not here (yet)": deleted is { by: 'author', stamp, device }, { by: 'space' }
 // or null, and only a delete that counts says deleted.
 

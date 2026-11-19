@@ -1,4 +1,4 @@
-// A forum shipped with its app (spec 020, HyperBrowser 015): the owner's build
+// A forum shipped with its app (HyperBrowser 015): the owner's build
 // packs what a visitor would download of a public forum; a new install unpacks
 // it with nobody online, reads it, and later gets new posts from peers as any
 // visitor. A changed pack, or a forum that isn't public, is refused.

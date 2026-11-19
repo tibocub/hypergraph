@@ -1,4 +1,4 @@
-// Story 1 #1-3, SC-001: three members; a post appears for everyone within
+// Three members; a post appears for everyone within
 // 1 s; comments and replies agree; votes count one per member, the latest.
 
 const test = require('brittle')

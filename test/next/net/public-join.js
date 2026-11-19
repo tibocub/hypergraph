@@ -1,4 +1,4 @@
-// Public spaces (spec 016, US1-US2): made public once by an owner or admin,
+// Public spaces: made public once by an owner or admin,
 // joined with the space's one link with no decision and no decider online;
 // bans still keep people out; members() lists the joiners met.
 

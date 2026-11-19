@@ -1,4 +1,4 @@
-// B4 (HyperBrowser spec 012): a space whose decisions aren't all held here
+// A space whose decisions aren't all held here
 // (a device just added, a process killed while they downloaded) waits for
 // peers to open. Hypergraph.open() doesn't wait for it, close() stops it,
 // and it opens once a peer holding them is reached.

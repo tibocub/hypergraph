@@ -1,9 +1,9 @@
-// Shared helpers for the new core's tests (spec 011), on Node and Bare.
+// Shared helpers for the new core's tests, on Node and Bare.
 // Built-ins come through the package's imports map (fs, path → bare-* under Bare).
 
 const fs = require('fs')
 const path = require('path')
-// The local DHT, temp folders and waits are the public test helper's (spec 018).
+// The local DHT, temp folders and waits are the public test helper's.
 const { within, eventually, codeOf, tmpDir, bootstrap: testBootstrap, sleep } = require('hypergraph/testing')
 
 async function removeDir (dir) {

@@ -1,4 +1,4 @@
-// Story 6 #2, #3, FR-027, SC-011: holding part of a space, within budgets.
+// Holding part of a space, within budgets.
 // A reader gives the app a small budget and one forum its own; both forums
 // grow past them. The reader keeps the newest posts and drops the oldest
 // posts' content first, stays within each limit (disk measured, +10%), and
@@ -105,7 +105,7 @@ test('dropped content is fetched when read, and kept; never fetched otherwise', 
   t.absent(await testing.holdsBlock(bShared, oldest.id), 'not fetched again while nobody reads it')
 
   // Paging back to the oldest posts: an app showing that page asks to wait
-  // for it (reads answer at once otherwise, spec 012): fetched within it.
+  // for it (reads answer at once otherwise): fetched within it.
   const last = posts.shared[20]
   const page = await bShared.query('post').latest(20, { after: last, timeout: 5000 })
   t.ok(page.complete, 'the old page is complete: fetched within the bound')
@@ -145,8 +145,8 @@ test('a forum indexing several fields stays within its budget on disk (core foll
     const s = fb.status()
     return (await fb.get(last.id, { timeout: 0 })).record && s.held === 'part' && s.stored <= s.share * 1.1
   }, 60000), 'the reader holds part of it, within its share')
-  // The reader downloaded everything once, then dropped the oldest content
-  // (research.md A10): RocksDB's write-ahead log holds that churn until it
+  // The reader downloaded everything once, then dropped the oldest content:
+  // RocksDB's write-ahead log holds that churn until it
   // flushes, so disk is measured once it has (compacting after each look).
   let disk = 0
   const within = await eventually(async () => {

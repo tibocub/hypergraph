@@ -1,4 +1,4 @@
-// Spec 012 US1 (FR-001-FR-005): reads answer at once from what this device
+// Reads answer at once from what this device
 // holds, with `complete`; a read waits only when given { timeout }. What a
 // read needs (dropped content, a big space's older part) still starts, and
 // `change` says when it is here. bounded.js covers reads given a timeout.
@@ -20,7 +20,7 @@ async function holderOffline (t) {
   await forum.tag(fb, p, 'news')
   // Stamped in the past: a's stamper gives each fast write "newest + 1", so
   // 1,000 of them ran up to a second ahead of the clock, and what b wrote
-  // next sorted below them (that, not replication, was research R13).
+  // next sorted below them (that, not replication, was the cause).
   const past = Date.now() - 2000
   for (let i = 0; i < 1000; i++) await testing.writeRaw(fa, { kind: 'put', type: 'post', fields: { title: `a${i}`, text: '' }, stamp: past + i })
   t.ok(await eventually(async () => (await fa.get(p.id)).record, 10000), 'a holds b\'s post')

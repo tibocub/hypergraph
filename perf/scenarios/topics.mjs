@@ -1,4 +1,4 @@
-// Spec 015 (research.md R1): an engine holding N spaces going online. A DHT node sends at
+// An engine holding N spaces going online. A DHT node sends at
 // most 80 requests per 750 ms; the topic queue keeps the space being visited from waiting
 // behind every other space's join. Size = spaces held. Local DHT of 20 nodes (on 3, the step
 // comes only past ~25 topics at once).

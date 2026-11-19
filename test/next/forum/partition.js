@@ -1,4 +1,4 @@
-// SC-003: a partition healed after both sides wrote. Three members; c goes
+// A partition healed after both sides wrote. Three members; c goes
 // offline and keeps writing (posts, comments, votes, an edit, a shared note)
 // while a and b write too, on the same records; once c is back online, every
 // member shows the same posts, comments, scores and versions.

@@ -1,4 +1,4 @@
-// Roles and moderation in the decision log (research R8, story 2): built-in
+// Roles and moderation in the decision log: built-in
 // and custom roles, a decision valid only if its author held the permission
 // at that point of the order, bans with cuts, writers of the decision log.
 // Applied to an in-memory view, the way every member applies them.

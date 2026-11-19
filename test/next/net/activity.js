@@ -1,5 +1,5 @@
-// Activity lists between members (story 9, US9 #2 and #3, SC-006; research.md
-// A14): an author's first record in a period gives an entry every member keeps
+// Activity lists between members: an author's first record in a period gives
+// an entry every member keeps
 // and passes on (the ~40-byte entry is the notice); false entries and entries
 // for logs that may not write here are neither kept nor passed on, and
 // throwaway keys cost nothing lasting.

@@ -1,4 +1,4 @@
-// An app's own protocol on a space's connections (FR-031: SwarmFS's
+// An app's own protocol on a space's connections (SwarmFS's
 // transfers), next to hypergraph's own: opened with every peer of the space,
 // also when one side adds it later; each message tells who sent it.
 
@@ -36,7 +36,7 @@ test('an app protocol is opened with every peer of the space, both ways', async 
   t.ok(await eventually(() => hb.closed.length > 0, 10000), 'onclose when the peer leaves')
 })
 
-// SwarmFS's H4: a private space's protocol reaches the person's newly paired
+// A private space's protocol reaches the person's newly paired
 // device, which adds it as soon as the space appears ('spaces').
 test('an app protocol on a private space opens with a newly paired device', async (t) => {
   const forum = require('../forum/forum.js')

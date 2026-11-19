@@ -1,4 +1,4 @@
-// Core follow-ups, item 1 (constitution Principle I, research.md A12): a link
+// Core follow-ups, item 1 (constitution Principle I): a link
 // field's allowed targets are judged when read, never when a record arrives.
 // A record is kept whatever its links point at; a link whose target is held
 // with a type the field doesn't allow counts for nothing (shown as null, not

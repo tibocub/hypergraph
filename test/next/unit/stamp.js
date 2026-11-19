@@ -1,4 +1,4 @@
-// "Latest wins" stamps (research R7 and its amendment): stamp = the later of
+// "Latest wins" stamps: stamp = the later of
 // the device's clock, one more than the newest own record seen, and one more
 // than the version an edit replaces. Order by raw stamps, ties to the lower
 // device key, so every member orders the same way; a stamp far ahead of the

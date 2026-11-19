@@ -1,4 +1,4 @@
-// Spec 015 (US1, data-model.md "Decision types/set"): a top space records its
+// A top space records its
 // record types in its decision log. Apply-time: every member applies the same
 // rule, so they agree on the types whatever app version they run.
 //   applied only if: the writer may decide; the declaration parses and

@@ -1,4 +1,4 @@
-// lib/ runs on Node and Bare (spec 011, research R2): no Buffer, no process
+// lib/ runs on Node and Bare: no Buffer, no process
 // global, no node: specifiers, and Node built-ins only through the package's
 // imports map (which sends them to bare-* under Bare).
 

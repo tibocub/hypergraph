@@ -1,4 +1,4 @@
-// Spec 013: a forum kept by a helper. The owner adds the forum's helper (a VPS
+// A forum kept by a helper. The owner adds the forum's helper (a VPS
 // running blind-peer-cli) once; members see who keeps it; a friend who was
 // away reads what was posted while nobody else was online.
 

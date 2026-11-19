@@ -1,4 +1,4 @@
-// Spec 025: the simulator's core and the export. node research/holders/test.js
+// The simulator's core and the export. node research/holders/test.js
 const test = require('brittle')
 const path = require('path')
 const os = require('os')

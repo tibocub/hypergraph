@@ -1,5 +1,5 @@
-// Spec 012 US4 (FR-010-FR-014): every read has an event that says when to
-// read again: 'spaces' (a space's name arriving too: SwarmFS H12), 'members',
+// Every read has an event that says when to
+// read again: 'spaces' (a space's name arriving too), 'members',
 // 'decisions', 'devices', 'settings', 'status' (with complete).
 
 const test = require('brittle')
@@ -46,7 +46,7 @@ test('\'members\' and \'decisions\' when roles change, \'members\' when a member
   t.ok(members.length >= 1, '\'members\' came')
   t.ok(decisions.length >= 1, '\'decisions\' came')
 
-  await forum.post(fa, 'from the laptop', '') // a device log exists from its first record (spec 016)
+  await forum.post(fa, 'from the laptop', '') // a device log exists from its first record
   members.length = 0
   const { code } = await forum.addDevice(a)
   const phone = await device(t, 'phone', code)

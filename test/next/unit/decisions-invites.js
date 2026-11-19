@@ -1,4 +1,4 @@
-// Invites in the decision log (spec 008's design, research R16, story 4):
+// Invites in the decision log:
 // revocation, uses per distinct person, expiry against the recorder's stamp,
 // who may invite to what, roles never lowered, and the reason a newcomer is
 // refused (State.inviteRefusal), the same checks apply makes.

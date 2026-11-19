@@ -1,4 +1,4 @@
-// Spec 024: a fixed number of copies, the logic that needs no network
+// A fixed number of copies, the logic that needs no network
 // (lib/circles.js): the split across a member's circles, the ranking of
 // holders, the extra copy, rarest first, 7-day replacement, online hours.
 

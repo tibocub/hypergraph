@@ -1,4 +1,4 @@
-// Bounded reads (research R13, FR-011, SC-007): a read whose data's only
+// Bounded reads: a read whose data's only
 // holder is offline returns within its bound marked incomplete; once the
 // holder is back, the same read is complete.
 
@@ -47,7 +47,7 @@ test('the only holder offline: incomplete within the bound; back online: complet
 })
 
 // "Complete" = everything this member knows of is held, and it reached at
-// least one other member since starting (research.md A4). A member nobody has
+// least one other member since starting. A member nobody has
 // heard from (here: let in while away, never online since) doesn't make
 // answers incomplete forever.
 test('a member whose log nobody holds does not make answers incomplete', async (t) => {
@@ -66,7 +66,7 @@ test('a member whose log nobody holds does not make answers incomplete', async (
   t.ok(r && r.complete, 'complete: everything a knows of is held, and a reached b')
 })
 
-// Story 6 #4 (SC-007): content this member dropped, its only other holder
+// Content this member dropped, its only other holder
 // offline. The read returns within its bound, without it, incomplete; with the
 // holder back, the same read is complete and shows it.
 test('dropped content, its holder offline: incomplete within the bound; back: complete', async (t) => {

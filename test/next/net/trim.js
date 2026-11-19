@@ -1,4 +1,4 @@
-// Spec 027 (build.md FR-003, FR-006; design changes 4, 5): trimming a
+// Trimming a
 // space's history. A signed decision every member's device follows (index
 // rows and blocks go, kept records keep their ids), and every holder too, by
 // a `clear-core` request only a member who handed the core may send. A

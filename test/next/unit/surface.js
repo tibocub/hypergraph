@@ -20,7 +20,7 @@ test('tests reach them through lib/testing.js', (t) => {
   for (const name of ['writeRaw', 'holdsBlock', 'logs', 'ownLog', 'openSpace', 'personalKeys', 'announce', 'rawBlock', 'setClock', 'writeHeads', 'headsOf', 'removeDeviceAnyway']) t.is(typeof testing[name], 'function', name)
 })
 
-// Spec 015: an engine's limits are options of Hypergraph.open.
+// An engine's limits are options of Hypergraph.open.
 test('maxOpen, maxAnnounced, memory and idleMs are positive numbers', async (t) => {
   const { tmpDir } = require('../helpers.js')
   for (const name of ['maxOpen', 'maxAnnounced', 'memory', 'idleMs']) {

@@ -1,4 +1,4 @@
-// Spec 018: hypergraph/testing, the test helper for apps. Required by its
+// Hypergraph/testing, the test helper for apps. Required by its
 // package name, as an app does.
 
 const test = require('brittle')

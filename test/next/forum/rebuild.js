@@ -1,4 +1,4 @@
-// Story 6 #6, FR-012, SC-008: the local index is rebuilt from what the member
+// The local index is rebuilt from what the member
 // holds. Deleted or unreadable, it is rebuilt at the next start, and the
 // member shows the same as before — offline. After a crash in the middle of
 // indexing, only what wasn't saved yet is indexed again.

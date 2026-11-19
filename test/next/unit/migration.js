@@ -1,4 +1,4 @@
-// Spec 015 (US6): a folder written before spec 015 opens with no index
+// A folder written before types were recorded per space opens with no index
 // rebuild: its spaces are read with the folder-wide types they were indexed
 // with until the owner's app records them in each space, which then changes
 // nothing to index. The folder from before is made here (testing.js
@@ -17,7 +17,7 @@ const types = {
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } }
 }
 
-// Forum-like types, 3 spaces (one a sub-space), 20 posts, as before spec 015.
+// Forum-like types, 3 spaces (one a sub-space), 20 posts, as before.
 async function folderFromBefore (t) {
   const dir = tmpDir(t, 'migration')
   const hg = await Hypergraph.open(dir, { types, bootstrap: null })

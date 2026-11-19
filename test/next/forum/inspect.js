@@ -1,7 +1,7 @@
-// Story 6 (ROADMAP 2026-10-09): space.inspect(), the read-only diagnostics
+// Space.inspect(), the read-only diagnostics
 // snapshot behind the inspector tool — logs, the decision log, records by
-// type, storage, peers, complete. Its shape is documented in contracts/api.md
-// ("Diagnostics"); it writes nothing and fetches nothing.
+// type, storage, peers, complete (docs/next/api.md, "Diagnostics"); it writes
+// nothing and fetches nothing.
 
 const test = require('brittle')
 const forum = require('./forum.js')

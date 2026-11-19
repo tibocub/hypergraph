@@ -1,4 +1,4 @@
-// Spec 017's assumption (b), with a real blind peer on the local DHT: a log
+// With a real blind peer on the local DHT: a log
 // handed to a helper (blind-peering addCore) and closed right after is still
 // mirrored, and handed again when it grows. `await addCore()` resolves once
 // the helper's connection is up, and then the request was written to it.

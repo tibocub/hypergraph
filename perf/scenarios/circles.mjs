@@ -1,17 +1,17 @@
-// Circles (spec 023): people keeping each other's spaces online, real peers on a local DHT:
+// Circles: people keeping each other's spaces online, real peers on a local DHT:
 //   circles.hand        a member with N private conversations (a few posts each) in a circle; a
 //                       friend turns holding on: until the friend holds all of them (ms)
-//   circles.records     the same holder's hg/holder records once it holds them all (spec 026: share and
+//   circles.records     the same holder's hg/holder records once it holds them all (share and
 //                       use rewritten on a 10 % move, at most hourly). flat: not one per space
 //   circles.start       a holder holding N MB for a friend reopens: until open with its holding
-//                       running again (ms). flat: must not grow with what it holds (spec: 1 GB;
+//                      running again (ms). flat: must not grow with what it holds (target: 1 GB;
 //                       `--sizes 1000` for that, slow to fill)
 //   circles.upload      a member in a circle of N (all the others holding) writes a private
 //                       conversation of ~1 MB: what its device uploads until held, in times its
-//                       size (spec 024: about 5, was N - 1)
+//                       size (about 5, was N - 1)
 //   circles.share       the same: what the holders use for it in all, in times its size (the copies)
 //   circles.join        3 circles; N others join all three, holding on: each person's 3 joins (ms).
-//                       From 7 people this crashed the process (2026-11-16: a holder announced
+//                       From 7 people this crashed the process (a holder announced
 //                       message logs as decision writers); the run fails on anything uncaught
 
 import process from 'process' // Bare: bare-process (package.json imports)
@@ -58,7 +58,7 @@ try {
     await b.setHolding({ on: true })
     if (!await eventually(() => holdsAll(b, a, spaces), 120000)) throw new Error('never held')
     record('circles.hand', n, 'ms', now() - start)
-    // spec 026: the holder's own hg/holder records (share and use), flat: not one per space held
+    // the holder's own hg/holder records (share and use), flat: not one per space held
     const records = (await circle.query('hg/holder').latest(1000)).items.filter((r) => r.device === b.device.publicKey).length
     record('circles.records', n, 'records', records, { flat: true })
     await a.close()

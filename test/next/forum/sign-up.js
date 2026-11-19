@@ -1,4 +1,4 @@
-// Story 1 #7: a new account gets a recovery phrase that restores the same
+// A new account gets a recovery phrase that restores the same
 // identity on another computer.
 
 const test = require('brittle')
@@ -74,7 +74,7 @@ test('the person may protect the phrase with a password', async (t) => {
   t.is(await forum.recoveryPhrase(again, 'correct horse'), null, 'a protected phrase can be forgotten too')
 })
 
-// Story 4 (ROADMAP 2026-10-09, research.md A7): the phrase protected from the first moment.
+// The phrase protected from the first moment.
 test('opened with a password, the phrase is never in the folder in plain text', async (t) => {
   const first = await account(t, 'sealed', { password: 'correct horse' })
   const phrase = await forum.recoveryPhrase(first, 'correct horse')

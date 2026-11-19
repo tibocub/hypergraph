@@ -1,24 +1,24 @@
-// Members and reactions as a space grows (specs/research/scale-audit.md, perf scenarios 1, 2
+// Members and reactions as a space grows (perf scenarios 1, 2
 // and 6), real decisions on a local DHT:
 //   members.decision  one more decision (a member added) applied on the owner, with N members
 //                     already in (each written as a real decision: lib/testing.js decide), until
 //                     the space's 'members' event (its decision hooks done; not members(), a
 //                     list of all N the app may or may not read). flat: must not grow with
-//                     members (the audit's top risk, #1)
+//                    members (the scale audit's top risk)
 //   members.join      a newcomer redeems an invite with N members in: until let in (ms)
 //   members.join-kb   what it downloaded to get there (KB). flat
-//   members.private-join  the same into a private space with N members (spec 022: its disk key
+//   members.private-join  the same into a private space with N members (its disk key
 //                     comes first, from the decider recording the redemption: one round trip more)
-//   members.public-join  spec 016: a newcomer joins a public space with N known public members
+//   members.public-join  a newcomer joins a public space with N known public members
 //                     (their logs held: scripted, keys only) through its link, and posts: until
 //                     another member reads the post (ms)
 //   members.public-join-kb  what the newcomer downloaded to join (KB). flat
 //   members.public-cost  what the other members received while it joined, silent (KB). flat:
 //                     a silent account costs nobody
 //   logs.settle-kb    two members holding the same N logs, one new log at one of them, never
-//                     announced: bytes of ranges and keys until the other has it (spec 016, R7). flat
+//                     announced: bytes of ranges and keys until the other has it. flat
 //   reactions.count   count() of the likes on one post with N likes (ms per read). flat: the
-//                     audit's #10 (every like is read; counters would make it flat)
+//                    scale audit's #10 (every like is read; counters would make it flat)
 //   reactions.sum     sum() of the same
 
 import hc from 'hypercore-crypto'
@@ -100,7 +100,7 @@ try {
     record('members.private-join', n, 'ms', privateJoins)
   }
 
-  // public spaces (spec 016)
+  // public spaces
   const pub = await owner.createSpace({ name: 'Open' })
   await pub.makePublic()
   const plink = pub.publicLink()

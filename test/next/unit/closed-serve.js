@@ -1,4 +1,4 @@
-// Spec 017's assumption (a): a log closed here is still served. Corestore
+// A log closed here is still served. Corestore
 // opens a core that isn't open when a peer asks for its discovery key
 // (`_attachMaybe`), as lib/network.js replicates the whole store.
 // Found here: closing our session frees the core only once it is idle, i.e.

@@ -1,5 +1,5 @@
-// Spec 012 US2 (FR-007-FR-009): `change` lists the records whose answer
-// changed, `{ id, type, deleted }`, edits included (SwarmFS H16), on the
+// `change` lists the records whose answer
+// changed, `{ id, type, deleted }`, edits included, on the
 // writing device and on the others; deleted says how a record went.
 
 const test = require('brittle')

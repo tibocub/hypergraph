@@ -1,8 +1,8 @@
-// Story 5 #4, FR-003: shared editing. A page type editable by members with
+// Shared editing. A page type editable by members with
 // the 'edit-pages' permission: the latest allowed edit wins everywhere; an
 // edit without the permission is ignored; only the author and moderators
-// delete (Tibo, 2026-10-09: a blanked page is restored by the next edit); an
-// editor who loses the permission is cut (research.md A4, A9): edits before
+// delete (a blanked page is restored by the next edit); an
+// editor who loses the permission is cut: edits before
 // the cut stay, edits after count for no one, whoever indexed them first.
 
 const test = require('brittle')
@@ -128,7 +128,7 @@ test('a type any member edits', async (t) => {
   t.is(await codeOf(forum.remove(fd, note)), 'NOT_ALLOWED', 'but only the author deletes it')
 })
 
-// SwarmFS's H2: moving an entry is an edit of an indexed field by any member;
+// Moving an entry is an edit of an indexed field by any member;
 // listing a folder is where() on it.
 test('a note any member moves between columns leaves the old one everywhere', async (t) => {
   const { fb, fd, all } = await wiki(t)

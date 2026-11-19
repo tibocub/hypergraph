@@ -1,4 +1,4 @@
-// Spec 021: an unread check over a forum: what a board's dot and a notification cost.
+// An unread check over a forum: what a board's dot and a notification cost.
 // flat: the cost follows what is new, not the forum's size.
 //   since.unread         a member, 20 new posts past its cursor: the check (ms)
 //   since.nothing-new    the same check when nothing is new (ms)

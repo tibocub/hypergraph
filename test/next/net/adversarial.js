@@ -1,4 +1,4 @@
-// SC-006, T075 (research.md A15): nothing a peer sends crashes a member or
+// Nothing a peer sends crashes a member or
 // shows where the rules say it shouldn't. A member's modified app writes junk
 // straight into its log (malformed and oversized blocks, unknown kinds and
 // types, fields that don't decode, links that aren't ids, records breaking the

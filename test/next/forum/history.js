@@ -1,4 +1,4 @@
-// A private forum's history (research.md A16): its key changes whenever
+// A private forum's history: its key changes whenever
 // someone loses access, and each new key unlocks the ones before it (a key
 // chain), so a newcomer reads everything written before it joined — unless
 // the forum hides its history (`setHistory('hidden')`): then a newcomer reads

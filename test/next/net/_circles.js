@@ -1,4 +1,4 @@
-// Shared by the circles tests (specs 023, 024).
+// Shared by the circles tests (024).
 
 const testing = require('../../../lib/testing.js')
 
