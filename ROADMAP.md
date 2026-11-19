@@ -23,7 +23,10 @@ The new core, `require('hypergraph/next')` (code in `lib/`):
 - public spaces, write limits, packs of public spaces shipped with an app;
 - storage budgets and policies, big spaces read from a point in time on;
 - many spaces per engine, opened while used; a site's handle for a browser of many sites;
-- helpers (blind peers) and circles (people keeping each other's spaces online);
+- helpers (blind peers) and circles (people keeping each other's spaces online), 5 copies of each space
+  split across a circle, each member's share and use of the storage;
+- a decision applies only what it changed (no full re-read per join); members' log keys skip the queue
+  that strangers' made-up keys wait in;
 - `space.since(cursor)` for notifications and unread marks;
 - `hypergraph/testing` for apps' own tests, the inspector, perf scenarios and soak runs.
 
@@ -31,10 +34,12 @@ The forum scenario tests (`test/next/forum/`) play every flow of a forum through
 
 ## Next
 
-1. **Remove v1.** `src/` (the old `require('hypergraph')`) is frozen until hyperDNS moves to the new core,
-   then it goes.
-2. **HyperBrowser** (its own repo): the desktop shell, a static site and the forum as sites; then SwarmFS
-   inside the engine and a file manager; then friends and messages, Android, iOS.
-3. **Availability:** helper machines joining circles, holders picked by how often they are online.
+1. **Remove v1.** hyperDNS is on the new core, so nothing needs `src/` (the old `require('hypergraph')`)
+   any more: it can go now.
+2. **HyperBrowser** (its own repo): the shell, sites, SwarmFS in the engine, Chat, Contacts and the Hyper
+   IDE are done. Next a file manager, then Android; iOS much later.
+3. **Availability:** the helper and the research on picking holders are done. Building holder picking
+   waits for about 30 days of online-hour data.
 4. **Open questions from SwarmFS:** read-only members (a `read` role?), concurrent versions of a record.
-5. **Hardening:** request floods, fake-key floods delaying newcomers, decisions re-read in full.
+5. **Hardening:** request floods; at `perf:circles --people 49`, joins time out from the 31st person on
+   ("No member able to let you in"), maybe only the load of one shared process.
