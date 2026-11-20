@@ -109,7 +109,8 @@ npm run test:next:bare
 with nothing to compile. Editors (VS Code and others) read those types: completion, hover docs and
 errors as you type, in JavaScript too. TypeScript users get `.d.ts` files for `hypergraph/next` and
 `hypergraph/testing`, built by `npm run types` (into `dist/types/`, on `npm pack`). They need no setup: Node's types
-(`@types/node`) come with them as a dependency.
+(`@types/node`) come with them as a dependency. The shapes you touch have names: `import type { Space, HgRecord, Page, Query,
+Change, SpaceStatus, ErrorCode } from 'hypergraph/next'` (all of them: the typedefs at the top of `lib/index.js`).
 
 ## The old version
 

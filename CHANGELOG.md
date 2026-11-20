@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-20: public types by name; no protomux clash with swarmwire
+
+`hypergraph/next` exports the types of what users touch: `Space`, `SpaceStatus`, `Query`, `HgRecord`, `Page`,
+`Edge`, `Change`, `Deletion`, `Scope`, `SiteHandle`, `ProtocolPeer`, type and rule declarations, `ErrorCode`
+(no more `ReturnType<Hypergraph['space']>`). protomux's hand-written types ship as a module of hypergraph's own
+(`dist/types/vendor/protomux.d.ts`) instead of a global `declare module 'protomux'`, which clashed with
+swarmwire's (`Duplicate identifier 'Protomux'`) in a strict build loading both.
+
 ### 2026-11-19: types for editors and TypeScript users; two fixes
 
 `lib/` is checked by TypeScript in strict mode (`npm run typecheck`, `jsconfig.json`); `npm run types` writes

@@ -12,7 +12,8 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "types": ["node"],
-    "typeRoots": ["./types", "./node_modules/@types"]
+    "typeRoots": ["./types", "./node_modules/@types"],
+    "paths": { "protomux": ["./types/protomux.d.ts"] }
   },
   "include": ["lib/**/*.js", "types/**/*.d.ts"],
   "exclude": ["node_modules", "lib/index/spec/**", "lib/symbols.js", "src", "examples", "test"]
