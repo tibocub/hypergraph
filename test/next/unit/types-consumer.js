@@ -25,6 +25,15 @@ export async function main (t: Parameters<typeof testing.open>[0]): Promise<void
   await space.close()
   const err: next.HypergraphError | null = null
   void err
+  // The public shapes have names of their own.
+  const named: next.Space = space
+  const status: next.SpaceStatus = named.status()
+  const query: next.Query = named.query('post')
+  const page: next.Page = await query.latest(10)
+  const first: next.HgRecord | undefined = page.items[0]
+  const change: next.Change | null = null
+  const code: next.ErrorCode = 'NOT_FOUND'
+  void status, first, change, code
 }
 `
   const BAD = `import next = require('hypergraph/next')
