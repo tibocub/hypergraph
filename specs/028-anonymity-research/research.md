@@ -14,8 +14,10 @@ date of its own. "UNVERIFIED" marks claims with no primary source.
 | G2 Anonymity from a network observer | An opt-in **Tor mode** per space: onion services, talking to a local C tor (now) or Arti (later) over SOCKS5. No DHT in that mode: onion addresses carried in invites and member records. I2P is a good second option; Veilid is not ready. | Prototype done (~250 lines). A product version: ~3–5 weeks (transport seam in `lib/network.js`, onion addresses in invites and records, tor bundling for desktop, helpers reachable as onion services) | 2 |
 | G3 Reaching a blocked network | Run **our own DHT bootstrap nodes** next to Holepunch's (removes one dependency for everyone). For censored users, rely on Tor's pluggable transports (Snowflake, WebTunnel) through Tor mode: don't build our own. | Bootstrap nodes: ~1–2 days + a VPS. PTs: free once Tor mode exists (configuration) | 1 |
 
+| G2+ Correlation-resistant mode for high-risk users | Later: Katzenpost (free, live but pre-alpha) for notices and invites only; the bulk goes to a holder over Tor at a random later time. Wait for an audit and a larger network | ~2–3 weeks once Tor mode exists | 4 |
+
 Proposed order: **G3 bootstrap nodes** (cheap, helps everyone) → **G2 Tor mode** for chat and forums → G1
-falls out of G2. Nothing here suggests rebuilding the core: the one root choice that limits us is that everything
+falls out of G2 → a mixnet layer for notices, once Katzenpost matures. Nothing here suggests rebuilding the core: the one root choice that limits us is that everything
 assumes the DHT and IP-level hole punching, and hypergraph already funnels all of it through one place (below).
 
 ## RQ1 (G1): the blind relay
@@ -231,6 +233,58 @@ Mapped to our weak spots:
   is a separate hypergraph folder (its own identity and device key), and the app says that a profile is linkable
   across its spaces.
 
+## RQ7 (G2): mixnets, free options only
+
+**Why.** Tor doesn't stop someone who watches both ends and matches timing; Tor says so itself
+(https://support.torproject.org/about/attacks-on-onion-routing/). In the German Ricochet case, police found the
+Tor guard of an old Ricochet build, then matched netflow timing (Tor Project, https://blog.torproject.org/tor-is-still-safe/,
+2024-09-18, updated 2024-10-10; no CCC primary source found). A mixnet mixes, delays and pads packets with cover
+traffic, so the timing at the two ends no longer lines up. The price is seconds of delay and small fixed-size
+packets. Our traffic is mostly asynchronous, so the delay can be acceptable for notices and chat.
+
+**Excluded.** **Nym**: left out by the brief's rule (no paid credentials). Its paid zk-nyms are for NymVPN. Its own
+docs (updated 2026-11-18) say "SDK integrations currently connect to the Mixnet without requiring credentials",
+with older wording saying they "soon" will (https://nym.com/docs/network/cryptography/zk-nym/zk-nym-overview). So it
+is free today with a paywall planned. Users can still run NymVPN themselves, like any VPN, under a Tor-mode
+hypergraph. **HOPR**: senders pay per packet in tokens (https://docs.hoprnet.org/node/guide-using-a-hoprd-node), so
+it's out. **Mixmaster, Mixminion**: dead.
+
+| | Katzenpost (Echomix) | xx network (cMix) | Loopix, Vuvuzela, Karaoke, Stadium |
+|---|---|---|---|
+| Free for users | No fee anywhere in the docs; "free" not stated in words | No user fee seen; nodes are paid by the xx blockchain | Research only, no public network |
+| Public network | **namenlos**: 7 mix nodes, 4 gateways, 4 storage nodes, all up on 2026-11-20 (https://status.namenlos.network/). A tiny anonymity set | Claims 350+ nodes in 50+ countries (https://xx.network, undated) | none |
+| Platforms | `kpclientd` for Linux and macOS, plus Windows per the README (no GitHub release today: UNVERIFIED); Android (the hushphone client); no iOS | Go SDK builds for Windows, Linux, macOS and WASM; xx messenger on Android 8+ and iOS 14+ | n/a |
+| Embed or service | A **local Go daemon**; apps speak its thin-client protocol over TCP or a Unix socket: CBOR behind a 4-byte length (https://katzenpost.network/docs/specs/thinclient/) | An embedded Go library (`xxdk`) or WASM | n/a |
+| Latency, throughput | Measured on namenlos: ~25 s to write one message, ~24 s to read one (https://katzenpost.network/blog/2026/11/05/introduction-to-pigeonhole-protocol/); no throughput figures | Not published per message (UNVERIFIED); its docs warn the client drains the battery | Loopix: seconds end to end (https://arxiv.org/abs/1703.00536); Vuvuzela ~37 s for 1M users; Karaoke 6.8 s for 2M users (OSDI 2018) |
+| Offline people | **Pigeonhole** boxes kept 1–2 weeks: a mailbox, like our holders | Messages wait in the network (details UNVERIFIED) | Everyone must be online every round: bad for phones |
+| Maintainer, audit, licence | The Katzenpost project (NLnet-funded); very active (v0.0.111 on 2026-11-14); **no audit**, "pre-alpha"; AGPL-3.0 | xx foundation, which also chooses the node set; BSD-2 client, a Business Source Licence on servers; audit UNVERIFIED | n/a |
+| Node or Bare client | None, but easy to build: TCP + length prefix + CBOR, ~100 lines. Users still run the Go daemon beside it | None; the WASM build might run in Node (UNVERIFIED); Bare would need a Go sidecar | n/a |
+
+**How it would carry our traffic.** Not whole replication streams: 25 s per small message rules out hypercore's
+blocks, proofs and handshakes. Small messages fit well: "there's new data for you" notices, invites, swapping onion
+addresses, tiny records such as a chat line. The bulk would still go over Tor (or Hyperswarm, which gives no
+anonymity).
+
+**Does "mixnet for small, Tor for bulk" keep the protection?** Only partly, said plainly:
+
+- The Tor part is still Tor. If Alice's Tor stream goes straight to Bob, someone timing both ends learns that
+  "Alice and Bob talk", and the mixnet adds nothing.
+- The two can also give each other away: a notice arrives, and two seconds later Bob opens a Tor connection.
+- The protection mostly holds when the bulk goes to a **holder or helper**, not to the other person, at a random
+  later time, in short transfers. A watcher then learns only "Alice talks to helper H", which many people do.
+  Hypergraph's holders already work that way, which is the one real advantage we have here.
+
+**Prototype: not done.** It would mean downloading or building `kpclientd`, and no Windows release is on GitHub
+today. A ~100-line Node thin client could then talk to namenlos.
+
+**Verdict.** Katzenpost is the only free mixnet that is both maintained and fits us: a mailbox design, a small local
+protocol, and its network is live. But it is pre-alpha, unaudited, runs 7 mix nodes, takes ~25 s a message, and has
+no iOS client. The xx network is larger, but one foundation chooses its nodes and it has no Node client. **Not now**:
+a mixnet option for high-risk users belongs **after** Tor mode, as a notices-only layer: notices and invites go over
+Katzenpost, and the bulk goes to a holder over Tor at a random later time. Rough cost: ~2–3 weeks (a thin client in
+JS, a notices channel in the transport seam, bundling an AGPL daemon as a separate process, random delays for holder
+fetches). Look again when namenlos grows and gets an audit.
+
 ## RQ6: prototype results
 
 Two engines on this PC (Windows 10, Node 26.4.0), one public space: B redeems the public link, then 10 posts one by
@@ -264,5 +318,8 @@ one (latency), then 20 posts of 16 KB (bulk). One run each, 2026-11-19.
   phones; the 2026 I2P botnet numbers (press, not the I2P project).
 - Whether a Veilid node can refuse to relay; that no Node or Bare binding exists (none found).
 - Whether Quiet still uses OrbitDB in 11.x.
+- Mixnets: a downloadable Windows `kpclientd`; Pigeonhole box size and throughput; an explicit "free" for namenlos;
+  xx's per-message latency, payload size, audit and node count today; whether `xxdk` WASM runs in Node; when Nym's SDK
+  starts requiring credentials; a CCC primary source for the Ricochet case.
 - That `hash(host, port)` lets one IP make many DHT ids (an inference from the code, not tested); no published
   security analysis of hyperdht was found.

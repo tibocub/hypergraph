@@ -41,6 +41,11 @@ its bytes travel over Hyperswarm, a TCP socket or a Tor circuit.
 - **RQ5 Lessons** from GNUnet (R5N, CADET), Hyphanet (friend-to-friend, deniability), Tor and I2P on Sybil, eclipse
   and spam, mapped to our weak spots: free identities in public spaces, DHT eclipse, holder metadata, the Holepunch
   bootstrap dependence. Is any root choice (hyperdht, Autobase, one identity per person) wrong?
+- **RQ7 (G2) Mixnets**: Tor and I2P can't stop traffic correlation (an observer of both ends matching timing);
+  mixnets resist it with mixing, delays and cover traffic, and our traffic is mostly asynchronous. **Free to use only**
+  (no paid credentials for users): Katzenpost, xx network / cMix, Loopix-based systems, anything maintained in 2026.
+  Same questions as RQ2, plus: can a Node or Bare client exist, and can it carry whole replication streams or only
+  small messages (with Tor or Hyperswarm for the rest)? Does a mixnet option for high-risk users belong in the order?
 - **RQ6 Prototype**: two hypergraph engines replicate a space over a candidate network; join time, record latency
   and throughput against plain Hyperswarm.
 
