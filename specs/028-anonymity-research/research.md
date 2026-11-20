@@ -80,8 +80,9 @@ tool, not a privacy tool.** G1 is better met by G2.
   (https://blog.torproject.org/tor-vpn-beta/, 2026-09-09); Orbot exists. iOS: Arti has an iOS build guide
   (https://arti.torproject.org/integrating-arti/); no Arti-based iOS app found (UNVERIFIED).
 - **Speed** (Tor Metrics OnionPerf medians, 2026-10-20 to 11-18, https://metrics.torproject.org/): round trip ~520 ms
-  to an onion service (~330 ms to a normal server); ~2.8 Mbit/s onion throughput; 5 MiB in ~19 s. Fine for chat and
-  forums, poor for media.
+  to an onion service (~330 ms to a normal server); ~2.8 Mbit/s onion throughput; 5 MiB in ~19 s. Measured here
+  with hypergraph over C tor (RQ6): a post arrives in 0.6–1.9 s (median per run), joining takes 2.6–17 s, bulk runs
+  at 0.1–0.4 MB/s. Fine for chat and forums, poor for media.
 - **Phones as relays.** Tor relays need ≥10 Mbit/s, ≥100 GB/month, a stable IP for 3+ hours
   (https://community.torproject.org/relay/relays-requirements/): phones are clients only, matching P4. A phone hosting
   an onion service is fine while the app is open; Android background limits apply as for any app.
@@ -287,26 +288,37 @@ fetches). Look again when namenlos grows and gets an audit.
 
 ## RQ6: prototype results
 
-Two engines on this PC (Windows 10, Node 26.4.0), one public space: B redeems the public link, then 10 posts one by
-one (latency), then 20 posts of 16 KB (bulk). One run each, 2026-11-19.
+Two engines on this PC (Windows 10, Node 26.4.0), one public space: B redeems the public link and waits for the
+first post (join), then gets 20 posts one by one (latency: a post on A until B has it), then 40 posts of 16 KB
+(bulk, including A's own write time).
 
-| Transport | Join (redeem → first post held) | Post latency (median, min–max) | Bulk 16 KB posts |
-|---|---|---|---|
-| Hyperswarm, local DHT | 131 ms | 5 ms (3–5) | 4.2 MB/s |
-| Hyperswarm + blind relay | 209 ms | 5 ms (3–8) | 4.1 MB/s (path ended up direct) |
-| Stream adapter, plain TCP (no DHT) | 113 ms | 3 ms (2–5) | 5.7 MB/s |
-| Stream adapter over Tor (two tor clients, onion service) | _not run_ | | |
+| Transport | Runs | Join (redeem → first post held) | Post latency, median / p95 | Bulk 16 KB posts |
+|---|---|---|---|---|
+| Hyperswarm, local DHT (2026-11-20) | 3 | 56–106 ms | 2–3 ms / 4–10 ms | 5.8–7.1 MB/s |
+| Hyperswarm + blind relay (2026-11-19) | 1 (10 posts, 20 bulk) | 209 ms | 5 ms / 8 ms (max) | 4.1 MB/s (path ended up direct) |
+| Stream adapter, plain TCP, no DHT (2026-11-19) | 1 (10 posts, 20 bulk) | 113 ms | 3 ms / 5 ms (max) | 5.7 MB/s |
+| **Stream adapter over Tor**, two tor clients, an onion service (2026-11-20) | 3 | **2.6 s, 5.2 s, 17.4 s** | **0.6 / 0.7 s, 1.0 / 1.4 s, 1.9 / 2.2 s** | **88, 108, 423 KB/s** |
 
+Tor runs in detail: **C tor 0.4.9.16** from the Tor Expert Bundle 16.0.1 for Windows (dist.torproject.org; SHA-256
+checked against `sha256sums-signed-build.txt`, GPG signature not checked), **not Arti**. Each run starts two fresh
+tor clients (`ClientOnly 1`, one hosting the onion service): bootstrap 7–18 s; then the onion address answered
+5–10 s later. So a cold start took 19–26 s before the scenario's clock began; a client whose tor already runs and
+a service already published skip that.
+
+- **They match Tor Metrics** (~520 ms round trip, ~2.8 Mbit/s): a post needs about one to two round trips
+  (B learns there is a new block, asks for it, gets it), so 0.6–1.9 s. Bulk at 0.1–0.4 MB/s is below Tor Metrics'
+  ~0.35 MB/s at its best because each 16 KB post waits for its own round trips. The spread between runs is the
+  circuits each run happened to get.
+- **They change no recommendation.** Tor mode is fine for chat and forums (a post shows up in about 1–2 s; joining
+  takes seconds) and poor for media (a 10 MB file would take ~25 s to ~2 min). P3 holds.
 - The adapter is as fast as Hyperswarm on one machine: the cost of an anonymous mode is the network under it, not
   hypergraph.
-- **Tor was not run**: downloading the Tor Expert Bundle was blocked by this session's permission check. The run is
-  one command once tor.exe is there (`research/anonymity/README.md`). From Tor Metrics, expect a join of a few
-  seconds after the onion service is published, ~0.5–1 s per post, and well under 1 MB/s.
-- Local numbers are a lower bound: no real network between the engines.
+- The local numbers (Hyperswarm, relay, TCP) are a lower bound: no real network between the engines. The Tor
+  numbers are real: both clients went through the live Tor network, even though both ran on this PC.
 
 ## Could not verify
 
-- The Tor numbers on this machine (the download was blocked; Tor Metrics figures stand in).
+- Tor through Arti (only C tor was measured); Tor between two machines or on a phone (both clients ran on this PC).
 - Whether hyperdht's holepunch vetoes leave only the relay behind a real NAT (tested only on a local DHT).
 - Whether Arti's RPC can create onion services at runtime; Arti's default SOCKS port; an official "production ready"
   for Arti onion services; Orbot on Arti or C tor; an Arti-based iOS app.

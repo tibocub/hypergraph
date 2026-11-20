@@ -24,5 +24,5 @@ node research/anonymity/relay-only.js
 ```
 
 Tor: the Windows "Tor Expert Bundle" from https://dist.torproject.org/torbrowser/ (16.0.1 was the newest Windows
-build on 2026-11-19), checked against that folder's `sha256sums-signed-build.txt`. The `tor` run uses two separate
+build on 2026-11-19; it holds C tor 0.4.9.16), checked against that folder's `sha256sums-signed-build.txt`. The `tor` run uses two separate
 tor processes (one hosts the onion service, one dials it), both `ClientOnly 1`.

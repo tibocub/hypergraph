@@ -36,7 +36,8 @@ function seen (space, id, timeout = 300000) {
   })
 }
 
-const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
+const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(s.length * p))] }
+const median = (xs) => pct(xs, 0.5)
 
 // Plays the scenario on two engines already wired to a transport.
 async function measure (a, b, { records = 20, bulk = 40 } = {}) {
@@ -71,7 +72,7 @@ async function measure (a, b, { records = 20, bulk = 40 } = {}) {
   return {
     redeemMs,
     joinMs,
-    latencyMs: { median: median(lat), min: Math.min(...lat), max: Math.max(...lat), n: lat.length },
+    latencyMs: { median: median(lat), p95: pct(lat, 0.95), min: Math.min(...lat), max: Math.max(...lat), n: lat.length },
     bulk: { records: bulk, ms: bulkMs, kbPerS: Math.round((bulk * 16) / (bulkMs / 1000)) }
   }
 }
