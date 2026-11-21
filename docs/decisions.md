@@ -120,7 +120,8 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
     safe; a "keep history" switch for community channels. Messages that can't be proven to outsiders: opt-in per
     conversation. Forums keep signatures; their anonymity is a dedicated identity plus Tor.
   - Order: HyperBrowser quick wins (memory-only sessions for hidden identities, no shader cache, no notification
-    content or logs) → padding (open: storage vs transport only) → ID manager → secure chats → vault → Tor mode →
+    content or logs) → padding (stored, inside the encryption: 256 B minimum then Padmé, +31% measured; holders are members too, so
+    transport-only padding was rejected) → ID manager → secure chats → vault → Tor mode →
     deniable messages. Spec 028's Tor mode and own bootstrap nodes stand.
 - **2026-11-20 (028 anonymity research merged)** — 0dccd6c: a blind relay hides no IP; hypergraph replicates over
   any stream; Tor measured (posts 0.6–1.9 s, bulk 0.1–0.4 MB/s). Order: own bootstrap nodes, opt-in Tor mode per
