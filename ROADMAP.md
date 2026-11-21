@@ -43,3 +43,13 @@ The forum scenario tests (`test/next/forum/`) play every flow of a forum through
 4. **Open questions from SwarmFS:** read-only members (a `read` role?), concurrent versions of a record.
 5. **Hardening:** request floods; at `perf:circles --people 49`, joins time out from the 31st person on
    ("No member able to let you in"), maybe only the load of one shared process.
+6. **Privacy** (research 028 and 029): padded records in private spaces, then several identities per engine,
+   secure conversations (forward secrecy), a deniable vault, Tor mode.
+
+## Later, once measured
+
+Optimizations we know could pay off, but not before real numbers say so:
+
+- **Padding cost:** pack small records written close together into one padded block (most of the +31% comes from
+  the 256 B minimum on short messages); compress before padding and encrypting (careful: compressing secret text
+  next to text an attacker chooses can leak through size); tune the 256 B minimum against real message lengths.
