@@ -152,3 +152,20 @@ test('an invite to the forum and to its private sub-forum', async (t) => {
   const elsewhere = await forum.createSubforum(other, 'Side')
   t.is(await codeOf(forum.invite(fa, { subforums: [elsewhere] })), 'NOT_FOUND', 'a sub-forum of another forum')
 })
+
+test('a private board\'s posts, comments and votes are stored padded: whoever holds them sees a few sizes, not each one\'s length', async (t) => {
+  const { c, fa, staff } = await staffRoom(t)
+  const p = await forum.post(staff, 'hi', 'ok')
+  const q = await forum.post(staff, 'hello everyone', 'see you all at noon on Saturday')
+  const k = await forum.comment(staff, p, 'k')
+  const v = await forum.vote(staff, p, 1)
+  const long = await forum.post(staff, 'minutes', 'z'.repeat(2000))
+  const held = await testing.openSpace(c, staff.key, { root: fa.key }) // c holds the board's blocks, not its key
+  const ids = [p.id, q.id, k.id, v.id, long.id]
+  t.ok(await eventually(async () => (await Promise.all(ids.map((id) => testing.holdsBlock(held, id)))).every(Boolean), 10000), 'it holds them')
+  const sizes = await Promise.all(ids.map(async (id) => (await testing.rawBlock(held, id)).byteLength))
+  t.is(sizes[0], sizes[1], `two posts: one size (${sizes[0]} B)`)
+  for (const s of sizes.slice(2, 4)) t.ok(Math.abs(s - sizes[0]) <= 8, `a comment, a vote: the same but for their type's name, in the clear in a board with no disk key (${s} B)`)
+  t.ok(sizes[4] > 2000 && sizes[4] < 2000 * 1.12 + 300, `a long post: its rough size only (${sizes[4]} B)`)
+  t.is((await forum.latest(staff)).length, 3, 'the board reads as before')
+})

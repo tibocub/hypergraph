@@ -105,6 +105,12 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-21 (030 padding built)** — Private records are padded inside the encryption, at the record layer
+  (`encodeRecord` when the log's core encrypts; else inside the sealed box, for a private board in a public space),
+  with a scheme version in each block; old blocks read, old builds skip new ones. Decision logs left unpadded
+  (Autobase's own blocks vary; padding them is an Autobase-level step). Measured +40% on a forum's records; 128 B
+  minimum −13%, compression −12%, 200 ms packing 0% for people (−27% for bursts written by code): all deferred.
+
 - **2026-11-21 (privacy and deniability, after research 029; grilled with Tibo)** — Goal: with Tor and no user
   mistakes, nobody links a pseudonym to a person or IP, and a seized device can't prove a hidden identity exists.
   - An ID manager (named identities; per-contact keys inside one later). Identities without Tor are allowed with a

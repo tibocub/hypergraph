@@ -360,7 +360,8 @@ recorded, granted to every member's device. Removals already change it by themse
 
 **On disk.** A private top space is also encrypted on disk, as the personal
 space is: its decision log, every member's log and its sub-spaces' logs. Whoever holds its data without being
-let in (a copied disk, a relay, a helper) sees how many blocks there are and their sizes, nothing else: not the
+let in (a copied disk, a relay, a helper) sees how many blocks there are and their rough sizes, nothing else (each
+record is padded before it is encrypted: 256 B at least, then Padmé, about +30% on a forum): not the
 members, the record types, the name or when anyone wrote. Its invite links carry a check of that key, never
 the key: the member who records a newcomer's redemption sends it the key, sealed to its device, and the
 person's other devices get it from the personal space. So joining a private space needs a member who may
