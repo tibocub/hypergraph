@@ -50,6 +50,8 @@ The forum scenario tests (`test/next/forum/`) play every flow of a forum through
 
 Optimizations we know could pay off, but not before real numbers say so:
 
-- **Padding cost:** pack small records written close together into one padded block (most of the +31% comes from
-  the 256 B minimum on short messages); compress before padding and encrypting (careful: compressing secret text
-  next to text an attacker chooses can leak through size); tune the 256 B minimum against real message lengths.
+- **Padding cost** (built in 030: +40% on a private forum's records, +27% on the perf scenario; numbers in
+  `specs/030-padding/spec.md`): a 128 B minimum would save 13% (votes +134% → +17%); compressing before padding 12%,
+  from long posts only (careful: compressing secret text next to text an attacker chooses can leak through size);
+  packing records written within 200 ms saves nothing on people's writes, 27% on bursts written by code (imports,
+  folders of small files). Decision logs aren't padded yet (Autobase's own blocks vary in size).

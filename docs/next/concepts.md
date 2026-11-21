@@ -196,7 +196,10 @@ unlocks the ones before it, so newcomers read the history, unless the space hide
 from their join on). A
 member without a key holds the blocks it relays and reads nothing. A private top space is also encrypted on
 disk: its members, record types and timing too are hidden from whoever stores it without being let
-in. Limits: [api.md](api.md#sub-spaces-and-private-spaces).
+in. Its records are **padded** inside that encryption (256 B at least, then Padmé: at most 12% more), so whoever
+holds them sees a few sizes, not each record's length: a short reply, a vote and a two-line post look the same. A
+private board in a public space has no disk key: its sealed fields are padded instead (its record types show
+anyway). Limits: [api.md](api.md#sub-spaces-and-private-spaces).
 
 ## Roles and moderation
 

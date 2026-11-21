@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11-21: private records are padded
+
+A private space's records (and the personal space's, and circles') are padded before the core encrypts them:
+256 B at least, then Padmé (at most 12% more). Holders, relays and the disk see a few sizes, not each record's
+length. About +30–40% storage on a forum; writes and reads unchanged. A private board in a public space pads its
+sealed fields instead. Old unpadded blocks still read; nothing to migrate. **Breaking between versions**: a build
+from before this reads a padded block as malformed and skips it, so every peer of a private space must update
+together. Spec: `specs/030-padding/spec.md`.
+
 ### 2026-11-20: public types by name; no protomux clash with swarmwire
 
 `hypergraph/next` exports the types of what users touch: `Space`, `SpaceStatus`, `Query`, `HgRecord`, `Page`,

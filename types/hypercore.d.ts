@@ -23,6 +23,8 @@ declare module 'hypercore' {
     readonly contiguousLength: number
     readonly signedLength: number
     readonly byteLength: number
+    /** Set when the core encrypts its blocks (an encryption key was given). */
+    readonly encryption: object | null
     readonly fork: number
     readonly writable: boolean
     readonly readable: boolean
