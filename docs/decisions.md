@@ -105,6 +105,26 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-21 (privacy and deniability, after research 029; grilled with Tibo)** — Goal: with Tor and no user
+  mistakes, nobody links a pseudonym to a person or IP, and a seized device can't prove a hidden identity exists.
+  - An ID manager (named identities; per-contact keys inside one later). Identities without Tor are allowed with a
+    warning; each has an "only over Tor" switch. A hidden identity shares no circle, holder or Tor circuit with the
+    others and is opened alone (random sync delays rejected: 100 of 100 linked in research 029's simulation).
+  - A VeraCrypt-style vault on every install (design reused, not code: TrueCrypt licence), size picked at setup,
+    capacity shown as a data budget, growth by copying into a bigger file. Hidden identities are nested: each
+    password also opens the ones below. Everything of a hidden identity lives in it except site sessions, which are
+    memory-only. No panic wipe. Vault storage: first an in-memory store saved to the vault (chat-only hidden
+    identities), the rocksdb-native fork only if media is needed.
+  - Chats are secure by default: Signal-style chains per writer on libsodium (not MLS: needs one agreed order; not
+    libsignal: AGPL), no history on new devices, optional disappearing messages, an outside review before calling it
+    safe; a "keep history" switch for community channels. Messages that can't be proven to outsiders: opt-in per
+    conversation. Forums keep signatures; their anonymity is a dedicated identity plus Tor.
+  - Order: HyperBrowser quick wins (memory-only sessions for hidden identities, no shader cache, no notification
+    content or logs) → padding (open: storage vs transport only) → ID manager → secure chats → vault → Tor mode →
+    deniable messages. Spec 028's Tor mode and own bootstrap nodes stand.
+- **2026-11-20 (028 anonymity research merged)** — 0dccd6c: a blind relay hides no IP; hypergraph replicates over
+  any stream; Tor measured (posts 0.6–1.9 s, bulk 0.1–0.4 MB/s). Order: own bootstrap nodes, opt-in Tor mode per
+  space (onion addresses in invites and member records, no DHT), a Katzenpost notice layer later.
 - **2026-11-19 (types: lib/ checked by tsc strict)** — JSDoc types instead of TypeScript sources: `jsconfig.json`
   (strict, `lib/` only; generated `lib/index/spec/` and v1 `src/` left out), `npm run typecheck` guarded by
   `test/next/unit/typecheck.js`, `.d.ts` files for users from `npm run types` (on prepack, not committed).
