@@ -105,6 +105,18 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-22 (031 secure conversations, spec)** — How it works:
+  - grants are sealed to rotating per-device prekeys, whose secrets are erased;
+  - each device derives one BLAKE2b chain per writer log from the epoch key, then erases the epoch key;
+  - each record has its own message key;
+  - healing comes from key changes every 7 days or 1,000 records;
+  - secure mode is `setHistory('hidden')`, and Chat makes it the default.
+
+  A skipped key is kept 90 days. When it expires, the member asks the author's devices for a resend, sealed to
+  the asking device only: a newcomer since then or an ex-member gets nothing. Holders never re-encrypt. No
+  compatibility: old hidden-history spaces stop working (no users or data yet). Costs: +0.11% bytes and about
+  2 µs per message, on Node and on Bare. An outside review comes before the UI says more than "encrypted".
+
 - **2026-11-22 (test levels)** — Three levels in each repo's runner (hypergraph, SwarmFS, HyperBrowser):
   `--quick` (affected tests, Node) while working, `--merge` (affected on Node and Bare, plus a fixed list of
   whole flows) before a merge, full before a push and in CI (GitHub Actions: Linux and Windows, Node and Bare).
