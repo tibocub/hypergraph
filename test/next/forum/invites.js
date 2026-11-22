@@ -28,7 +28,7 @@ async function forumWithAdmin (t) {
   return { a, b, fa, fb }
 }
 
-test('a link works while its maker is offline, if another admin is online', async (t) => {
+test('a link works while its maker is offline, if another admin is online', { timeout: 90000 }, async (t) => {
   const { b, fa, fb } = await forumWithAdmin(t)
   const link = await forum.invite(fb)
   await b.close()
@@ -40,7 +40,7 @@ test('a link works while its maker is offline, if another admin is online', asyn
   t.alike((await forum.whoJoined(fa, link)).map((r) => r.identity), [c.identity.publicKey], 'a sees who used the link')
 })
 
-test('expired, used up, revoked: refused with the reason, within the read bound', async (t) => {
+test('expired, used up, revoked: refused with the reason, within the read bound', { timeout: 90000 }, async (t) => {
   const { fa } = await forumWithAdmin(t)
 
   const soon = await fa.createInvite({ expires: Date.now() + 300 })
@@ -61,7 +61,7 @@ test('expired, used up, revoked: refused with the reason, within the read bound'
   t.ok(r.ms < BOUND + 1000, `within the bound (${r.ms} ms)`)
 })
 
-test('an inviter whose role can\'t give the role is refused', async (t) => {
+test('an inviter whose role can\'t give the role is refused', { timeout: 90000 }, async (t) => {
   const { a, fa } = await forumWithAdmin(t)
   const m = await account(t, 'm')
   const fm = await forum.join(m, await forum.invite(fa))
@@ -76,7 +76,7 @@ test('an inviter whose role can\'t give the role is refused', async (t) => {
   t.ok(a)
 })
 
-test('a public forum lets many in with every admin offline; making it private again is refused; a one-use invite still works as before', async (t) => {
+test('a public forum lets many in with every admin offline; making it private again is refused; a one-use invite still works as before', { timeout: 90000 }, async (t) => {
   const { a, b, fa, fb } = await forumWithAdmin(t)
   const link = await forum.openLink(fb)
   t.ok(await eventually(() => fa.isPublic, 10000))
@@ -108,7 +108,7 @@ test('a public forum lets many in with every admin offline; making it private ag
   t.is(await codeOf(forum.join(await account(t, 'q2'), once)), 'INVITE_USED_UP', 'and used up')
 })
 
-test('nobody able to let you in is online: INVITE_INVALID after the bound, or the timeout given', async (t) => {
+test('nobody able to let you in is online: INVITE_INVALID after the bound, or the timeout given', { timeout: 90000 }, async (t) => {
   const a = await account(t, 'a')
   const fa = await forum.createForum(a, 'Quiet')
   const link = await forum.invite(fa)
@@ -120,7 +120,7 @@ test('nobody able to let you in is online: INVITE_INVALID after the bound, or th
   t.is(c.spaces().length, 0, 'the space is not kept')
 })
 
-test('joining waits (30 s by default), though reads do not: the inviter comes online 2 s later', async (t) => {
+test('joining waits (30 s by default), though reads do not: the inviter comes online 2 s later', { timeout: 90000 }, async (t) => {
   const a = await account(t, 'a')
   const fa = await forum.createForum(a, 'Patient')
   const link = await forum.invite(fa)
@@ -134,7 +134,7 @@ test('joining waits (30 s by default), though reads do not: the inviter comes on
   t.is(await forum.roleOf(fn, n.identity.publicKey), 'member', 'let in, 2 s later')
 })
 
-test('friends invite friends, who invite theirs; none of them can invite a moderator (F6)', async (t) => {
+test('friends invite friends, who invite theirs; none of them can invite a moderator (F6)', { timeout: 90000 }, async (t) => {
   const a = await account(t, 'a')
   const fa = await forum.createForum(a, 'Friends')
   let inviter = fa

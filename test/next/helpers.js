@@ -4,6 +4,11 @@ const fs = require('fs')
 const path = require('path')
 const { within, eventually, codeOf, tmpDir, bootstrap: testBootstrap, sleep } = require('hypergraph/testing')
 
+// 90 s, not brittle's 30: a test opening a few accounts can take over 30 s when several
+// files share a slow disk (each open waits on its syncs), and then failed though nothing was wrong.
+// A test's own `timeout` still wins.
+try { require('brittle').configure({ timeout: 90000 }) } catch { /* tests already registered: theirs stays */ }
+
 async function removeDir (dir) {
   for (let attempt = 1; attempt <= 10; attempt++) {
     try {

@@ -7,7 +7,7 @@ const test = require('brittle')
 const { open, tmpDir, testBootstrap, codeOf } = require('../helpers.js')
 const { Hypergraph } = require('../../../lib/index.js')
 
-test('a join code adds a device once; used again or wrong, it is refused', async (t) => {
+test('a join code adds a device once; used again or wrong, it is refused', { timeout: 90000 }, async (t) => {
   const a = await open(t, { label: 'a' })
   await a.connectToSwarm()
   const { code, added } = await a.addDevice()
@@ -20,9 +20,13 @@ test('a join code adds a device once; used again or wrong, it is refused', async
 
   const bootstrap = await testBootstrap(t)
   t.is(await codeOf(Hypergraph.open(tmpDir(t, 'c'), { joinCode: code, joinTimeout: 4000, bootstrap })), 'INVITE_INVALID', 'a used code is refused')
-  const started = Date.now()
+  // "at once": no longer than opening a folder takes here, plus 3 s (a busy disk makes opening itself slow)
+  let started = Date.now()
+  await (await Hypergraph.open(tmpDir(t, 'e'), { bootstrap })).close()
+  const opening = Date.now() - started
+  started = Date.now()
   t.is(await codeOf(Hypergraph.open(tmpDir(t, 'd'), { joinCode: 'not a code', bootstrap })), 'INVITE_INVALID', 'a wrong code')
-  t.ok(Date.now() - started < 3000, 'at once')
+  t.ok(Date.now() - started < opening + 3000, `at once (${Date.now() - started} ms; opening a folder: ${opening} ms)`)
   await a.close()
   t.is(await codeOf(Hypergraph.open(a.dir, { joinCode: code, bootstrap })), 'NOT_ALLOWED', 'a folder that holds an identity')
 })

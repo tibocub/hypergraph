@@ -91,8 +91,9 @@ npm run test:next
 npm run test:next:bare
 ```
 
-`test:next` runs the core's tests on Node, `test:next:bare` on Bare. More in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+`test:next` runs the core's tests on Node, `test:next:bare` on Bare. While working,
+`npm run test:quick` runs only the tests your change affects; `npm run test:merge` adds Bare and a few
+forum flows before a merge. More in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation
 

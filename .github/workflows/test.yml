@@ -1,0 +1,35 @@
+# The full suite (the core, test:next) on Linux and Windows, Node and Bare, as
+# four parallel jobs. Local runs pick tests with --quick/--merge; this runs all.
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.runtime }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        runtime: [node, bare]
+    env:
+      HG_TEST_JOBS: 3 # 4 cores on hosted runners; the 4th runs the runner and the DHT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+        if: matrix.runtime == 'node' && matrix.os == 'ubuntu-latest'
+      - run: npm run docs:check
+        if: matrix.runtime == 'node' && matrix.os == 'ubuntu-latest'
+      - run: npm run test:next
+        if: matrix.runtime == 'node'
+      - run: npm run test:next:bare
+        if: matrix.runtime == 'bare'
