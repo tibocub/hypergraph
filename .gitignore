@@ -21,3 +21,4 @@ __pycache__/
 bench/tmp/
 .test-times.json
 dist
+.test-map.json

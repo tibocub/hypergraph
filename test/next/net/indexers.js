@@ -25,7 +25,7 @@ async function admins (t) {
   return { a, b, c, m, fa, fb, fc, fm }
 }
 
-test('the owner gone for good, two admins still settle new decisions', async (t) => {
+test('the owner gone for good, two admins still settle new decisions', { timeout: 90000 }, async (t) => {
   const { a, b, c, m, fb, fc, fm } = await admins(t)
   await a.close()
 

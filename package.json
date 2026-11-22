@@ -77,6 +77,8 @@
     "docs": "jsdoc -c jsdoc.json",
     "test:next": "node scripts/test-runner.js next",
     "test:next:bare": "node scripts/test-runner.js --bare next",
+    "test:quick": "node scripts/test-runner.js --quick",
+    "test:merge": "node scripts/test-runner.js --merge",
     "docs:check": "node scripts/docs-check.js",
     "typecheck": "tsc -p jsconfig.json",
     "types": "tsc -p jsconfig.json --noEmit false --declaration --emitDeclarationOnly --outDir dist/types && node scripts/types.js",
