@@ -9,7 +9,7 @@ const path = require('path')
 const os = require('os')
 
 test('soak run on a local DHT: nothing lost', { timeout: 300000 }, async (t) => {
-  const base = fs.mkdtempSync(path.join(process.env.SOAK_DIR || (fs.existsSync('E:/Code/P2P/.tmp') ? 'E:/Code/P2P/.tmp' : os.tmpdir()), 'soak-check-'))
+  const base = fs.mkdtempSync(path.join(process.env.SOAK_DIR || os.tmpdir(), 'soak-check-'))
   t.teardown(() => fs.rmSync(base, { recursive: true, force: true, maxRetries: 10 }))
   const args = ['--local', '--members', '3', '--hours', String(1 / 60), '--gap', '2,4', '--offline', '5,15', '--offline-chance', '0.15', '--settle', '30', '--dir', base]
   const p = spawn(process.execPath, [path.join(__dirname, 'run.js'), ...args], { stdio: ['ignore', 'pipe', 'inherit'] })

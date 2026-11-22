@@ -15,8 +15,7 @@ const path = require('path')
 const { report } = require('./report.js')
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-// The dev machine's C: is nearly full: runs go to E:\Code\P2P\.tmp when it exists.
-const BASE = process.env.SOAK_DIR || (fs.existsSync('E:/Code/P2P/.tmp') ? 'E:/Code/P2P/.tmp' : os.tmpdir())
+const BASE = process.env.SOAK_DIR || os.tmpdir()
 
 function parseArgs (argv) {
   const o = { members: 4, hours: 2, local: false, gap: [20, 60], offline: [30, 600], offlineChance: 0.08, settle: 300, dir: BASE, report: null }

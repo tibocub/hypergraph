@@ -7,11 +7,12 @@ They read SwarmFS from `../SwarmFS` (next to this repo; `SWARMFS_DIR` to change)
 folder with Hyperdrive, kept out of this repo's dependencies:
 
 ```bash
-mkdir E:\Code\P2P\.tmp\site-storage-deps && cd E:\Code\P2P\.tmp\site-storage-deps
+mkdir site-storage-deps && cd site-storage-deps
 npm init -y && npm i hyperdrive corestore hyperswarm hyperdht
 ```
 
-(`SITE_DEPS` for another folder, `BENCH_TMP` for where run data goes; both default under `E:\Code\P2P\.tmp`.)
+Make it in the temp folder, or point `SITE_DEPS` at it. `BENCH_TMP` is where run data goes (default: the temp
+folder).
 
 | script | question | what it does |
 |---|---|---|

@@ -3,10 +3,11 @@
 //
 // SWARMFS_DIR: the SwarmFS checkout (default ../SwarmFS next to this repo's main checkout).
 // SITE_DEPS: a folder with hyperdrive, corestore, hyperswarm, hyperdht installed
-//   (npm i hyperdrive corestore hyperswarm hyperdht), default E:\Code\P2P\.tmp\site-storage-deps.
-// BENCH_TMP: where run data goes (default E:\Code\P2P\.tmp\site-storage-run), removed after each run.
+//   (npm i hyperdrive corestore hyperswarm hyperdht), default site-storage-deps in the temp folder.
+// BENCH_TMP: where run data goes (default site-storage-run in the temp folder), removed after each run.
 
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { createRequire } from 'module'
 import { pathToFileURL, fileURLToPath } from 'url'
@@ -16,8 +17,8 @@ const repo = path.resolve(here, '..', '..')
 // a worktree lives at <repo>/.claude/worktrees/<name>: the siblings are next to the main checkout
 const main = repo.includes(`${path.sep}.claude${path.sep}worktrees${path.sep}`) ? repo.split(`${path.sep}.claude${path.sep}`)[0] : repo
 export const SWARMFS_DIR = process.env.SWARMFS_DIR || path.resolve(main, '..', 'SwarmFS')
-export const SITE_DEPS = process.env.SITE_DEPS || 'E:\\Code\\P2P\\.tmp\\site-storage-deps'
-export const BENCH_TMP = process.env.BENCH_TMP || 'E:\\Code\\P2P\\.tmp\\site-storage-run'
+export const SITE_DEPS = process.env.SITE_DEPS || path.join(os.tmpdir(), 'site-storage-deps')
+export const BENCH_TMP = process.env.BENCH_TMP || path.join(os.tmpdir(), 'site-storage-run')
 
 export const deps = createRequire(path.join(SITE_DEPS, 'package.json'))
 export const swarmfs = () => import(pathToFileURL(path.join(SWARMFS_DIR, 'index.js')).href)

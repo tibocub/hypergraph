@@ -10,12 +10,8 @@ replication code; a regression test with every fix or behaviour change).
 
 ## Tests
 
-Temp data goes on a fast disk with enough room. On this machine C: is nearly full and E: is a
-spinning disk, so point all three at E: and keep runs few:
-
-```bash
-export TMP='E:\Code\P2P\.tmp\tmp' TEMP='E:\Code\P2P\.tmp\tmp' HG_TEST_TMP='E:\Code\P2P\.tmp\tmp'
-```
+Tests write to the system temp folder (`HG_TEST_TMP` to change it). Use a fast disk: on a spinning disk the
+suites run several times slower.
 
 ```bash
 npm run test:next          # the core on Node

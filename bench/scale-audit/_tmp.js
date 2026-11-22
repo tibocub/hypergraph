@@ -1,7 +1,8 @@
-// Temp folders on E: (C: is nearly full), removed after each run.
+// Temp folders, removed after each run.
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
-const ROOT = process.env.HG_SCALE_TMP || 'E:/Code/P2P/.tmp/scale-audit'
+const ROOT = process.env.HG_SCALE_TMP || path.join(os.tmpdir(), 'hg-scale-audit')
 function tmpDir (name) {
   fs.mkdirSync(ROOT, { recursive: true })
   return fs.mkdtempSync(path.join(ROOT, name + '-'))

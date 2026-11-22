@@ -22,7 +22,7 @@ Options: `--members` (2 to 6: keep the machine's load low), `--hours`, `--local`
 127.0.0.1 instead of the public one), `--gap min,max` (seconds between a member's actions, default
 20,60), `--offline min,max` (seconds offline, default 30,600), `--offline-chance` (chance, at each
 action, to go offline instead; default 0.08), `--settle` (seconds with everyone online at the end,
-default 300), `--dir` (where runs go; default `E:\Code\P2P\.tmp` when it exists, else the temp folder).
+default 300), `--dir` (where runs go; default `SOAK_DIR`, else the temp folder).
 
 Going offline is one of two, at random: the member closes its Hypergraph and reopens it in the same
 process, or its process exits and `run.js` starts it again on the same storage later.

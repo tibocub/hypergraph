@@ -40,39 +40,30 @@ know about hypergraph. Nothing consumes HyperBBS.
 | **HyperMD** | Document format (`.hmd`) — Markdown + directives (`:::query`, `:::script`) for layout, data views, sandboxed scripting | (standalone) |
 | **HyperBBS** | Terminal-first P2P browser. A "hypersite" *is* a hypergraph graph; visiting one = replicating it. Renders HyperMD via OpenTUI. **Paused (2026-10-07): its successor is HyperBrowser (codename), the same vision in a web UI — a local Node program plus a browser tab first, a Pear app (desktop, mobile) later; its own repo, built on hypergraph's new core (spec 011). OpenTUI was too unstable under Node.js.** Not to be moved onto `hypergraph/v2`; its suite still runs after v1 changes while it is here. | hypergraph, HyperMD |
 | **hyperDNS** | Federated naming — `name@authority` resolves to addresses without a central registry. An authority is a trust/moderation boundary, not a global namespace. | hypergraph |
-| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`E:\Code\P2P\swarmwire`, package `swarmwire-lib`, live branch `main`; app contract `docs/contract.md`: content-addressed, verified transfer of files served in place; SwarmFS uses it with no DHT announce, over hypergraph's member streams, serving on demand via `resolve(root)`). First version: two devices, one identity. **The rewrite lives in `E:\Code\P2P\SwarmFS` (fresh repo github.com/tibocub/SwarmFS, started 2026-10-22); the old code is `E:\Code\P2P\SwarmFS-old` (github.com/tibocub/SwarmFS-old), reference only.** | hypergraph (new core), swarmwire |
+| **SwarmFS** | P2P filesystem — being rewritten: folders and files are records in hypergraph spaces (new core, spec 011), file bytes move through **swarmwire** (`../swarmwire`, package `swarmwire-lib`, live branch `main`; app contract `docs/contract.md`: content-addressed, verified transfer of files served in place; SwarmFS uses it with no DHT announce, over hypergraph's member streams, serving on demand via `resolve(root)`). First version: two devices, one identity. **The rewrite is github.com/tibocub/SwarmFS; the old code is github.com/tibocub/SwarmFS-old, reference only.** | hypergraph (new core), swarmwire |
 
 ## Where they live (and what NOT to open)
 
-All on this machine under `E:\Code\P2P\`:
+Side by side in one parent folder (the `file:../<repo>` links need it):
 
 ```
-E:\Code\P2P\hypergraph\     ← the hub
-E:\Code\P2P\HyperBBS\
-E:\Code\P2P\HyperMD\
-E:\Code\P2P\hyperDNS\
-E:\Code\P2P\SwarmFS\
+hypergraph/     ← the hub
+HyperBBS/
+HyperBrowser/
+HyperMD/
+hyperDNS/
+SwarmFS/
+swarmwire/
 ```
-
-⚠ **`E:\Code\P2P\` contains many near-duplicate and abandoned directories.** Before working in
-one, confirm you're in the right one:
-
-- `SwarmFS\` is the live one (the rewrite). `SwarmFS-old\` is the previous code, reference only. **`SwarmFS-main\`, `SwarmFS-copy\`, `SwarmFS.old\`, `SwarmFS-0.1\`
-  are not** — do not edit them, do not read them for "current" behavior.
-- `HyperBBS\` is the live one. **`hyper-bbs\` (lowercase, hyphenated) is a different, older
-  directory** — not the same project state.
-- Many other `E:\Code\P2P\*` directories are vendored upstream libraries (`hypercore`,
-  `corestore`, `autobase`, `hyperswarm`, `hyperbee`) or unrelated experiments. Reading upstream
-  source there is legitimate and often useful; editing it is almost never what you want.
 
 ## How they're actually wired
 
 **Local sibling repos are symlinked into `node_modules`, not installed from a registry.**
 
 ```
-HyperBBS/node_modules/hypergraph -> E:\Code\P2P\hypergraph   (live symlink)
-HyperBBS/node_modules/hypermd    -> E:\Code\P2P\HyperMD      (live symlink)
-hyperDNS/node_modules/hypergraph -> E:\Code\P2P\hypergraph   (live symlink)
+HyperBBS/node_modules/hypergraph -> ../hypergraph   (live link)
+HyperBBS/node_modules/hypermd    -> ../HyperMD      (live link)
+hyperDNS/node_modules/hypergraph -> ../hypergraph   (live link)
 ```
 
 Consequences that matter:
@@ -83,7 +74,7 @@ Consequences that matter:
    paths**: `"hypergraph": "file:../hypergraph"` and `"hypermd": "file:../HyperMD"`. On
    `npm install` or `npm ci`, npm creates a real link (a Windows junction) to the sibling checkout
    by itself, and the lockfile records it as `"resolved": "../hypergraph", "link": true`. The
-   sibling folder must sit next to the consumer, as it does under `E:\Code\P2P\`.
+   sibling folder must sit next to the consumer.
 3. SwarmFS links hypergraph and swarmwire the same way (`"hypergraph": "file:../hypergraph"`,
    `"swarmwire-lib": "file:../swarmwire"`) and uses only the new core (`hypergraph/next`).
 
@@ -119,7 +110,7 @@ With `file:` dependencies there is no reason to link by hand — `npm install` d
 ever needs manual repair, **never use `ln -s` on Windows**; make a junction:
 
 ```bash
-cmd //c "mklink /J node_modules\\hypergraph E:\\Code\\P2P\\hypergraph"
+cmd //c "mklink /J node_modules\\hypergraph %CD%\\..\\hypergraph"
 ```
 
 **Verify a link is real — don't trust a command's success message:**
