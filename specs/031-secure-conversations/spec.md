@@ -1,7 +1,7 @@
 # Spec 031: secure conversations (forward secrecy and healing)
 
-**Created**: 2026-11-22 · **From**: ROADMAP "Next 6. Privacy", research 029 RQ4 · **Status**: draft, open questions
-at the end · **Builds on**: private spaces, key changes, padding (030), identities
+**Created**: 2026-11-22 · **From**: ROADMAP "Next 6. Privacy", research 029 RQ4 · **Status**: spec, questions answered
+· **Builds on**: private spaces, key changes, padding (030), identities
 
 ## Why
 
@@ -79,7 +79,8 @@ All primitives are in sodium-universal (the same on Node and Bare):
 | Message key `MK_n` | the same | sealing: XChaCha20-Poly1305. The additional data names space, log, seq, epoch and `n` (today's `recordAD` plus `n`). The nonce stays random (24 B): a device restored from a disk backup or a VM snapshot replays chain positions, and a random nonce keeps even that safe | Kept in the local key store while the record is kept here (below) |
 
 Envelope: today's `{ epoch, commit, nonce, box }` gets a scheme number and the chain index `n` (1 to 3 B more).
-Older envelopes keep reading through the old path.
+The scheme number is kept for the deniable option only. There is no old format to read: hidden-history spaces
+made before this stop working (no users, no data yet).
 
 A writer seals with the newest epoch it holds. Its first record in an epoch is `n = 0`. A record that names an
 epoch whose device list doesn't include its log is refused: a new device waits for the next key change.
@@ -172,8 +173,8 @@ grows as O(n²): writers don't distribute their own chains.
   Double Ratchet §3.1, §8.4):
   - a chain index past 65,535 in one epoch is refused (writers change the key well before);
   - at most 100,000 skipped keys per space (3.2 MB);
-  - a skipped key unused for 90 days is erased (question 4). The record, if it comes later, counts as gone, not
-    missing, and reads stay complete.
+  - a skipped key unused for 90 days is erased (question 4). The record is then asked for again (resends, below).
+    If no resend comes, it counts as gone, not missing, and reads stay complete.
 - **Across epochs**: a reader keeps a writer's chain of epoch `e` until that writer's first record in a newer
   epoch arrives, or the 90 days pass. A device offline for weeks writes in its last epoch, and members who had
   that epoch read it when it comes back.
@@ -184,6 +185,60 @@ grows as O(n²): writers don't distribute their own chains.
   chain belongs to (epoch, commitment, writer).
 - **Decision reordering**: Autobase may reorder unsettled decisions. Chains don't depend on that order. Only the
   epoch's device list does, and it is written in the epoch's own decision.
+
+### Resends: a message is lost only if no author device has it
+
+**When.** A member's device can no longer open a record it should read. Either its skipped key expired, or it
+dropped the writer's old-epoch chain, while the block was still missing or unreadable. It then asks the author.
+
+**The request.** A `hg/resend { log, seqs }` record in the member's own log, sealed in the current epoch:
+
+- `log` and `seqs` name the records, as ranges;
+- at most 1,000 records per request;
+- it is subject to the space's write limit, like any record.
+
+**The answer.** Any device of the same identity as the original's writer may answer. That device:
+
+- opens its own copy: its own records are never dropped, and their message keys are in its key store;
+- writes a resend record in its own log, carrying the original's fields and links and naming the original
+  (`resendOf: { log, seq }`);
+- shows it under the original's record id, stamp and place.
+
+Readers deduplicate: one that holds the original ignores the resend.
+
+**Sealed to the requester only, not under the current key.** The answer is sealed to the requesting device's
+newest prekey (`crypto_box_seal` of a one-time key), not to the epoch. This differs from "re-post under the
+current key" on purpose. Everyone in the current epoch reads what is sealed under the current key, and that
+includes newcomers who joined after the original. They would read history from before their join, which hidden
+history forbids.
+
+**Who gets an answer.** The author answers only when all of these hold:
+
+- the requesting device is in the current epoch's device list. An ex-member is never in it, so it gets nothing.
+- the requesting device was in the original record's epoch device list. It was entitled to the record then.
+- the record still exists for the author: not deleted, not trimmed, not past the disappearing timer.
+
+**Holders never re-encrypt.** They can't read. A way for them to transform keys (proxy re-encryption) would
+give whoever holds blocks a key-shaped capability. Resends come from an author device or not at all.
+
+**Limits:**
+
+- The message is lost if no device of the author survives with it: all lost or removed, or the record dropped
+  by a modified app.
+- A disappeared, trimmed or deleted message is never resent. That is the point of those features.
+- A resend waits for an author device to come online. Until then the record stays missing, and reads stay
+  incomplete. After a further 30 days with no answer it counts as gone.
+- The author is trusted to resend what it wrote. A reader that holds both the original and a resend that
+  differs from it keeps the original, and the inspector flags the mismatch. Readers holding only the resend
+  can't check it (review item 11).
+
+**Floods:**
+
+- An author answers each (record, requesting device) pair at most once;
+- it sends at most 1 MB of resends per space per day, and the rest waits;
+- it ignores requests from a device whose own log is past the write limit.
+
+A requester asks again only after 7 days without an answer.
 
 ### Where it lives, and what apps see
 
@@ -268,7 +323,8 @@ Regression first, as the constitution asks for replication code.
   - the 90-day expiry;
   - a crash between storing and appending never reuses a step;
   - an epoch key and prekey secret are gone from the store after use;
-  - old hidden-history envelopes still read.
+  - resends: only to a device entitled then and now, never for a disappeared, trimmed or deleted record, once per
+    (record, device), within the daily cap.
 - **Forum scenarios** (`test/next/forum/`):
   - `history.js`:
     - hidden: a newcomer reads from its join on;
@@ -281,6 +337,8 @@ Regression first, as the constitution asks for replication code.
   - `private.js`: removal is cut off at the next key change (exists; add the hidden variant).
   - `partition.js`:
     - an offline writer's records from an old epoch are read when it comes back;
+    - a record whose skipped key expired comes back by resend from the author's other device, while a
+      newcomer since then and an ex-member get nothing;
     - a writer that missed a removal: documented limit, asserted.
   - `renew.js`: renewing a hidden space keeps its chains' limits.
   - A new `disappearing.js`: the timer erases keys on every member, and the deciders trim.
@@ -308,9 +366,13 @@ What a reviewer should start from:
 6. The local key store: erasure order, crash safety, what an LSM database and SSDs keep after a delete.
 7. Interaction with the disk key that never changes: what an ex-member learns.
 8. The removal window for offline writers.
-9. Downgrade: an old peer, an old envelope, `'visible'` switched on by a malicious decider. Does the UI
-   warn members?
+9. Downgrade: `'visible'` switched on by a malicious decider. Does the UI warn members?
 10. Metadata: prekey and grant records show key-change timing to members (not to holders).
+11. Resends:
+    - the entitlement checks (then and now);
+    - the author trusted for the content;
+    - floods;
+    - whether a resend request reveals which records a member lacks to other members.
 
 ## Prior art (primary sources)
 
@@ -326,36 +388,31 @@ What a reviewer should start from:
 Sources marked "read" were fetched 2026-11-22. RFC 9750, MSC4268 and DCGKA come from research 029 (fetched
 2026-11-21). The RFC 9420 §16.6 definitions were read as a summary only.
 
-## Open questions
+## Questions, answered (2026-11-22)
 
-The same list goes to the lead. Each has a recommendation.
+Every recommendation was taken, except for questions 4 and 10.
 
-1. **One switch?** Secure mode = `setHistory('hidden')`, with no new flag. *Recommended: yes* (keeping history
-   and forward secrecy contradict each other).
-2. **Chat defaults**: every new 1:1 and group is hidden. A group admin may switch to "keep history" with a
-   warning. *Recommended: yes*. Forums stay visible.
-3. **Messages written between a join and the writer hearing of it**: never readable by the newcomer, or should
-   writers keep chain keys for a grace period (24 h)? *Recommended: none* (a grace period is a forward-secrecy
-   hole every member carries).
-4. **How long to keep skipped keys** (a message not yet arrived): *Recommended: 90 days*, then it counts as
-   gone. Shorter is safer; longer fits devices offline for months.
-5. **Timer key changes**: *Recommended: every 7 days or 1,000 records by one writer, by any device that may
-   decide while online.*
-6. **Who may change the key in a 1:1**: today only who may decide or moderate. A 1:1 whose owner is gone for
-   good never heals and never lets a restored device in. *Recommended: Chat makes both people of a 1:1 admins*
-   (no core change). Alternative: the core lets any member of a hidden space change the key.
-7. **Disappearing messages**: a per-conversation setting by whoever may decide (off, 1 h, 1 day, 7 days, 30
-   days). *Recommended: yes, off by default*, with a note that a modified app can keep messages.
-8. **New-device notices**: "X added a device" in each conversation (the recovery-phrase thief's tell).
-   *Recommended: yes*: the core gives a `devices` change per member, Chat shows a line.
-9. **Renew after a removal** (stops metadata reaching an ex-member too): *Recommended: not automatic*. Chat
-   offers "secure this group" after a removal.
-10. **Old hidden-history spaces**: upgrade in place at their next key change (older epochs keep today's keys).
-    Peers must update together (CHANGELOG). *Recommended: yes.*
-11. **Wording before the review**: *Recommended*: the UI says "encrypted", never "forward secret" or "secure",
-    until the outside review is done.
-12. **Size**: no cap. A `status()` warning past 200 devices (each join costs every device a key change).
-    *Recommended: yes.*
+1. **One switch?** Yes: secure mode is `setHistory('hidden')`, with no new flag. Keeping history and forward
+   secrecy contradict each other.
+2. **Chat defaults.** Every new 1:1 and group is hidden. A group admin may switch to "keep history" after a
+   warning. Forums stay visible.
+3. **Messages written between a join and the writer hearing of it.** The newcomer never reads them. No grace
+   period: it would be a forward-secrecy hole every member carries.
+4. **Skipped keys.** Kept 90 days. **Changed:** when one expires, the member asks the author's devices for a
+   resend (see "Resends"). A message is lost only if no author device has it.
+5. **Timer key changes.** Every 7 days or 1,000 records by one writer, made by any device that may decide while
+   online.
+6. **Who may change the key in a 1:1.** Chat makes both people of a 1:1 admins (no core change).
+7. **Disappearing messages.** A per-conversation setting, made by whoever may decide: off, 1 h, 1 day, 7 days or
+   30 days. Off by default, with a note that a modified app can keep messages.
+8. **New-device notices.** Yes: "X added a device" in each conversation. The core gives a `devices` change per
+   member, and Chat shows a line.
+9. **Renew after a removal.** Not automatic. Chat offers "secure this group" after a removal.
+10. **Old hidden-history spaces.** **Changed:** no upgrade and no compatibility (no users, no data yet). Old
+    hidden-history spaces stop working, and there is no CHANGELOG step.
+11. **Wording before the review.** The UI says "encrypted", never "forward secret" or "secure", until the outside
+    review is done.
+12. **Size.** No cap. A `status()` warning past 200 devices.
 
 ## Not checked
 
