@@ -14,12 +14,11 @@ Findings: `specs/029-privacy-deniability/research.md`. Nothing here is product c
 - `electron-traces/main.js` + `check.js`: what an Electron session (in-memory or `persist:`) leaves on disk.
 
 ```bash
-export TMP='E:\Code\P2P\.tmp\tmp' TEMP='E:\Code\P2P\.tmp\tmp' HG_TEST_TMP='E:\Code\P2P\.tmp\tmp'
 node research/privacy/vault/test.js
 node research/privacy/vault/bench.js 256 32
 node research/privacy/vault/hypercore-io.js
 node research/privacy/padding/measure.js
 node research/privacy/jitter/simulate.js
-E:/Code/P2P/HyperBrowser/node_modules/electron/dist/electron.exe research/privacy/electron-traces/main.js E:/Code/P2P/.tmp/tmp/etrace/memory memory
-node research/privacy/electron-traces/check.js E:/Code/P2P/.tmp/tmp/etrace/memory
+../HyperBrowser/node_modules/electron/dist/electron.exe research/privacy/electron-traces/main.js <scratch folder>/etrace/memory memory
+node research/privacy/electron-traces/check.js <scratch folder>/etrace/memory
 ```

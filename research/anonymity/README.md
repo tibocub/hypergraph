@@ -14,12 +14,11 @@ The engines are given a transport by setting `hg._network._swarm` before `connec
 option for it, and `lib/` is unchanged.
 
 ```bash
-export HG_TEST_TMP='E:\Code\P2P\.tmp\tmp'
 node research/anonymity/test.js
 node research/anonymity/bench.js swarm                       # Hyperswarm on a local DHT (baseline)
 node research/anonymity/bench.js relay                       # + relayThrough a local blind relay
 node research/anonymity/bench.js tcp                         # the adapter over a local socket
-node research/anonymity/bench.js tor --tor E:\Code\P2P\.tmp\anon\tor\tor\tor.exe   # over two real Tor clients
+node research/anonymity/bench.js tor --tor <path to tor.exe>   # over two real Tor clients
 node research/anonymity/relay-only.js
 ```
 

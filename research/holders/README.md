@@ -29,19 +29,19 @@ missing. The script needs this branch merged into the hypergraph checkout it run
 ### A Windows PC (HyperBrowser app, engine folder `%APPDATA%\HyperBrowser\engine`)
 
 ```powershell
-cd E:\Code\P2P\hypergraph
-node research\holders\export.js "$env:APPDATA\HyperBrowser\engine" --out E:\Code\P2P\.tmp\025\pc.json
+cd <hypergraph checkout>
+node research\holders\export.js "$env:APPDATA\HyperBrowser\engine" --out <data>\pc.json
 ```
 
 ### The other device (no hypergraph checkout needed there)
 
 Quit HyperBrowser on it, copy its `index` folder (Windows: `%APPDATA%\HyperBrowser\engine\index`; Linux:
 `~/.config/HyperBrowser/engine/index`; macOS: `~/Library/Application Support/HyperBrowser/engine/index`) to the PC as
-`E:\Code\P2P\.tmp\025\other\index`, then on the PC:
+`<data>\other\index`, then on the PC:
 
 ```powershell
-cd E:\Code\P2P\hypergraph
-node research\holders\export.js E:\Code\P2P\.tmp\025\other --out E:\Code\P2P\.tmp\025\other.json
+cd <hypergraph checkout>
+node research\holders\export.js <data>\other --out <data>\other.json
 ```
 
 ### The Ubuntu VPS helper (service `hyperbrowser-helper`, user `hyperbrowser`, code in `/opt/hyperbrowser`)
@@ -61,4 +61,4 @@ sudo -u hyperbrowser node /opt/hyperbrowser/hypergraph/research/holders/export.j
 sudo systemctl start hyperbrowser-helper
 ```
 
-Then from the PC (PowerShell): `scp <you>@<vps>:/tmp/vps.json E:\Code\P2P\.tmp\025\vps.json`.
+Then from the PC (PowerShell): `scp <you>@<vps>:/tmp/vps.json <data>\vps.json`.

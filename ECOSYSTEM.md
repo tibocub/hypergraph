@@ -131,9 +131,9 @@ silent rather than loud.
 1. **Changing hypergraph? Run the consumers' tests too.** They are symlinked, so you have already
    changed them whether you meant to or not.
    ```bash
-   cd E:\Code\P2P\hypergraph && npm test
-   cd E:\Code\P2P\HyperBBS   && npm test
-   cd E:\Code\P2P\hyperDNS   && npm test
+   cd hypergraph && npm test
+   cd ../HyperBBS && npm test
+   cd ../hyperDNS && npm test
    ```
 2. **hypergraph is ALPHA and takes intentional breaking changes** — that's allowed, but they must
    land in `hypergraph/CHANGELOG.md` as a dated entry saying what broke and how to migrate
