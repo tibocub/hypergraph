@@ -169,3 +169,23 @@ test('a private board\'s posts, comments and votes are stored padded: whoever ho
   t.ok(sizes[4] > 2000 && sizes[4] < 2000 * 1.12 + 300, `a long post: its rough size only (${sizes[4]} B)`)
   t.is((await forum.latest(staff)).length, 3, 'the board reads as before')
 })
+
+test('a private forum hiding its history: removing someone cuts them off at the next key change, which a plain member waits for', async (t) => {
+  const a = await account(t, 'a')
+  const club = await forum.createForum(a, 'Club', { private: true })
+  await club.setHistory('hidden')
+  const b = await account(t, 'b')
+  const fb = await forum.join(b, await forum.invite(club))
+  const g = await account(t, 'g')
+  const fg = await forum.join(g, await forum.invite(club))
+  const p1 = await forum.post(club, 'before', '')
+  t.ok(await eventually(() => shows(fg, p1.id), 15000), 'g reads it')
+  await forum.removeMember(club, g.identity.publicKey)
+  t.ok(await eventually(async () => (await fb.members()).find((m) => m.identity === g.identity.publicKey).removed, 15000), 'b hears of it')
+  const p2 = await forum.post(fb, 'after, by a plain member', '') // never with the key g holds
+  t.ok(await eventually(() => shows(club, p2.id), 15000), 'the others read it')
+  t.ok((await testing.sealedWith(fb, p2.id)).epoch > (await testing.sealedWith(fb, p1.id)).epoch, 'sealed in the epoch made for the removal')
+  t.ok(await eventually(() => testing.holdsBlock(fg, p2.id), 15000), 'g holds its block')
+  t.absent(await shows(fg, p2.id), 'and can\'t read it')
+  t.ok(await shows(fg, p1.id), 'what came before stays readable for g')
+})

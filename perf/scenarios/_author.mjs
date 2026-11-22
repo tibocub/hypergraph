@@ -15,6 +15,7 @@ const TEXT = 'x'.repeat(480)
 const hg = await next.Hypergraph.open(path.join(dir, 'hg'), { types, bootstrap: JSON.parse(bootstrapJson) })
 await hg.connectToSwarm()
 const room = await hg.redeemInvite(invite)
+while (room.status().access === 'waiting') await new Promise((resolve) => setTimeout(resolve, 100)) // a private room's key
 const stop = room.query('message').live(({ items }) => {
   const top = items[0]?.text
   if (top && top.startsWith('ping')) console.log(`saw ${top} ${Date.now()}`)

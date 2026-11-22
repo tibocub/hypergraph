@@ -1,6 +1,6 @@
 # Spec 031: secure conversations (forward secrecy and healing)
 
-**Created**: 2026-11-22 · **From**: ROADMAP "Next 6. Privacy", research 029 RQ4 · **Status**: spec, questions answered
+**Created**: 2026-11-22 · **From**: ROADMAP "Next 6. Privacy", research 029 RQ4 · **Status**: built (see "Changes while building")
 · **Builds on**: private spaces, key changes, padding (030), identities
 
 ## Why
@@ -368,11 +368,14 @@ What a reviewer should start from:
 8. The removal window for offline writers.
 9. Downgrade: `'visible'` switched on by a malicious decider. Does the UI warn members?
 10. Metadata: prekey and grant records show key-change timing to members (not to holders).
-11. Resends:
-    - the entitlement checks (then and now);
-    - the author trusted for the content;
-    - floods;
+11. Resends (change 3): a request names a log and its seqs and holds a one-time reply public key; the
+    author's device seals those records' message keys to it.
+    - the entitlement checks (in the record's epoch, in the current one) and the "still exists" check;
+    - the reply key: one-time, erased after its first answer or 90 days;
+    - a wrong key from a modified author device only makes the record not open (blocks are signed);
+    - floods: once per (record, device), 1 MB a day, ask again after 7 days, gone after 30;
     - whether a resend request reveals which records a member lacks to other members.
+12. Prekeys used once (change 1), the `held` signal and the 3 s wait before a newcomer's key change.
 
 ## Prior art (primary sources)
 
@@ -413,6 +416,54 @@ Every recommendation was taken, except for questions 4 and 10.
 11. **Wording before the review.** The UI says "encrypted", never "forward secret" or "secure", until the outside
     review is done.
 12. **Size.** No cap. A `status()` warning past 200 devices.
+
+## Changes while building
+
+Agreed with the lead before building:
+
+1. **A prekey is one-time.** Its secret is erased once the grants sealed to it are opened and the chains are
+   stored. "The two newest" are the two newest **unused** ones. Kept after use, it would let a thief re-open
+   the current grant from the logs and rebuild every chain of that epoch from step 0, disappeared messages
+   included. A grant sealed to a prekey already used (a race) doesn't open: the device publishes a prekey
+   whose `held` is below the current epoch, and a decider changes the key again. Tested: a used prekey
+   opens nothing; the race recovers.
+2. **An epoch lists writer logs**, not devices: the chain start needs the log's key, and a reader may not
+   know a device's log when the grant arrives. Grants stay addressed to the device.
+3. **A resend carries the message key**, sealed to a one-time reply key the request holds, not a copy of
+   the fields. The asker opens the original block (the author's log always serves it): the author is never
+   trusted for content and there is nothing to deduplicate. The author still refuses a record that is
+   deleted, trimmed or past the timer, and checks the asker was in the record's epoch and is in the current
+   one, before sealing. Review item 11 changes accordingly.
+4. **The disappearing test copies the key store after the timer** (it opens nothing). A copy taken before
+   the timer still holds the keys and opens the records from any kept block: the documented limit.
+5. **An old epoch's chain goes** once its writer wrote in a newer epoch and every earlier block of its log is
+   read (or after 90 days), not when the newer record arrives: blocks download in any order.
+
+Found while testing:
+
+- **`held` counts only epochs whose winning key the device holds.** Two key changes at once give two keys for
+  one epoch number; holding the loser said "I have it" and the device was never served again.
+- **A key change for a newcomer or a device lacking the key waits 3 s after the last one.** Devices publish
+  fresh prekeys once they opened a grant; a change made at once sealed to the old ones and, with two
+  deciders online, set off the next change, again and again.
+- **A device that may decide waits before writing** (within the 5 s a write waits) when a member just came in
+  (its join decided in the last 30 s, its prekey not here yet) or a newcomer's key change is due: it changes
+  the key, then writes, so the newcomer reads it. Other writers write with the key they hold.
+- **Joining takes a key change**: `status().access` is `'waiting'` until the newcomer's epoch exists, and
+  what is written before doesn't reach it. Tests and apps wait for `'full'`.
+- **Shared types** (agreed with the lead). A newcomer read nothing written before it came, app state
+  included: SwarmFS's `site` record (which app a space runs) and members' `profile` names, so no one could
+  join an encrypted Chat. A type may declare `shared: true` (opt-in, refused with a `text` or `bytes`
+  field): in a private top space its records are sealed with a key from the disk key (scheme 2), whatever the
+  history setting, and a trim keeps them. **The limit: an ex-member keeps the disk key, so it keeps reading
+  shared records (names, the site record) until the space is renewed (`secure()`).** Holders read nothing. In
+  a private sub-space a shared type is sealed like any other. SwarmFS marks `site` and `profile` shared.
+
+Open points:
+
+- **Read-only members**: a member whose role can't write publishes no prekey, so it can't read a secure
+  conversation. Chat members all write; a `read` role (decisions.md follow-up H5) would need prekeys too.
+- **Local key store size**: a key per kept record, in memory and in the engine's table (about 100 B each).
 
 ## Not checked
 

@@ -39,7 +39,7 @@ test('a sealed record opens only with its key, in its place', (t) => {
   const log = hc.randomBytes(32)
   const content = { fields: b4a.from('secret post'), links: [hc.randomBytes(33)] }
   const sealed = crypto.sealRecord(key, 3, crypto.recordAD(space, log, 7, 3), content)
-  t.alike(crypto.sealedWith(sealed), { epoch: 3, commit: crypto.shortCommit(crypto.commitOf(key)) }, 'names its epoch and which key')
+  t.alike(crypto.sealedWith(sealed), { scheme: crypto.EPOCH_KEY, epoch: 3, commit: crypto.shortCommit(crypto.commitOf(key)), n: 0 }, 'names its scheme, epoch and which key')
   t.absent(b4a.includes(sealed, b4a.from('secret post')), 'no plaintext in the bytes')
   const back = crypto.openRecord(key, crypto.recordAD(space, log, 7, 3), sealed)
   t.ok(back && b4a.equals(back.fields, content.fields) && b4a.equals(back.links[0], content.links[0]), 'opens in place')

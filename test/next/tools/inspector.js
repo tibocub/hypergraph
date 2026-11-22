@@ -175,5 +175,15 @@ if (typeof Bare !== 'undefined') {
     }
     const page = require('fs').readFileSync(require('path').join(__dirname, '../../../tools/inspector/page.js'), 'utf8')
     t.ok(page.includes('subspace/create') && page.includes('key/rotate'), 'the page words the new decisions')
+
+    await staff.setHistory('hidden') // a secure conversation: its key store, counted
+    await staff.put('post', { title: 'sealed with its own key' })
+    const secureView = await json('api/space?key=' + staff.key)
+    t.is(secureView.secure.history, 'hidden')
+    t.ok(secureView.secure.keptKeys >= 1 && secureView.secure.epochDevices >= 1, 'what its key store holds, counted')
+    const shown = JSON.stringify(secureView)
+    const held = [...testing.keyStore(staff).kept.values()].map((k) => k.mk).concat([...testing.keyStore(staff).chains.values()].map((ch) => ch.ck))
+    t.absent(held.some((k) => shown.includes(b4a.toString(k, 'hex')) || shown.includes(z32.encode(k))), 'never a key')
+    t.ok(page.includes('Secure conversation'), 'the page shows it')
   })
 }

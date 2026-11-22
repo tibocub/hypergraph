@@ -12,6 +12,8 @@ const types = {
   post: { fields: { title: 'string', text: 'text', topic: 'string' }, index: [['topic', 'stamp']] },
   comment: { fields: { text: 'text', on: 'link' }, links: { on: ['post', 'comment'] } },
   vote: { fields: { value: 'int', on: 'link' }, links: { on: ['post', 'comment'] }, onePerMember: true },
+  // A member's display name: every member reads it, newcomers to a forum hiding its history too.
+  nick: { fields: { name: 'string' }, shared: true },
   // The forum's wiki: editors (the 'edit-pages' permission) edit any page.
   page: { fields: { title: 'string', body: 'text' }, editable: { permission: 'edit-pages' } },
   // A notice board any member edits, in columns ('todo', 'done'...).
@@ -245,6 +247,22 @@ function secure (forum, { forgetHistory = false } = {}) {
 // already took can't be recalled). Owners and admins.
 function trimHistory (forum, days) {
   return forum.trimHistory({ before: Date.now() - days * 24 * 3600 * 1000 })
+}
+
+// A private forum whose posts disappear after `ms` on every member's device
+// (null: they stay). Owners and admins.
+function disappearAfter (forum, ms) {
+  return forum.setDisappearing(ms)
+}
+
+// The name a member shows in a private forum: read by every member, those
+// who came after it too (it never holds content).
+function setNick (forum, name) {
+  return forum.put('nick', { name })
+}
+
+async function nicks (forum) {
+  return (await forum.query('nick').latest(100)).items.map((x) => x.name).sort()
 }
 
 // Takes someone out of the forum: what they wrote so far stays.
@@ -532,7 +550,7 @@ function liveForums (hg, onUpdate) {
 module.exports = {
   types, rules, signUp, restore, recoveryPhrase, protectPhrase, forgetPhrase,
   addDevice, joinWithCode, onForums, devices, removeDevice, setSetting, setting,
-  forums, createForum, changeKey, secure, trimHistory, keepEverything, setAppBudget, setForumBudget, storage,
+  forums, createForum, changeKey, secure, trimHistory, disappearAfter, setNick, nicks, keepEverything, setAppBudget, setForumBudget, storage,
   createSubforum, subforums, inviteGuest, shortcut, follow,
   invite, inviteFriend, openLink, whoJoined, join, setHelpers, helpers,
   giveRole, roleOf, addRole, roles, removeMember, people, modLog, online,

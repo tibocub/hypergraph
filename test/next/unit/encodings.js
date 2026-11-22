@@ -58,13 +58,14 @@ test('every decision of data-model.md round trips', (t) => {
     { type: 'invite/create', stamp: 9, invite: crypto.randomBytes(100) },
     { type: 'invite/revoke', stamp: 10, invite: crypto.randomBytes(100) },
     { type: 'invite/redeem', stamp: 11, redemption: crypto.randomBytes(300) },
-    { type: 'key/rotate', stamp: 12, epoch: 1, commit: key() },
+    { type: 'key/rotate', stamp: 12, epoch: 1, commit: key(), logs: [key(), key()] },
     { type: 'subspace/create', stamp: 13, key: key(), name: 'News', private: false, writeRoles: ['moderator'] },
-    { type: 'settings/set', stamp: 14, policy: 'everything', writeLimit: null, rules: null, history: null, helpers: null, public: null },
-    { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 }, rules: ['title-length'], history: 'hidden', helpers: null, public: null },
-    { type: 'settings/set', stamp: 18, policy: null, writeLimit: null, rules: null, history: null, helpers: [b4a.toString(key(), 'hex')], public: null },
-    { type: 'settings/set', stamp: 19, policy: null, writeLimit: null, rules: null, history: null, helpers: [], public: null }, // cleared
-    { type: 'settings/set', stamp: 20, policy: null, writeLimit: null, rules: null, history: null, helpers: null, public: true },
+    { type: 'settings/set', stamp: 14, policy: 'everything', writeLimit: null, rules: null, history: null, helpers: null, public: null, disappearing: null },
+    { type: 'settings/set', stamp: 15, policy: null, writeLimit: { records: 50, periodMs: 3600000 }, rules: ['title-length'], history: 'hidden', helpers: null, public: null, disappearing: null },
+    { type: 'settings/set', stamp: 18, policy: null, writeLimit: null, rules: null, history: null, helpers: [b4a.toString(key(), 'hex')], public: null, disappearing: null },
+    { type: 'settings/set', stamp: 19, policy: null, writeLimit: null, rules: null, history: null, helpers: [], public: null, disappearing: null }, // cleared
+    { type: 'settings/set', stamp: 20, policy: null, writeLimit: null, rules: null, history: null, helpers: null, public: true, disappearing: null },
+    { type: 'settings/set', stamp: 21, policy: null, writeLimit: null, rules: null, history: null, helpers: null, public: null, disappearing: 3600000 },
     { type: 'logs/list', stamp: 20, logs: [{ space: key(), log: key() }] },
     { type: 'writer/add', stamp: 16, key: crypto.randomBytes(32), proof: crypto.randomBytes(140) },
     { type: 'device/remove', stamp: 17, device: crypto.randomBytes(32), cut: crypto.randomBytes(40), proof: crypto.randomBytes(140) }

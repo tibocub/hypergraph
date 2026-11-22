@@ -48,3 +48,29 @@ test('keep the last days only: older posts go everywhere', { timeout: 120000 }, 
   await forum.post(f, 'fresh', '')
   t.ok(await eventually(async () => JSON.stringify(await titles(onMember)) === '["fresh"]', 20000), 'the member keeps the new posts only')
 })
+
+test('securing a forum that hides its history: members read its history and go on with new keys; a newcomer reads from its join on', { timeout: 180000 }, async (t) => {
+  const owner = await account(t, 'owner')
+  const member = await account(t, 'member')
+  const club = await forum.createForum(owner, 'Book club', { private: true })
+  await club.setHistory('hidden')
+  const onMember = await forum.join(member, await forum.invite(club))
+  await forum.post(onMember, 'old', '')
+  t.ok(await eventually(async () => (await titles(club)).includes('old'), 15000), 'the owner reads it')
+
+  const secured = await forum.secure(club)
+  t.is(secured.history, 'hidden', 'still hiding its history')
+  const here = await eventually(() => { const f = member.space(club.key); return f.key === secured.key ? f : null }, 40000)
+  t.ok(await eventually(async () => (await titles(here)).includes('old'), 30000), 'the member reads the old posts, with the old space\'s chains')
+  const fresh = await eventually(async () => {
+    try { return await forum.post(here, 'new', '') } catch { return null }
+  }, 30000)
+  t.ok(fresh, 'and writes with the new space\'s keys')
+  t.ok(await eventually(async () => (await titles(secured)).includes('new'), 30000), 'which the owner reads')
+  const newcomer = await account(t, 'newcomer')
+  const onNew = await forum.join(newcomer, await forum.invite(secured))
+  t.ok(await eventually(() => onNew.status().access === 'full', 30000), 'its key came') // it reads from here on
+  const later = await forum.post(secured, 'after the newcomer', '')
+  t.ok(await eventually(async () => (await forum.latest(onNew, 50)).some((p) => p.id === later.id), 30000), 'the newcomer reads what came after it')
+  t.alike(await titles(onNew), ['after the newcomer'], 'and no history')
+})
