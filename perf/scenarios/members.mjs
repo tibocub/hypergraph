@@ -17,6 +17,9 @@
 //                     a silent account costs nobody
 //   logs.settle-kb    two members holding the same N logs, one new log at one of them, never
 //                     announced: bytes of ranges and keys until the other has it. flat
+//   members.key-change  a secure conversation (private, history hidden) with N devices: one key
+//                     change by hand, until recorded and granted to each device (ms; the spec
+//                     sized it O(devices): one sealed grant each)
 //   reactions.count   count() of the likes on one post with N likes (ms per read). flat: the
 //                    scale audit's #10 (every like is read; counters would make it flat)
 //   reactions.sum     sum() of the same
@@ -169,6 +172,16 @@ try {
       settle.push(bytes / 1024)
     }
     record('logs.settle-kb', n, 'KB', settle, { flat: true })
+  }
+
+  const chat = await owner.createSpace({ name: 'Secure', private: true })
+  await chat.setHistory('hidden')
+  let devices = 0
+  for (const n of sizes([50, 100])) {
+    await testing.scriptDevices(chat, n - devices)
+    devices = n
+    if (!await eventually(async () => (await chat.inspect()).secure.epochDevices >= n + 1, 60000)) throw new Error('the devices never got a key')
+    record('members.key-change', n, 'ms', await time(() => chat.rotateKey(), 5))
   }
 
   const club = await owner.createSpace({ name: 'Likes' })

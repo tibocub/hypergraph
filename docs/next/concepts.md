@@ -192,8 +192,14 @@ A space that isn't private is only **closed**: members alone write, but anyone h
 and a removed member still holds the key. A **private** space seals its records (their fields and links; who wrote them and when stay visible)
 with a key that only its members' devices receive, each sealed to one device in a grant record. When
 someone loses access, the key changes: they keep reading what came before, not what comes after. Each key
-unlocks the ones before it, so newcomers read the history, unless the space hides it (newcomers then read
-from their join on). A
+unlocks the ones before it, so newcomers read the history, unless the space hides it: then it is a
+**secure conversation**. There each device publishes a fresh one-time key (a prekey) in its log; a key
+change seals the new key to each listed device's prekey, and the device turns it into one chain per
+writer log, then erases both. Each record is sealed with its own key, one step down its writer's chain
+(the log's single order is what makes a chain per writer work offline, with no server). Keys stay in the
+device's own table, never replicated, and go when their record goes (deleted, trimmed, past a
+disappearing timer). So a stolen device opens only what it still keeps, and a copy of its keys taken once
+stops reading after two key changes. Newcomers read from their join on. A
 member without a key holds the blocks it relays and reads nothing. A private top space is also encrypted on
 disk: its members, record types and timing too are hidden from whoever stores it without being let
 in. Its records are **padded** inside that encryption (256 B at least, then Padmé: at most 12% more), so whoever

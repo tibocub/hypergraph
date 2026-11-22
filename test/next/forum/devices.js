@@ -258,3 +258,36 @@ test('a forum joined or created on one device appears on the other without a res
   await phone.leaveSpace(second.key)
   t.absent(lists.phone[lists.phone.length - 1].includes(second.key), 'leaving tells too')
 })
+
+test('a private forum hiding its history: a new device and a restored identity read from their join on, nothing before; members see "added a device"', { timeout: 120000 }, async (t) => {
+  const laptop = await account(t, 'laptop')
+  const c = await account(t, 'c')
+  const fl = await forum.createForum(laptop, 'Fans', { private: true })
+  await fl.setHistory('hidden')
+  const fc = await forum.join(c, await forum.invite(fl))
+  const p1 = await forum.post(fc, 'before the phone', '')
+  t.ok(await agree([fl], titles, 'before the phone', 15000), 'the laptop reads it')
+  const notices = []
+  fc.on('devices', (d) => notices.push(d))
+
+  const { code } = await forum.addDevice(laptop)
+  const phone = await device(t, 'phone', code)
+  const fp = await eventually(() => { try { return phone.space(fl.key) } catch { return null } }, 15000)
+  t.ok(await eventually(async () => {
+    try { return !!(await forum.post(fp, 'phone is in', '')) } catch { return false }
+  }, 20000), 'the phone writes once its key came')
+  const p2 = await forum.post(fl, 'after the phone', '') // by a device that may decide: it waits for the phone's key change (c may still write with the key it held)
+  t.ok(await agree([fp], titles, ['after the phone', 'phone is in'].join(), 15000), 'the phone reads from its join on, nothing before')
+  t.ok(await eventually(() => notices.some((n) => n.identity === laptop.identity.publicKey && n.device === phone.device.publicKey), 15000), 'c is told the laptop\'s person added a device')
+  const me = (await fc.members()).find((m) => m.identity === laptop.identity.publicKey)
+  t.is(me.devices.length, 2)
+  t.ok(me.devices.every((d) => typeof d.added === 'number'), 'members() says when each device came')
+
+  const restored = await account(t, 'restored', { phrase: await forum.recoveryPhrase(laptop) })
+  const fr = await eventually(() => { try { return restored.space(fl.key) } catch { return null } }, 20000)
+  t.ok(await eventually(async () => {
+    try { return !!(await forum.post(fr, 'restored is in', '')) } catch { return false }
+  }, 20000), 'the restored identity writes once its key came')
+  t.ok(await agree([fr], titles, 'restored is in', 15000), 'and reads nothing from before its restore')
+  t.absent((await forum.latest(fr)).some((x) => x.id === p1.id || x.id === p2.id))
+})

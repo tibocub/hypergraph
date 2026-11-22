@@ -4,6 +4,8 @@
 //   private.write   the owner writing the N records one by one (records/s)
 //   private.read    the member's latest 20 posts, once it holds everything (ms)
 //   private.bytes   the owner's log as stored, per record (B/record; the padding's cost)
+// The same with the history hidden (a secure conversation: a key per record, one chain per
+// writer): private.hidden.write, private.hidden.read, private.hidden.bytes.
 
 import { context, time, record, now, eventually, sizes } from '../harness.mjs'
 import setup from '../../test/next/forum/_setup.js'
@@ -20,13 +22,15 @@ const text = (median) => {
   return s.slice(0, n)
 }
 
-for (const n of sizes([500])) {
+for (const [name, history] of [['private', 'visible'], ['private.hidden', 'hidden']]) for (const n of sizes([500])) {
   const t = context()
   try {
     const a = await setup.account(t, 'a')
     const b = await setup.account(t, 'b')
     const fa = await forum.createForum(a, 'Perf club', { private: true })
+    await fa.setHistory(history)
     const fb = await forum.join(b, await forum.invite(fa))
+    if (!await eventually(() => fb.status().access === 'full', 30000)) throw new Error('the member never got the key')
 
     const posts = [await forum.post(fa, text(40).slice(0, 80), text(600), 'general')]
     const start = now()
@@ -37,12 +41,12 @@ for (const n of sizes([500])) {
       else if (r < 0.75) await forum.comment(fa, posts[posts.length - 1], text(150))
       else await forum.vote(fa, posts[Math.floor(rand() * posts.length)], 1)
     }
-    record('private.write', n, 'records/s', n / ((now() - start) / 1000), { better: 'higher' })
+    record(name + '.write', n, 'records/s', n / ((now() - start) / 1000), { better: 'higher' })
 
     const own = fa.own
     if (!await eventually(() => testing.indexedBlocks(fb) >= own.length - 1, 120000, 20)) throw new Error('the member never got every record')
-    record('private.read', n, 'ms', await time(() => forum.latest(fb), 10, { warmup: 2 }))
-    record('private.bytes', n, 'B/record', own.core.byteLength / (own.length - 1))
+    record(name + '.read', n, 'ms', await time(() => forum.latest(fb), 10, { warmup: 2 }))
+    record(name + '.bytes', n, 'B/record', own.core.byteLength / (own.length - 1))
   } finally {
     await t.close()
   }

@@ -105,6 +105,19 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-22 (031 secure conversations, built)** — Five changes while building, agreed with the lead (spec 031,
+  "Changes while building"): a prekey is erased once its grants are opened (one-time; "the two newest" are the
+  unused ones), else a stolen prekey re-opens a whole epoch; an epoch lists writer **logs**, grants stay
+  addressed to devices; a resend carries the record's **message key** sealed to a one-time reply key in the
+  request, so the author is never trusted for content; a key store copied **after** the timer opens nothing
+  (one copied before still does: the documented limit); an old epoch's chain goes once its writer wrote in a
+  newer one and every earlier block is read. Found while testing: `held` counts only epochs whose winning key
+  the device holds, and a key change for a newcomer waits 3 s after the last one, or two deciders loop.
+  Then **shared types** (`shared: true`, opt-in, no `text`/`bytes` fields), else no one could join an
+  encrypted Chat (the `site` record and names were unreadable to newcomers): sealed with a key from the disk
+  key. The limit: an ex-member keeps reading shared records (names, the site record) until the space is
+  renewed.
+
 - **2026-11-22 (031 secure conversations, spec)** — How it works:
   - grants are sealed to rotating per-device prekeys, whose secrets are erased;
   - each device derives one BLAKE2b chain per writer log from the epoch key, then erases the epoch key;

@@ -11,7 +11,9 @@ has `timeout: 0`: it never waits, never fetches, never writes. A record whose co
 
 **Sub-spaces and private spaces** (story 8): a sub-space is listed with an arrow, its overview names the
 space it is in and a space lists its sub-spaces; a private space shows its key epoch and whether this
-device can read it. Keys are never shown, anywhere.
+device can read it; a secure conversation (history hidden) also how many devices its current key is for and
+what this device's key store holds, counted (record keys, skipped keys, records it lacks a key of, prekeys).
+Keys are never shown, anywhere.
 
 **Node only, for now.** It uses Node's `http` module. The core itself runs on Node and Bare.
 

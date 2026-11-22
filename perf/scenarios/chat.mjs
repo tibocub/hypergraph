@@ -8,6 +8,10 @@
 //   chat.newcomer     a newcomer with a small budget (128 KB: it holds part of the room)
 //                     joins and reads a complete latest 50
 //   chat.scroll-back  the newcomer's next page of 50 (older messages it may not hold)
+// Then the same room private with its history hidden (a secure conversation):
+//   chat.hidden.write    as chat.write
+//   chat.hidden.fan-out  as chat.fan-out, the key changed by hand before the third ping
+// (no newcomer: it reads nothing from before its join)
 
 import path from 'path'
 import process from 'process'
@@ -21,12 +25,14 @@ const PER_ROUND = 10 // per author: 50 messages each
 const TEXT = 'x'.repeat(480)
 const AUTHOR = path.join(path.dirname(process.argv[1]), '_author.mjs') // (no 'url' on Bare here)
 
-for (const n of sizes([3, 9])) {
+for (const hidden of [false, true]) for (const n of sizes([3, 9])) {
   const t = context()
+  const name = hidden ? 'chat.hidden' : 'chat'
   try {
     const owner = await helpers.open(t, { types, label: 'owner' })
     await owner.connectToSwarm()
-    const room = await owner.createSpace({ name: 'Chat' })
+    const room = await owner.createSpace({ name: 'Chat', private: hidden })
+    if (hidden) await room.setHistory('hidden')
     const bootstrap = JSON.stringify(await helpers.testBootstrap(t))
     const base = helpers.tmpDir(t, 'authors')
     const authors = []
@@ -48,17 +54,19 @@ for (const n of sizes([3, 9])) {
       if (!await eventually(() => testing.indexedBlocks(room) - before >= (n - 1) * PER_ROUND, 60000, 2)) throw new Error('the owner never got every message')
       rates.push(n * PER_ROUND / ((now() - start) / 1000))
     }
-    record('chat.write', n, 'messages/s', rates, { better: 'higher' })
+    record(name + '.write', n, 'messages/s', rates, { better: 'higher' })
 
     const fan = []
     for (let j = 0; j < 5; j++) {
+      if (hidden && j === 2) await room.rotateKey()
       const sent = Date.now()
       await room.put('message', { text: `ping ${j}` })
       const seen = await within(Promise.all(authors.map((a) => a.line(`saw ping ${j} `, 15000))), 16000, 'timeout')
       if (seen === 'timeout') throw new Error('an author never showed the ping')
       fan.push(Math.max(...seen.map(Number)) - sent)
     }
-    record('chat.fan-out', n, 'ms', fan)
+    record(name + '.fan-out', n, 'ms', fan)
+    if (hidden) continue
 
     const pages = []
     const scrolls = []

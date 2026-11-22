@@ -116,7 +116,13 @@ app's or hypergraph's own (`'decide'`: the owner and admins; `'moderate'`: moder
 `put` throws `NOT_ALLOWED`; one from a modified app is in no list, count or sum, and `get` gives
 `record: null`. Losing the permission works like losing an edit permission: what they put up to the cut
 stays. Taking `decide`, `moderate`, `invite` or `roles` from a role you defined has no cut: its members'
-records of such types stop counting (give them another role instead). Field
+records of such types stop counting (give them another role instead). `shared: true` (opt-in, never the
+default) is for app state written once that every member needs, newcomers included: a site's record, a
+member's name. In a private top space its records are sealed with a key from the space's disk key, not a
+chain, so a newcomer to a secure conversation reads them though they came before it; holders without the
+disk key read nothing. The limit: a removed member keeps the disk key, so it reads later shared records
+too, until the space is renewed (`secure()`). A shared type may have no `text` or `bytes` field
+(`INVALID_TYPE`): it never holds content. In a private sub-space it is sealed like any other type. Field
 names `id`, `type`, `author`, `device`, `stamp`, `edited`, `futureStamp` are taken by the record.
 
 **Each space has its types.** A space records its types (`createSpace` records your app's, or the
@@ -313,9 +319,12 @@ staff.private            // true
 await staff.setRole(someone, 'member')   // let a forum member into the private room
 await staff.removeRole(someone)          // and out: the key changes, they can't read what comes next
 const club = await hg.createSpace({ name: 'Club', private: true })   // a private top space
-await club.setHistory('hidden')   // newcomers read from their join on ('visible', the default: everything)
+await club.setHistory('hidden')   // a secure conversation: newcomers read from their join on ('visible', the default: everything)
 club.history                      // 'visible' | 'hidden'
+await club.setDisappearing(24 * 3600 * 1000)   // records go after a day, on every device (null: off)
+club.disappearing                 // ms | null
 await club.rotateKey()            // a leak suspected: a new key now (who may decide or moderate)
+club.on('devices', ({ identity, device, added }) => {})   // a member added a device (secure conversations)
 await forum.put('shortcut', { title: 'See News', to: news })          // a 'space' field: a link to a space
 hg.space(record.to)      // follow it: the Space if you're in it, NOT_FOUND otherwise (an invite lets you in)
 ```
@@ -343,8 +352,8 @@ once such a member is online. When someone loses access (removed, banned there o
 device removed), a member who may decide or moderate changes the key before writing again, and those
 who left can't read what is written after; what came before stays readable to them. Each new key unlocks
 the ones before it, so a newcomer reads the whole history; with `setHistory('hidden')` (who may decide;
-private spaces only, `NOT_ALLOWED` otherwise) a newcomer's arrival changes the key and it reads from its
-join on, Signal-style, and what came before doesn't count as missing for it (its reads are complete).
+private spaces only, `NOT_ALLOWED` otherwise) the space is a **secure conversation** (below): a newcomer
+reads from its join on, and what came before doesn't count as missing for it (its reads are complete).
 A member's new device is a newcomer too. A member that
 can't read (no key) answers `complete: false`. One that may not read it any more (removed, or only
 relaying it) is told at once: `status().access` is `'none'` and reads answer immediately with
@@ -357,6 +366,35 @@ listed as `unreadable: true`, never with its content. Keys are never shown: not 
 `rotateKey()` changes the key by hand (a device stolen, a leak suspected), as a removal does: who may decide
 or moderate (`NOT_ALLOWED` otherwise, and for a space that isn't private); it resolves once the new key is
 recorded, granted to every member's device. Removals already change it by themselves.
+
+**Secure conversations** (`history: 'hidden'`). Each record has its own key, one step down a chain of its
+writer's device, and each device erases a key once the record goes. What a stolen device's keys open is
+what it still keeps; a copy of its keys taken once stops reading after two key changes. In practice:
+
+- **Joining takes a key change.** A newcomer, a member's new device or a restored identity reads from the
+  first key change made after it joined, by a member who may decide (at least 3 s after the last one; a
+  newcomer that may decide makes it itself after 30 s if no one did). `status().access` is `'waiting'` until then and writes wait for it (5 s,
+  then `NOT_ALLOWED`). What was written before, even a moment before by a device that hadn't heard of it,
+  is never read by it and never counts as missing.
+- **The key changes by itself**: for each newcomer, after a removal, every 7 days, and after 1,000 records
+  by one writer, made by any device that may decide when it is online.
+- **A device offline for weeks** writes with the last key it holds; members read it when it is back. The
+  limit: a member removed while it was away reads those records too.
+- **Late or missing blocks**: a device keeps the keys it stepped over for 90 days. Past that it asks the
+  author's devices, which send the key sealed to it alone if it was let in then and still is, and if the
+  record still exists; otherwise, 30 days later, the record counts as gone, not missing.
+- **`setDisappearing(ms)`** (who may decide; at least a minute, `null` off): every member's device erases
+  the keys of records older than that and drops them; a device that may decide also trims them about
+  hourly (`trimHistory`), so holders free the room. A modified app can still keep what it read: say so in
+  your app. A copy of a device's keys taken before the timer still opens those records from blocks someone
+  kept.
+- **Devices**: `members()` gives each device `added` (when it joined), and `'devices'` fires when a member
+  adds one, so your app can show "X added a device". `status().warnings` has `MANY_DEVICES` past 200
+  devices (each key change seals a key to every one, about 512 B each).
+- **Limits**: a member whose role can't write publishes no prekey, so it can't read a secure conversation;
+  `secure()`/`renew()` keep the old records readable with the old keys; switching to `'visible'` gives
+  newcomers what comes after the switch, never the hidden part. Keys live in this device's engine folder
+  only (its own table), never replicated: a copied engine folder holds them.
 
 **On disk.** A private top space is also encrypted on disk, as the personal
 space is: its decision log, every member's log and its sub-spaces' logs. Whoever holds its data without being
@@ -740,7 +778,7 @@ hg.types()                  // { post: { fields: { title: 'string', ... }, links
                             //   builtin } }: the declared types, hypergraph's own marked builtin
 forum.on('peers', (peers) => {})   // someone connected or left
 forum.on('members', () => {})      // members(), getRole(), roles() may have changed: read again
-forum.on('decisions', () => {})    // decisions(), redemptions(), history may have changed: read again
+forum.on('decisions', () => {})    // decisions(), redemptions(), history, disappearing may have changed: read again
 forum.on('logs', () => {})         // a member's log arrived or grew (at most every 100 ms)
 ```
 
@@ -766,7 +804,8 @@ async reads, read again.
 | `get`, `query`, `linked`, `count`, `sum`, `tags`, `edges`, `getByTag` | `space.on('change', ({ types, records }) => {})` |
 | `hg.spaces()`, `space.subspaces()`, `space.name`, `space.parent` | `hg.on('spaces', (spaces) => {})` |
 | `space.members()`, `getRole()`, `roles()` | `space.on('members', () => {})` |
-| `space.decisions()`, `redemptions()`, `space.history`, `space.helpers` | `space.on('decisions', () => {})` |
+| `space.decisions()`, `redemptions()`, `space.history`, `space.disappearing`, `space.helpers` | `space.on('decisions', () => {})` |
+| `space.members()` devices' `added` | `space.on('devices', ({ identity, device, added }) => {})` |
 | `space.status()` | `space.on('status', (status) => {})` |
 | `space.peers()` | `space.on('peers', (peers) => {})` |
 | `space.memberConnections()` | `'member-connection'`, `'member-disconnection'` |
