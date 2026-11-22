@@ -111,8 +111,9 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
   "Affected" comes from a per-function coverage map that every full Node run records: per file it picked
   almost everything (each core file is run by most tests). A failure runs again alone: a pass then is FLAKY,
   never a plain pass. The suites mostly wait on the temp disk (RocksDB's syncs when accounts open and close),
-  not on the DHT, sleeps or CPU: temp goes in the system temp folder, one folder per test file removed after
-  it, with `HG_TEST_TMP_FALLBACK` when that has under 3 GB free.
+  not on the DHT, sleeps or CPU: on a spinning disk `test:next` took 894 s on Node, on an SSD 236-255 s. Temp
+  goes in the system temp folder, one folder per test file removed after it, with `HG_TEST_TMP_FALLBACK` when
+  that has under 3 GB free.
 
 - **2026-11-21 (030 padding built)** — Private records are padded inside the encryption, at the record layer
   (`encodeRecord` when the log's core encrypts; else inside the sealed box, for a private board in a public space),
