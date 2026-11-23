@@ -105,6 +105,12 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-23 (031, two key changes at once)** — Found by HyperBrowser's CI (a ban seen by two online
+  deciders): a member lost the second grant (its prekey erased on the first), the owner wrote with an older
+  epoch while the current one's grant was 6 ms away, and a record asked of its author never opened once its
+  key came. Now a used prekey is kept 30 s, a writer waits for the current epoch's grant, and an asked-for
+  record stays missing until its key comes (spec 031, "Changes while building").
+
 - **2026-11-22 (031 secure conversations, built)** — Five changes while building, agreed with the lead (spec 031,
   "Changes while building"): a prekey is erased once its grants are opened (one-time; "the two newest" are the
   unused ones), else a stolen prekey re-opens a whole epoch; an epoch lists writer **logs**, grants stay

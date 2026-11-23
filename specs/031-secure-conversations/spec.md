@@ -451,6 +451,17 @@ Found while testing:
   the key, then writes, so the newcomer reads it. Other writers write with the key they hold.
 - **Joining takes a key change**: `status().access` is `'waiting'` until the newcomer's epoch exists, and
   what is written before doesn't reach it. Tests and apps wait for `'full'`.
+- **Two key changes at once** (a ban seen by two online deciders, or a partition), found by a CI run of
+  HyperBrowser's Chat. Three fixes:
+  - **A used prekey is kept 30 s** (`SPENT_MS`), not erased at once: both changes seal to the member's same
+    prekey, and the second grant must open (change 1's "the race recovers" left the member unable to read
+    what was written in the other change's epoch). A thief copying the store within those 30 s gets that
+    epoch's chains anyway: no new exposure, since a timer is at least a minute.
+  - **A writer waits for the current epoch's grant** (within the 5 s a write waits) when the epoch lists it
+    and its grant is on its way, instead of writing with an older epoch: an older one may not list who came
+    since, and they would never read the record (not even by a resend).
+  - **A record whose key is asked of its author stays missing** (a hole) until the key comes: it was
+    dropped from the index, so a resent key never opened it.
 - **Shared types** (agreed with the lead). A newcomer read nothing written before it came, app state
   included: SwarmFS's `site` record (which app a space runs) and members' `profile` names, so no one could
   join an encrypted Chat. A type may declare `shared: true` (opt-in, refused with a `text` or `bytes`

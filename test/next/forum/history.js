@@ -8,8 +8,12 @@ const test = require('brittle')
 const b4a = require('b4a')
 const forum = require('./forum.js')
 const testing = require('../../../lib/testing.js')
+const chains = require('../../../lib/private/chains.js')
+const crypto = require('../../../lib/private/crypto.js')
+const grants = require('../../../lib/private/grants.js')
+const z32 = require('z32')
 const { account } = require('./_setup.js')
-const { eventually, codeOf, open } = require('../helpers.js')
+const { eventually, codeOf, open, sleep } = require('../helpers.js')
 
 const titles = async (f) => (await forum.latest(f, 50)).map((p) => p.title).sort()
 const shows = async (f, id) => (await forum.latest(f, 50)).some((p) => p.id === id)
@@ -112,6 +116,83 @@ test('two key changes at once (a partition): every post stays readable, for memb
   t.absent(await shows(xs[0].fx, pb.id), 'x, removed by b, doesn\'t read b\'s post')
   t.absent(await shows(xs[1].fx, pa.id), 'y, removed by a, doesn\'t read a\'s post')
 })
+
+// Two deciders changing the key at once both seal it to a member's same
+// prekey; the grant that comes second must still open. Coming after the
+// prekey is erased, its records are resent by their author.
+test('history hidden: two key changes at once (two deciders, one apart): a member reads both sides\' posts', { timeout: 120000 }, async (t) => {
+  await twoDeciders(t, { late: false })
+})
+
+test('history hidden: two key changes at once, the second grant after the prekey is gone: its records come back from their author', { timeout: 120000 }, async (t) => {
+  await twoDeciders(t, { late: true })
+})
+
+// An older key may not list who came since: they would never read it.
+test('history hidden: a writer whose grant to the current key is on its way waits for it, rather than write with an older key', { timeout: 60000 }, async (t) => {
+  const a = await account(t, 'a')
+  const club = await forum.createForum(a, 'Club', { private: true })
+  await club.setHistory('hidden')
+  const b = await account(t, 'b')
+  const fb = await join(club, b)
+  await forum.giveRole(club, b.identity.publicKey, 'admin')
+  const p0 = await forum.post(club, 'before', '')
+  t.ok(await eventually(() => shows(fb, p0.id), 15000), 'b reads it')
+  t.ok(await eventually(async () => (await fb.getRole(b.identity.publicKey)) === 'admin', 10000))
+  const { epoch } = await testing.sealedWith(club, p0.id)
+
+  // b changes the key; its grant to a comes a second after the change
+  const key = crypto.newEpochKey()
+  const commit = crypto.commitOf(key)
+  const [n, pre] = [...testing.keyStore(club).prekeys].filter(([, p]) => p.published && !p.spent).sort((x, y) => y[0] - x[0])[0]
+  await testing.decide(fb, { type: 'key/rotate', epoch: epoch + 1, commit, logs: [z32.decode(testing.ownLog(club)), z32.decode(testing.ownLog(fb))] })
+  t.ok(await eventually(() => club.state.keys?.current === epoch + 1, 10000), 'a sees the change')
+  const writing = forum.post(club, 'after the change', '')
+  await sleep(1000)
+  await testing.writeRaw(fb, { kind: 'put', type: 'hg/grant', fields: grants.makePrekeyGrant(key, epoch + 1, commit, z32.decode(a.device.publicKey), { n, key: pre.publicKey }) })
+  const p1 = await writing
+  t.ok((await testing.sealedWith(club, p1.id)).epoch >= epoch + 1, 'sealed with the current key, once its grant came')
+})
+
+async function twoDeciders (t, { late }) {
+  const a = await account(t, 'a')
+  const club = await forum.createForum(a, 'Club', { private: true })
+  await club.setHistory('hidden')
+  const b = await account(t, 'b')
+  const fb = await join(club, b)
+  await forum.giveRole(club, b.identity.publicKey, 'admin')
+  const c = await account(t, 'c')
+  const fc = await join(club, c)
+  const xs = []
+  for (const label of ['x', 'y']) {
+    const x = await account(t, label)
+    xs.push({ x, fx: await join(club, x) })
+  }
+  const p0 = await forum.post(club, 'together', '')
+  for (const f of [fb, fc, ...xs.map((m) => m.fx)]) t.ok(await eventually(() => shows(f, p0.id), 15000), 'everyone reads it')
+  t.ok(await eventually(async () => (await fb.getRole(b.identity.publicKey)) === 'admin', 10000))
+
+  await b.close()
+  const b2 = await open(t, { dir: b.dir, types: forum.types, rules: forum.rules })
+  const gb = b2.space(club.key)
+  await forum.removeMember(gb, xs[0].x.identity.publicKey)
+  const pb = await forum.post(gb, 'by b, offline', '')
+  await forum.removeMember(club, xs[1].x.identity.publicKey)
+  const pa = await forum.post(club, 'by a, online', '')
+  t.ok(await eventually(() => shows(fc, pa.id), 15000), 'c reads a\'s post')
+  if (late) {
+    const ks = testing.keyStore(fc)
+    for (const p of ks.prekeys.values()) if (p.spent) p.spent -= chains.SPENT_MS
+    ks.sweep()
+  }
+  await b2.connectToSwarm()
+
+  t.ok(await eventually(() => shows(fc, pb.id), 30000), late ? 'c asked b for its post\'s key, and reads it' : 'c reads b\'s post too: the second grant to its prekey opens')
+  t.ok(await eventually(() => shows(club, pb.id), 15000), 'a reads b\'s post')
+  t.ok(await eventually(() => shows(gb, pa.id), 15000), 'b reads a\'s post')
+  t.absent(await shows(xs[0].fx, pb.id), 'x, removed by b, doesn\'t read b\'s post')
+  t.absent(await shows(xs[1].fx, pa.id), 'y, removed by a, doesn\'t read a\'s post')
+}
 
 // A hidden history is a secure conversation (lib/private/chains.js): each
 // post has its own key, keys change for each newcomer and by themselves.
