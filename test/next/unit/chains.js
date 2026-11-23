@@ -163,6 +163,45 @@ test('only the two newest unused prekeys are kept', (t) => {
   t.ok(ks.prekey(b.n) && ks.prekey(c.n))
 })
 
+test('a prekey that opened a grant opens a second one of the same moment, then goes after SPENT_MS', async (t) => {
+  const { ks, disk, clock, again } = store()
+  const pre = ks.newPrekey()
+  const grant = () => {
+    const key = crypto.newEpochKey()
+    const commit = crypto.commitOf(key)
+    return { key, keys: { current: 1, commits: { 1: hex(commit) }, others: {} }, g: grants.makePrekeyGrant(key, 1, commit, b4a.alloc(32, 7), { n: pre.n, key: pre.publicKey }) }
+  }
+  const first = grant()
+  const second = grant() // another decider's, at the same epoch
+  t.alike(grants.openGrant(first.g, ks.prekey(pre.n), first.keys, true).key, first.key)
+  ks.spendPrekey(pre.n)
+  ks.newPrekey()
+  ks.newPrekey()
+  await ks.flush()
+  t.ok(again().prekey(pre.n)?.spent, 'spent, kept across a restart, not counted among the two newest unused')
+  t.alike(grants.openGrant(second.g, ks.prekey(pre.n), second.keys, true).key, second.key, 'the second grant opens')
+  clock.now += chains.SPENT_MS
+  ks.sweep()
+  await ks.flush()
+  t.is(ks.prekey(pre.n), null, 'erased SPENT_MS later')
+  t.absent(disk.has('p:' + pre.n), 'from disk too')
+})
+
+test('a prekey spent just before the app closed is erased on the next start', async (t) => {
+  const { ks, disk, clock, again } = store()
+  const pre = ks.newPrekey()
+  ks.spendPrekey(pre.n)
+  await ks.flush() // then the app closes, within SPENT_MS
+  t.ok(disk.has('p:' + pre.n), 'still on disk while closed')
+  clock.now += chains.SPENT_MS
+  const copy = KeyStore.load([...disk].map(([name, value]) => ({ name, value })))
+  t.ok(copy.prekey(pre.n), 'a copy (it writes nothing) shows what a thief of the closed folder gets')
+  const back = again()
+  t.is(back.prekey(pre.n), null, 'started again: gone at once, before any sweep')
+  await back.flush()
+  t.absent(disk.has('p:' + pre.n), 'and from disk')
+})
+
 test('record keys: erased on purpose stay erased; trimmed and timed out ones go', async (t) => {
   const { ks, again } = store()
   const mk = b4a.alloc(32, 9)

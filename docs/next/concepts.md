@@ -195,7 +195,8 @@ someone loses access, the key changes: they keep reading what came before, not w
 unlocks the ones before it, so newcomers read the history, unless the space hides it: then it is a
 **secure conversation**. There each device publishes a fresh one-time key (a prekey) in its log; a key
 change seals the new key to each listed device's prekey, and the device turns it into one chain per
-writer log, then erases both. Each record is sealed with its own key, one step down its writer's chain
+writer log, then erases the key, and the prekey within about 90 s, or at its next start (two deciders
+changing the key at the same moment both seal to it). Each record is sealed with its own key, one step down its writer's chain
 (the log's single order is what makes a chain per writer work offline, with no server). Keys stay in the
 device's own table, never replicated, and go when their record goes (deleted, trimmed, past a
 disappearing timer). So a stolen device opens only what it still keeps, and a copy of its keys taken once
