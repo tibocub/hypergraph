@@ -187,6 +187,21 @@ test('a prekey that opened a grant opens a second one of the same moment, then g
   t.absent(disk.has('p:' + pre.n), 'from disk too')
 })
 
+test('a prekey spent just before the app closed is erased on the next start', async (t) => {
+  const { ks, disk, clock, again } = store()
+  const pre = ks.newPrekey()
+  ks.spendPrekey(pre.n)
+  await ks.flush() // then the app closes, within SPENT_MS
+  t.ok(disk.has('p:' + pre.n), 'still on disk while closed')
+  clock.now += chains.SPENT_MS
+  const copy = KeyStore.load([...disk].map(([name, value]) => ({ name, value })))
+  t.ok(copy.prekey(pre.n), 'a copy (it writes nothing) shows what a thief of the closed folder gets')
+  const back = again()
+  t.is(back.prekey(pre.n), null, 'started again: gone at once, before any sweep')
+  await back.flush()
+  t.absent(disk.has('p:' + pre.n), 'and from disk')
+})
+
 test('record keys: erased on purpose stay erased; trimmed and timed out ones go', async (t) => {
   const { ks, again } = store()
   const mk = b4a.alloc(32, 9)

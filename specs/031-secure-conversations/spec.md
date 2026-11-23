@@ -455,8 +455,11 @@ Found while testing:
   HyperBrowser's Chat. Three fixes:
   - **A used prekey is kept 30 s** (`SPENT_MS`), not erased at once: both changes seal to the member's same
     prekey, and the second grant must open (change 1's "the race recovers" left the member unable to read
-    what was written in the other change's epoch). A thief copying the store within those 30 s gets that
-    epoch's chains anyway: no new exposure, since a timer is at least a minute.
+    what was written in the other change's epoch). A running device erases it within about 90 s (30 s,
+    then the minute between sweeps); one closed meanwhile, as soon as it starts again. Until then a thief
+    copying the store rebuilds that epoch's chains from the start, disappeared messages included: up to
+    about 90 s on a running device (with a 1-minute timer, a message gone at 60 s is still rebuildable
+    until then), and until the next start on a closed one.
   - **A writer waits for the current epoch's grant** (within the 5 s a write waits) when the epoch lists it
     and its grant is on its way, instead of writing with an older epoch: an older one may not list who came
     since, and they would never read the record (not even by a resend).
