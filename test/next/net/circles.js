@@ -4,7 +4,7 @@ const test = require('brittle')
 const forum = require('../forum/forum.js')
 const testing = require('../../../lib/testing.js')
 const { account } = require('../forum/_setup.js')
-const { eventually, codeOf } = require('../helpers.js')
+const { eventually, codeOf, sleep } = require('../helpers.js')
 const { holdsAll, titles, fill, pair } = require('./_circles.js')
 
 test('createCircle: a private circle; the owner and admins invite, members can\'t', { timeout: 90000 }, async (t) => {
@@ -129,4 +129,18 @@ test('removal and leaving delete at once, unless another shared circle covers it
   await b.leaveSpace(second.key)
   t.ok(await eventually(async () => !(await holdsAll(b, aa)), 20000), 'left both: a\'s data gone from b')
   t.ok(await eventually(async () => a.copiesOf(aa.key).kept === 0, 20000), 'kept by nobody')
+})
+
+test('close stops a hand-off to a holder that never takes it, rather than wait for it', { timeout: 90000 }, async (t) => {
+  const { a, b } = await pair(t)
+  t.ok(await eventually(() => !!b._circles.server, 20000), 'b serves')
+  b._circles.server._onaddcores = () => new Promise(() => {}) // never answers: a's hand-off waits for it
+  const f = await forum.createForum(a, 'F')
+  await fill(f, 1, 'x')
+  t.ok(await eventually(() => !!a._circles.running && a._circles.handed.has(f.hex), 20000), 'a hands it to b')
+  await sleep(1000)
+  t.ok(a._circles.running, 'still handing')
+  const started = Date.now()
+  await a.close()
+  t.ok(Date.now() - started < 3000, `closed in ${Date.now() - started} ms`)
 })
