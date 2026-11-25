@@ -13,10 +13,10 @@ function fakeNet () {
   return (style, { onmessage }) => {
     const dest = crypto.randomBytes(391).toString('base64').replace(/\+/g, '-').replace(/\//g, '~')
     const hash = sam.destHash(dest)
-    byName.set(sam.b32(hash), onmessage)
-    const send = (to, payload, { fromPort, toPort }) => {
+    byName.set(dest, onmessage)
+    const send = (to, payload) => {
       const target = byName.get(to)
-      if (target) setImmediate(() => target(payload, { dest: style === 'RAW' ? null : dest, fromPort, toPort }))
+      if (target) setImmediate(() => target(payload, { dest: style === 'RAW' ? null : dest }))
     }
     return { dest, hash, send, close () {} }
   }
@@ -29,11 +29,11 @@ async function run (style) {
   const mk = async (bootstrap) => {
     const udx = await I2PUDX.open({ style, datagrams })
     udxs.push(udx)
-    for (const b of bootstrap) udx.learn(b.hash)
+    for (const b of bootstrap) udx.learn(b.dest)
     const node = new DHT({ udx, ephemeral: false, firewalled: false, bootstrap: bootstrap.map((b) => b.addr) })
     await node.ready()
     nodes.push(node)
-    return { node, hash: udx.hash, addr: `${udx.host}:${node.address().port}` }
+    return { node, dest: udx.dest, addr: `${udx.host}:${node.address().port}` }
   }
   const boot = await mk([])
   for (let i = 0; i < 12; i++) await mk([boot])

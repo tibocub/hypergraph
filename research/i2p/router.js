@@ -37,9 +37,17 @@ function emissaryConfig (dir, { sam: samPort, udp, http }) {
   const f = path.join(dir, 'router.toml')
   if (fs.existsSync(f)) return
   fs.writeFileSync(f, [
-    'allow_local = false', 'floodfill = false',
+    // emissary's own defaults, less the proxies, I2CP, address book and UPnP/NAT-PMP.
+    // A section left out turns its feature off: no [reseed] means no reseeding, no [transit] no relaying.
+    // IPv6 off: on a host without an IPv6 route, 0.4.0 shuts itself down (exit 0, no error) soon after start.
+    'allow_local = false', 'floodfill = false', 'insecure_tunnels = false',
+    '[bandwidth]', 'bandwidth = 1000000', 'share_ratio = 0.9',
+    '[reseed]', 'reseed_threshold = 25',
+    '[transit]', 'max_tunnels = 1000',
+    '[ntcp2]', `port = ${samPort + 3}`, 'publish = true', 'ipv4 = true', 'ipv6 = false', 'ml_kem = 4',
+    '[ssu2]', `port = ${samPort + 3}`, 'publish = true', 'ipv4 = true', 'ipv6 = false', 'ml_kem = "4,3"',
     '[sam]', `tcp_port = ${samPort}`, `udp_port = ${udp}`, 'host = "127.0.0.1"',
-    ...(http ? ['[http-proxy]', `port = ${http}`, 'host = "127.0.0.1"'] : [])
+    '[metrics]', `port = ${http}`
   ].join('\n') + '\n')
 }
 
@@ -48,7 +56,7 @@ async function startRouter (kind, exe, dir, opts) {
   if (kind === 'i2pd') fs.writeFileSync(path.join(dir, 'none.conf'), '')
   if (kind === 'emissary') emissaryConfig(dir, opts)
   const started = Date.now()
-  const proc = spawn(exe, ARGS[kind](dir, opts), { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+  const proc = spawn(exe, [...ARGS[kind](dir, opts), ...(opts.extra || [])], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   const log = fs.createWriteStream(path.join(dir, 'stdout.log'))
   proc.stdout.pipe(log)
   proc.stderr.pipe(log)

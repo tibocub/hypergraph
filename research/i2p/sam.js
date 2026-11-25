@@ -14,6 +14,14 @@ const destToBuffer = (b64) => Buffer.from(I2P_B64(b64), 'base64')
 // A destination's hash is sha256 of its binary form: the .b32.i2p name.
 const destHash = (b64) => crypto.createHash('sha256').update(destToBuffer(b64)).digest()
 
+// A private destination starts with the public one: 384 bytes of keys, then a
+// certificate (type, 2-byte length, payload).
+function publicDest (privB64) {
+  const priv = destToBuffer(privB64)
+  const len = 387 + priv.readUInt16BE(385)
+  return priv.subarray(0, len).toString('base64').replace(/\+/g, '-').replace(/\//g, '~')
+}
+
 function base32 (buf) {
   const abc = 'abcdefghijklmnopqrstuvwxyz234567'
   let bits = 0
@@ -89,8 +97,7 @@ async function session (style, { sam = {}, id = 'hg' + crypto.randomBytes(4).toS
   const st = await c.ask(`SESSION CREATE STYLE=${style} ID=${id} DESTINATION=TRANSIENT ${SIG}${extra}${header} ${options}`.trim())
   if (st.RESULT !== 'OK') throw new Error('SESSION CREATE failed: ' + JSON.stringify(st))
   const readyMs = Date.now() - t
-  const me = await c.ask('NAMING LOOKUP NAME=ME')
-  const dest = me.VALUE
+  const dest = publicDest(st.DESTINATION) // emissary closes the socket on NAMING LOOKUP NAME=ME
   return { id, sam, control: c, dest, hash: destHash(dest), readyMs, close: () => c.socket.destroy() }
 }
 
@@ -133,6 +140,8 @@ async function datagrams (style, { sam = {}, udp = 7655, onmessage }) {
   await new Promise((resolve) => sock.bind(0, '127.0.0.1', resolve))
   const s = await session(style, { sam, udpPort: sock.address().port })
   sock.on('message', (msg) => {
+    // RAW with HEADER=true starts with "FROM_PORT=..."; a router that ignores HEADER sends the bare payload
+    if (style === 'RAW' && !msg.subarray(0, 10).toString('latin1').startsWith('FROM_PORT') && !msg.subarray(0, 10).toString('latin1').startsWith('PROTOCOL')) return onmessage(msg, { dest: null, fromPort: 0, toPort: 0 })
     const nl = msg.indexOf(10)
     if (nl === -1) return
     const head = msg.subarray(0, nl).toString('latin1').split(' ')

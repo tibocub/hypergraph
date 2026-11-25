@@ -40,7 +40,7 @@ function dirMB (d) {
   return Math.round(n / 1e5) / 10
 }
 
-const PORTS = { a: { sam: 17656, udp: 17655, http: 17070 }, b: { sam: 27656, udp: 27655, http: 27070 } }
+const PORTS = { a: { sam: 17656, udp: 17655, http: 17070 }, b: { sam: 27656, udp: 27655, http: 27788 } }
 
 async function router (name) {
   const dir = path.join(root, `${kind}-${name}`)
@@ -50,7 +50,7 @@ async function router (name) {
 
 const modes = {
   async start () {
-    const r = await router('a')
+    const r = await router(flag('name', 'a'))
     const s = await sam.session('STREAM', { sam: r.samOpts })
     out({ kind, samReadyMs: r.samReadyMs, tunnelsReadyMs: s.readyMs, dataMB: dirMB(r.dir), ...procStats(r.pid) })
     const idle = Number(flag('idle', 0))
@@ -93,11 +93,20 @@ const modes = {
     const b = await engine(path.join(dir, 'b'), { bootstrap: [] })
     const swa = new StreamSwarm({ keyPair: a._network.keyPair })
     stopAccept = sam.streamAccept(sa, (sock) => swa.accept(sock).catch(() => {}))
-    const swb = new StreamSwarm({ keyPair: b._network.keyPair, dial: (d) => sam.streamConnect(sb, d), peers: [sa.dest] })
+    const swb = new StreamSwarm({ keyPair: b._network.keyPair, dial: (d) => sam.streamConnect(sb, d) })
     a._network._swarm = swa
     b._network._swarm = swb
     await a.connectToSwarm()
     await b.connectToSwarm()
+    // Connect before joining: a STREAM CONNECT can take longer than redeemInvite's 30 s.
+    const t = Date.now()
+    let tries = 0
+    while (swb.connections.size === 0) {
+      tries++
+      await swb.dialAddress(sa.dest).catch(() => {})
+      if (Date.now() - t > 600000) throw new Error('no stream in 10 min')
+    }
+    out({ kind, connectedMs: Date.now() - t, tries })
     try {
       const m = await measure(a, b, { records: Number(flag('records', 20)), bulk: Number(flag('bulk', 40)) })
       out({ kind, ...m, postsPerS: Math.round((m.bulk.records / (m.bulk.ms / 1000)) * 10) / 10, MBps: Math.round(m.bulk.kbPerS / 10.24) / 100 })
@@ -108,6 +117,77 @@ const modes = {
       await Promise.all([ra.stop(), rb.stop()])
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  },
+
+  // A fresh router gets its first routers from another router's netDb (as a
+  // peer would hand them over the normal network) and never calls a reseed server.
+  async reseed () {
+    const from = path.join(root, `${kind}-a`, 'netDb')
+    const dir = path.join(root, `${kind}-b`)
+    fs.rmSync(dir, { recursive: true, force: true })
+    const files = []
+    const walk = (p) => { for (const e of fs.readdirSync(p, { withFileTypes: true })) { const f = path.join(p, e.name); e.isDirectory() ? walk(f) : files.push(f) } }
+    walk(from)
+    const pick = files.filter((f) => /routerInfo/i.test(path.basename(f))).sort(() => Math.random() - 0.5).slice(0, Number(flag('count', 100)))
+    let bytes = 0
+    for (const f of pick) {
+      const to = path.join(dir, 'netDb', path.relative(from, f))
+      fs.mkdirSync(path.dirname(to), { recursive: true })
+      fs.copyFileSync(f, to)
+      bytes += fs.statSync(f).size
+    }
+    const noReseed = kind === 'emissary' ? ['--disable-reseed'] : ['--reseed.urls=', '--reseed.threshold=0']
+    const r = await startRouter(kind, exe, dir, { ...PORTS.b, extra: noReseed })
+    const s = await sam.session('STREAM', { sam: r.samOpts })
+    out({ kind, routerInfos: pick.length, of: files.length, bundleKB: Math.round(bytes / 1024), samReadyMs: r.samReadyMs, tunnelsReadyMs: s.readyMs })
+    s.close()
+    await r.stop()
+  },
+
+  // Runs router a for --secs with no client of ours: all its traffic is the
+  // network's (relaying, netDb, tunnel tests). Windows' per-process I/O counters
+  // miss socket traffic and the prebuilt emissary has no metrics, so this reads
+  // the adapters' totals, then the same with no router as a baseline.
+  // shortcut: other traffic on the machine adds noise; compare against the baseline.
+  async relay () {
+    const secs = Number(flag('secs', 1800))
+    const every = Number(flag('every', 300))
+    const adapters = () => execFileSync('powershell', ['-NoProfile', '-Command', '$s = Get-NetAdapterStatistics; "$(($s | Measure-Object ReceivedBytes -Sum).Sum) $(($s | Measure-Object SentBytes -Sum).Sum)"']).toString().trim().split(' ').map(Number)
+    const sample = async (label, pid) => {
+      let last = adapters()
+      for (let s = every; s <= secs; s += every) {
+        await sleep(every * 1000)
+        const now = adapters()
+        out({ kind, label, atS: s, inKBps: Math.round((now[0] - last[0]) / every / 102.4) / 10, outKBps: Math.round((now[1] - last[1]) / every / 102.4) / 10, ...(pid ? procStats(pid) : {}) })
+        last = now
+      }
+    }
+    const r = await startRouter(kind, exe, path.join(root, `${kind}-a`), { ...PORTS.a, extra: kind === 'emissary' ? ['--log', 'info,emissary::tunnel::transit=debug'] : [] })
+    await sample('router', r.pid)
+    await r.stop()
+    await sample('baseline', 0)
+  },
+
+  // One datagram each way, addressed by full destination and by .b32.i2p name, with round-trip times.
+  async ping () {
+    const style = flag('style', 'DATAGRAM')
+    const [ra, rb] = await Promise.all([router('a'), router('b')])
+    const got = []
+    let pong = null
+    const x = await sam.datagrams(style, { sam: ra.samOpts, onmessage: (m, info) => { got.push({ at: 'x', m: m.toString(), from: info.dest ? 'dest' : null, ...info, dest: undefined }); if (pong) pong() } })
+    const y = await sam.datagrams(style, { sam: rb.samOpts, onmessage: (m, info) => { got.push({ at: 'y', m: m.toString(), from: info.dest ? 'dest' : null, ...info, dest: undefined }); if (info.dest) y.send(info.dest, Buffer.from('pong'), { fromPort: 2, toPort: 1 }) } })
+    out({ kind, style, sessionsReadyMs: [x.readyMs, y.readyMs] })
+    const rtt = []
+    for (const [name, to] of [['dest', y.dest], ['b32', sam.b32(y.hash)], ['dest', y.dest], ['b32', sam.b32(y.hash)], ['dest', y.dest]]) {
+      const t = Date.now()
+      const answered = new Promise((resolve) => { pong = resolve; setTimeout(resolve, 30000) })
+      x.send(to, Buffer.from('ping ' + name), { fromPort: 1, toPort: 2 })
+      await answered
+      rtt.push({ name, ms: Date.now() - t })
+    }
+    out({ kind, style, rtt, got })
+    x.close(); y.close()
+    await Promise.all([ra.stop(), rb.stop()])
   },
 
   async dht () {
@@ -129,7 +209,7 @@ const modes = {
     const bootAddr = `${udxs[0].host}:${boot.address().port}`
     nodes.push(boot)
     for (const u of udxs.slice(1)) {
-      u.learn(udxs[0].hash) // the bootstrap's destination, as an invite or a shipped list would carry it
+      u.learn(udxs[0].dest) // the bootstrap's destination, as an invite or a shipped list would carry it
       nodes.push(new DHT({ udx: u, ephemeral: false, firewalled: false, bootstrap: [bootAddr], adaptiveTimeout }))
     }
     await Promise.all(nodes.slice(1).map((d) => d.ready()))
