@@ -21,7 +21,7 @@ Windows Defender quarantined the official zip on download (Q1). "UNVERIFIED" mar
 | 1. Router | emissary runs as a hidden child process (one 17.8 MB exe, own folder, SAM on localhost, no install), light, memory-safe, but young, one main developer, its last release has a known self-shutdown bug, and it quit on a host without IPv6. i2pd: mature, the second most used router, C++ with memory-safety fixes in 2026, and **its official Windows zip is flagged as a trojan by Defender** | emissary: 20–25 MB RAM, 0.1 % CPU idle; first start 187 s; later starts 10–164 s (median 53 s). i2pd: not measured | **i2pd, built and signed by us**, but only after it is measured here (blocking). Keep the SAM seam so emissary can replace it once it ships a release with its fixes |
 | 2. DHT over I2P | `dht-rpc` runs **unforked** over SAM repliable datagrams, through a stand-in for `udx-native` (`opts.udx`). hyperdht can't (UDX streams, IPv4 in its records). Raw datagrams didn't work with emissary | 6 nodes on 2 routers: bootstrap 20 s, 5 of 5 lookups found the target, 1.3–13.2 s (median 3.7 s); 115 retries for 354 datagrams | Own small topic → destination records on dht-rpc, with a pluggable address codec upstreamed (small). Start with the fallback (dual-stack helpers as meeting points) |
 | 3. Replication | hypergraph replicates unchanged over SAM streams through 028's stream adapter | Over I2P: join 5.0–7.8 s, a post arrives in 1.2–2.3 s (median), bulk 2.1–8.7 posts/s = 0.03–0.14 MB/s, time to first byte 10–12 s (27–38 s in one earlier run), 6 of 15 connects failed. Hyperswarm, same machine: join 54–120 ms, 2–3 ms, 300–450 posts/s = 4.9–7.3 MB/s | Fine for chat and forums, not for media. Connect before joining: a connect can outlast `redeemInvite`'s 30 s |
-| 4. Relay | Defaults: i2pd shares 100 % of its bandwidth limit, emissary 90 % of 1 MB/s. "Don't relay": i2pd `notransit=true`, emissary `--disable-transit-tunnels` | RELAY_NUMBERS | Cap it (i2pd `bandwidth`, `share`); no-relay mode on metered links and strict countries |
+| 4. Relay | Defaults: i2pd shares 100 % of its bandwidth limit, emissary 90 % of 1 MB/s. "Don't relay": i2pd `notransit=true`, emissary `--disable-transit-tunnels` | A new emissary router at defaults, first 30 min: **1 transit tunnel**, which carried nothing and closed after 2 min; machine upload 3–12 KB/s with the router vs 6 KB/s without; CPU 0.1 % | Cap it (i2pd `bandwidth`, `share`); no-relay mode on metered links and in strict countries; measure a router that has run for days | Cap it (i2pd `bandwidth`, `share`); no-relay mode on metered links and strict countries |
 | 5. Reseed via peers | Works: a fresh router started from router records copied from another router, with no reseed server | 100 records = 99 KB; tunnels ready 56 s; no reseed server contacted | Regular identities ship records from several peers (signed per router), merged with the official reseed; costs 100 KB once |
 | 6. What needs plain UDP | Replication, helpers, holders, pairing go through the engine's swarm; **contacts and the updater each open their own Hyperswarm** | 14 items: 3 work as is, 8 need work, 3 can't | A transport seam in `Hypergraph.open` (the `swarm` option exists in `Network`, unused); route contacts through the engine; updater off in anonymous mode |
 | 7. Leaks | 14 paths; Electron guards and per-identity folders already close the page-side ones and storage | 3 closed today, 1 open by design (the router shows it runs I2P), 10 open | Anonymous engine without any Hyperswarm code; host name never sent; one SAM session per identity; 3-hop tunnels set explicitly |
@@ -78,7 +78,7 @@ Problems met with emissary, each a cost of bundling it:
 | How the release is supplied | Windows zip uploaded by a maintainer's account; the git tag is GPG-signed (GitHub: valid); no published checksums | exe built by GitHub Actions from the tag (uploader: the Actions bot); commit unsigned; no checksums; exe not Authenticode-signed (checked) |
 | Antivirus | **Defender quarantined `i2pd_3.0.0_win64_mingw.zip` as `Trojan:Win32/Ravartar!rfn` (severe)** before it could be hashed. The tracker has the same for earlier releases (#2151, #2184, #2185, #2246; Bitdefender #2381), all closed as false positives. We could not confirm this one | not flagged |
 | Anonymity defaults | 3-hop tunnels (I2P's default; UNVERIFIED for i2pd 3.0.0 here) | **2-hop** SAM tunnels |
-| Network weight | the second most used router after Java I2P; its behaviour is well known to the network | new and rare: an emissary router stands out (fingerprinting: UNVERIFIED) |
+| Network weight | the second most used router after Java I2P (UNVERIFIED: no current share found); its behaviour is well known to the network | new and rare: an emissary router stands out (fingerprinting: UNVERIFIED) |
 
 **Recommendation: i2pd, built from its signed tag in our own CI and shipped Authenticode-signed inside HyperBrowser,
 once it has been measured here.** Why, in one line each:
@@ -161,7 +161,14 @@ with SAM streams.
 
 ## Q4: relay bandwidth
 
-RELAY_SECTION
+**Measured (emissary 0.4.0 at its defaults, 1 MB/s with a 90 % share, fresh router, 30 min, no client of ours):**
+the router accepted **one** transit tunnel, at minute 27; it carried nothing and closed after 2 minutes of
+inactivity (its debug log). The machine's upload with the router running was 3–12 KB/s per 5 minutes; without it,
+6 KB/s: relaying was lost in the noise. CPU 1.6 s in 30 minutes (0.1 % of a core), memory 20–22 MB. So in its first
+half hour an average user gives close to nothing: I2P routers pick tunnel hops by measured history, and a new router
+has none. What a router gives after days online could not be measured here: it is bounded above by the share
+(here up to 0.9 MB/s) and depends on uptime and reachability. Windows' per-process I/O counters don't see socket
+traffic (10 MB sent showed as ~1 MB), and the prebuilt emissary has no metrics server, so the numbers are adapter totals.
 
 - **What caps it.** i2pd: `bandwidth` (letters L = 32, O = 256, P = 2048 KB/s, X = unlimited, or a number) and
   `share` (percent of that for relaying, default 100), plus `limits.transittunnels` (default 10,000)
