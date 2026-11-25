@@ -104,9 +104,16 @@ Stops the plan if it fails (emissary weighed then).
    in a strict country turns relaying off; works before the router is up; documented as weaker. Phase 6 adds an
    IP-to-country list (CC-licensed, e.g. db-ip lite) checked against the router's external IP; its download goes to
    the owner for approval then.
-2. **dht-rpc codec (FR-014)**: the two changed dht-rpc files are vendored under `lib/i2p/` (one-line comment why)
-   until upstream merges. The owner sends the PR below; we don't open it.
+2. **dht-rpc codec (FR-014)**: dht-rpc vendored under `lib/i2p/dht-rpc/` until upstream merges. Four files, not
+   two: `peer.js` and `index.js` change (index.js also loaded udx-native at the top), `io.js` and `query.js` hard-code
+   the 6-byte address size; the other files come from the installed dht-rpc. The owner sends the PR below.
+   i2pd sends datagrams to a `.b32.i2p` name itself, so FR-014's `NAMING LOOKUP` isn't needed.
 3. **Linux/macOS** build only in CI after the owner pushes; phase 1 reports them as not run.
+4. **After phase 1**: SC-008 (switch median 21 s) gets one warm spare session in phase 5, handed to the next
+   anonymous identity; if still over 15 s, SC-008 becomes the measured number. Records saved once a minute and
+   options read once per process are accepted limits (documented, i2pd not patched). Relaying behind NAT: the
+   owner decides; phase 2 checks whether i2pd leaves "Firewalled" over IPv6 on this machine. Merges wait for
+   phase 5.
 
 ## Upstream PR text (dht-rpc, for the owner to send)
 
@@ -116,5 +123,6 @@ Stops the plan if it fails (emissary weighed then).
 > `hash(host, port)`. That ties it to UDP over IPv4. This adds an `addressCodec` option (`encode`, `decode`,
 > `id(address)`, default: today's IPv4 codec, no behaviour change) so a DHT can run over another datagram
 > transport (we run it over I2P, where an address is a 32-byte destination hash), together with the existing
-> `udx` option for the socket. Tests: the existing suite unchanged, plus one with a 32-byte codec over an in-memory
-> transport.
+> `udx` option for the socket. It also replaces the 6-byte size assumed in `lib/io.js` and `lib/query.js` (and the
+> DOWN_HINT check) with the codec's size, and requires `udx-native` lazily, only when no `udx` is given. Tests: the
+> existing suite unchanged, plus one with a 32-byte codec over an in-memory transport.

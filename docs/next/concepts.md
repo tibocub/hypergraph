@@ -318,3 +318,26 @@ be rebuilt from is also kept in two small files next to it: `instance.json` (the
 personal space's keys, the spaces held, types, budgets) and `logs` (every log accepted in a space).
 Content this device had dropped is fetched again once, then dropped again. After a crash, only the
 records after the last saved batch are indexed again.
+
+## I2P (in progress)
+
+A second network, so people can read and post without showing their IP: I2P, where every router relays and an
+address is a *destination* (a public key), not an IP. Spaces reach it through a local I2P router's SAM bridge
+(127.0.0.1 only); the router itself is the app's (HyperBrowser runs one per install).
+
+**Discovery inside I2P** (`lib/i2p/`, not yet behind a public option). Hyperswarm's DHT can't run over I2P: its
+connections are UDP after hole punching and its records carry IPs. So I2P gets a DHT of its own: `dht-rpc` over SAM
+datagrams, with two commands, announce (this destination serves this topic) and lookup (who serves it). Details:
+
+- An address is a destination's hash (32 bytes, written as its `.b32.i2p` name) and a port; a node's id is the hash
+  of both. dht-rpc assumes IPv4 addresses, so a copy of it with the address encoding changed lives in
+  `lib/i2p/dht-rpc/` until upstream takes a pluggable encoding.
+- Each session has a fresh destination, its private key never saved. Records are signed by that destination's own
+  key, so nothing links two opens; forged, stale (over 20 minutes) and other-topic records are dropped. An announce
+  is renewed every 10 minutes.
+- Datagrams are slow and often lost at first: requests time out between 3 and 20 s, not dht-rpc's 1 s, and a node
+  pings its bootstrap nodes again until one answers. Datagrams go to a destination's `.b32.i2p` name; the router
+  finds the destination (no lookup of ours).
+- Client-only nodes (anonymous identities) store nothing and answer no lookups, so their online time isn't a
+  node's. Other nodes start as clients too and become full nodes after a long uptime, as dht-rpc decides.
+- Known nodes to start from are the helpers' I2P addresses (`<address>:1`).

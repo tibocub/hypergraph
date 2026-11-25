@@ -17,10 +17,10 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 
 ## Phase 2: discovery inside I2P (HG)
 
-- [ ] T010 `lib/i2p/sam.js` with tests against an in-memory SAM stand-in in `test/next/helpers.js`
-- [ ] T011 dht-rpc address codec (32-byte destination hash): the 2 changed files vendored under `lib/i2p/`
-- [ ] T012 `lib/i2p/dht.js`: announce/lookup, signed records, expiry, client-only mode; net tests
-- [ ] T013 real-router test and perf FR-037, on demand (`HG_I2P_SAM`); docs
+- [x] T010 `lib/i2p/sam.js` with tests against an in-memory SAM stand-in (`test/next/net/_sam.js`)
+- [x] T011 dht-rpc address codec (32-byte destination hash): vendored under `lib/i2p/dht-rpc/` (peer.js, index.js changed; io.js, query.js changed only for the address size)
+- [x] T012 `lib/i2p/dht.js`: announce/lookup, signed records, expiry, client-only mode; net tests
+- [x] T013 real-router test and perf FR-037, on demand (`HG_I2P_SAM`); docs
 
 ## Phase 3: transport seam (HG)
 
@@ -42,6 +42,7 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 ## Phase 5: HyperBrowser
 
 - [ ] T025 supervisor → engines (SAM port); "Connecting to I2P…" with reason
+- [ ] T025b one warm spare SAM session (fresh destination, tunnels built, no identity) handed to the next anonymous identity; SC-008 measured; if still over 15 s, SC-008 changed to the measured number
 - [ ] T026 "Anonymous" at creation, list entry, marks in list and frame
 - [ ] T027 contacts via the engine network; updater pause/resume; empty device name; `--no-guards` refused
 - [ ] T028 switch warning (both ways, 10 min, shell memory)
