@@ -209,7 +209,7 @@ async function run (mode, opts = {}) {
   }
 }
 
-module.exports = { run }
+module.exports = { run, measure, engine }
 
 if (require.main === module) {
   const args = process.argv.slice(2)
