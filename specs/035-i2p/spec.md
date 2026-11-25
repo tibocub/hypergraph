@@ -1,18 +1,7 @@
 # Spec 035: I2P (hide users' IPs, keep everyone a seeder)
 
 **Created**: 2026-11-25 · **From**: research [033](../033-i2p-research/research.md) and spike 034 (its Q1b), decided
-with the owner · **Status**: draft, three choices to confirm · **Covers**: hypergraph, SwarmFS, HyperBrowser
-
-## To confirm
-
-Written in below as the spec's choices; the lead recommends them, the owner hasn't confirmed them yet.
-
-- **A. Discovery inside I2P** from the first version: `dht-rpc` over SAM repliable datagrams (topic → destination
-  records, a pluggable address codec upstreamed to dht-rpc), helpers as its bootstrap nodes. Not helpers-only
-  (033's suggested start): an anonymous user must reach sites that have no helper. (FR-013 to FR-017)
-- **B. Anonymous identities seed only while open.** Always online exposes them to online-time matching (033).
-  Regular identities carry 24/7 seeding. (FR-030)
-- **C. The UI says the speed honestly:** I2P suits chat and forums, not media (measured 0.03–0.14 MB/s). (FR-036)
+with the owner · **Status**: reviewed, ready to plan · **Covers**: hypergraph, SwarmFS, HyperBrowser
 
 ## Why
 
@@ -24,11 +13,13 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 
 ## Decided already (constraints)
 
-1. **Router: i2pd 3.0.0**, built by us as a statically linked Node-API library inside the engine (no separate exe;
-   033 Q1b). Every build is scanned by Windows Defender in CI; the release fails if anything is flagged; a flagged
+1. **Router: i2pd 3.0.0**, built by us as a statically linked Node-API library (no i2pd exe; 033 Q1b), loaded in
+   one small process the shell owns, which outlives identity switches. Every identity's engine connects to it with
+   its own SAM session: same computer, same IP, so sharing it costs no privacy, and relaying and tunnels survive
+   switches. Every build is scanned by Windows Defender in CI; the release fails if anything is flagged; a flagged
    build gets a free false-positive submission to Microsoft. No paid code signing for now. emissary is the last
    resort only, behind the same SAM seam.
-2. **Dual stack**: every desktop install runs the router, started by the engine, invisible to the user. Regular
+2. **Dual stack**: every desktop install runs the router, started by the shell, invisible to the user. Regular
    identities use the normal network with each other, and I2P only to reach I2P-only peers.
 3. **Anonymous identities**: a switch when an identity is created. Their engine contains no Hyperswarm or plain-UDP
    code at all, starts only once I2P tunnels are ready, never falls back. One SAM session per identity, a fresh
@@ -37,19 +28,27 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 5. **Compartmentalization**: an anonymous identity shares no storage and no held files with any other identity
    (SwarmFS identifies files by content). Photo metadata (EXIF) is stripped on upload for anonymous identities.
 6. **Threat model**, stated plainly in the user docs: protects against peers, site owners, ISPs and local-network
-   observers; not against a global observer or a state targeting one person (timing). A warning when an anonymous
-   identity is open at the same time as another identity.
+   observers; not against a global observer or a state targeting one person (timing). One engine runs at a time; a
+   warning when the person switches between a regular and an anonymous identity, either way, within 10 minutes of
+   the last one closing.
 7. **Relaying** on by default with a bandwidth cap. "Don't relay" turns on by itself in I2P's strict countries
    (033), and is a setting.
 8. **Reseeding through our peers**: regular identities hand router records to new routers, merged with I2P's
    official reseed.
-9. **Every leak in 033 Q7 closed.** The contacts' and the updater's own Hyperswarms go through the engine; the
-   updater is app-level, never per identity. The transport seam goes in `Hypergraph.open`.
+9. **Every leak in 033 Q7 closed.** The contacts' own Hyperswarm goes through the engine. The updater stays
+   app-level on the normal network, as today, and pauses while an anonymous identity is open. The transport seam
+   goes in `Hypergraph.open`.
 10. **Not yet tested, so the plan's first tasks**: Linux and macOS builds, a Bare host, stop/start cycles in one
     process, a soak run of several days.
 11. **Spec 032** (seed handler) applies per engine. Anonymous identities seed over I2P through the same ranking.
 12. Every change lands with its docs, regression tests, forum scenario tests and perf scenarios (I2P lookup time,
     join time and throughput as tracked numbers).
+13. **Discovery inside I2P** from the first version: `dht-rpc` over SAM repliable datagrams (topic → destination
+    records, a pluggable address codec upstreamed to dht-rpc), helpers as its bootstrap nodes. Not helpers-only:
+    an anonymous user must reach sites that have no helper.
+14. **Anonymous identities seed only while open.** Always online exposes them to online-time matching (033).
+    Regular identities carry 24/7 seeding.
+15. **The UI says the speed honestly**: I2P suits chat and forums, not media (measured 0.03–0.14 MB/s).
 
 ## User stories
 
@@ -89,8 +88,9 @@ passes Windows Defender, where the official binaries were quarantined. No users 
   then the anonymous identity fetches it over I2P into its own storage; Dan's copy is neither read nor served by it.
 - Given Ana uploads a photo,
   then its EXIF data (location, camera, time) is removed before it is stored.
-- Given Dan is open in another window or process while Ana opens,
-  then HyperBrowser warns Ana that the two can be linked by timing.
+- Given Dan closed less than 10 minutes ago,
+  when Ana opens (or Dan opens less than 10 minutes after Ana closed),
+  then HyperBrowser warns that the two can be linked by timing.
 
 **US5: everyone relays, at a cost the user doesn't notice** (P2)
 
@@ -108,19 +108,21 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 
 ## Requirements
 
-**The router (HyperBrowser engine; i2pd library)**
+**The router (HyperBrowser shell; i2pd library)**
 
-- **FR-001** The engine loads i2pd 3.0.0 as a Node-API addon built by us (034's `start(dataDir, samPort)` /
+- **FR-001** The shell starts one router process, separate from the engines, that loads i2pd 3.0.0 as a Node-API
+  addon built by us (034's `start(dataDir, samPort)` /
   `stop()`), statically linked, one file per platform. SAM listens on 127.0.0.1 only, on a port picked at start.
   No web console, no UPnP or NAT-PMP, no IPv6 unless the host has a route.
-- **FR-002** The router's data folder is per install, outside every identity's folder; one router per machine at
-  a time (a second HyperBrowser process uses the running one's SAM port or waits).
+- **FR-002** The router process starts with the app and outlives identity switches: switching identities closes
+  the old engine's SAM session and opens the new one's, without restarting the router. Its data folder is per
+  install, outside every identity's folder. The shell passes the SAM port to each engine it starts.
 - **FR-003** CI builds the addon for Windows, Linux and macOS from the signed i2pd tag, scans each Windows build with
   Defender, and fails the release on any detection. A flagged build is submitted to Microsoft as a false positive.
-- **FR-004** The engine supervises the router: a crash or stop is restarted with backoff; while it is down,
+- **FR-004** The shell supervises the router process: a crash or stop is restarted with backoff; while it is down,
   anonymous identities show "Connecting to I2P…" and send nothing; regular identities keep the normal network.
-- **FR-005** emissary is a last resort only: the engine speaks SAM, never i2pd internals, so a router swap touches
-  the loader alone. Not built or shipped by this spec.
+- **FR-005** emissary is a last resort only: engines speak SAM, never i2pd internals, so a router swap touches
+  the router process alone. Not built or shipped by this spec.
 
 **The transport seam (hypergraph)**
 
@@ -145,7 +147,7 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - **FR-012** Joining over I2P connects before it times out: `redeemInvite`'s 30 s (`JOIN_TIMEOUT`) counts from the
   first connection, not from the call, since an I2P stream takes 5–17 s and 2–3 tries (033 Q3).
 
-**Discovery inside I2P (choice A)**
+**Discovery inside I2P**
 
 - **FR-013** A DHT inside I2P: `dht-rpc` over SAM repliable datagrams, two commands (announce and look up a topic →
   destinations). Records are signed by the announcing destination and expire as hyperdht's do.
@@ -162,7 +164,8 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 
 - **FR-018** Creating an identity offers "Anonymous" (off by default), fixed for the identity's life. It is saved in
   the identity's list entry; its engine opens with `transport: 'i2p'`.
-- **FR-019** An anonymous engine runs no contacts' or updater's Hyperswarm (FR-026, FR-027), `deviceName` is empty
+- **FR-019** While an anonymous identity is open, contacts use its I2P session (FR-026), the updater is paused
+  (FR-027), `deviceName` is empty
   (today `os.hostname()`, `shell/main.js:1485`), and `--no-guards` is refused while it is open.
 - **FR-020** Device pairing (`lib/pairing.js`, DHT-based) is off for anonymous identities: `addDevice` throws
   `NOT_ALLOWED`. Restore by recovery phrase still works.
@@ -171,7 +174,7 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - **FR-022** SwarmFS strips EXIF (and the same metadata in PNG and WebP) from images uploaded by an anonymous
   identity before hashing, so the stored file is the stripped one.
 
-**Relaying and reseeding (HyperBrowser engine)**
+**Relaying and reseeding (HyperBrowser router process and engines)**
 
 - **FR-023** Relaying is on by default: i2pd `bandwidth` set to a cap of 256 KB/s (`O`) and `share` 50 %, numbers
   revisited from the soak run (FR-041). A setting turns it off (`notransit = true`).
@@ -185,15 +188,16 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 
 - **FR-026** Contacts (`engine/contacts.js:344`) use the engine's network instead of their own `new Hyperswarm`.
   Over `'i2p'` they use the engine's I2P session.
-- **FR-027** The updater (`shell/updater.js`) stays one per app, never per identity, and gets its connections from
-  the running engine's transport, on a SAM session of its own (never an identity's). While an anonymous identity is
-  open it uses I2P only.
+- **FR-027** The updater (`shell/updater.js`) stays one per app, never per identity, with its own Hyperswarm on the
+  normal network, as today; it doesn't go through an engine. The shell pauses it (swarm destroyed, no lookups)
+  while an anonymous identity is open, and resumes it when a regular identity opens.
 - **FR-028** Each of the 14 paths of 033 Q7 gets a regression test or a written reason it is closed by design
   (#8: the router shows the IP runs I2P, not who).
-- **FR-029** The warning of decision 6: when an anonymous identity opens while another identity of this install has
-  an engine running (another window or process), and on switching from one to the other within 10 minutes.
+- **FR-029** The warning of decision 6: when the person switches from a regular to an anonymous identity, or back,
+  within 10 minutes of the last one closing. Shown before the new identity's engine connects. The time of the last
+  close is the shell's, kept in memory.
 
-**Seeding (032 per engine; choice B)**
+**Seeding (032 per engine)**
 
 - **FR-030** Anonymous identities seed what they read through 032's ranking, over I2P, only while open; nothing is
   announced from them once closed. Regular identities keep 032 as specified (cached sites, 24/7 while the app runs).
@@ -202,7 +206,7 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - **FR-032** 032's notice (FR-021 there) says "For sites you don't want linked to you, use an anonymous identity"
   (it said Tor).
 
-**UI and docs (HyperBrowser; choice C)**
+**UI and docs (HyperBrowser)**
 
 - **FR-033** An anonymous identity is marked in the identity list and the window frame.
 - **FR-034** The user docs state the threat model of decision 6 in plain words, what "anonymous" doesn't cover
@@ -222,7 +226,8 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 **First tasks of the plan (decision 10)**
 
 - **FR-041** Before anything else: the addon built on Linux and macOS; loaded on a Bare host; 20 `stop()`/`start()`
-  cycles in one process with no leak or crash; a scripted soak run of several days (relaying, tunnels, memory,
+  cycles in one process with no leak or crash; 20 identity switches against one router process, its tunnels and
+  transit kept; a scripted soak run of several days (relaying, tunnels, memory,
   restarts). A failure here stops the plan, not the spec: emissary (FR-005) is weighed then.
 
 **Every change**
@@ -243,6 +248,8 @@ passes Windows Defender, where the official binaries were quarantined. No users 
   (median of 5 starts).
 - **SC-006** The soak run (FR-041) ends with the router up, memory flat (within 20 %), every crash restarted.
 - **SC-007** No two identities on one machine share a destination, a SAM session or a stored file.
+- **SC-008** Switching identities never restarts the router: an anonymous identity opened after a switch has its
+  tunnels ready in under 15 s (median of 5), against 39 s+ for a router start.
 
 ## Tests
 
@@ -254,8 +261,10 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - Forum scenario: an anonymous member joins a board through a helper, posts, a regular member reads it; a board with
   no helper found through the I2P DHT.
 - SwarmFS: EXIF stripped for anonymous uploads (and kept for regular ones), no cross-identity serving.
-- HyperBrowser: creating an anonymous identity, "Connecting to I2P…", contacts and updater through the engine,
-  empty device name, `--no-guards` refused, the warning, forced "don't relay", reseed merge from 3 peers.
+- HyperBrowser: creating an anonymous identity, "Connecting to I2P…", contacts through the engine, the updater
+  paused while an anonymous identity is open and resumed after, the router process surviving a switch, empty device
+  name, `--no-guards` refused, the switch warning (both ways, inside and past 10 minutes), forced "don't relay",
+  reseed merge from 3 peers.
 
 ## Out of scope
 
@@ -267,17 +276,3 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - Defence against a global observer or a targeted state (decision 6).
 - Turning a regular identity anonymous, or back.
 
-## Open questions
-
-Contradictions found with the code or research, not settled above.
-
-1. **"Open at the same time" vs one engine at a time.** HyperBrowser runs one identity's engine per app
-   (`shell/main.js` `switching`), so the warning of decision 6 can only fire for a second HyperBrowser process or a
-   quick switch. FR-029 assumes both; is a quick switch (10 min) the case the owner meant?
-2. **The router lives in the engine, but the engine is per identity.** Each switch restarts the engine process,
-   hence the router: tunnels rebuilt (39 s+ in 034), transit tunnels dropped, which weakens "relaying always on"
-   and dual-stack reachability. Keep it in the engine (decision 1) and accept the restart, or host the addon in a
-   process that outlives identity switches?
-3. **The updater is app-level and runs in its own Bare process; the engine is per identity and Node.** FR-027
-   routes it through whichever engine runs. With no engine running (identity list open), does the updater wait?
-   And if it should host its own I2P path, that needs the addon on Bare (FR-041).
