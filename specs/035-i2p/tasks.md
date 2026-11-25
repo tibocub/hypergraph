@@ -5,15 +5,15 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 
 ## Phase 1: router foundations
 
-- [ ] T001 HB: move the addon sources to `router/addon/`; options object, `status()`, delay-load host binding
-- [ ] T002 HB: build on Windows (spike's deps), Defender scan, `router/addon/check.js` smoke run
-- [ ] T003 HB: load the addon in Bare; report result (fallback: Electron `utilityProcess`)
-- [ ] T004 HB: 20 `stop()`/`start()` cycles in one process: RSS, handles, crash check
-- [ ] T005 HB: `router/process.js` (Bare) + `shell/router.js` supervisor: free SAM port, backoff restarts; tests
-- [ ] T006 HB: 20 SAM session open/close cycles against one router process, transit/tunnels kept
-- [ ] T007 HB: start the soak run in the background (`router/soak.js`, JSONL in temp)
-- [ ] T008 HB: CI workflow: addon for Windows/Linux/macOS, Defender scan, fail on detection; release steps in docs
-- [ ] T009 HB: perf scenario FR-040 (start to tunnels, RSS, idle CPU); docs
+- [x] T001 HB: move the addon sources to `router/addon/`; options object, `status()`, delay-load host binding
+- [x] T002 HB: build on Windows (spike's deps), Defender scan, `router/addon/check.js` smoke run
+- [x] T003 HB: load the addon in Bare; report result (fallback: Electron `utilityProcess`)
+- [x] T004 HB: 20 `stop()`/`start()` cycles in one process: RSS, handles, crash check
+- [x] T005 HB: `router/process.js` (Bare) + `shell/router.js` supervisor: free SAM port, backoff restarts; tests
+- [x] T006 HB: 20 SAM session open/close cycles against one router process, transit/tunnels kept
+- [x] T007 HB: start the soak run in the background (`router/soak.js`, JSONL in temp)
+- [ ] T008 HB: CI workflow: addon for Windows/Linux/macOS, Defender scan, fail on detection; release steps in docs (written; not run until pushed)
+- [x] T009 HB: perf scenario FR-040 (start to tunnels, RSS, idle CPU); docs
 
 ## Phase 2: discovery inside I2P (HG)
 

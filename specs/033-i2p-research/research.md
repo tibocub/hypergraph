@@ -285,7 +285,7 @@ Every path by which an anonymous identity's engine or pages could reach the netw
 
 ## Q1b: i2pd as a library
 
-Spike 034. i2pd 3.0.0 (tag), `libi2pd` + `libi2pd_client` compiled by us with MSVC into one Node-API addon (`i2pd_addon.node`), statically linked with Boost 1.89, OpenSSL 3.6, zlib and the static CRT. It exposes `start(dataDir, samPort)` / `stop()` only (`api.h` plus `i2p::client::context`, which starts SAM; no daemon, no GUI code). Sources: `research/i2p/lib/`.
+Spike 034. i2pd 3.0.0 (tag), `libi2pd` + `libi2pd_client` compiled by us with MSVC into one Node-API addon (`i2pd_addon.node`), statically linked with Boost 1.89, OpenSSL 3.6, zlib and the static CRT. It exposes `start(dataDir, samPort)` / `stop()` only (`api.h` plus `i2p::client::context`, which starts SAM; no daemon, no GUI code). Sources: `research/i2p/lib/` at the spike; now HyperBrowser `router/addon/`.
 
 | | Result |
 |---|---|
