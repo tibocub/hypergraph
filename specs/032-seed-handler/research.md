@@ -22,7 +22,6 @@ function.
   `LOG_BYTES`). A cap of 128 sites means about 256 open spaces: `maxOpen` has to follow the cap.
 - Circle holding (`lib/holding.js` `#join`) announces held spaces outside the topic queue and outside the cap.
   It has its own rarest-first (`lib/circles.js` `rarest`, by copies online).
-- An unmerged branch adds `Hypergraph.open(dir, { announce: false })` and `hg.setAnnounce(on)`: announce nothing.
 
 ## DHT limits
 
