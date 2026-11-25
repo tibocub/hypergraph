@@ -282,3 +282,26 @@ Every path by which an anonymous identity's engine or pages could reach the netw
   an emissary router can be fingerprinted on the network; whether signing our own i2pd build clears Defender.
 - emissary's use of `unsafe`; any audit of either router (none found).
 - The size of the I2P network today from a primary source (press and 2018 figures only).
+
+## Q1b: i2pd as a library
+
+Spike 034. i2pd 3.0.0 (tag), `libi2pd` + `libi2pd_client` compiled by us with MSVC into one Node-API addon (`i2pd_addon.node`), statically linked with Boost 1.89, OpenSSL 3.6, zlib and the static CRT. It exposes `start(dataDir, samPort)` / `stop()` only (`api.h` plus `i2p::client::context`, which starts SAM; no daemon, no GUI code). Sources: `research/i2p/lib/`.
+
+| | Result |
+|---|---|
+| Size | **9.3 MB**, one `.node`, no DLLs (the official exe is 12.6 MB) |
+| Defender, on-demand scan (`MpCmdRun -ScanType 3`) | **no threats** |
+| Defender, loaded in Node, started, SAM answering, 5 min run | **no new detection** (`Get-MpThreatDetection`: the same 4 old entries, the official zip and exe among them) |
+| SAM `HELLO` after `start()` | 1.4 s |
+| First session's tunnels ready (fresh data folder, reseeded by the router) | **39 s** (1 run; emissary first start: 187 s) |
+| Memory / CPU (whole Node process, 5 min) | 61 MB RSS, 0.3 s CPU |
+
+Verdict: the library build passes where the official binaries were flagged. One build, one machine, a build with no signature or reputation: a different Defender model version, or a new build, could still flag it. Re-scan every build.
+
+What it took:
+- MSVC only; build with the same toolset vcpkg used (a mismatch gave `__std_find_*` link errors).
+- C++20 (`std::span`), `NO_TORRENTS` (drops the torrent client), Boost.Beast (still needed for HTTP/base64 in `libi2pd`).
+- Do not link `node.lib`: it re-exports Node's own OpenSSL symbols and clashes with ours. `napi.def` makes a small import lib with only the `napi_*` calls used; it binds to `node.exe` (a renamed host exe needs a delay-load hook).
+- `api.h`'s `StartI2P` does not start SAM: call `i2p::client::context.Start()` too.
+- Dependencies through vcpkg took ~20 min (Boost, OpenSSL needs Perl and nasm); the i2pd compile (88 files) a few minutes. About 250 MB of downloads, none in git.
+- Not done: Linux/macOS build, a Bare (not Node) host, several starts or `stop()`/`start()` cycles in one process, a multi-day run.
