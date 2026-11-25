@@ -11,14 +11,14 @@ not a global observer or a state targeting one person.
 
 Setup: one Windows 10 machine, Node 26.4, hypergraph from this branch, dht-rpc 6.28.0, hyperdht 6.36.0. Two routers on
 the same machine talk through the live I2P network (each builds its own tunnels; nothing short-cuts locally).
-Routers: **emissary 0.4.0** (the official prebuilt `emissary-cli.exe`, sha256 checked). **i2pd 3.0.0 could not be run**:
-Windows Defender quarantined the official zip on download (Q1). "UNVERIFIED" marks claims with no primary source.
+Routers: **emissary 0.4.0** (the official prebuilt `emissary-cli.exe`, sha256 checked). **i2pd 3.0.0 was not run**:
+Windows Defender flagged the official zip on download and the unzipped exe after it was restored (Q1). "UNVERIFIED" marks claims with no primary source.
 
 ## The short answer
 
 | Question | Finding | Number | Recommendation |
 |---|---|---|---|
-| 1. Router | emissary runs as a hidden child process (one 17.8 MB exe, own folder, SAM on localhost, no install), light, memory-safe, but young, one main developer, its last release has a known self-shutdown bug, and it quit on a host without IPv6. i2pd: mature, the second most used router, C++ with memory-safety fixes in 2026, and **its official Windows zip is flagged as a trojan by Defender** | emissary: 20–25 MB RAM, 0.1 % CPU idle; first start 187 s; later starts 10–164 s (median 53 s). i2pd: not measured | **i2pd, built and signed by us**, but only after it is measured here (blocking). Keep the SAM seam so emissary can replace it once it ships a release with its fixes |
+| 1. Router | emissary runs as a hidden child process (one 17.8 MB exe, own folder, SAM on localhost, no install), light, memory-safe, but young, one main developer, its last release has a known self-shutdown bug, and it quit on a host without IPv6. No antivirus alert. i2pd: mature, C++ with memory-safety fixes in 2026, and **Defender flagged both its official zip and its exe as trojans** (past alerts were false positives; this one is unconfirmed) | emissary: 20–25 MB RAM, 0.1 % CPU idle; first start 187 s; later starts 10–164 s (median 53 s). i2pd: not run | **emissary**, built by us from a commit with its fixes, kept only after a scripted multi-day soak run; i2pd as the fallback. The SAM seam keeps the swap cheap |
 | 2. DHT over I2P | `dht-rpc` runs **unforked** over SAM repliable datagrams, through a stand-in for `udx-native` (`opts.udx`). hyperdht can't (UDX streams, IPv4 in its records). Raw datagrams didn't work with emissary | 6 nodes on 2 routers: bootstrap 20 s, 5 of 5 lookups found the target, 1.3–13.2 s (median 3.7 s); 115 retries for 354 datagrams | Own small topic → destination records on dht-rpc, with a pluggable address codec upstreamed (small). Start with the fallback (dual-stack helpers as meeting points) |
 | 3. Replication | hypergraph replicates unchanged over SAM streams through 028's stream adapter | Over I2P: join 5.0–7.8 s, a post arrives in 1.2–2.3 s (median), bulk 2.1–8.7 posts/s = 0.03–0.14 MB/s, time to first byte 10–12 s (27–38 s in one earlier run), 6 of 15 connects failed. Hyperswarm, same machine: join 54–120 ms, 2–3 ms, 300–450 posts/s = 4.9–7.3 MB/s | Fine for chat and forums, not for media. Connect before joining: a connect can outlast `redeemInvite`'s 30 s |
 | 4. Relay | Defaults: i2pd shares 100 % of its bandwidth limit, emissary 90 % of 1 MB/s. "Don't relay": i2pd `notransit=true`, emissary `--disable-transit-tunnels` | A new emissary router at defaults, first 30 min: **1 transit tunnel**, which carried nothing and closed after 2 min; machine upload 3–12 KB/s with the router vs 6 KB/s without; CPU 0.1 % | Cap it (i2pd `bandwidth`, `share`); no-relay mode on metered links and in strict countries; measure a router that has run for days | Cap it (i2pd `bandwidth`, `share`); no-relay mode on metered links and strict countries |
@@ -32,7 +32,7 @@ Windows Defender quarantined the official zip on download (Q1). "UNVERIFIED" mar
 
 | | emissary 0.4.0 | i2pd 3.0.0 |
 |---|---|---|
-| Size on disk | 17.8 MB, one exe; data folder 0.1–0.2 MB after a run (router records, keys) | zip 4.9 MB (exe not seen: quarantined) |
+| Size on disk | 17.8 MB, one exe; data folder 0.1–0.2 MB after a run (router records, keys) | zip 4.9 MB; `i2pd.exe` 12.6 MB plus config, certificates and web console files |
 | First start: process → SAM up → first session's tunnels ready | SAM up 16.9 s (includes reseeding over HTTPS from 2 servers, ~3 s); tunnels ready 170 s later: **187 s** (1 run) | couldn't measure |
 | First start, records from a peer (Q5) | 0.9 s + 56 s (1 run) | couldn't measure |
 | Later starts (16 samples, single session, some with two routers starting together) | SAM up 0.2 s; tunnels ready **10–164 s, median 53 s** | couldn't measure |
@@ -76,25 +76,31 @@ Problems met with emissary, each a cost of bundling it:
 | CVEs | one in NVD: CVE-2017-17066, a remote memory read via Garlic tunnel messages, fixed in 2.17 (2017) | none in NVD or OSV |
 | Bugs fixed in 2026 (its tracker) | out-of-bounds read in Base64 decoding (Feb), SIGABRT in the ECIES session during normal traffic (Apr), UBSan "unreachable" reached (May), SIGSEGV in DSA signing (Oct); an open report of suspected data races (Jun) | panics: transit-tunnel `assert!(false)` after ~25 min, self-shutdown after ~9 min, a duration overflow (all Apr, fixed after the last release); SSU2 panics (2025) |
 | How the release is supplied | Windows zip uploaded by a maintainer's account; the git tag is GPG-signed (GitHub: valid); no published checksums | exe built by GitHub Actions from the tag (uploader: the Actions bot); commit unsigned; no checksums; exe not Authenticode-signed (checked) |
-| Antivirus | **Defender quarantined `i2pd_3.0.0_win64_mingw.zip` as `Trojan:Win32/Ravartar!rfn` (severe)** before it could be hashed. The tracker has the same for earlier releases (#2151, #2184, #2185, #2246; Bitdefender #2381), all closed as false positives. We could not confirm this one | not flagged |
+| Antivirus | **Defender detected `Trojan:Win32/Ravartar!rfn` (severe) on the zip at download, then `Trojan:Win32/Kepavll!rfn` (severe) on the unzipped `i2pd.exe`.** The restored zip's sha256 matched the release. The tracker has the same kind of alert for earlier releases (#2151, #2184, #2185, #2246; Bitdefender #2381), all closed as false positives. This file is unconfirmed | **no alert**, on download or in any run |
 | Anonymity defaults | 3-hop tunnels (I2P's default; UNVERIFIED for i2pd 3.0.0 here) | **2-hop** SAM tunnels |
 | Network weight | the second most used router after Java I2P (UNVERIFIED: no current share found); its behaviour is well known to the network | new and rare: an emissary router stands out (fingerprinting: UNVERIFIED) |
 
-**Recommendation: i2pd, built from its signed tag in our own CI and shipped Authenticode-signed inside HyperBrowser,
-once it has been measured here.** Why, in one line each:
+**Recommendation: emissary, built by us from a pinned commit that has the #340 and #341 fixes, and kept only if it
+passes a scripted multi-day soak run. i2pd is the fallback.** Why, in one line each:
 
-- For anonymity, the mature parts matter most (peer selection, tunnel lengths, netDb handling). i2pd has 13 years of
-  them; emissary ships 2-hop tunnels by default and broke in three ways in an hour of use.
-- Memory safety favours emissary, and i2pd's 2026 crash fixes are a real risk: a remote memory bug in the router is
-  the worst case for an anonymous identity. Building i2pd ourselves lets us ship fixes without waiting for a zip.
-- The Defender hit is a product blocker for using their zip: an antivirus quarantining HyperBrowser's router breaks
-  it for users and looks like malware. Our own signed build plus a Microsoft submission is the usual remedy
-  (UNVERIFIED that it clears the detection).
-- Look again at emissary when it ships a release with #340 and #341 fixed: 20 MB of RAM, one exe and Rust are what we
-  want long term. The SAM seam keeps the swap cheap.
+- **Antivirus decides the bundling question.** Defender flagged i2pd twice: the official zip on download
+  (`Trojan:Win32/Ravartar!rfn`, severe) and, after the owner restored it and its sha256 matched the release, the
+  unzipped `i2pd.exe` (`Trojan:Win32/Kepavll!rfn`, severe). Past i2pd releases drew the same kind of alert and were
+  closed as false positives; this file is unconfirmed. A router that antivirus quarantines breaks HyperBrowser for users
+  and makes it look like malware. **emissary raised no Defender alert at all** (the exe and every run).
+- **Memory safety.** The router parses everything strangers send. emissary's bugs end in a panic (a crash, which a
+  supervisor restarts); i2pd's 2026 fixes include an out-of-bounds read and crashes in its crypto paths, the kind of
+  bug that can turn into a remote memory leak (as CVE-2017-17066 did). For an anonymous identity that is the worst case.
+- **Light and embeddable**: one exe, 20–25 MB of memory, 0.1 % CPU idle; Rust, MIT, an embeddable core library.
+- **Its weaknesses are fixable on our side**: restart it when it quits; IPv6 off until the shutdown is fixed upstream;
+  ask for 3-hop tunnels per session; use repliable datagrams and full destinations (Q2). What we can't fix is that it
+  is young, mostly one developer's work and has no audit: hence the soak run and the fallback.
+- **i2pd stays the fallback** if emissary fails the soak: mature, 13 years on the network, 3-hop defaults. It would
+  need our own signed build from its GPG-signed tag, and a Microsoft false-positive submission (UNVERIFIED that this
+  clears the detection).
 
-Not measured, so the recommendation is provisional: i2pd's start times, memory, CPU and speed. **Measure i2pd before
-the spec** (it needs a Defender exclusion the owner sets, or our own build).
+Not measured: i2pd's start times, memory, CPU and speed (Defender's second alert stopped it before it ran). Building
+emissary from source needs its crates downloaded (an approval).
 
 ## Q2: a DHT over I2P
 
@@ -266,7 +272,8 @@ Every path by which an anonymous identity's engine or pages could reach the netw
 
 ## Couldn't check
 
-- **Everything measured on i2pd**: Defender quarantined the official zip; changing Defender is the owner's call.
+- **Everything measured on i2pd**: Defender flagged the zip, and after the owner restored it (sha256 matched), the
+  unzipped exe. We don't work around antivirus.
 - Same-LAN sync speed, and anything between two machines (one machine only). Linux (no Linux host without WSL).
 - Raw datagrams (emissary never delivered them); lookups by `.b32.i2p` name (emissary's SAM didn't).
 - Relay traffic after hours or days of uptime (30 minutes only); the share actually used by transit, since the
