@@ -45,8 +45,11 @@ test('i2p dht: a client-only node finds a destination announced elsewhere, throu
   const topic = topicOf('a forum')
   await nodes[5].announce(topic)
   const client = await add({ ephemeral: true })
-  const found = await client.lookup(topic)
+  const early = []
+  let ended = false
+  const found = await client.lookup(topic, { onfound: (f) => early.push({ address: f.address, ended }) }).finally(() => { ended = true })
   t.alike(found.map((f) => f.address), [nodes[5].identity.address], 'the announcer, and only it')
+  t.alike(early, [{ address: nodes[5].identity.address, ended: false }], 'given as soon as found, before the lookup ended')
   t.alike(found[0].dest, nodes[5].identity.dest, 'its full destination, to dial')
   t.is(client.stored.size, 0, 'the client-only node stores nothing')
   t.alike(await client.lookup(topicOf('another forum')), [], 'nothing for a topic no one announced')

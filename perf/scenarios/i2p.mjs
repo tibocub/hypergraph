@@ -1,7 +1,8 @@
-// I2P over a real router (HG_I2P_SAM=<SAM port>); prints nothing without one. One router, so datagrams and streams
+// I2P over a real router (HG_I2P_SAM=<SAM port>; HG_PERF_TIMEOUT_MS=1500000: it takes 10 to 20 min); prints nothing
+// without one. One router, so datagrams and streams
 // go through real tunnels, but the DHT is small (a bootstrap node and the peers): this tracks I2P's round trips,
 // not a big network's hop count.
-//   i2p.lookup      a lookup by a client-only node until the announcer is found (ms), 20 runs
+//   i2p.lookup      a lookup by a client-only node, until it brings the announcer (ms), 20 runs
 //   i2p.lookup.p95  their 95th percentile (ms)
 //   i2p.join        an I2P-only person joining a forum over I2P, from redeemInvite to reading its first post (ms)
 //   i2p.post        a post, until the other I2P-only member reads it (ms), 10 runs
@@ -37,8 +38,9 @@ if (PORT) {
       sodium.randombytes_buf(topic)
       await announcer.announce(topic)
       const t0 = Date.now()
-      const found = await client.lookup(topic)
-      if (found.some((f) => f.address === announcer.identity.address)) samples.push(Date.now() - t0)
+      let at = 0 // when the announcer came in: what a join waits for, not the whole lookup
+      await client.lookup(topic, { onfound: (f) => { if (f.address === announcer.identity.address) at = Date.now() - t0 } })
+      if (at) samples.push(at)
     }
     record('i2p.lookup', 3, 'ms', samples)
     const sorted = samples.slice().sort((a, b) => a - b)
