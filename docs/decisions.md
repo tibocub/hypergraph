@@ -105,6 +105,16 @@ Spec 009 (helpers, availability) is retargeted onto the new core after 1.
 
 ## Decisions (newest first)
 
+- **2026-11-26 (035 I2P, UPnP)** — The owner allows UPnP in the bundled I2P router, on by default with a setting
+  to turn it off: without it a router behind a home NAT stays firewalled and relays nothing (no transit
+  tunnel in nearly 4 hours of soak), so "everyone relays" didn't hold.
+
+- **2026-11-26 (035 I2P, transport seam)** — `Hypergraph.open({ transport: 'normal' | 'dual' | 'i2p', sam })`.
+  One SAM session per open carries both the DHT's datagrams and the streams (i2pd serves streams on a DATAGRAM
+  session; its MASTER session can't send datagrams over TCP). dht-rpc is vendored under `lib/i2p/dht-rpc/` with
+  I2P addresses until upstream takes a pluggable encoding. I2P-only instances load no Hyperswarm, HyperDHT,
+  udx-native or blind-pairing, pair no devices and hold no circle member's spaces.
+
 - **2026-11-23 (031, two key changes at once)** — Found by HyperBrowser's CI (a ban seen by two online
   deciders): a member lost the second grant (its prekey erased on the first), the owner wrote with an older
   epoch while the current one's grant was 6 ms away, and a record asked of its author never opened once its

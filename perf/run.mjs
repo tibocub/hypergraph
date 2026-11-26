@@ -23,7 +23,7 @@ import path from 'path'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
 const HISTORY = path.join(here, 'history.jsonl')
-const TIMEOUT = 6 * 60 * 1000 // one scenario file
+const TIMEOUT = Number(process.env.HG_PERF_TIMEOUT_MS) || 6 * 60 * 1000 // one scenario file (raised for i2p.mjs on a real router)
 
 const argv = process.argv.slice(2)
 const flags = new Set(argv.filter((a) => a.startsWith('--') && a !== '--sizes'))

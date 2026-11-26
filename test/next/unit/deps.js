@@ -7,7 +7,7 @@ const path = require('path')
 const pkg = require('../../../package.json')
 
 const LIB = path.join(__dirname, '../../../lib')
-const BUILTIN = new Set(['fs', 'path', 'os', 'events', 'process', 'hypergraph']) // mapped in "imports", or this package
+const BUILTIN = new Set(['fs', 'path', 'os', 'events', 'process', 'net', 'hypergraph']) // mapped in "imports", or this package
 
 // A folder with its own package.json is another package (a local checkout, its node_modules), not lib/'s code.
 function files (dir) {

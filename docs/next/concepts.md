@@ -318,3 +318,48 @@ be rebuilt from is also kept in two small files next to it: `instance.json` (the
 personal space's keys, the spaces held, types, budgets) and `logs` (every log accepted in a space).
 Content this device had dropped is fetched again once, then dropped again. After a crash, only the
 records after the last saved batch are indexed again.
+
+## I2P
+
+A second network, so people can read and post without showing their IP: I2P, where every router relays and an
+address is a *destination* (a public key), not an IP. Spaces reach it through a local I2P router's SAM bridge
+(127.0.0.1 only); the router itself is the app's (HyperBrowser runs one per install). `transport` chooses
+(see [api.md](api.md#i2p-hiding-the-ip)): `'normal'`, `'dual'` or `'i2p'`.
+
+**One session per open** (`lib/i2p/sam.js`): a fresh destination with 3-hop tunnels, never saved. Its datagrams
+(the DHT) and its streams (connections) share it: i2pd serves both on one session.
+
+**A swarm like Hyperswarm** (`lib/i2p/swarm.js`): `lib/network.js`, helpers and holding use the same calls. A
+connection is a secret-stream (the device key pair, as on Hyperswarm) over an I2P stream. Joining a space dials
+the addresses already seen serving it at once and looks it up in the DHT beside that: the first connection wins,
+so a slow lookup (tens of seconds at times) never holds up a space someone is known for. `dht.connect(key)`
+reaches a peer by its key: its last address, else the DHT topic it announces itself on. Only dual-stack
+instances announce their key; I2P-only ones never do, so nobody can ask the DHT whether they are online. A
+second connection to one peer is dropped, both sides keeping the same one.
+
+**Dual stack**: Hyperswarm as always, and the I2P swarm attached once its tunnels are built, joining the same
+topics. A peer reached both ways keeps its Hyperswarm link. Data crosses between the halves by replication through
+dual-stack instances, never by proxying.
+
+**I2P only**: `open()` waits for the tunnels and retries while the router can't be reached; nothing falls back.
+Hyperswarm, HyperDHT, udx-native and blind-pairing are required inside the functions that use them, so they never
+run (no device pairing, no circle holder: blind-peer loads Hyperswarm). Joining counts its timeout from the
+first connection.
+
+**Discovery inside I2P** (`lib/i2p/dht.js`). Hyperswarm's DHT can't run over I2P: its
+connections are UDP after hole punching and its records carry IPs. So I2P gets a DHT of its own: `dht-rpc` over SAM
+datagrams, with two commands, announce (this destination serves this topic) and lookup (who serves it). Details:
+
+- An address is a destination's hash (32 bytes, written as its `.b32.i2p` name) and a port; a node's id is the hash
+  of both. dht-rpc assumes IPv4 addresses, so a copy of it with the address encoding changed lives in
+  `lib/i2p/dht-rpc/` until upstream takes a pluggable encoding.
+- Each session has a fresh destination, its private key never saved. Records are signed by that destination's own
+  key, so nothing links two opens; forged, stale (over 20 minutes) and other-topic records are dropped. An announce
+  is renewed every 10 minutes.
+- Datagrams are slow and often lost at first: requests time out between 3 and 20 s, not dht-rpc's 1 s, and a node
+  pings its bootstrap nodes again until one answers. Datagrams go to a destination's `.b32.i2p` name; the router
+  finds the destination (no lookup of ours).
+- Client-only nodes (I2P-only instances) store nothing and answer no lookups, so their online time isn't a node's.
+  Dual-stack nodes start as clients and become full nodes after a long uptime, as dht-rpc decides; helpers
+  (`sam.node`) are full nodes from the start. A lookup includes the node's own records.
+- Known nodes to start from are the helpers' I2P addresses (`<address>:1`).

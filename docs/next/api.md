@@ -47,6 +47,36 @@ folder is private to that user by default). Better: ask for the password before 
 text. This device keeps its identity either way; the phrase is needed to restore the identity on
 another computer, and to add or remove a device.
 
+### I2P: hiding the IP
+
+Everyone a person replicates with sees their IP. To read and post without showing it, open over I2P, through a
+local I2P router's SAM bridge (the app runs the router; HyperBrowser runs one per install):
+
+```js
+const hg = await Hypergraph.open('./anon', {
+  transport: 'i2p',      // 'normal' (default): Hyperswarm only; 'dual': Hyperswarm, and I2P for I2P-only peers
+  sam: { port: 7656, bootstrap: ['<address>:1'] }   // the router's SAM port (127.0.0.1); helpers' I2P addresses
+})
+hg.on('transport', ({ state, tries, reason, address }) => {})   // 'connecting' (with why), then 'ready'
+// ontransport: (e) => {} in open()'s options gets the same from the start: 'i2p' waits in open() for I2P
+hg.i2pNodes()            // ['<address>:<port>', ...]: DHT nodes inside I2P it met, for sam.bootstrap next time
+```
+
+- `'i2p'`: I2P only. `open()` resolves once the session's tunnels are built (seconds to minutes; `'transport'`
+  says how it goes) and keeps retrying while the router can't be reached; it never falls back. If the router stops
+  later, `'transport'` says `'connecting'` again, and `'ready'` once a new session (a new address) is up. Hyperswarm,
+  HyperDHT and UDP are never loaded. Each open has a fresh I2P address, its key never saved. Adding a device
+  (`addDevice`, `joinCode`) throws `NOT_ALLOWED`; restoring with the recovery phrase works. This device holds no
+  circle member's spaces (no holder).
+- `'dual'`: Hyperswarm as with `'normal'`, and I2P beside it once its tunnels are built, so I2P-only people reach
+  this device; data crosses between the two halves by replication through it. One person reached both ways keeps
+  the Hyperswarm link.
+- Over I2P, members find a space in a DHT inside I2P, started from `sam.bootstrap` (helpers listen on I2P too). A
+  helper opens with `sam: { node: true }`: a full node of that DHT, its I2P address the same at every open.
+  Addresses already known for a space are dialed at once, beside that lookup. An invite's `timeout` counts from
+  the first connection (up to 5 minutes), not from the call: an I2P link takes 5 to 20 s.
+- Slow: chat and forums are fine, big files take minutes (about 0.1 MB/s).
+
 ## Devices and the personal space
 
 One person, several devices (a laptop, a phone), one identity. A device already in shows a code; the
