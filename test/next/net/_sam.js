@@ -32,7 +32,7 @@ function destination () {
 
 /**
  * @param {{ net?: ReturnType<typeof i2pNet>, loss?: number, delayMs?: number }} [opts]
- * @returns {Promise<{ port: number, net: ReturnType<typeof i2pNet>, close: () => Promise<void> }>}
+ * @returns {Promise<{ port: number, net: ReturnType<typeof i2pNet>, drop: () => void, close: () => Promise<void> }>}
  */
 async function standIn ({ net: world = i2pNet(), loss = 0, delayMs = 5 } = {}) {
   const sockets = new Set()
@@ -117,6 +117,8 @@ async function standIn ({ net: world = i2pNet(), loss = 0, delayMs = 5 } = {}) {
   return {
     port: /** @type {import('net').AddressInfo} */ (server.address()).port,
     net: world,
+    /** A router restart: every session and stream gone, the port still open. */
+    drop: () => { for (const s of sockets) s.destroy() },
     close: () => new Promise((resolve) => { for (const s of sockets) s.destroy(); server.close(() => resolve()) })
   }
 }

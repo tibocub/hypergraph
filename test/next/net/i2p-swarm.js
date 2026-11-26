@@ -26,7 +26,8 @@ test('i2p swarm: two peers on one topic connect once, with their device keys, an
   const [a, b] = await swarms(t, 2)
   const got = []
   a.on('connection', (c) => c.on('data', (d) => got.push(b4a.toString(d))))
-  b.on('connection', (c) => c.write(b4a.from('hi from b')))
+  const infos = []
+  b.on('connection', (c, info) => { infos.push(info); c.write(b4a.from('hi from b')) })
   const topic = topicOf('space')
   a.join(topic, { server: true, client: true })
   await a.node.announce(topic) // stored before b looks (lib/network.js looks again otherwise)
@@ -34,6 +35,7 @@ test('i2p swarm: two peers on one topic connect once, with their device keys, an
   t.ok(await eventually(() => got.includes('hi from b'), 20000), 'a got b\'s bytes')
   t.is(a.connections.size, 1)
   t.alike([...a.connections][0].remotePublicKey, b.keyPair.publicKey)
+  t.alike(infos[0].topics, [topic], 'the dialer is told the topic it dialed for, as by Hyperswarm')
   await a.join(topic).refresh()
   await eventually(() => a.connections.size === 1 && b.connections.size === 1, 5000)
   t.is(a.connections.size, 1, 'a second look adds no second connection')
@@ -59,4 +61,25 @@ test('i2p swarm: a topic\'s known address is dialed at once, without the DHT', a
   await b.join(topic, { server: false, client: true }).flushed()
   t.is(b.connections.size, 1, 'connected through the known address')
   t.ok(Date.now() - t0 < 10000)
+})
+
+test('i2p swarm: after its router restarts, a new session (a new address), the topic joined again', { timeout: 90000 }, async (t) => {
+  const routerA = await standIn()
+  const routerB = await standIn({ net: routerA.net }) // two routers on one I2P: only b's restarts
+  const a = await I2PSwarm.open({ sam: { port: routerA.port }, keyPair: crypto.keyPair(), full: true })
+  const b = await I2PSwarm.open({ sam: { port: routerB.port }, keyPair: crypto.keyPair(), bootstrap: [a.node.bootstrapAddress], full: true })
+  t.teardown(async () => { await a.destroy(); await b.destroy(); await routerA.close(); await routerB.close() })
+  const topic = topicOf('after restart')
+  a.join(topic)
+  await a.node.announce(topic)
+  await b.join(topic).flushed()
+  t.is(b.connections.size, 1)
+  const states = []
+  b.on('state', (s) => states.push(s.state))
+  const before = b.address
+  routerB.drop()
+  t.ok(await eventually(() => states.includes('ready'), 30000), 'connecting, then ready again')
+  t.is(states[0], 'connecting')
+  t.not(b.address, before, 'a new address')
+  t.ok(await eventually(() => b.connections.size === 1 && [...b.connections][0].i2p === a.address, 60000), 'linked to a again')
 })

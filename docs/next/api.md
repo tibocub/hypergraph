@@ -58,10 +58,12 @@ const hg = await Hypergraph.open('./anon', {
   sam: { port: 7656, bootstrap: ['<address>:1'] }   // the router's SAM port (127.0.0.1); helpers' I2P addresses
 })
 hg.on('transport', ({ state, tries, reason, address }) => {})   // 'connecting' (with why), then 'ready'
+// ontransport: (e) => {} in open()'s options gets the same from the start: 'i2p' waits in open() for I2P
 ```
 
 - `'i2p'`: I2P only. `open()` resolves once the session's tunnels are built (seconds to minutes; `'transport'`
-  says how it goes) and keeps retrying while the router can't be reached; it never falls back. Hyperswarm,
+  says how it goes) and keeps retrying while the router can't be reached; it never falls back. If the router stops
+  later, `'transport'` says `'connecting'` again, and `'ready'` once a new session (a new address) is up. Hyperswarm,
   HyperDHT and UDP are never loaded. Each open has a fresh I2P address, its key never saved. Adding a device
   (`addDevice`, `joinCode`) throws `NOT_ALLOWED`; restoring with the recovery phrase works. This device holds no
   circle member's spaces (no holder).

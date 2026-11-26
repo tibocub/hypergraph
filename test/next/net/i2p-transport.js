@@ -19,9 +19,9 @@ async function i2p (t) {
 
 async function person (t, label, sam) {
   const events = []
-  const hg = await Hypergraph.open(tmpDir(t, label), { types: forum.types, rules: forum.rules, transport: 'i2p', sam })
+  const hg = await Hypergraph.open(tmpDir(t, label), { types: forum.types, rules: forum.rules, transport: 'i2p', sam, ontransport: (e) => events.push(e) })
   t.teardown(() => bounded(hg.close(), 15000, label + '.close()'), { order: 0 })
-  hg.on('transport', (e) => events.push(e))
+  t.alike(events.map((e) => e.state), ['connecting', 'ready'], label + ': told it was connecting, then ready, while open() waited')
   await hg.connectToSwarm()
   return hg
 }
