@@ -71,7 +71,8 @@ hg.i2pNodes()            // ['<address>:<port>', ...]: DHT nodes inside I2P it m
 - `'dual'`: Hyperswarm as with `'normal'`, and I2P beside it once its tunnels are built, so I2P-only people reach
   this device; data crosses between the two halves by replication through it. One person reached both ways keeps
   the Hyperswarm link.
-- Over I2P, members find a space in a DHT inside I2P, started from `sam.bootstrap` (helpers listen on I2P too).
+- Over I2P, members find a space in a DHT inside I2P, started from `sam.bootstrap` (helpers listen on I2P too). A
+  helper opens with `sam: { node: true }`: a full node of that DHT, its I2P address the same at every open.
   Addresses already known for a space are dialed at once, beside that lookup. An invite's `timeout` counts from
   the first connection (up to 5 minutes), not from the call: an I2P link takes 5 to 20 s.
 - Slow: chat and forums are fine, big files take minutes (about 0.1 MB/s).

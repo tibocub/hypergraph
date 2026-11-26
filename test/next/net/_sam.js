@@ -6,7 +6,7 @@
 const net = require('net')
 const b4a = require('b4a')
 const sodium = require('sodium-universal')
-const { toI2PBase64, addressOf } = require('../../../lib/i2p/address.js')
+const { toI2PBase64, fromI2PBase64, publicOf, addressOf } = require('../../../lib/i2p/address.js')
 
 function i2pNet () {
   /** @type {Map<string, { deliver: (data: Uint8Array, from: Uint8Array) => void }>} address -> session */
@@ -28,6 +28,12 @@ function destination () {
   const enc = b4a.alloc(256)
   sodium.randombytes_buf(enc)
   return { pub, priv: b4a.concat([pub, enc, seed]) }
+}
+
+// A private destination given back (SESSION CREATE DESTINATION=<it>): the same address as before.
+function again (b64) {
+  const priv = fromI2PBase64(b64)
+  return { pub: publicOf(priv), priv }
 }
 
 /**
@@ -66,7 +72,7 @@ async function standIn ({ net: world = i2pNet(), loss = 0, delayMs = 5 } = {}) {
         buf = buf.subarray(nl + 1)
         if (line.startsWith('HELLO')) socket.write('HELLO REPLY RESULT=OK VERSION=3.3\n')
         else if (line.startsWith('SESSION CREATE')) {
-          const d = destination()
+          const d = params.DESTINATION && params.DESTINATION !== 'TRANSIENT' ? again(params.DESTINATION) : destination()
           mine = addressOf(d.pub)
           world.sessions.set(mine, {
             id: params.ID,

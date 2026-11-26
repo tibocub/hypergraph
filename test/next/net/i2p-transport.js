@@ -63,3 +63,22 @@ test('transport i2p: two people share a forum over I2P only; no device added; no
   t.alike([...hosts], ['127.0.0.1'], 'every socket went to 127.0.0.1') // UDP: none, udx-native never loaded
   t.absent(Object.keys(require.cache).some((f) => /[\\/]node_modules[\\/]bare-dgram[\\/]/.test(f)))
 })
+
+test('transport dual, a helper (sam.node): its I2P address stays the same across opens; a regular one is fresh', { timeout: 120000 }, async (t) => {
+  const sam = await i2p(t)
+  const { testBootstrap } = require('../helpers.js')
+  const bootstrap = await testBootstrap(t)
+  const dir = tmpDir(t, 'helper')
+  const addressOf = async (opts) => {
+    let address = null
+    const hg = await Hypergraph.open(dir, { transport: 'dual', sam: { ...sam, ...opts }, bootstrap, ontransport: (e) => { if (e.state === 'ready') address = e.address } })
+    await hg.connectToSwarm()
+    const ok = await eventually(() => address, 30000)
+    await hg.close()
+    return ok ? address : null
+  }
+  const first = await addressOf({ node: true })
+  t.ok(first)
+  t.is(await addressOf({ node: true }), first, 'the same address: it can be listed as a bootstrap node')
+  t.not(await addressOf({}), first, 'without node: a fresh one')
+})
