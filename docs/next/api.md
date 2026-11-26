@@ -59,6 +59,7 @@ const hg = await Hypergraph.open('./anon', {
 })
 hg.on('transport', ({ state, tries, reason, address }) => {})   // 'connecting' (with why), then 'ready'
 // ontransport: (e) => {} in open()'s options gets the same from the start: 'i2p' waits in open() for I2P
+hg.i2pNodes()            // ['<address>:<port>', ...]: DHT nodes inside I2P it met, for sam.bootstrap next time
 ```
 
 - `'i2p'`: I2P only. `open()` resolves once the session's tunnels are built (seconds to minutes; `'transport'`

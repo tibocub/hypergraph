@@ -54,6 +54,7 @@ test('transport i2p: two people share a forum over I2P only; no device added; no
   await forum.post(fe, 'Reply', 'from eve')
   t.ok(await eventually(async () => (await forum.latest(fa)).some((p) => p.title === 'Reply'), 30000), 'ana reads eve\'s')
   t.is(await codeOf(ana.addDevice()), 'NOT_ALLOWED', 'addDevice refused over I2P')
+  t.ok(ana.i2pNodes().length >= 1, 'it knows DHT nodes to start from next time')
   await ana.close()
   await eve.close()
   // Bare lists a module a require() in some function names, unrun (exports null): only those that ran count.
