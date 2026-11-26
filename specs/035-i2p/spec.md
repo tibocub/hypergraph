@@ -272,7 +272,11 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 ## Out of scope
 
 - Phones (no app yet); a router on Bare beyond FR-041's check.
-- Multi-device anonymous identities (pairing over I2P).
+- Multi-device anonymous identities: adding a device needs blind-pairing, which runs on Hyperswarm's DHT, never
+  loaded by an anonymous identity (`addDevice` throws `NOT_ALLOWED`). A known limit; restoring by recovery phrase
+  works.
+- Circle holding by anonymous identities: the holder is a blind-peer server, which loads Hyperswarm. An anonymous
+  identity's spaces can still be held by others; it holds nobody's. A known limit.
 - Pages reaching I2P sites (eepsites) or the normal web through I2P.
 - Proxying between the halves (decision 4).
 - Paid code signing.

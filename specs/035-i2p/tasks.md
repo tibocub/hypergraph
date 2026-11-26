@@ -37,13 +37,15 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 
 ## Phase 4: SwarmFS
 
-- [ ] T022 `transport`/`sam` through `SwarmFS.open`
-- [ ] T023 metadata strip (JPEG, PNG, WebP) for `'i2p'` uploads before hashing; tests both ways
-- [ ] T024 no cross-identity serving test; docs
+- [x] T022 `transport`/`sam` through `SwarmFS.open`
+- [x] T023 metadata strip (JPEG, PNG, WebP) for `'i2p'` uploads before hashing (a stripped copy in the instance folder; photos stay out of linked folders); tests both ways
+- [x] T024 no cross-identity serving test; docs
 
 ## Phase 5: HyperBrowser
 
 - [ ] T025 supervisor → engines (SAM port); "Connecting to I2P…" with reason
+- [ ] T025a SAM bootstrap list shipped with the app; dual-stack peers hand fresh I2P DHT nodes to regular identities (as reseeding); anonymous identities use only the shipped list and what they learn over I2P
+- [ ] T025c user docs: anonymous identities pair no device and hold no circle member's spaces (why)
 - [ ] T025b one warm spare SAM session (fresh destination, tunnels built, no identity) handed to the next anonymous identity; SC-008 measured; if still over 15 s, SC-008 changed to the measured number
 - [ ] T026 "Anonymous" at creation, list entry, marks in list and frame
 - [ ] T027 contacts via the engine network; updater pause/resume; empty device name; `--no-guards` refused
