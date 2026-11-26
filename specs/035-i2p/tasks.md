@@ -45,17 +45,19 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 
 - [x] T025 supervisor → engines (SAM port); "Connecting to I2P…" with reason
 - [x] T025a SAM bootstrap list shipped with the app (empty until helpers listen on I2P); each identity keeps the I2P DHT nodes it met, in its own folder
-- [ ] T025d (5b) dual-stack peers hand fresh I2P DHT nodes to regular identities, as reseeding
+- [x] T025d (5b) dual-stack peers hand fresh I2P DHT nodes to regular identities, as reseeding
 - [x] T025c user docs: anonymous identities pair no device and hold no circle member's spaces (why)
 - [x] T025b warm spare session: can't work across processes (a SAM session lives on its maker's socket); SC-008 is the measured 21 s median
 - [x] T026 "Anonymous" at creation, list entry, marks in list and frame
 - [x] T027 contacts over an I2P session of their own (anonymous), not findable by default; updater pause/resume; empty device name; `--no-guards` refused
 - [x] T028 switch warning (both ways, 10 min, shell memory)
 - [x] T029 relaying settings page; strict-country "don't relay" from OS time zone and locale (documented as weaker)
-- [ ] T030 (5b) reseed through ≥3 peers into the router's netDb
+- [x] T030 (5b) reseed through ≥3 peers into the router's netDb
 - [x] T031 large-file notice (no progress bar yet); 032 isn't built: FR-030 to FR-032 go with it
 - [x] T032 leak matrix (14 paths) in docs; user docs in `sites/home/` (threat model, speed, relaying)
-- [ ] T033 typecheck, test, test:bare, test:sandbox, selftest
+- [x] T033 typecheck, test, test:bare, test:sandbox, selftest
+
+- [x] T033b (5b) the helper on I2P (own router, `sam.node`, a stable address for `shell/i2p-bootstrap.json`); the build ships `router/` (checked: the router starts from the built app); the anonymous UI in a self-check (SAM stand-in)
 
 ## Phase 6: measurements
 
