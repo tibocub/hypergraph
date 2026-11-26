@@ -24,14 +24,16 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 
 ## Phase 3: transport seam (HG)
 
-- [ ] T014 `transport`/`sam` options on `Hypergraph.open` → `Network`; option checks
-- [ ] T015 lazy requires (network, helpers, holding, pairing); `require.cache` test; `addDevice` `NOT_ALLOWED`
-- [ ] T016 `lib/i2p/swarm.js`: session (3 hops, fresh destination), ready wait, `transport` events, retry
-- [ ] T017 join/listen/`dht.connect` over SAM streams + secret-stream; helpers and holders on I2P
-- [ ] T018 `'dual'`: both paths, Hyperswarm wins; bridge test `'i2p'` ↔ dual ↔ `'normal'`
-- [ ] T019 `JOIN_TIMEOUT` from first connection; invites carry helpers' I2P destinations
-- [ ] T020 loopback-only socket hook test (SC-001); forum scenarios (helper join, no-helper DHT find)
-- [ ] T021 perf FR-038, FR-039; docs (api, concepts), CHANGELOG; SwarmFS suite
+- [x] T014 `transport`/`sam` options on `Hypergraph.open` → `Network`; option checks
+- [x] T015 lazy requires (network, holding, pairing); `require.cache` test; `addDevice` `NOT_ALLOWED`; no circle holder over I2P only
+- [x] T016 `lib/i2p/swarm.js`: session (3 hops, fresh destination), ready wait, `transport` events, retry
+- [x] T017 join/listen/`dht.connect` over SAM streams + secret-stream; helpers and holders on I2P
+- [x] T018 `'dual'`: both paths, Hyperswarm wins; bridge test `'i2p'` ↔ dual ↔ `'normal'`
+- [x] T019 `JOIN_TIMEOUT` from first connection (invites don't carry helpers' I2P addresses: a helper's key is found through the I2P DHT; `sam.bootstrap` starts it)
+- [x] T020 loopback-only socket hook test (SC-001); forum scenarios (helper join, no-helper DHT find)
+- [x] T021 perf FR-038, FR-039; docs (api, concepts), CHANGELOG; SwarmFS suite
+
+- [ ] T021b HB: UPnP in the addon (miniupnpc, `upnp` option, on by default); Defender; reachability and transit
 
 ## Phase 4: SwarmFS
 

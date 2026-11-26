@@ -85,6 +85,7 @@
     "prepack": "npm run types"
   },
   "dependencies": {
+    "@hyperswarm/secret-stream": "^6.9.2",
     "@types/node": "^26.6.6",
     "adaptive-timeout": "^1.0.1",
     "autobase": "^7.28.2",

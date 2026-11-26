@@ -31,7 +31,8 @@ passes Windows Defender, where the official binaries were quarantined. No users 
    observers; not against a global observer or a state targeting one person (timing). One engine runs at a time; a
    warning when the person switches between a regular and an anonymous identity, either way, within 10 minutes of
    the last one closing.
-7. **Relaying** on by default with a bandwidth cap. "Don't relay" turns on by itself in I2P's strict countries
+7. **Relaying** on by default with a bandwidth cap, and UPnP on by default so routers behind a home NAT can
+   relay (a setting turns it off). "Don't relay" turns on by itself in I2P's strict countries
    (033), and is a setting.
 8. **Reseeding through our peers**: regular identities hand router records to new routers, merged with I2P's
    official reseed.
@@ -113,7 +114,8 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - **FR-001** The shell starts one router process, separate from the engines, that loads i2pd 3.0.0 as a Node-API
   addon built by us (034's `start(dataDir, samPort)` /
   `stop()`), statically linked, one file per platform. SAM listens on 127.0.0.1 only, on a port picked at start.
-  No web console, no UPnP or NAT-PMP, no IPv6 unless the host has a route.
+  No web console, no NAT-PMP, no IPv6 unless the host has a route. UPnP is on by default (miniupnpc, built in),
+  so a router behind a home NAT is reachable and relays; a setting turns it off.
 - **FR-002** The router process starts with the app and outlives identity switches: switching identities closes
   the old engine's SAM session and opens the new one's, without restarting the router. Its data folder is per
   install, outside every identity's folder. The shell passes the SAM port to each engine it starts.
@@ -177,7 +179,8 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 **Relaying and reseeding (HyperBrowser router process and engines)**
 
 - **FR-023** Relaying is on by default: i2pd `bandwidth` set to a cap of 256 KB/s (`O`) and `share` 50 %, numbers
-  revisited from the soak run (FR-041). A setting turns it off (`notransit = true`).
+  revisited from the soak run (FR-041). A setting turns it off (`notransit = true`). Behind a NAT it needs UPnP
+  (FR-001): with UPnP off, the router stays firewalled and relays little.
 - **FR-024** "Don't relay" is forced on when the machine's country is in Java I2P's strict list (033), decided by
   the router itself (i2pd's geo-IP), with the list shipped in the addon. The setting then shows why.
 - **FR-025** Reseeding: a regular engine publishes its router's current records (100, ~100 KB) in a hypercore of its
@@ -212,7 +215,7 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - **FR-034** The user docs state the threat model of decision 6 in plain words, what "anonymous" doesn't cover
   (timing, a global observer, what they post themselves), and that the router relays.
 - **FR-035** The router is invisible: no window, no tray, no console. Its state shows only as "Connecting to I2P…"
-  for anonymous identities and in a settings page (relaying, bandwidth).
+  for anonymous identities and in a settings page (relaying, bandwidth, UPnP).
 - **FR-036** When an anonymous identity opens a file over 5 MB, the UI says it will be slow ("I2P suits chat and
   forums; large files take minutes") and shows progress.
 

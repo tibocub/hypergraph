@@ -114,6 +114,9 @@ Stops the plan if it fails (emissary weighed then).
    options read once per process are accepted limits (documented, i2pd not patched). Relaying behind NAT: the
    owner decides; phase 2 checks whether i2pd leaves "Firewalled" over IPv6 on this machine. Merges wait for
    phase 5.
+5. **UPnP** (owner, after phase 2): on by default, a setting turns it off. i2pd's UPnP (daemon/UPnP.cpp, miniupnpc
+   static from vcpkg) is compiled into the addon and started by it (`upnp` option). Built in phase 3, then Defender,
+   reachability and transit measured again.
 
 ## Upstream PR text (dht-rpc, for the owner to send)
 

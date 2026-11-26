@@ -13,7 +13,8 @@ const { standIn } = require('./_sam.js')
 const topicOf = (s) => { const out = b4a.alloc(32); sodium.crypto_generichash(out, b4a.from(s)); return out }
 
 test('i2p dht: loads no udx-native, hyperswarm or hyperdht', (t) => {
-  const loaded = Object.keys(require.cache).filter((f) => /[\\/]node_modules[\\/](udx-native|hyperswarm|hyperdht)[\\/]/.test(f))
+  // Bare lists a module a require() in some function names, unrun (exports null): only those that ran count.
+  const loaded = Object.keys(require.cache).filter((f) => /[\\/]node_modules[\\/](udx-native|hyperswarm|hyperdht)[\\/]/.test(f) && require.cache[f].exports !== null)
   t.alike(loaded, [])
 })
 
@@ -97,7 +98,7 @@ test('i2p dht: still found with 15 % of datagrams lost', { timeout: 120000 }, as
 
 test('sam: a datagram goes out in one write (i2pd drops one whose data comes in a later read)', async (t) => {
   const router = await standIn()
-  const s = await require('../../../lib/i2p/sam.js').datagrams({ sam: { port: router.port } })
+  const s = await require('../../../lib/i2p/sam.js').session({ sam: { port: router.port } })
   t.teardown(async () => { s.close(); await router.close() })
   const writes = []
   const write = s.socket.socket.write.bind(s.socket.socket)

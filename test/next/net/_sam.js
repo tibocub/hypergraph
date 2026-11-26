@@ -41,9 +41,11 @@ async function standIn ({ net: world = i2pNet(), loss = 0, delayMs = 5 } = {}) {
     let buf = b4a.alloc(0)
     /** @type {string | null} */
     let mine = null // this socket's session address
+    let raw = false // a stream: bytes only, no more commands
     socket.on('error', () => {})
     socket.on('close', () => { sockets.delete(socket); if (mine) world.sessions.delete(mine) })
     socket.on('data', (d) => {
+      if (raw) return
       buf = b4a.concat([buf, d])
       for (;;) {
         const nl = buf.indexOf(10)
@@ -67,7 +69,9 @@ async function standIn ({ net: world = i2pNet(), loss = 0, delayMs = 5 } = {}) {
           const d = destination()
           mine = addressOf(d.pub)
           world.sessions.set(mine, {
+            id: params.ID,
             pub: d.pub,
+            acceptors: [],
             deliver: (data, from) => {
               if (socket.destroyed) return
               socket.write(`DATAGRAM RECEIVED DESTINATION=${toI2PBase64(from)} SIZE=${data.length} FROM_PORT=0 TO_PORT=0\n`)
@@ -75,10 +79,40 @@ async function standIn ({ net: world = i2pNet(), loss = 0, delayMs = 5 } = {}) {
             }
           })
           socket.write(`SESSION STATUS RESULT=OK DESTINATION=${toI2PBase64(d.priv)}\n`)
+        } else if (line.startsWith('STREAM ACCEPT')) {
+          const s = [...world.sessions.values()].find((x) => x.id === params.ID)
+          if (!s) { socket.write('STREAM STATUS RESULT=INVALID_ID\n'); continue }
+          raw = true
+          s.acceptors.push(socket)
+          socket.write('STREAM STATUS RESULT=OK\n')
+          return
+        } else if (line.startsWith('STREAM CONNECT')) {
+          const from = [...world.sessions.values()].find((x) => x.id === params.ID)
+          const to = world.sessions.get(String(params.DESTINATION).replace(/\.b32\.i2p$/, ''))
+          raw = true
+          const rest = buf
+          dial(socket, from, to, rest)
+          return
         } else socket.write(line.split(' ', 2).join(' ') + ' REPLY RESULT=I2P_ERROR MESSAGE="not in the stand-in"\n')
       }
     })
   })
+
+  // A stream: waits a moment for the receiver to accept, then pipes both ways.
+  async function dial (socket, from, to, rest) {
+    for (let i = 0; i < 100 && to && !to.acceptors.length; i++) await new Promise((resolve) => setTimeout(resolve, 50))
+    const acceptor = to && to.acceptors.shift()
+    if (!from || !acceptor || Math.random() < loss) { socket.write('STREAM STATUS RESULT=CANT_REACH_PEER\n'); socket.destroy(); return }
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    socket.write('STREAM STATUS RESULT=OK\n')
+    acceptor.write(toI2PBase64(from.pub) + ' FROM_PORT=0 TO_PORT=0\n')
+    if (rest.length) acceptor.write(rest)
+    socket.on('data', (d) => acceptor.write(d))
+    acceptor.on('data', (d) => socket.write(d))
+    socket.on('close', () => acceptor.destroy())
+    acceptor.on('close', () => socket.destroy())
+  }
+
   await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(null)))
   return {
     port: /** @type {import('net').AddressInfo} */ (server.address()).port,

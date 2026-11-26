@@ -13,8 +13,8 @@ const PORT = Number(require('process').env.HG_I2P_SAM) || 0
 
 test('i2p router: datagrams between two fresh destinations; a lookup across three nodes', { skip: !PORT, timeout: 600000 }, async (t) => {
   const got = []
-  const a = await sam.datagrams({ sam: { port: PORT }, ondatagram: (data, from) => got.push({ data, from }) })
-  const b = await sam.datagrams({ sam: { port: PORT } })
+  const a = await sam.session({ sam: { port: PORT }, ondatagram: (data, from) => got.push({ data, from }) })
+  const b = await sam.session({ sam: { port: PORT } })
   t.teardown(() => { a.close(); b.close() })
   t.not(a.identity.address, b.identity.address, 'a fresh destination per session')
   for (let i = 0; i < 20 && !got.length; i++) {
