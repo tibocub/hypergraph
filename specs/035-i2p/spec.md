@@ -252,7 +252,9 @@ passes Windows Defender, where the official binaries were quarantined. No users 
 - **SC-006** The soak run (FR-041) ends with the router up, memory flat (within 20 %), every crash restarted.
 - **SC-007** No two identities on one machine share a destination, a SAM session or a stored file.
 - **SC-008** Switching identities never restarts the router: an anonymous identity opened after a switch has its
-  tunnels ready in under 15 s (median of 5), against 39 s+ for a router start.
+  tunnels ready in about 21 s (the measured median of 20 switches), against 39 s+ for a router start. The 15 s first
+  aimed at needed a warm spare session handed to the next identity, which can't work: a SAM session lives on the TCP
+  socket of the process that made it, so neither the shell nor the router process can hand one to an engine.
 
 ## Tests
 

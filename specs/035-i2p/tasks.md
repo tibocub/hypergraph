@@ -43,17 +43,18 @@ Plan: [plan.md](plan.md). HB = HyperBrowser, HG = hypergraph, SFS = SwarmFS. Eac
 
 ## Phase 5: HyperBrowser
 
-- [ ] T025 supervisor → engines (SAM port); "Connecting to I2P…" with reason
-- [ ] T025a SAM bootstrap list shipped with the app; dual-stack peers hand fresh I2P DHT nodes to regular identities (as reseeding); anonymous identities use only the shipped list and what they learn over I2P
-- [ ] T025c user docs: anonymous identities pair no device and hold no circle member's spaces (why)
-- [ ] T025b one warm spare SAM session (fresh destination, tunnels built, no identity) handed to the next anonymous identity; SC-008 measured; if still over 15 s, SC-008 changed to the measured number
-- [ ] T026 "Anonymous" at creation, list entry, marks in list and frame
-- [ ] T027 contacts via the engine network; updater pause/resume; empty device name; `--no-guards` refused
-- [ ] T028 switch warning (both ways, 10 min, shell memory)
-- [ ] T029 relaying settings page; strict-country "don't relay" from OS time zone and locale (documented as weaker)
-- [ ] T030 reseed through ≥3 peers into the router's netDb
-- [ ] T031 large-file notice; 032 notice text if 032 landed
-- [ ] T032 leak matrix (14 paths) in docs; user docs in `sites/home/` (threat model, speed, relaying)
+- [x] T025 supervisor → engines (SAM port); "Connecting to I2P…" with reason
+- [x] T025a SAM bootstrap list shipped with the app (empty until helpers listen on I2P); each identity keeps the I2P DHT nodes it met, in its own folder
+- [ ] T025d (5b) dual-stack peers hand fresh I2P DHT nodes to regular identities, as reseeding
+- [x] T025c user docs: anonymous identities pair no device and hold no circle member's spaces (why)
+- [x] T025b warm spare session: can't work across processes (a SAM session lives on its maker's socket); SC-008 is the measured 21 s median
+- [x] T026 "Anonymous" at creation, list entry, marks in list and frame
+- [x] T027 contacts over an I2P session of their own (anonymous), not findable by default; updater pause/resume; empty device name; `--no-guards` refused
+- [x] T028 switch warning (both ways, 10 min, shell memory)
+- [x] T029 relaying settings page; strict-country "don't relay" from OS time zone and locale (documented as weaker)
+- [ ] T030 (5b) reseed through ≥3 peers into the router's netDb
+- [x] T031 large-file notice (no progress bar yet); 032 isn't built: FR-030 to FR-032 go with it
+- [x] T032 leak matrix (14 paths) in docs; user docs in `sites/home/` (threat model, speed, relaying)
 - [ ] T033 typecheck, test, test:bare, test:sandbox, selftest
 
 ## Phase 6: measurements
